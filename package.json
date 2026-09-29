@@ -1,6 +1,6 @@
 {
 	"name": "open-web-app",
-	"version": "0.1.4",
+	"version": "0.1.5",
 	"description": "Browser cockpit for the Codex CLI app-server — chat, tool calls, diffs and approvals in one tab",
 	"license": "MIT",
 	"type": "module",
