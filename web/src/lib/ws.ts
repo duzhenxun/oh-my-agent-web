@@ -44,12 +44,22 @@ interface PendingCall {
 
 export interface RpcOptions {
 	timeoutMs?: number;
+	/**
+	 * How long to wait for the socket to become OPEN before giving up. Callers
+	 * routinely run before the socket is up: child component effects fire before
+	 * the provider's connect effect, and a reconnect after a drop has a backoff
+	 * window. Waiting a moment is what the server does for codex too
+	 * (`CODEX_READY_WAIT_MS`). Defaults to `READY_WAIT_MS`.
+	 */
+	waitMs?: number;
 }
 
 const HEARTBEAT_MS = 15_000;
 const STALE_MS = 40_000;
 const BASE_BACKOFF_MS = 500;
 const MAX_BACKOFF_MS = 10_000;
+/** How long an rpc call waits for a CONNECTING/reconnecting socket before failing. */
+const READY_WAIT_MS = 5_000;
 
 export function defaultWsUrl(): string {
 	if (typeof window === "undefined") return "ws://127.0.0.1:25257/ws";
@@ -64,6 +74,8 @@ export class CodexSocket {
 	private ws: WebSocket | null = null;
 	private handlers: CodexSocketHandlers = {};
 	private pending = new Map<string, PendingCall>();
+	/** Calls parked in `waitUntilOpen` until the socket reaches OPEN. */
+	private openWaiters = new Set<{ resolve: () => void; reject: (error: Error) => void }>();
 	private seq = 0;
 	private attempt = 0;
 	private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -88,7 +100,57 @@ export class CodexSocket {
 	private setState(next: ConnectionState): void {
 		if (this.state === next) return;
 		this.state = next;
+		if (next === "open") this.flushOpenWaiters();
 		this.handlers.onState?.(next);
+	}
+
+	private isOpen(): boolean {
+		return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
+	}
+
+	private flushOpenWaiters(): void {
+		if (this.openWaiters.size === 0) return;
+		const waiters = [...this.openWaiters];
+		this.openWaiters.clear();
+		for (const waiter of waiters) waiter.resolve();
+	}
+
+	private rejectOpenWaiters(error: Error): void {
+		if (this.openWaiters.size === 0) return;
+		const waiters = [...this.openWaiters];
+		this.openWaiters.clear();
+		for (const waiter of waiters) waiter.reject(error);
+	}
+
+	/**
+	 * Resolve once the socket is OPEN (or reject after `timeoutMs`).
+	 *
+	 * Nudges a connection along first, since the only reason to be here is that
+	 * nobody has opened one yet (or a reconnect is still in its backoff window).
+	 */
+	private waitUntilOpen(method: string, timeoutMs: number): Promise<void> {
+		if (this.isOpen()) return Promise.resolve();
+		if (this.disposed) return Promise.reject(new Error("Socket disposed"));
+		this.connect();
+		if (this.isOpen()) return Promise.resolve();
+		return new Promise<void>((resolve, reject) => {
+			let timer: ReturnType<typeof setTimeout> | null = null;
+			const waiter = {
+				resolve: () => {
+					if (timer) clearTimeout(timer);
+					resolve();
+				},
+				reject: (error: Error) => {
+					if (timer) clearTimeout(timer);
+					reject(error);
+				},
+			};
+			timer = setTimeout(() => {
+				this.openWaiters.delete(waiter);
+				reject(new Error(`WebSocket is not connected (rpc "${method}")`));
+			}, timeoutMs);
+			this.openWaiters.add(waiter);
+		});
 	}
 
 	connect(): void {
@@ -236,8 +298,16 @@ export class CodexSocket {
 
 	/** Invoke a codex method (or `owa/*`). Rejects on timeout, close, or RPC error. */
 	rpc<T = unknown>(method: string, params?: unknown, options: RpcOptions = {}): Promise<T> {
-		const requestId = `r${++this.seq}`;
 		const timeoutMs = options.timeoutMs ?? 60_000;
+		// Wait for OPEN first: a request fired during startup or a reconnect window is
+		// a scheduling artifact, not something the user did wrong.
+		return this.waitUntilOpen(method, options.waitMs ?? READY_WAIT_MS).then(
+			() => this.send<T>(method, params, timeoutMs),
+		);
+	}
+
+	private send<T>(method: string, params: unknown, timeoutMs: number): Promise<T> {
+		const requestId = `r${++this.seq}`;
 		return new Promise<T>((resolve, reject) => {
 			const timer = setTimeout(() => {
 				this.pending.delete(requestId);
@@ -265,6 +335,7 @@ export class CodexSocket {
 		this.disposed = true;
 		this.clearReconnect();
 		this.stopHeartbeat();
+		this.rejectOpenWaiters(new Error("Socket disposed"));
 		this.rejectAll(new Error("Socket disposed"));
 		try {
 			this.ws?.close(1000, "client disposed");

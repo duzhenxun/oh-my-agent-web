@@ -174,15 +174,21 @@ export function ThreadList({ onOpenSessionLogs }: { onOpenSessionLogs: (threadId
 		searchTerm: search,
 	} = useCodex();
 
-	// Debounced search -> thread/list searchTerm. The provider already performs
-	// the initial list on connection open, so skip the very first effect run to
-	// avoid a request before the socket is OPEN.
-	const didInit = useRef(false);
+	// Debounced search -> thread/list searchTerm.
+	//
+	// The provider already lists threads when the socket opens, so the first effect
+	// run must NOT fire a second one: it would race the socket and surface as
+	// `WebSocket is not connected (rpc "thread/list")`.
+	//
+	// The guard is a *last applied query*, not a "did we run yet" boolean on
+	// purpose — React StrictMode mounts effects twice in dev and refs survive that
+	// remount, so a boolean would be consumed by the first pass and then fire
+	// anyway on the second one.
+	const lastQuery = useRef<{ search: string; archived: boolean } | null>(null);
 	useEffect(() => {
-		if (!didInit.current) {
-			didInit.current = true;
-			return;
-		}
+		const prev = lastQuery.current;
+		lastQuery.current = { search, archived };
+		if (prev === null || (prev.search === search && prev.archived === archived)) return;
 		const t = setTimeout(() => {
 			void listThreads({ searchTerm: search, append: false, archived });
 		}, search ? 280 : 0);

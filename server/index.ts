@@ -53,6 +53,21 @@ const SERVER_REQUEST_HISTORY = 2_000;
  */
 const CODEX_READY_WAIT_MS = 20_000;
 
+/**
+ * `OWA_DEV_WEB=1` —— dev 时前端不经 `web/dist`，而是把 Vite **挂在同一个进程里**
+ * 当中间件（middleware mode）。
+ *
+ * 这样对外只有一个源、一个端口：`http://127.0.0.1:25257`。页面由 Vite 现编
+ * （源码 + HMR，不用 build），`/ws` 与页面同源，也没有第二个端口要记、要开、
+ * 或者要配置跨源白名单。
+ */
+const DEV_SOURCE = process.env.OWA_DEV_WEB === "1";
+/**
+ * Vite 的 HMR 通道挂在同一个 http server 上，得给个专属路径，
+ * 否则会和下面 `/ws` 的 upgrade 拦截器撞车（非 /ws 一律 destroy）。
+ */
+const DEV_HMR_PATH = "/owa-hmr";
+
 export interface StartOptions {
 	port?: number;
 	host?: string;
@@ -221,6 +236,10 @@ export async function startServer(options: StartOptions = {}): Promise<ServerHan
 	const app = express();
 	app.disable("x-powered-by");
 
+	// 先建 http server：Vite 的 HMR 要挂到它上面（见下面的 middleware mode）。
+	// 路由按注册顺序匹配，所以这里提前 createServer 不影响 /api 的优先级。
+	const httpServer: HttpServer = createServer(app);
+
 	app.get("/api/health", (_req: Request, res: Response) => {
 		const body = { ok: true as const, codex: supervisor.status(), version };
 		res.json(body);
@@ -238,22 +257,36 @@ export async function startServer(options: StartOptions = {}): Promise<ServerHan
 		});
 	});
 
-	// 生产：静态前端 + SPA fallback。import 时不要求 web/dist 存在（dev 由 Vite 提供）。
-	const webDist = join(PACKAGE_ROOT, "web", "dist");
-	if (existsSync(webDist)) {
-		app.use(express.static(webDist));
-		app.get(/^\/(?!api\/|ws).*/, (_req: Request, res: Response) => {
-			res.sendFile(join(webDist, "index.html"));
+	// 前端：dev 把 Vite 当中间件挂进本进程（源码 + HMR）；生产发 web/dist。
+	// 两种情况下对外都只有 http://127.0.0.1:<port> 一个源，页面与 /ws 同源。
+	if (DEV_SOURCE) {
+		// devDependency，且只在源码模式下加载。
+		const { createServer: createViteServer } = await import("vite");
+		const vite = await createViteServer({
+			configFile: join(PACKAGE_ROOT, "web", "vite.config.ts"),
+			// spa：index.html 的转换 + history fallback 都交给 Vite，
+			// 替代生产分支里那段 express 的 SPA fallback。
+			appType: "spa",
+			server: { middlewareMode: true, hmr: { server: httpServer, path: DEV_HMR_PATH } },
 		});
-		log(`serving web UI from ${webDist}`);
+		app.use(vite.middlewares);
+		httpServer.once("close", () => void vite.close());
+		log(`serving web UI from source via Vite (middleware mode, hmr=${DEV_HMR_PATH}, no build needed)`);
 	} else {
-		log(`web/dist not found (dev mode?) — 构建前端后刷新: npm run build:web`);
-		app.get(/^\/(?!api\/|ws).*/, (_req: Request, res: Response) => {
-			res.status(404).type("text/plain").send("web/dist 不存在。开发模式请访问 Vite dev server (:5174)；生产请先 npm run build。");
-		});
+		const webDist = join(PACKAGE_ROOT, "web", "dist");
+		if (existsSync(webDist)) {
+			app.use(express.static(webDist));
+			app.get(/^\/(?!api\/|ws).*/, (_req: Request, res: Response) => {
+				res.sendFile(join(webDist, "index.html"));
+			});
+			log(`serving web UI from ${webDist}`);
+		} else {
+			log(`web/dist not found — dev 直接跑 \`npm run dev\`（源码模式，无需 build），生产先 \`npm run build\``);
+			app.get(/^\/(?!api\/|ws).*/, (_req: Request, res: Response) => {
+				res.status(404).type("text/plain").send("web/dist 不存在。dev 请跑 npm run dev（源码模式，无需 build）；生产请先 npm run build。");
+			});
+		}
 	}
-
-	const httpServer: HttpServer = createServer(app);
 
 	/* -------- WebSocket hub -------- */
 	const wss = new WebSocketServer({ noServer: true });
@@ -453,7 +486,8 @@ export async function startServer(options: StartOptions = {}): Promise<ServerHan
 		send(ws, { type: "status", codex: supervisor.status() });
 	});
 
-	// 升级前做 origin 校验 + 路径校验；非 /ws 直接 destroy。
+	// 升级前做 origin 校验 + 路径校验；非 /ws 直接 destroy（dev 下 Vite 的 HMR 通道除外，
+	// 它由 Vite 自己在这个 server 上注册的 upgrade 监听器处理）。
 	httpServer.on("upgrade", (req, socket, head) => {
 		let pathname = "/";
 		try {
@@ -461,6 +495,7 @@ export async function startServer(options: StartOptions = {}): Promise<ServerHan
 		} catch {
 			/* fall through */
 		}
+		if (DEV_SOURCE && pathname === DEV_HMR_PATH) return;
 		if (pathname !== "/ws") {
 			socket.destroy();
 			return;

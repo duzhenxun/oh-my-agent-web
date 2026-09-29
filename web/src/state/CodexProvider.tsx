@@ -62,6 +62,19 @@ export interface Settings {
 	autoApprove: boolean;
 }
 
+/**
+ * Cold-start model catalog: 1 initial attempt + 3 retries.
+ *
+ * The app-server refreshes its catalog over the network right after boot, and
+ * that first refresh can time out (the `codex_models_manager::manager: failed to
+ * refresh available models` line in the app-server log). Until it lands,
+ * `model/list` may answer empty — which would leave the picker blank, or stale
+ * if we kept answering from an older cache. Spaced retries ride that out without
+ * the user having to hit “restart” themselves.
+ */
+const MODEL_LIST_ATTEMPTS = 4;
+const MODEL_LIST_RETRY_BASE_MS = 1_500;
+
 const DEFAULT_SETTINGS: Settings = {
 	model: null,
 	effort: null,
@@ -1113,6 +1126,36 @@ export function CodexProvider({ children }: { children: ReactNode }): ReactNode 
 	refreshProjectsRef.current = refreshProjects;
 
 	/**
+	 * Pull the model catalog, retrying a few times.
+	 *
+	 * Retries cover both failure shapes: a transient error (app-server still
+	 * booting / refreshing, or a timeout) and a successful-but-empty reply while
+	 * the catalog has not landed yet. The first non-empty result wins and is
+	 * dispatched immediately so the picker is usable as early as possible.
+	 */
+	const loadModels = useCallback(async (): Promise<void> => {
+		let last: Model[] | null = null;
+		for (let attempt = 0; attempt < MODEL_LIST_ATTEMPTS; attempt += 1) {
+			try {
+				const res = await rpc<{ data?: unknown }>(CODEX.modelList, { limit: 100, includeHidden: false });
+				const data = isRecord(res) ? asArray<Model>(res.data) : [];
+				if (data.length > 0) {
+					dispatch({ type: "models", models: data });
+					return;
+				}
+				last = data;
+			} catch {
+				/* transient — fall through to the backoff below */
+			}
+			if (attempt < MODEL_LIST_ATTEMPTS - 1) {
+				await new Promise((resolve) => setTimeout(resolve, MODEL_LIST_RETRY_BASE_MS * 2 ** attempt));
+			}
+		}
+		// Every attempt failed: keep whatever we already had instead of blanking the picker.
+		if (last !== null) dispatch({ type: "models", models: last });
+	}, [rpc]);
+
+	/**
 	 * Everything that cannot work until the app-server is up: models, account and
 	 * the thread list. Safe to call repeatedly.
 	 *
@@ -1126,15 +1169,7 @@ export function CodexProvider({ children }: { children: ReactNode }): ReactNode 
 			// the "codex became connected" effect) into a single round of requests.
 			if (bootstrapInFlightRef.current) return bootstrapInFlightRef.current;
 			const run = (async () => {
-				void rpc<{ data?: unknown }>(CODEX.modelList, { limit: 100, includeHidden: false }).then(
-					(res) => {
-						const data = isRecord(res) ? asArray<Model>(res.data) : [];
-						dispatch({ type: "models", models: data });
-					},
-					() => {
-						/* tolerate: the model list is cosmetic and retried on reconnect */
-					},
-				);
+				void loadModels();
 				void rpc<{ account?: unknown; requiresOpenaiAuth?: boolean }>(CODEX.accountRead, {}).then(
 					(res) => {
 						if (!isRecord(res)) return;
@@ -1154,7 +1189,7 @@ export function CodexProvider({ children }: { children: ReactNode }): ReactNode 
 			});
 			return run;
 		},
-		[rpc, refreshProjects, listThreads],
+		[rpc, loadModels, refreshProjects, listThreads],
 	);
 	bootstrapCodexRef.current = bootstrapCodex;
 

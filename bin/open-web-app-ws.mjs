@@ -3,11 +3,15 @@
  * open-web-app ws — 连接 codex app-server WebSocket 的命令行客户端。
  *
  * 参考 /Users/dds/data/ai/work/codex-ws-client.mjs，整理为 open-web-app 的子命令：
- *   open-web-app ws                          # 交互模式（Ctrl-D 退出）
+ *   open-web-app ws                          # 交互模式（Ctrl-C 中断当前 turn / Ctrl-D 退出）
  *   open-web-app ws "帮我看看这个目录"        # 单次提问后退出
  *   echo "写个 hello world" | open-web-app ws # 从管道读
  *   open-web-app ws --port 25259             # 指定端口
  *   open-web-app ws --url ws://host:port     # 指定完整地址
+ *
+ * 退出语义：turn 跑在 app-server 上而不在本进程里，所以直接掉线会留下一个没人看的
+ * 生成过程（继续烧 token）。因此所有退出路径都走 shutdown()：先 `turn/interrupt`，
+ * 再关连接。Ctrl-C 第一次 = 中断+关闭，第二次 = 立即退出。
  *
  * 仅用 Node 内置能力（WebSocket 需要 Node >= 22），无额外依赖。
  */
@@ -286,6 +290,74 @@ export async function runWsClient(argv) {
 	}
 
 	const client = new CodexClient(url);
+
+	/* -------- exit / Ctrl-C --------
+	 * A turn lives on the app-server, not in this process: dropping the socket
+	 * mid-turn would leave the agent generating (and billing) with nobody
+	 * watching — and it stays that way, since nothing tells codex to stop. So
+	 * every exit path funnels through `shutdown()`: interrupt the in-flight turn
+	 * first, then close the socket. A second Ctrl-C stops waiting for the
+	 * interrupt round-trip and exits immediately.
+	 */
+	let activeTurn = null; // { threadId, turnId } while a turn is in flight
+	let socketClosed = false;
+	let shuttingDown = false;
+	let interrupts = 0;
+
+	const waitForSocketClose = (timeoutMs = 500) =>
+		new Promise((resolve) => {
+			if (socketClosed) return resolve();
+			const done = () => {
+				clearTimeout(timer);
+				resolve();
+			};
+			const timer = setTimeout(done, timeoutMs);
+			client.on("closed", done, { once: true });
+		});
+
+	client.on("closed", (ev) => {
+		socketClosed = true;
+		if (shuttingDown) return;
+		const { code, reason } = ev.detail ?? {};
+		const detail = code ? ` (code=${code})` : "";
+		log(`\x1b[31m[closed] connection closed${detail}${reason ? ` ${reason}` : ""}\x1b[0m`);
+		void shutdown(1);
+	});
+
+	/** Interrupt whatever is running, close the socket, exit. Idempotent. */
+	async function shutdown(code, reason) {
+		if (shuttingDown) return;
+		shuttingDown = true;
+		if (reason) log(reason);
+		const turn = activeTurn;
+		if (turn?.turnId && !socketClosed) {
+			try {
+				await client.request("turn/interrupt", { threadId: turn.threadId, turnId: turn.turnId });
+				log(`\x1b[2m[interrupt] turn ${turn.turnId} interrupted\x1b[0m`);
+			} catch (e) {
+				log(`\x1b[31m[interrupt] failed: ${e.message}\x1b[0m`);
+			}
+		}
+		activeTurn = null;
+		client.close();
+		await waitForSocketClose();
+		process.exit(code);
+	}
+
+	function handleInterrupt(signal) {
+		interrupts += 1;
+		if (interrupts > 1) {
+			log(`\n\x1b[31m[${signal}] again — exiting now\x1b[0m`);
+			client.close();
+			process.exit(130);
+		}
+		void shutdown(130, `\n\x1b[2m[${signal}] interrupting current turn and closing…\x1b[0m`);
+	}
+
+	// readline 在 TTY 下会自己接管 Ctrl-C（raw mode 下不会产生进程级 SIGINT），
+	// 所以进程级和 rl 级都要挂，靠 shuttingDown / interrupts 去重。
+	process.on("SIGINT", () => handleInterrupt("SIGINT"));
+	process.on("SIGTERM", () => handleInterrupt("SIGTERM"));
 	try {
 		await client.connect();
 	} catch (e) {
@@ -433,15 +505,17 @@ export async function runWsClient(argv) {
 
 	async function ask(text) {
 		const done = new Promise((resolve) => client.on("turnDone", resolve, { once: true }));
-		await client.request("turn/start", {
+		const started = await client.request("turn/start", {
 			threadId,
 			input: [{ type: "text", text, text_elements: [] }],
 		});
+		activeTurn = { threadId, turnId: started?.turn?.id ?? null };
 		const timer = setTimeout(() => {
 			log(`\x1b[31m[timeout] turn did not finish within ${opts.timeout}s\x1b[0m`);
 			client.emit("turnDone", { status: "timeout" });
 		}, opts.timeout * 1000);
 		await done;
+		activeTurn = null;
 		clearTimeout(timer);
 	}
 
@@ -469,12 +543,12 @@ export async function runWsClient(argv) {
 			rl.resume();
 			if (process.stdin.isTTY) rl.prompt();
 		});
+		rl.on("SIGINT", () => handleInterrupt("SIGINT"));
 		rl.on("close", () => {
-			client.close();
-			process.exit(0);
+			void shutdown(0);
 		});
 		if (process.stdin.isTTY) {
-			log("\ntype a message and press Enter (Ctrl-D to exit). approvals: y=once / a=session / n=decline\n");
+			log("\ntype a message and press Enter (Ctrl-C: interrupt & close / Ctrl-D: exit). approvals: y=once / a=session / n=decline\n");
 			rl.prompt();
 		}
 	}
@@ -487,7 +561,7 @@ export async function runWsClient(argv) {
 				log(`\x1b[31m[error] ${e.message}\x1b[0m`);
 			}
 		}
-		client.close();
+		await shutdown(0);
 		return;
 	}
 	if (process.stdin.isTTY) {
@@ -506,7 +580,7 @@ export async function runWsClient(argv) {
 			log(`\x1b[31m[error] ${e.message}\x1b[0m`);
 		}
 	}
-	client.close();
+	await shutdown(0);
 }
 
 // Allow running this file directly: `node bin/open-web-app-ws.mjs ...`

@@ -84,18 +84,24 @@ is started as-is: by default open-web-app injects **no** `chatgpt_base_url` /
 npm run dev
 ```
 
-Runs the backend (`tsx watch`, port **25257**) and Vite (`http://localhost:5174`)
-together. Vite proxies `/api` and `/ws` to the backend. The frontend lives in
-`web/`; backend in `server/`.
+Runs the backend (`tsx watch`, port **25257**) and mounts Vite **in the same
+process** as middleware (`OWA_DEV_WEB=1`). There is only one port and one entry
+point — **http://127.0.0.1:25257** — which serves the live frontend source (with
+HMR) and the `/ws` hub from the same origin. No build step, no second dev port.
+
+Use `npm run build:web` (or `npm start`) when you want the static `web/dist`
+bundle instead. The frontend lives in `web/`; backend in `server/`.
 
 To iterate on the UI without spending model tokens, `web/dev-mock-server.mjs`
 is a scripted stand-in for the backend that speaks the same protocol and
 replays a recorded turn (reasoning, streamed message, command output, diff,
 token usage, an approval request). It listens on `:25257/ws`, so the Vite proxy
-picks it up with no config change:
+picks it up with no config change. This is the one flow where the plain `vite`
+CLI is the entry point (there is no backend to host it as middleware), so open
+the URL Vite prints — `npm run dev:web`:
 
 ```bash
-node web/dev-mock-server.mjs   # in place of `npm run dev:server`
+node web/dev-mock-server.mjs   # 代替 npm run dev（它只提供 :25257/ws）
 npm run dev:web
 ```
 
@@ -109,7 +115,8 @@ Other useful scripts:
 | `npm run typecheck`      | Typechecks server + web without emitting              |
 | `npm run smoke`          | End-to-end smoke test against a real codex app-server |
 | `npm run ws`             | WebSocket client for the app-server (see below) |
-| `npm run ps`             | List running open-web-app / app-server processes and their ports |
+| `npm run owa`            | Run from source: no args → dev stack on http://127.0.0.1:25257 (Vite in-process, no build) |
+| `npm run owa -- <args>`  | Run the CLI from source, e.g. `npm run owa -- ps`, `npm run owa -- ws -p 25259` |
 
 ## CLI
 
