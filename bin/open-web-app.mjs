@@ -25,17 +25,17 @@ Commands:
   ps                  Show running open-web-app / app-server processes and their ports
 
 Options:
-  --port <n>          Port for the web UI (env CW_PORT, default 25257)
-  --host <h>          Host to bind (env CW_HOST, default 127.0.0.1)
-  --cwd <path>        Working directory for codex (env CW_CWD, default cwd)
-  --codex-port <n>    app-server port (env CW_CODEX_PORT, default 25258)
-  --codex-bin <name>  codex executable (env CW_CODEX_BIN, default "codex")
-  --no-browser        Do not open the browser (env CW_OPEN=0)
+  --port <n>          Port for the web UI (env OWA_PORT, default 25257)
+  --host <h>          Host to bind (env OWA_HOST, default 127.0.0.1)
+  --cwd <path>        Working directory for codex (env OWA_CWD, default cwd)
+  --codex-port <n>    app-server port (env OWA_CODEX_PORT, default 25258)
+  --codex-bin <name>  codex executable (env OWA_CODEX_BIN, default "codex")
+  --no-browser        Do not open the browser (env OWA_OPEN=0)
   --help, -h          Show this help
   --version, -v       Show version
 
 Environment:
-  CW_ALLOW_ORIGINS    Comma separated extra allowed WS origins
+  OWA_ALLOW_ORIGINS    Comma separated extra allowed WS origins
 `;
 
 /** 支持 `--flag value` 与 `--flag=value` 两种写法。 */
@@ -188,11 +188,11 @@ async function main() {
 		process.exit(1);
 	}
 
-	const port = parsePort(opts.port ?? process.env.CW_PORT, 25257);
-	const host = opts.host ?? process.env.CW_HOST ?? "127.0.0.1";
-	const cwd = opts.cwd ? resolve(opts.cwd) : process.env.CW_CWD ? resolve(process.env.CW_CWD) : process.cwd();
-	const codexPort = parsePort(opts.codexPort ?? process.env.CW_CODEX_PORT, 25258);
-	const codexBin = opts.codexBin ?? process.env.CW_CODEX_BIN ?? "codex";
+	const port = parsePort(opts.port ?? process.env.OWA_PORT, 25257);
+	const host = opts.host ?? process.env.OWA_HOST ?? "127.0.0.1";
+	const cwd = opts.cwd ? resolve(opts.cwd) : process.env.OWA_CWD ? resolve(process.env.OWA_CWD) : process.cwd();
+	const codexPort = parsePort(opts.codexPort ?? process.env.OWA_CODEX_PORT, 25258);
+	const codexBin = opts.codexBin ?? process.env.OWA_CODEX_BIN ?? "codex";
 
 	// 用户显式给的 --cwd 往往还不存在；create 出来而不是让 codex 子进程
 	// 以一个看不懂的 `spawn codex ENOENT` 失败。
@@ -204,11 +204,11 @@ async function main() {
 	}
 
 	// 同步进 env，dist 内的 startServer 也会读取（参数优先）。
-	process.env.CW_PORT = String(port);
-	process.env.CW_HOST = host;
-	process.env.CW_CWD = cwd;
-	process.env.CW_CODEX_PORT = String(codexPort);
-	process.env.CW_CODEX_BIN = codexBin;
+	process.env.OWA_PORT = String(port);
+	process.env.OWA_HOST = host;
+	process.env.OWA_CWD = cwd;
+	process.env.OWA_CODEX_PORT = String(codexPort);
+	process.env.OWA_CODEX_BIN = codexBin;
 
 	const { startServer } = await import(SERVER_ENTRY);
 	const handle = await startServer({ port, host, cwd, codexPort, codexBin });
@@ -223,9 +223,9 @@ async function main() {
 	console.log(`  ➜  cwd:     ${handle.cwd}`);
 	console.log("");
 
-	const noBrowser = !opts.open || process.env.CW_OPEN === "0" || !process.stdout.isTTY;
+	const noBrowser = !opts.open || process.env.OWA_OPEN === "0" || !process.stdout.isTTY;
 	if (!noBrowser) openBrowser(displayUrl);
-	else if (!process.env.CW_OPEN && !process.stdout.isTTY) console.log("  (非交互终端，跳过自动打开浏览器；--no-browser 可显式关闭)");
+	else if (!process.env.OWA_OPEN && !process.stdout.isTTY) console.log("  (非交互终端，跳过自动打开浏览器；--no-browser 可显式关闭)");
 
 	let shuttingDown = false;
 	const shutdown = async (signal) => {

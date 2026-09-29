@@ -6,7 +6,7 @@
  *  - 结果缓存到 ~/.cache/open-web-app/update-check.json，默认 24h 才联网检查一次，
  *    避免每次运行都等网络；已知有新版时，每次运行都会提示（读缓存，0 延迟）。
  *  - 任何失败都静默忽略，绝不阻塞 / 影响 CLI 正常功能。
- *  - 可通过 CW_NO_UPDATE_CHECK=1 关闭；CI 环境自动跳过。
+ *  - 可通过 OWA_NO_UPDATE_CHECK=1 关闭；CI 环境自动跳过。
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -24,7 +24,7 @@ function cacheFile() {
 
 /** Should the check be skipped entirely? */
 export function isDisabled() {
-	const off = (process.env.CW_NO_UPDATE_CHECK ?? "").toLowerCase();
+	const off = (process.env.OWA_NO_UPDATE_CHECK ?? "").toLowerCase();
 	if (off === "1" || off === "true" || off === "yes") return true;
 	if (process.env.NO_UPDATE_NOTIFIER) return true;
 	if (process.env.CI) return true;
@@ -93,7 +93,7 @@ async function fetchLatest(timeoutMs) {
 export async function checkForUpdate(current, opts = {}) {
 	if (isDisabled()) return null;
 	const file = opts.cacheFile || cacheFile();
-	const interval = Number(process.env.CW_UPDATE_CHECK_INTERVAL_MS ?? opts.intervalMs ?? DEFAULT_INTERVAL_MS);
+	const interval = Number(process.env.OWA_UPDATE_CHECK_INTERVAL_MS ?? opts.intervalMs ?? DEFAULT_INTERVAL_MS);
 	const timeout = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 	const now = Date.now();
 
@@ -116,7 +116,7 @@ export function formatNotice(current, latest) {
 		"",
 		`  Update available: open-web-app ${current} -> ${latest}`,
 		`      npm install -g ${PKG}@latest`,
-		`      (disable this check with CW_NO_UPDATE_CHECK=1)`,
+		`      (disable this check with OWA_NO_UPDATE_CHECK=1)`,
 		"",
 	];
 	return lines.join("\n") + "\n";

@@ -6,7 +6,7 @@
  *    绝不重复 spawn（用户自己起的 / 上一次遗留的 daemon 都能被复用）。
  *  - 否则 spawn `codex app-server --listen ws://127.0.0.1:<port>`。
  *  - readiness：同时看 stdout 里的 `listening on:` 与轮询 `/readyz`（措辞可能变）。
- *  - stdout/stderr 进环形缓冲（最近 500 行），供 `cw/codex/log` 读取。
+ *  - stdout/stderr 进环形缓冲（最近 500 行），供 `owa/codex/log` 读取。
  *  - 意外退出时指数退避重启（上限 10s），并累加 restarts。主动 stop 不重启。
  *  - 只 kill 我们自己 spawn 的子进程。
  *
@@ -30,9 +30,9 @@ const RESTART_MAX_MS = 10_000;
 const STOP_GRACE_MS = 5_000;
 
 export interface SupervisorOptions {
-	/** 固定 127.0.0.1 上的端口（CW_CODEX_PORT，默认 25258）。 */
+	/** 固定 127.0.0.1 上的端口（OWA_CODEX_PORT，默认 25258）。 */
 	port: number;
-	/** 可执行文件名/路径（CW_CODEX_BIN，默认 `codex`）。 */
+	/** 可执行文件名/路径（OWA_CODEX_BIN，默认 `codex`）。 */
 	bin: string;
 	/** 子进程工作目录（一般等于服务端 cwd）。 */
 	cwd: string;
@@ -82,7 +82,7 @@ function isDir(p: string): boolean {
  * 为什么要这么麻烦：spawn 一个 PATH 里找不到的命令只会抛一个没有任何上下文的
  * `spawn codex ENOENT` —— 从 launchd / 桌面图标启动时 PATH 往往是极简的，
  * 用户会看到“找不到 codex”却不知道原因。所以显式地：
- *  1. 先尊重 `CW_CODEX_BIN`（含 `/` 就直接用）；
+ *  1. 先尊重 `OWA_CODEX_BIN`（含 `/` 就直接用）；
  *  2. 再 `which`；
  *  3. 最后扫常见安装位置（nvm / homebrew / local / bun / volta）。
  * 全部失败时回退到原名，让 spawn 自己报错，但日志里已给出可诊断信息。
@@ -131,7 +131,7 @@ function resolveBin(bin: string): { bin: string; note: string | null } {
 
 	return {
 		bin,
-		note: `PATH 中未找到 \`${bin}\`（PATH=${(process.env.PATH ?? "").split(delimiter).join(":")}）；可用 CW_CODEX_BIN 指定绝对路径`,
+		note: `PATH 中未找到 \`${bin}\`（PATH=${(process.env.PATH ?? "").split(delimiter).join(":")}）；可用 OWA_CODEX_BIN 指定绝对路径`,
 	};
 }
 
@@ -422,7 +422,7 @@ export class CodexSupervisor extends EventEmitter {
 		this.managed = false;
 	}
 
-	/** 主动重启（`cw/codex/restart`）：杀掉我们的子进程后重新 spawn。 */
+	/** 主动重启（`owa/codex/restart`）：杀掉我们的子进程后重新 spawn。 */
 	async restart(): Promise<void> {
 		if (this.stopping) return;
 		if (this.restartTimer) {

@@ -17,7 +17,7 @@
  * Envelope rules
  * --------------
  * client -> server:
- *   { type: "rpc", requestId, method, params }   invoke a codex method (or `cw/*`)
+ *   { type: "rpc", requestId, method, params }   invoke a codex method (or `owa/*`)
  *   { type: "reply", id, result }                answer a serverRequest (approval, user input)
  *   { type: "reply", id, error }                 reject a serverRequest
  *   { type: "ping" }
@@ -93,26 +93,26 @@ export type ServerMessage =
 	| { type: "pong" };
 
 /* ------------------------------------------------------------------ */
-/* local (`cw/*`) methods — handled by OUR server, not proxied         */
+/* local (`owa/*`) methods — handled by OUR server, not proxied         */
 /* ------------------------------------------------------------------ */
 
 export const LOCAL_METHODS = {
 	/** -> { status: CodexStatus } */
-	codexStatus: "cw/codex/status",
+	codexStatus: "owa/codex/status",
 	/** -> { ok: true } — kill + respawn the app-server */
-	codexRestart: "cw/codex/restart",
+	codexRestart: "owa/codex/restart",
 	/** -> { lines: string[] } — tail of the app-server log */
-	codexLog: "cw/codex/log",
+	codexLog: "owa/codex/log",
 	/** { threadId?: string, limit?: number } -> request/response summaries */
-	requestLogsList: "cw/request-logs/list",
+	requestLogsList: "owa/request-logs/list",
 	/** { id: string } -> one full request/response exchange */
-	requestLogsDetail: "cw/request-logs/detail",
+	requestLogsDetail: "owa/request-logs/detail",
 	/** { path?: string } -> { path, entries: [{name,path,kind,size,mtime}] } */
-	fsList: "cw/fs/list",
+	fsList: "owa/fs/list",
 	/** { path: string, maxBytes?: number } -> { path, text, truncated } */
-	fsRead: "cw/fs/read",
+	fsRead: "owa/fs/read",
 	/** -> { cwd, home, codexHome } */
-	paths: "cw/paths",
+	paths: "owa/paths",
 } as const;
 
 export interface FsEntry {

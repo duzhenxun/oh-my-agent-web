@@ -1,5 +1,5 @@
 /**
- * FsService — 实现浏览器侧的 `cw/fs/list`、`cw/fs/read`、`cw/paths`。
+ * FsService — 实现浏览器侧的 `owa/fs/list`、`owa/fs/read`、`owa/paths`。
  *
  * 这是一个本地开发工具，不做沙箱根限制；但：
  *  - 对目录项使用 lstat，symlink 只报告为 symlink，不跟随展开；

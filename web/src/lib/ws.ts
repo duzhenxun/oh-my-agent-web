@@ -234,7 +234,7 @@ export class CodexSocket {
 		}
 	}
 
-	/** Invoke a codex method (or `cw/*`). Rejects on timeout, close, or RPC error. */
+	/** Invoke a codex method (or `owa/*`). Rejects on timeout, close, or RPC error. */
 	rpc<T = unknown>(method: string, params?: unknown, options: RpcOptions = {}): Promise<T> {
 		const requestId = `r${++this.seq}`;
 		const timeoutMs = options.timeoutMs ?? 60_000;

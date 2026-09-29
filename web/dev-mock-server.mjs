@@ -11,8 +11,8 @@
 
 import { WebSocketServer } from "ws";
 
-const PORT = Number(process.env.CW_MOCK_PORT || 25257);
-const CWD = process.env.CW_MOCK_CWD || "/Users/dev/projects/demo-app";
+const PORT = Number(process.env.OWA_MOCK_PORT || 25257);
+const CWD = process.env.OWA_MOCK_CWD || "/Users/dev/projects/demo-app";
 const NOW = Math.floor(Date.now() / 1000);
 
 /* ------------------------------------------------------------------ */
@@ -582,18 +582,18 @@ async function handleMessage(ws, msg) {
 		case "account/read":
 			rpcResult(ws, requestId, { account: { type: "chatgpt", email: "dev@example.com", planType: "plus" }, requiresOpenaiAuth: false });
 			return;
-		case "cw/paths":
+		case "owa/paths":
 			rpcResult(ws, requestId, { cwd: CWD, home: "/Users/dev", codexHome: "/Users/dev/.codex" });
 			return;
-		case "cw/codex/status":
+		case "owa/codex/status":
 			rpcResult(ws, requestId, { status });
 			return;
-		case "cw/codex/restart":
+		case "owa/codex/restart":
 			status.restarts += 1;
 			rpcResult(ws, requestId, { ok: true });
 			setTimeout(() => send(ws, { type: "status", codex: { ...status, phase: "ready", since: Date.now() } }), 800);
 			return;
-		case "cw/codex/log":
+		case "owa/codex/log":
 			rpcResult(ws, requestId, {
 				lines: [
 					"[mock] app-server listening on ws://127.0.0.1:25258",
@@ -602,12 +602,12 @@ async function handleMessage(ws, msg) {
 				],
 			});
 			return;
-		case "cw/fs/list": {
+		case "owa/fs/list": {
 			const path = typeof params.path === "string" && params.path ? params.path : CWD;
 			rpcResult(ws, requestId, { path, entries: fsEntries(path) });
 			return;
 		}
-		case "cw/fs/read": {
+		case "owa/fs/read": {
 			const path = typeof params.path === "string" ? params.path : "";
 			rpcResult(ws, requestId, { path, text: fsText(path), truncated: false });
 			return;

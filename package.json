@@ -24,7 +24,8 @@
 		"cli"
 	],
 	"bin": {
-		"open-web-app": "bin/open-web-app.mjs"
+		"open-web-app": "bin/open-web-app.mjs",
+		"owa": "bin/open-web-app.mjs"
 	},
 	"main": "bin/open-web-app.mjs",
 	"files": [
@@ -43,7 +44,7 @@
 	},
 	"scripts": {
 		"dev": "concurrently -k -n server,web -c blue,green \"npm:dev:server\" \"npm:dev:web\"",
-		"dev:server": "cross-env CW_PORT=25257 CW_ALLOW_ORIGINS=http://localhost:5174,http://127.0.0.1:5174 tsx watch server/index.ts",
+		"dev:server": "cross-env OWA_PORT=25257 OWA_ALLOW_ORIGINS=http://localhost:5174,http://127.0.0.1:5174 tsx watch server/index.ts",
 		"dev:web": "vite --config web/vite.config.ts",
 		"build": "npm run build:web && npm run build:server",
 		"build:web": "vite build --config web/vite.config.ts",

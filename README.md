@@ -5,7 +5,7 @@ Chat, tool calls, diffs and approval dialogs in one tab.
 
 The server is a **transparent JSON-RPC proxy + process supervisor**. It starts
 `codex app-server` on boot, keeps it alive, and lets the browser invoke any
-app-server method — while adding a few local `cw/*` helpers.
+app-server method — while adding a few local `owa/*` helpers.
 
 ```
 browser  <--ws /ws-->  open-web-app server  <--ws-->  codex app-server (ws://127.0.0.1:25258)
@@ -13,11 +13,11 @@ browser  <--ws /ws-->  open-web-app server  <--ws-->  codex app-server (ws://127
 
 ## Install
 
-The published package is **`open-web-app`**. The installed command is
-`open-web-app`.
+The published package is **`open-web-app`**. It installs two equivalent
+commands: **`open-web-app`** and the short alias **`owa`**.
 
 ```bash
-# global install (then run `open-web-app`)
+# global install
 npm install -g open-web-app
 npm install -g open-web-app@latest     # force the newest version
 
@@ -28,13 +28,13 @@ npx open-web-app ws --port 25258       # WS client on an explicit port
 npx open-web-app ps                    # list processes and ports
 ```
 
-With the global install, the executable is `open-web-app`:
+After a global install, `open-web-app` and `owa` are the same program:
 
 ```bash
-open-web-app                                    # http://127.0.0.1:25257
-open-web-app ws                                 # interactive WS client
-open-web-app ws --port 25259
-open-web-app ps                                 # processes + ports
+owa                                     # http://127.0.0.1:25257  (= open-web-app)
+owa ws                                  # interactive WS client
+owa ws --port 25259
+owa ps                                  # processes + ports
 ```
 
 > Requires Node.js >= 22. If `npx open-web-app` fails to find the binary
@@ -49,7 +49,7 @@ a newer version and prints a short notice when one exists:
 ```
   Update available: open-web-app 0.1.0 → 0.2.0
       npm install -g open-web-app@latest
-      (disable this check with CW_NO_UPDATE_CHECK=1)
+      (disable this check with OWA_NO_UPDATE_CHECK=1)
 ```
 
 The check hits the registry at most once per 24h (result cached in
@@ -58,8 +58,8 @@ for `--help` / `--version` / `--json`.
 
 | Env | Default | Meaning |
 | --- | --- | --- |
-| `CW_NO_UPDATE_CHECK` | *(unset)* | `1` disables the version check |
-| `CW_UPDATE_CHECK_INTERVAL_MS` | `86400000` (24h) | Minimum gap between registry checks |
+| `OWA_NO_UPDATE_CHECK` | *(unset)* | `1` disables the version check |
+| `OWA_UPDATE_CHECK_INTERVAL_MS` | `86400000` (24h) | Minimum gap between registry checks |
 
 Also skipped automatically when `CI` or `NO_UPDATE_NOTIFIER` is set.
 
@@ -75,7 +75,7 @@ npm start              # http://127.0.0.1:25257
 (unless a healthy one is already running), and opens your browser. The app-server
 is started as-is: by default open-web-app injects **no** `chatgpt_base_url` /
 `model_providers.capture.base_url` overrides and runs no capture proxy. Set
-`CW_REQUEST_INSPECTOR=1` to opt into the loopback request/response inspector
+`OWA_REQUEST_INSPECTOR=1` to opt into the loopback request/response inspector
 (which is what makes each session show live request/response logs).
 
 ## Development
@@ -104,7 +104,7 @@ Other useful scripts:
 | Script                   | What it does                                          |
 | ------------------------ | ----------------------------------------------------- |
 | `npm run build:server`   | `tsc -p tsconfig.server.json` → `dist/`               |
-| `npm run stop`           | Gracefully stops the service on `CW_PORT` (default 25257) |
+| `npm run stop`           | Gracefully stops the service on `OWA_PORT` (default 25257) |
 | `npm run restart`        | Stops and starts the service again                    |
 | `npm run typecheck`      | Typechecks server + web without emitting              |
 | `npm run smoke`          | End-to-end smoke test against a real codex app-server |
@@ -116,12 +116,12 @@ Other useful scripts:
 ```
 open-web-app [options]
 
-  --port <n>          Port for the web UI (env CW_PORT, default 25257)
-  --host <h>          Host to bind (env CW_HOST, default 127.0.0.1)
-  --cwd <path>        Working directory for codex (env CW_CWD, default cwd)
-  --codex-port <n>    app-server port (env CW_CODEX_PORT, default 25258)
-  --codex-bin <name>  codex executable (env CW_CODEX_BIN, default "codex")
-  --no-browser        Do not open the browser (env CW_OPEN=0)
+  --port <n>          Port for the web UI (env OWA_PORT, default 25257)
+  --host <h>          Host to bind (env OWA_HOST, default 127.0.0.1)
+  --cwd <path>        Working directory for codex (env OWA_CWD, default cwd)
+  --codex-port <n>    app-server port (env OWA_CODEX_PORT, default 25258)
+  --codex-bin <name>  codex executable (env OWA_CODEX_BIN, default "codex")
+  --no-browser        Do not open the browser (env OWA_OPEN=0)
   --help, -h          Show help
   --version, -v       Show version
 ```
@@ -193,20 +193,20 @@ ports: ui=25257  app-server=25258
 
 | Variable           | Default       | Meaning                                                          |
 | ------------------ | ------------- | ---------------------------------------------------------------- |
-| `CW_PORT`          | `25257`        | Web UI / HTTP port                                               |
-| `CW_HOST`          | `127.0.0.1`   | Bind host (loopback by default)                                  |
-| `CW_CWD`           | `process.cwd()` | Default working directory for codex                            |
-| `CW_CODEX_PORT`    | `25258`        | app-server port                                                  |
-| `CW_CODEX_BIN`     | `codex`       | codex executable                                                 |
-| `CW_ALLOW_ORIGINS` | *(unset)*     | Comma-separated extra allowed WS origins. When unset: same-origin + localhost only |
-| `CW_OPEN`          | *(unset)*     | `0` disables auto-opening the browser                            |
-| `CW_REQUEST_INSPECTOR` | *(unset)* | Set to `1` to enable the loopback request/response capture proxy. Off by default; when off, no `chatgpt_base_url` / `model_providers.capture.base_url` overrides are injected |
-| `CW_CODEX_UPSTREAM` | `https://chatgpt.com/backend-api/codex` | Upstream URL for the capture proxy |
-| `CW_LOG_MAX_BODY` | `16 MiB`        | Maximum body retained per exchange                               |
+| `OWA_PORT`          | `25257`        | Web UI / HTTP port                                               |
+| `OWA_HOST`          | `127.0.0.1`   | Bind host (loopback by default)                                  |
+| `OWA_CWD`           | `process.cwd()` | Default working directory for codex                            |
+| `OWA_CODEX_PORT`    | `25258`        | app-server port                                                  |
+| `OWA_CODEX_BIN`     | `codex`       | codex executable                                                 |
+| `OWA_ALLOW_ORIGINS` | *(unset)*     | Comma-separated extra allowed WS origins. When unset: same-origin + localhost only |
+| `OWA_OPEN`          | *(unset)*     | `0` disables auto-opening the browser                            |
+| `OWA_REQUEST_INSPECTOR` | *(unset)* | Set to `1` to enable the loopback request/response capture proxy. Off by default; when off, no `chatgpt_base_url` / `model_providers.capture.base_url` overrides are injected |
+| `OWA_CODEX_UPSTREAM` | `https://chatgpt.com/backend-api/codex` | Upstream URL for the capture proxy |
+| `OWA_LOG_MAX_BODY` | `16 MiB`        | Maximum body retained per exchange                               |
 
 ## Architecture
 
-- **`server/request-inspector.ts`** — optional (opt-in via `CW_REQUEST_INSPECTOR=1`)
+- **`server/request-inspector.ts`** — optional (opt-in via `OWA_REQUEST_INSPECTOR=1`)
   loopback Responses API proxy: forwards
   managed Codex traffic, redacts sensitive headers, incrementally captures SSE,
   persists `data/YYYY-MM-DD/*.json` with `0600` permissions, and serves
@@ -215,13 +215,13 @@ ports: ui=25257  app-server=25258
   - Reuses a healthy app-server if the port already answers `GET /readyz`
     (external attach); otherwise spawns one.
   - Readiness via stdout (`listening on:`) **and** `/readyz` polling.
-  - stdout/stderr → 500-line ring buffer (`cw/codex/log`).
+  - stdout/stderr → 500-line ring buffer (`owa/codex/log`).
   - Auto-restart with exponential backoff (cap 10s), `restarts` counter.
   - Clean shutdown: SIGTERM then SIGKILL; only kills children **we** spawned.
 - **`server/codex-client.ts`** — WS JSON-RPC client: `initialize` on every
   (re)connect, id-correlated `request()`, `notification` / `serverRequest`
   events, `respond()` / `respondError()`.
-- **`server/fs-service.ts`** — `cw/paths`, `cw/fs/list`, `cw/fs/read`.
+- **`server/fs-service.ts`** — `owa/paths`, `owa/fs/list`, `owa/fs/read`.
 - **`server/index.ts`** — express + `ws` hub, `/api/health`, `/api/version`,
   static SPA serving from `web/dist`, origin checks, 30s heartbeat.
 - **`bin/open-web-app.mjs`** — CLI entry, loads `dist/server/index.js`.
@@ -229,26 +229,26 @@ ports: ui=25257  app-server=25258
 ## Browser ↔ server protocol
 
 See [`shared/protocol.ts`](./shared/protocol.ts) for the frozen envelope.
-Everything except `cw/*` is proxied verbatim to codex.
+Everything except `owa/*` is proxied verbatim to codex.
 
 Client → server: `rpc`, `reply`, `ping`.
 Server → client: `welcome`, `status`, `rpcResult`, `event`, `serverRequest`, `pong`.
 
-### Local methods (`cw/*`)
+### Local methods (`owa/*`)
 
 | Method                | Params                        | Result                                   |
 | --------------------- | ----------------------------- | ---------------------------------------- |
-| `cw/paths`            | —                             | `{ cwd, home, codexHome }`               |
-| `cw/fs/list`          | `{ path?, maxEntries? }`      | `{ path, entries: FsEntry[] }`           |
-| `cw/fs/read`          | `{ path, maxBytes? }`         | `{ path, text, truncated }`              |
-| `cw/codex/status`     | —                             | `{ status: CodexStatus }`                |
-| `cw/codex/restart`    | —                             | `{ ok: true }`                           |
-| `cw/codex/log`        | —                             | `{ lines: string[] }`                    |
-| `cw/request-logs/list` | `{ threadId, limit? }`       | Thread-filtered live/history summaries |
-| `cw/request-logs/detail` | `{ id }`                   | Full request/response exchange          |
+| `owa/paths`            | —                             | `{ cwd, home, codexHome }`               |
+| `owa/fs/list`          | `{ path?, maxEntries? }`      | `{ path, entries: FsEntry[] }`           |
+| `owa/fs/read`          | `{ path, maxBytes? }`         | `{ path, text, truncated }`              |
+| `owa/codex/status`     | —                             | `{ status: CodexStatus }`                |
+| `owa/codex/restart`    | —                             | `{ ok: true }`                           |
+| `owa/codex/log`        | —                             | `{ lines: string[] }`                    |
+| `owa/request-logs/list` | `{ threadId, limit? }`       | Thread-filtered live/history summaries |
+| `owa/request-logs/detail` | `{ id }`                   | Full request/response exchange          |
 
-`cw/fs/list` sorts directories first and skips `node_modules` / `.git` unless
-you are already inside one. `cw/fs/read` refuses binary files (NUL byte) and
+`owa/fs/list` sorts directories first and skips `node_modules` / `.git` unless
+you are already inside one. `owa/fs/read` refuses binary files (NUL byte) and
 truncates at `maxBytes` (default 256 KB).
 
 ### Error codes
@@ -261,7 +261,7 @@ RPC failures come back as `{ type: "rpcResult", ok: false, error: { code, messag
 | `-32002` | codex connection closed / client closed                        |
 | `-32003` | local request timeout (initialize only)                        |
 | `-32000` | generic fs / internal error                                    |
-| `-32601` | unknown `cw/*` method                                          |
+| `-32601` | unknown `owa/*` method                                          |
 | `-32602` | invalid params                                                |
 
 ### Approvals / server requests
@@ -316,7 +316,7 @@ exercise the dialog.
   command output, `turn/diff/updated`. Deltas are coalesced on
   `requestAnimationFrame` so long turns stay smooth.
 - **Markdown** rendering with GFM + syntax highlighting; `[path](/abs/path)`
-  links open a file preview sheet backed by `cw/fs/read`.
+  links open a file preview sheet backed by `owa/fs/read`.
 - **Command cards** — command, cwd, streamed output; only running/failed
   statuses are shown when they carry useful signal.
 - **Diff cards** — unified-diff rendering with line numbers and +/- colouring.

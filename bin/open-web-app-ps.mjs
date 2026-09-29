@@ -123,8 +123,8 @@ export function collect() {
 	});
 	procs.sort((a, b) => (a.kind === b.kind ? a.pid - b.pid : a.kind.localeCompare(b.kind)));
 
-	const uiPort = Number(process.env.CW_PORT) || DEFAULT_UI_PORT;
-	const codexPort = Number(process.env.CW_CODEX_PORT) || DEFAULT_CODEX_PORT;
+	const uiPort = Number(process.env.OWA_PORT) || DEFAULT_UI_PORT;
+	const codexPort = Number(process.env.OWA_CODEX_PORT) || DEFAULT_CODEX_PORT;
 	const portOwners = {};
 	for (const port of new Set([uiPort, codexPort])) {
 		portOwners[port] = pidsListeningOn(port);
@@ -156,7 +156,7 @@ function render(data) {
 	}
 
 	console.log("");
-	console.log(`ports: ui=${uiPort}${process.env.CW_PORT ? " (CW_PORT)" : ""}  app-server=${codexPort}${process.env.CW_CODEX_PORT ? " (CW_CODEX_PORT)" : ""}`);
+	console.log(`ports: ui=${uiPort}${process.env.OWA_PORT ? " (OWA_PORT)" : ""}  app-server=${codexPort}${process.env.OWA_CODEX_PORT ? " (OWA_CODEX_PORT)" : ""}`);
 	for (const [port, pids] of Object.entries(portOwners)) {
 		const who = pids.length ? pids.join(",") : "—";
 		console.log(`  ${String(port).padEnd(6)} listening: ${pids.length ? "yes" : "no "}  pid: ${who}`);

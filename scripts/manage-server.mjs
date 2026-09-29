@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
  * npm run stop / npm run restart helper for the local open-web-app service.
- * It only targets a open-web-app process listening on CW_PORT.
+ * It only targets a open-web-app process listening on OWA_PORT.
  */
 import { execFileSync, spawn } from "node:child_process";
 
-const port = Number(process.env.CW_PORT || 25257);
+const port = Number(process.env.OWA_PORT || 25257);
 const command = process.argv[2] || "stop";
 const extraArgs = process.argv.slice(3);
 
