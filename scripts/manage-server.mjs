@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * npm run stop / npm run restart helper for the local codex-web service.
- * It only targets a codex-web process listening on CW_PORT.
+ * npm run stop / npm run restart helper for the local open-web-app service.
+ * It only targets a open-web-app process listening on CW_PORT.
  */
 import { execFileSync, spawn } from "node:child_process";
 
@@ -58,7 +58,7 @@ function listeningPids() {
 
 function isProjectProcess(pid) {
 	const cmd = commandForPid(pid);
-	return /codex-web|bin[\\/]codex-web|dist[\\/]server[\\/]index/.test(cmd);
+	return /open-web-app|bin[\\/]open-web-app|dist[\\/]server[\\/]index/.test(cmd);
 }
 
 function isAlive(pid) {
@@ -77,7 +77,7 @@ function sleep(ms) {
 async function stop() {
 	const pids = listeningPids();
 	if (pids.length === 0) {
-		console.log(`codex-web 未运行（端口 ${port}）。`);
+		console.log(`open-web-app 未运行（端口 ${port}）。`);
 		return true;
 	}
 
@@ -88,12 +88,12 @@ async function stop() {
 		return false;
 	}
 	if (owned.length === 0) {
-		console.error(`端口 ${port} 被占用，但不是 codex-web 进程，未执行停止。`);
+		console.error(`端口 ${port} 被占用，但不是 open-web-app 进程，未执行停止。`);
 		return false;
 	}
 
 	for (const pid of owned) {
-		console.log(`正在停止 codex-web (pid ${pid})…`);
+		console.log(`正在停止 open-web-app (pid ${pid})…`);
 		try {
 			process.kill(pid, "SIGTERM");
 		} catch (error) {
@@ -112,7 +112,7 @@ async function stop() {
 			/* already gone */
 		}
 	}
-	console.log("codex-web 已停止。");
+	console.log("open-web-app 已停止。");
 	return true;
 }
 
@@ -122,7 +122,7 @@ if (command === "stop") {
 	if (!(await stop())) process.exit(1);
 	const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 	const args = extraArgs.length > 0 ? ["start", "--", ...extraArgs] : ["start"];
-	console.log("正在重新启动 codex-web…");
+	console.log("正在重新启动 open-web-app…");
 	const child = spawn(npm, args, { stdio: "inherit", env: process.env });
 	child.on("error", (error) => {
 		console.error(`启动失败：${error.message}`);

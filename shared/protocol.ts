@@ -1,10 +1,10 @@
 /**
- * codex-web — browser <-> server wire protocol.
+ * open-web-app — browser <-> server wire protocol.
  *
  * The browser talks to OUR server (not directly to codex). Our server is a thin,
  * transparent proxy in front of `codex app-server --listen ws://127.0.0.1:25258`:
  *
- *   browser  <--ws /ws-->  codex-web server  <--ws-->  codex app-server
+ *   browser  <--ws /ws-->  open-web-app server  <--ws-->  codex app-server
  *
  * Because the proxy is transparent, the browser may invoke ANY codex app-server
  * JSON-RPC method by name (`thread/start`, `turn/start`, `model/list`, ...) and

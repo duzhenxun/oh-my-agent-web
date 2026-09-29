@@ -1,4 +1,4 @@
-// Transport for the browser <-> codex-web server WebSocket.
+// Transport for the browser <-> open-web-app server WebSocket.
 //
 // Responsibilities:
 //   * connect + auto-reconnect with exponential backoff + jitter

@@ -1,4 +1,4 @@
-# codex-web
+# open-web-app
 
 A browser cockpit for the [Codex CLI](https://github.com/openai/codex) `app-server`.
 Chat, tool calls, diffs and approval dialogs in one tab.
@@ -8,52 +8,52 @@ The server is a **transparent JSON-RPC proxy + process supervisor**. It starts
 app-server method — while adding a few local `cw/*` helpers.
 
 ```
-browser  <--ws /ws-->  codex-web server  <--ws-->  codex app-server (ws://127.0.0.1:25258)
+browser  <--ws /ws-->  open-web-app server  <--ws-->  codex app-server (ws://127.0.0.1:25258)
 ```
 
 ## Install
 
-The published package is **`oh-my-agent-web`**. The installed command is
-`codex-web`.
+The published package is **`open-web-app`**. The installed command is
+`open-web-app`.
 
 ```bash
-# global install (then run `codex-web`)
-npm install -g oh-my-agent-web
-npm install -g oh-my-agent-web@latest     # force the newest version
+# global install (then run `open-web-app`)
+npm install -g open-web-app
+npm install -g open-web-app@latest     # force the newest version
 
 # or run without installing
-npx oh-my-agent-web                       # start the UI
-npx oh-my-agent-web ws                    # WS client (default ws://127.0.0.1:25258)
-npx oh-my-agent-web ws --port 25258       # WS client on an explicit port
-npx oh-my-agent-web ps                    # list processes and ports
+npx open-web-app                       # start the UI
+npx open-web-app ws                    # WS client (default ws://127.0.0.1:25258)
+npx open-web-app ws --port 25258       # WS client on an explicit port
+npx open-web-app ps                    # list processes and ports
 ```
 
-With the global install, the executable is `codex-web`:
+With the global install, the executable is `open-web-app`:
 
 ```bash
-codex-web                                    # http://127.0.0.1:25257
-codex-web ws                                 # interactive WS client
-codex-web ws --port 25259
-codex-web ps                                 # processes + ports
+open-web-app                                    # http://127.0.0.1:25257
+open-web-app ws                                 # interactive WS client
+open-web-app ws --port 25259
+open-web-app ps                                 # processes + ports
 ```
 
-> Requires Node.js >= 22. If `npx oh-my-agent-web` fails to find the binary
-> on your setup, use `npx -p oh-my-agent-web codex-web ...` or a global
+> Requires Node.js >= 22. If `npx open-web-app` fails to find the binary
+> on your setup, use `npx -p open-web-app open-web-app ...` or a global
 > install instead.
 
 ### Update notification
 
-Every run of `codex-web` (including the `ws` and `ps` subcommands) checks npm for
+Every run of `open-web-app` (including the `ws` and `ps` subcommands) checks npm for
 a newer version and prints a short notice when one exists:
 
 ```
-  Update available: codex-web 0.1.0 → 0.2.0
-      npm install -g oh-my-agent-web@latest
+  Update available: open-web-app 0.1.0 → 0.2.0
+      npm install -g open-web-app@latest
       (disable this check with CW_NO_UPDATE_CHECK=1)
 ```
 
 The check hits the registry at most once per 24h (result cached in
-`~/.cache/codex-web/update-check.json`), never blocks on errors, and is skipped
+`~/.cache/open-web-app/update-check.json`), never blocks on errors, and is skipped
 for `--help` / `--version` / `--json`.
 
 | Env | Default | Meaning |
@@ -73,7 +73,7 @@ npm start              # http://127.0.0.1:25257
 
 `npm start` boots the server, spawns `codex app-server --listen ws://127.0.0.1:25258`
 (unless a healthy one is already running), and opens your browser. The app-server
-is started as-is: by default codex-web injects **no** `chatgpt_base_url` /
+is started as-is: by default open-web-app injects **no** `chatgpt_base_url` /
 `model_providers.capture.base_url` overrides and runs no capture proxy. Set
 `CW_REQUEST_INSPECTOR=1` to opt into the loopback request/response inspector
 (which is what makes each session show live request/response logs).
@@ -109,12 +109,12 @@ Other useful scripts:
 | `npm run typecheck`      | Typechecks server + web without emitting              |
 | `npm run smoke`          | End-to-end smoke test against a real codex app-server |
 | `npm run ws`             | WebSocket client for the app-server (see below) |
-| `npm run ps`             | List running codex-web / app-server processes and their ports |
+| `npm run ps`             | List running open-web-app / app-server processes and their ports |
 
 ## CLI
 
 ```
-codex-web [options]
+open-web-app [options]
 
   --port <n>          Port for the web UI (env CW_PORT, default 25257)
   --host <h>          Host to bind (env CW_HOST, default 127.0.0.1)
@@ -128,19 +128,19 @@ codex-web [options]
 
 Flags win over environment variables.
 
-### `codex-web ws` — WebSocket client
+### `open-web-app ws` — WebSocket client
 
 Connect straight to the app-server over its WebSocket (default
 `ws://127.0.0.1:25258`), without going through the browser UI:
 
 ```bash
-codex-web ws                           # interactive: type a message, Enter to send (Ctrl-D to exit)
-codex-web ws "list the files here"     # one-shot, then exit
-echo "write a hello world" | codex-web ws
-codex-web ws --port 25259              # explicit port
-codex-web ws --url ws://host:port      # explicit address
-codex-web ws -t <threadId> "continue"  # resume an existing thread
-codex-web ws -y --model gpt-5.5 "..."  # auto-approve approvals, pick a model
+open-web-app ws                           # interactive: type a message, Enter to send (Ctrl-D to exit)
+open-web-app ws "list the files here"     # one-shot, then exit
+echo "write a hello world" | open-web-app ws
+open-web-app ws --port 25259              # explicit port
+open-web-app ws --url ws://host:port      # explicit address
+open-web-app ws -t <threadId> "continue"  # resume an existing thread
+open-web-app ws -y --model gpt-5.5 "..."  # auto-approve approvals, pick a model
 ```
 
 Run the same client through npm (pass flags after `--`):
@@ -168,21 +168,21 @@ Env: `CODEX_WS_URL` / `CODEX_WS_HOST` / `CODEX_WS_PORT`.
 Connection priority: `--url` > `--host`/`--port` (`--addr`) > env vars > defaults
 (`127.0.0.1:25258`).
 
-### `codex-web ps` — processes & ports
+### `open-web-app ps` — processes & ports
 
-Show every running codex-web / codex app-server process, whether it is managed by
+Show every running open-web-app / codex app-server process, whether it is managed by
 this project or external, and which TCP ports it listens on:
 
 ```bash
-codex-web ps            # table
-codex-web ps --json     # machine-readable
+open-web-app ps            # table
+open-web-app ps --json     # machine-readable
 ```
 
 ```
 TYPE        PID    PPID   SCOPE     PORTS  COMMAND
 app-server  16397  96476  managed   25258  node .../codex app-server --listen ws://127.0.0.1:25258
 app-server  5567   5216   external  -      /Applications/ChatGPT.app/.../codex app-server ...
-codex-web   96476  1      -         25257  node bin/codex-web.mjs --no-browser
+open-web-app   96476  1      -         25257  node bin/open-web-app.mjs --no-browser
 
 ports: ui=25257  app-server=25258
   25257  listening: yes  pid: 96476
@@ -224,7 +224,7 @@ ports: ui=25257  app-server=25258
 - **`server/fs-service.ts`** — `cw/paths`, `cw/fs/list`, `cw/fs/read`.
 - **`server/index.ts`** — express + `ws` hub, `/api/health`, `/api/version`,
   static SPA serving from `web/dist`, origin checks, 30s heartbeat.
-- **`bin/codex-web.mjs`** — CLI entry, loads `dist/server/index.js`.
+- **`bin/open-web-app.mjs`** — CLI entry, loads `dist/server/index.js`.
 
 ## Browser ↔ server protocol
 

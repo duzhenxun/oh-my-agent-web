@@ -1,4 +1,4 @@
-// web/.mock — DEV-ONLY mock of the codex-web server. It is NOT imported by
+// web/.mock — DEV-ONLY mock of the open-web-app server. It is NOT imported by
 // the app bundle; run it manually:
 //
 //   node web/dev-mock-server.mjs
@@ -68,7 +68,7 @@ function baseThread(over) {
 		path: null,
 		cwd: CWD,
 		cliVersion: "0.0.0-mock",
-		originator: "codex-web",
+		originator: "open-web-app",
 		source: "cli",
 		threadSource: null,
 		agentNickname: null,
@@ -792,6 +792,6 @@ async function handleMessage(ws, msg) {
 	}
 }
 
-console.log(`[mock] codex-web mock server on ws://127.0.0.1:${PORT}/ws`);
+console.log(`[mock] open-web-app mock server on ws://127.0.0.1:${PORT}/ws`);
 console.log(`[mock] cwd = ${CWD}`);
 void approvalSeq;

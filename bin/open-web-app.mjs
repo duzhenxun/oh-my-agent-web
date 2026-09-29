@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * codex-web CLI — plain ESM (no build step).
+ * open-web-app CLI — plain ESM (no build step).
  *
  * 加载已编译的 dist/server/index.js，解析参数 / 环境变量，启动服务并在需要时打开浏览器。
  * 使用 `--help` 查看全部参数。
@@ -13,16 +13,16 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SERVER_ENTRY = resolve(__dirname, "..", "dist", "server", "index.js");
 
-const HELP = `codex-web — browser UI for the Codex CLI app-server
+const HELP = `open-web-app — browser UI for the Codex CLI app-server
 
 Usage:
-  codex-web [options]
-  codex-web ws [options] ["message" ...]   Connect to the app-server over WebSocket
-  codex-web ps [--json]                    Show running processes and their ports
+  open-web-app [options]
+  open-web-app ws [options] ["message" ...]   Connect to the app-server over WebSocket
+  open-web-app ps [--json]                    Show running processes and their ports
 
 Commands:
-  ws                  WebSocket client for the codex app-server (run 'codex-web ws --help')
-  ps                  Show running codex-web / app-server processes and their ports
+  ws                  WebSocket client for the codex app-server (run 'open-web-app ws --help')
+  ps                  Show running open-web-app / app-server processes and their ports
 
 Options:
   --port <n>          Port for the web UI (env CW_PORT, default 25257)
@@ -156,16 +156,16 @@ async function main() {
 		}
 	}
 
-	// Subcommand: `codex-web ws [...]` — WebSocket client for the app-server.
+	// Subcommand: `open-web-app ws [...]` — WebSocket client for the app-server.
 	if (argv[0] === "ws") {
-		const { runWsClient } = await import("./codex-web-ws.mjs");
+		const { runWsClient } = await import("./open-web-app-ws.mjs");
 		await runWsClient(argv.slice(1));
 		return;
 	}
 
-	// Subcommand: `codex-web ps [...]` (aliases: status, ports) — running processes/ports.
+	// Subcommand: `open-web-app ps [...]` (aliases: status, ports) — running processes/ports.
 	if (argv[0] === "ps" || argv[0] === "status" || argv[0] === "ports") {
-		const { runPs } = await import("./codex-web-ps.mjs");
+		const { runPs } = await import("./open-web-app-ps.mjs");
 		await runPs(argv.slice(1));
 		return;
 	}
@@ -216,7 +216,7 @@ async function main() {
 	const displayUrl = `http://${host === "0.0.0.0" || host === "::" ? "127.0.0.1" : host}:${handle.port}`;
 	console.log("");
 	console.log("  ┌──────────────────────────────────────────────────┐");
-	console.log("  │  codex-web                                         │");
+	console.log("  │  open-web-app" + " ".repeat(36) + "│");
 	console.log("  └──────────────────────────────────────────────────┘");
 	console.log(`  ➜  Web UI:  ${displayUrl}`);
 	console.log(`  ➜  Codex:   ${handle.supervisor.url}  (${handle.supervisor.isExternal() ? "external" : "managed"})`);
@@ -231,7 +231,7 @@ async function main() {
 	const shutdown = async (signal) => {
 		if (shuttingDown) return;
 		shuttingDown = true;
-		console.log(`\n[codex-web] received ${signal}, shutting down…`);
+		console.log(`\n[open-web-app] received ${signal}, shutting down…`);
 		try {
 			await handle.close();
 		} finally {
@@ -243,6 +243,6 @@ async function main() {
 }
 
 main().catch((err) => {
-	console.error(`[codex-web] ${err instanceof Error ? err.message : String(err)}`);
+	console.error(`[open-web-app] ${err instanceof Error ? err.message : String(err)}`);
 	process.exit(1);
 });

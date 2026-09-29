@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * codex-web ps — 列出正在运行的 codex-web / codex app-server 进程及其监听端口。
+ * open-web-app ps — 列出正在运行的 open-web-app / codex app-server 进程及其监听端口。
  *
- *   codex-web ps             # 表格
- *   codex-web ps --json      # 机器可读
+ *   open-web-app ps             # 表格
+ *   open-web-app ps --json      # 机器可读
  *
  * 仅用 Node 内置能力（必要时调用 lsof / ps），无第三方依赖。
  */
@@ -12,10 +12,10 @@ import { execFileSync } from "node:child_process";
 const DEFAULT_UI_PORT = 25257;
 const DEFAULT_CODEX_PORT = 25258;
 
-const HELP = `codex-web ps — show running codex-web / app-server processes and their ports
+const HELP = `open-web-app ps — show running open-web-app / app-server processes and their ports
 
 Usage:
-  codex-web ps [--json] [--help]
+  open-web-app ps [--json] [--help]
 
 Options:
   --json      Print machine-readable JSON
@@ -42,13 +42,13 @@ function listProcesses() {
 	return rows;
 }
 
-/** Classify a command line: "codex-web" | "app-server" | null. */
+/** Classify a command line: "open-web-app" | "app-server" | null. */
 function classify(command) {
-	// skip our own `codex-web ... ps` invocation lines
-	if (/codex-web(\.mjs)?\s+(ps|status|ports)\b/.test(command)) return null;
+	// skip our own `open-web-app ... ps` invocation lines
+	if (/open-web-app(\.mjs)?\s+(ps|status|ports)\b/.test(command)) return null;
 	// the ws client is a short-lived client, not a server
-	if (/codex-web(\.mjs)?\s+ws\b/.test(command)) return "ws-client";
-	if (/\bcodex-web(\.mjs)?\b/.test(command)) return "codex-web";
+	if (/open-web-app(\.mjs)?\s+ws\b/.test(command)) return "ws-client";
+	if (/\bopen-web-app(\.mjs)?\b/.test(command)) return "open-web-app";
 	if (/\bapp-server\b/.test(command) && /\bcodex\b/.test(command)) return "app-server";
 	return null;
 }
@@ -94,9 +94,9 @@ export function collect() {
 		const kind = classify(p.command);
 		if (kind) matched.push({ ...p, kind });
 	}
-	const codexWebPids = new Set(matched.filter((p) => p.kind === "codex-web").map((p) => p.pid));
+	const codexWebPids = new Set(matched.filter((p) => p.kind === "open-web-app").map((p) => p.pid));
 	// Walk up the ancestor chain (the app-server re-execs, so the listener's
-	// parent is the shim, not codex-web directly).
+	// parent is the shim, not open-web-app directly).
 	const isManaged = (pid) => {
 		let cur = pid;
 		for (let hops = 0; hops < 12; hops += 1) {
@@ -136,7 +136,7 @@ export function collect() {
 function render(data) {
 	const { processes, uiPort, codexPort, portOwners } = data;
 	if (processes.length === 0) {
-		console.log("no codex-web / app-server process found.");
+		console.log("no open-web-app / app-server process found.");
 	} else {
 		const rows = [
 			["TYPE", "PID", "PPID", "SCOPE", "PORTS", "COMMAND"],
@@ -165,7 +165,7 @@ function render(data) {
 		const ws =
 			processes.find((p) => p.kind === "app-server" && p.scope === "managed" && p.ports.length) ??
 			processes.find((p) => p.kind === "app-server" && p.ports.length);
-		if (ws) console.log(`\ntip: codex-web ws --port ${ws.ports[0]}`);
+		if (ws) console.log(`\ntip: open-web-app ws --port ${ws.ports[0]}`);
 	}
 }
 
@@ -182,12 +182,12 @@ export async function runPs(argv) {
 	render(data);
 }
 
-// Allow running this file directly: `node bin/codex-web-ps.mjs`
+// Allow running this file directly: `node bin/open-web-app-ps.mjs`
 import { pathToFileURL } from "node:url";
 const invoked = process.argv[1] ? pathToFileURL(process.argv[1]).href : "";
 if (invoked === import.meta.url) {
 	runPs(process.argv.slice(2)).catch((err) => {
-		console.error(`[codex-web ps] ${err instanceof Error ? err.message : String(err)}`);
+		console.error(`[open-web-app ps] ${err instanceof Error ? err.message : String(err)}`);
 		process.exit(1);
 	});
 }

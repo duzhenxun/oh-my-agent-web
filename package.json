@@ -1,5 +1,5 @@
 {
-	"name": "oh-my-agent-web",
+	"name": "open-web-app",
 	"version": "0.1.2",
 	"description": "Browser cockpit for the Codex CLI app-server — chat, tool calls, diffs and approvals in one tab",
 	"license": "MIT",
@@ -7,11 +7,11 @@
 	"author": "duzhenxun",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/duzhenxun/codex-web.git"
+		"url": "git+https://github.com/duzhenxun/open-web-app.git"
 	},
-	"homepage": "https://github.com/duzhenxun/codex-web#readme",
+	"homepage": "https://github.com/duzhenxun/open-web-app#readme",
 	"bugs": {
-		"url": "https://github.com/duzhenxun/codex-web/issues"
+		"url": "https://github.com/duzhenxun/open-web-app/issues"
 	},
 	"keywords": [
 		"codex",
@@ -24,9 +24,9 @@
 		"cli"
 	],
 	"bin": {
-		"codex-web": "bin/codex-web.mjs"
+		"open-web-app": "bin/open-web-app.mjs"
 	},
-	"main": "bin/codex-web.mjs",
+	"main": "bin/open-web-app.mjs",
 	"files": [
 		"bin/",
 		"dist/",
@@ -49,9 +49,9 @@
 		"build:web": "vite build --config web/vite.config.ts",
 		"build:server": "tsc -p tsconfig.server.json",
 		"prepack": "npm run build",
-		"start": "node bin/codex-web.mjs",
-		"ws": "node bin/codex-web.mjs ws",
-		"ps": "node bin/codex-web.mjs ps",
+		"start": "node bin/open-web-app.mjs",
+		"ws": "node bin/open-web-app.mjs ws",
+		"ps": "node bin/open-web-app.mjs ps",
 		"stop": "node scripts/manage-server.mjs stop",
 		"restart": "node scripts/manage-server.mjs restart",
 		"smoke": "tsx test/smoke.ts",

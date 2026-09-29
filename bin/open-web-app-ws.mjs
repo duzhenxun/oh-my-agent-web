@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * codex-web ws — 连接 codex app-server WebSocket 的命令行客户端。
+ * open-web-app ws — 连接 codex app-server WebSocket 的命令行客户端。
  *
- * 参考 /Users/dds/data/ai/work/codex-ws-client.mjs，整理为 codex-web 的子命令：
- *   codex-web ws                          # 交互模式（Ctrl-D 退出）
- *   codex-web ws "帮我看看这个目录"        # 单次提问后退出
- *   echo "写个 hello world" | codex-web ws # 从管道读
- *   codex-web ws --port 25259             # 指定端口
- *   codex-web ws --url ws://host:port     # 指定完整地址
+ * 参考 /Users/dds/data/ai/work/codex-ws-client.mjs，整理为 open-web-app 的子命令：
+ *   open-web-app ws                          # 交互模式（Ctrl-D 退出）
+ *   open-web-app ws "帮我看看这个目录"        # 单次提问后退出
+ *   echo "写个 hello world" | open-web-app ws # 从管道读
+ *   open-web-app ws --port 25259             # 指定端口
+ *   open-web-app ws --url ws://host:port     # 指定完整地址
  *
  * 仅用 Node 内置能力（WebSocket 需要 Node >= 22），无额外依赖。
  */
@@ -17,10 +17,10 @@ import { pathToFileURL } from "node:url";
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 25258;
 
-const HELP = `codex-web ws — connect to the codex app-server over WebSocket
+const HELP = `open-web-app ws — connect to the codex app-server over WebSocket
 
 Usage:
-  codex-web ws [options] ["message" ...]
+  open-web-app ws [options] ["message" ...]
 
 Connection:
   --url <ws://host:port>   Full address (also accepts bare host:port). Default ws://${DEFAULT_HOST}:${DEFAULT_PORT}
@@ -43,7 +43,7 @@ Session:
   -h, --help               Show this help
 `;
 
-/** Parse `codex-web ws [ ... ]` arguments. */
+/** Parse `open-web-app ws [ ... ]` arguments. */
 export function parseWsArgs(argv) {
 	const opts = {
 		url: null,
@@ -280,7 +280,7 @@ export async function runWsClient(argv) {
 	try {
 		url = resolveWsUrl(opts);
 	} catch (e) {
-		console.error(`[codex-web ws] ${e.message}`);
+		console.error(`[open-web-app ws] ${e.message}`);
 		process.exitCode = 2;
 		return;
 	}
@@ -289,14 +289,14 @@ export async function runWsClient(argv) {
 	try {
 		await client.connect();
 	} catch (e) {
-		console.error(`[codex-web ws] failed to connect ${url} — ${e.message}`);
-		console.error("  make sure the app-server is running, e.g. `codex-web` (default ws://127.0.0.1:25258)");
+		console.error(`[open-web-app ws] failed to connect ${url} — ${e.message}`);
+		console.error("  make sure the app-server is running, e.g. `open-web-app` (default ws://127.0.0.1:25258)");
 		process.exitCode = 1;
 		return;
 	}
 
 	const init = await client.request("initialize", {
-		clientInfo: { name: "codex-web-ws", title: "Codex Web WS Client", version: "1.0.0" },
+		clientInfo: { name: "open-web-app-ws", title: "Open Web App WS Client", version: "1.0.0" },
 		capabilities: { experimentalApi: true, requestAttestation: false },
 	});
 	log(`[server] ${init.userAgent}  codexHome=${init.codexHome}`);
@@ -509,11 +509,11 @@ export async function runWsClient(argv) {
 	client.close();
 }
 
-// Allow running this file directly: `node bin/codex-web-ws.mjs ...`
+// Allow running this file directly: `node bin/open-web-app-ws.mjs ...`
 const invoked = process.argv[1] ? pathToFileURL(process.argv[1]).href : "";
 if (invoked === import.meta.url) {
 	runWsClient(process.argv.slice(2)).catch((err) => {
-		console.error(`[codex-web ws] ${err instanceof Error ? err.message : String(err)}`);
+		console.error(`[open-web-app ws] ${err instanceof Error ? err.message : String(err)}`);
 		process.exit(1);
 	});
 }

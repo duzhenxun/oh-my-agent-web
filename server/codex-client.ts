@@ -220,7 +220,7 @@ export class CodexClient extends EventEmitter {
 
 	private async sendInitialize(): Promise<void> {
 		const params = {
-			clientInfo: { name: "codex-web", title: "Codex Web", version: this.version },
+			clientInfo: { name: "open-web-app", title: "Open Web App", version: this.version },
 			// requestAttestation 在生成类型里是必填布尔；实测 handshake 需要它。
 			capabilities: { experimentalApi: true, requestAttestation: false },
 		};

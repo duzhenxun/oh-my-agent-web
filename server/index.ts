@@ -1,5 +1,5 @@
 /**
- * codex-web server — express + WebSocket hub in front of the codex app-server.
+ * open-web-app server — express + WebSocket hub in front of the codex app-server.
  *
  *   browser  <--ws /ws-->  [this]  <--ws-->  codex app-server (ws://127.0.0.1:25258)
  *
@@ -190,7 +190,7 @@ export async function startServer(options: StartOptions = {}): Promise<ServerHan
 	const log = options.quiet
 		? (): void => undefined
 		: (...args: unknown[]): void => {
-				console.log("[codex-web]", ...args);
+				console.log("[open-web-app]", ...args);
 			};
 
 	/* -------- supervisor + client (capture/inspector off by default) -------- */
@@ -229,7 +229,7 @@ export async function startServer(options: StartOptions = {}): Promise<ServerHan
 	app.get("/api/version", (_req: Request, res: Response) => {
 		const hs = client.handshake();
 		res.json({
-			name: "codex-web",
+			name: "open-web-app",
 			version,
 			protocolVersion: PROTOCOL_VERSION,
 			codexVersion: codexVersionFromHandshake(hs?.userAgent),
@@ -543,14 +543,14 @@ if (invokedPath === import.meta.url) {
 	startServer()
 		.then((handle) => {
 			const shutdown = (signal: string): void => {
-				console.log(`\n[codex-web] received ${signal}, shutting down…`);
+				console.log(`\n[open-web-app] received ${signal}, shutting down…`);
 				void handle.close().finally(() => process.exit(0));
 			};
 			process.on("SIGINT", () => shutdown("SIGINT"));
 			process.on("SIGTERM", () => shutdown("SIGTERM"));
 		})
 		.catch((err) => {
-			console.error("[codex-web] failed to start:", err);
+			console.error("[open-web-app] failed to start:", err);
 			process.exit(1);
 		});
 }

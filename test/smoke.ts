@@ -1,5 +1,5 @@
 /**
- * Smoke test — boots a real codex-web server against a real `codex app-server`.
+ * Smoke test — boots a real open-web-app server against a real `codex app-server`.
  *
  * 运行： npm run smoke
  *
@@ -17,7 +17,7 @@ import { WebSocket } from "ws";
 import { startServer, type ServerHandle } from "../server/index.js";
 import type { ServerMessage } from "../shared/protocol.js";
 
-const SMOKE_CWD = "/tmp/codex-web-smoke";
+const SMOKE_CWD = "/tmp/open-web-app-smoke";
 const CODEX_READY_TIMEOUT_MS = 40_000;
 const INIT_TIMEOUT_MS = 30_000;
 const TURN_TIMEOUT_MS = 180_000;
@@ -144,7 +144,7 @@ async function main(): Promise<void> {
 	await mkdir(SMOKE_CWD, { recursive: true });
 	const cwPort = await freePort();
 	const codexPort = await freePort();
-	console.log(`\n=== codex-web smoke test ===`);
+	console.log(`\n=== open-web-app smoke test ===`);
 	console.log(`cwd=${SMOKE_CWD}  cwPort=${cwPort}  codexPort=${codexPort}\n`);
 
 	let handle: ServerHandle | null = null;

@@ -3,7 +3,7 @@
  * update-check.mjs — 轻量级「有新版本就提示」检查（无第三方依赖）。
  *
  * 设计要点：
- *  - 结果缓存到 ~/.cache/codex-web/update-check.json，默认 24h 才联网检查一次，
+ *  - 结果缓存到 ~/.cache/open-web-app/update-check.json，默认 24h 才联网检查一次，
  *    避免每次运行都等网络；已知有新版时，每次运行都会提示（读缓存，0 延迟）。
  *  - 任何失败都静默忽略，绝不阻塞 / 影响 CLI 正常功能。
  *  - 可通过 CW_NO_UPDATE_CHECK=1 关闭；CI 环境自动跳过。
@@ -12,14 +12,14 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-const PKG = "oh-my-agent-web";
+const PKG = "open-web-app";
 const REGISTRY = `https://registry.npmjs.org/${PKG.replace("/", "%2f")}/latest`;
 const DEFAULT_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24h
 const DEFAULT_TIMEOUT_MS = 1500;
 
 function cacheFile() {
 	const base = process.env.XDG_CACHE_HOME || join(homedir(), ".cache");
-	return join(base, "codex-web", "update-check.json");
+	return join(base, "open-web-app", "update-check.json");
 }
 
 /** Should the check be skipped entirely? */
@@ -114,7 +114,7 @@ export async function checkForUpdate(current, opts = {}) {
 export function formatNotice(current, latest) {
 	const lines = [
 		"",
-		`  Update available: codex-web ${current} -> ${latest}`,
+		`  Update available: open-web-app ${current} -> ${latest}`,
 		`      npm install -g ${PKG}@latest`,
 		`      (disable this check with CW_NO_UPDATE_CHECK=1)`,
 		"",
@@ -130,8 +130,8 @@ export async function notifyUpdate(current, opts = {}) {
 		let text = formatNotice(current, latest);
 		if (process.stderr.isTTY) {
 			text = text.replace(
-				`Update available: codex-web ${current} -> ${latest}`,
-				`\x1b[33mUpdate available: codex-web ${current} \u2192 ${latest}\x1b[0m`,
+				`Update available: open-web-app ${current} -> ${latest}`,
+				`\x1b[33mUpdate available: open-web-app ${current} \u2192 ${latest}\x1b[0m`,
 			);
 		}
 		process.stderr.write(text);
