@@ -5,6 +5,8 @@
  *   npm run omaw                     起本地开发栈（源码直跑，2 个进程）
  *                                   = `npm run dev`：单进程、单端口 :25257，Vite 在进程内当中间件
  *   npm run omaw -- ps               转发给 CLI：进程 / 端口巡检
+ *   npm run omaw -- stop             转发给 CLI：停掉监听 UI 端口的服务
+ *   npm run omaw -- restart          转发给 CLI：停掉后重新起（前台）
  *   npm run omaw -- ws -p 25268      转发给 CLI：用 WS 客户端临时接入指定地址的 app-server
  *   npm run omaw -- --port 3000      转发给 CLI：直接起后端（源码直跑，不做 Vite）
  *   npm run omaw -- --help           CLI 帮助

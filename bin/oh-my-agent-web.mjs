@@ -12,6 +12,8 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SERVER_ENTRY = resolve(__dirname, "..", "dist", "server", "index.js");
+/** Shared with `npm run stop` / `npm run restart`; it owns the "who owns this port" logic. */
+const MANAGE_SCRIPT = resolve(__dirname, "..", "scripts", "manage-server.mjs");
 
 const HELP = `oh-my-agent-web — browser UI for the Codex CLI app-server
 
@@ -19,10 +21,16 @@ Usage:
   oh-my-agent-web [options]
   oh-my-agent-web ws [options] ["message" ...]   Connect to the app-server over WebSocket
   oh-my-agent-web ps [--json]                    Show running processes and their ports
+  oh-my-agent-web stop [--port <n>]              Stop the service listening on the UI port
+  oh-my-agent-web restart [options]              Stop the service, then serve again
 
 Commands:
   ws                  WebSocket client for the codex app-server (run 'oh-my-agent-web ws --help')
   ps                  Show running oh-my-agent-web / app-server processes and their ports
+  stop                Gracefully stop the service on the UI port (OMAW_PORT, default 25257)
+  restart             Stop, then start again in the foreground
+
+Note: unknown subcommands are rejected — only [options] starts a server.
 
 Options:
   --port <n>          Port for the web UI (env OMAW_PORT, default 25257)
@@ -40,7 +48,7 @@ Environment:
 
 /** 支持 `--flag value` 与 `--flag=value` 两种写法。 */
 function parseArgs(argv) {
-	const opts = { open: true };
+	const opts = { open: true, positionals: [] };
 	const take = (i, inline) => {
 		if (inline !== undefined) return { value: inline, next: i };
 		const value = argv[i + 1];
@@ -51,7 +59,13 @@ function parseArgs(argv) {
 	};
 	for (let i = 0; i < argv.length; i += 1) {
 		const token = argv[i];
-		if (!token.startsWith("-")) continue;
+		if (!token.startsWith("-")) {
+			// Not a flag and not a value of one (values are consumed below), so it is a
+			// stray word. Collect it instead of ignoring it: silently ignoring a mistyped
+			// subcommand used to mean `stop` *started* a server.
+			opts.positionals.push(token);
+			continue;
+		}
 		const eq = token.indexOf("=");
 		const flag = eq === -1 ? token : token.slice(0, eq);
 		const inline = eq === -1 ? undefined : token.slice(eq + 1);
@@ -136,6 +150,41 @@ function parsePort(value, fallback) {
 	return n;
 }
 
+/** Pull `--port <n>` / `--port=<n>` out of a subcommand's argv (used by stop/restart). */
+function portFlag(argv) {
+	for (let i = 0; i < argv.length; i += 1) {
+		const token = argv[i];
+		if (token === "--port" || token === "-p") return argv[i + 1];
+		if (token.startsWith("--port=")) return token.slice("--port=".length);
+	}
+	return undefined;
+}
+
+/**
+ * Run `scripts/manage-server.mjs <cmd>` in the foreground and resolve with its exit code.
+ *
+ * Delegating instead of reimplementing keeps one definition of “who owns this port”
+ * (including the safety check that refuses to kill a foreign process).
+ */
+function runManageServer(cmd, argv = []) {
+	const port = portFlag(argv);
+	const env = port === undefined ? process.env : { ...process.env, OMAW_PORT: String(port) };
+	return new Promise((resolvePromise) => {
+		let child;
+		try {
+			child = spawn(process.execPath, [MANAGE_SCRIPT, cmd], { stdio: "inherit", env });
+		} catch (err) {
+			console.error(`✖ 无法启动 ${MANAGE_SCRIPT}: ${err instanceof Error ? err.message : String(err)}`);
+			return resolvePromise(1);
+		}
+		child.on("error", (err) => {
+			console.error(`✖ 无法启动 ${MANAGE_SCRIPT}: ${err.message}`);
+			resolvePromise(1);
+		});
+		child.on("exit", (code) => resolvePromise(code ?? 0));
+	});
+}
+
 async function main() {
 	const argv = process.argv.slice(2);
 
@@ -170,6 +219,22 @@ async function main() {
 		return;
 	}
 
+	// Subcommand: `oh-my-agent-web stop [--port <n>]` — stop the service on the UI port.
+	if (argv[0] === "stop") {
+		process.exitCode = await runManageServer("stop", argv.slice(1));
+		return;
+	}
+
+	// Subcommand: `oh-my-agent-web restart [options]` — stop, then fall through and serve.
+	if (argv[0] === "restart") {
+		const code = await runManageServer("stop", argv.slice(1));
+		if (code !== 0) {
+			process.exitCode = code;
+			return;
+		}
+		argv.shift();
+	}
+
 	const opts = parseArgs(argv);
 
 	if (opts.help) {
@@ -179,6 +244,14 @@ async function main() {
 	if (opts.version) {
 		process.stdout.write(`${readVersion()}\n`);
 		return;
+	}
+
+	if (opts.positionals.length > 0) {
+		console.error(
+			`✖ 未知的命令或参数：${opts.positionals.join(" ")}\n` +
+				"  子命令：ws / ps / stop / restart。查看全部选项：--help",
+		);
+		process.exit(1);
 	}
 
 	if (!existsSync(SERVER_ENTRY)) {

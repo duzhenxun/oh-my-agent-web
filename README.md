@@ -131,9 +131,30 @@ oh-my-agent-web [options]
   --no-browser        Do not open the browser (env OMAW_OPEN=0)
   --help, -h          Show help
   --version, -v       Show version
+
+  ws [options] ["msg"]  WebSocket client for the app-server
+  ps [--json]           Running processes and their ports
+  stop [--port <n>]     Stop the service listening on the UI port
+  restart [options]     Stop the service, then serve again in the foreground
 ```
 
 Flags win over environment variables.
+
+Anything that is not a flag and not one of the subcommands above is rejected —
+only `[options]` starts a server, so a mistyped subcommand can never silently
+launch one.
+
+### `oh-my-agent-web stop` / `restart`
+
+Gracefully stop the service listening on the UI port (the same code path as
+`npm run stop`): SIGTERM, then SIGKILL after an 8s grace period. It refuses to
+touch the port if the listener is not one of ours.
+
+```bash
+oh-my-agent-web stop                 # stop on OMAW_PORT (default 25257)
+oh-my-agent-web stop --port 3000     # stop the instance on another port
+oh-my-agent-web restart --no-browser # stop, then serve again in this process
+```
 
 ### `oh-my-agent-web ws` — WebSocket client
 
