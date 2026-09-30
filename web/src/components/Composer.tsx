@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from "react";
 import type { UserInput } from "@shared/codex-ts/v2";
 import { useCodex } from "../lib/useCodex";
-import { basename } from "../lib/format";
+import { basename, shortenProjectPath } from "../lib/format";
 import { IconAt, IconImage, IconSend, IconStop, IconX } from "./Icons";
 
 interface Mention {
@@ -20,7 +20,7 @@ const MENTION_RE = /(?:^|\s)@([^\s@]*)$/;
 const AUTO_MAX_H = 200;
 
 export function Composer(): ReactNode {
-	const { activeThread, streamingTurnId, sendMessage, interrupt, startThread, searchFiles } = useCodex();
+	const { activeThread, streamingTurnId, sendMessage, interrupt, startThread, searchFiles, settings, models, info } = useCodex();
 	const [text, setText] = useState("");
 	const [attachments, setAttachments] = useState<UserInput[]>([]);
 	const [mentions, setMentions] = useState<Mention[]>([]);
@@ -35,6 +35,16 @@ export function Composer(): ReactNode {
 	const searchSeq = useRef(0);
 
 	const streaming = Boolean(streamingTurnId);
+
+	// Footer status line (mode / effort / project), Codex-style. The model name
+	// resolves through the catalog so we show "GPT-6-Luna" instead of the id.
+	const statusModel = useMemo(() => {
+		const id = settings.model ?? activeThread?.model ?? null;
+		const hit = id ? models.find((m) => m.id === id) : undefined;
+		return hit?.displayName?.trim() || hit?.id || id || "default";
+	}, [settings.model, activeThread?.model, models]);
+	const statusEffort = settings.effort ?? activeThread?.reasoningEffort ?? "";
+	const statusProject = shortenProjectPath(settings.cwd || info?.cwd || "");
 
 	/**
 	 * Auto-grow: the textarea is one line tall until the text wraps, then it
@@ -327,6 +337,11 @@ export function Composer(): ReactNode {
 			<div className="composer-hint muted">
 				<span>Enter to send · Shift+Enter for newline</span>
 				{streaming ? <span className="running-hint">Codex is working — messages will be queued</span> : null}
+			</div>
+			<div className="composer-status">
+				<span className="status-model">{statusModel}</span>
+				{statusEffort ? <span className="status-effort">{statusEffort}</span> : null}
+				{statusProject ? <span className="status-project">· {statusProject}</span> : null}
 			</div>
 		</div>
 	);

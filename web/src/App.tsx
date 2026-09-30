@@ -29,7 +29,7 @@ const MIN_SIDEBAR_WIDTH = 220;
 const MAX_SIDEBAR_WIDTH = 560;
 
 export function App(): ReactNode {
-	const { connection, status, activeThread, startThread, reconnect } = useCodex();
+	const { connection, status, activeThread, startThread, reconnect, streamingTurnId, interrupt } = useCodex();
 	const [theme, setTheme] = useTheme();
 	// Two distinct states: a drawer toggle for narrow viewports, and a persistent
 	// collapse for desktop. One header button drives whichever applies.
@@ -97,6 +97,20 @@ export function App(): ReactNode {
 		document.addEventListener("keydown", onKey);
 		return () => document.removeEventListener("keydown", onKey);
 	}, [newThread, isNarrow, setCollapsed]);
+
+	// Esc interrupts the running turn ("esc to interrupt"). The composer already
+	// claims Esc for its mention menu and modals claim it in capture phase, so we
+	// skip events they have handled and never fight an open dialog.
+	useEffect(() => {
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key !== "Escape" || e.defaultPrevented) return;
+			if (!streamingTurnId) return;
+			if (document.querySelector(".modal-backdrop")) return;
+			void interrupt();
+		};
+		document.addEventListener("keydown", onKey);
+		return () => document.removeEventListener("keydown", onKey);
+	}, [streamingTurnId, interrupt]);
 
 	const showBanner = connection !== "open";
 	const bannerMessage = status?.error

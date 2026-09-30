@@ -1,8 +1,38 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Turn } from "@shared/codex-ts/v2";
 import { useCodex } from "../lib/useCodex";
+import { formatElapsedSeconds, toMillis } from "../lib/format";
 import { TurnView } from "./TurnView";
 import { IconAlert, IconChevronDown, IconPlus, IconSparkles } from "./Icons";
+
+/**
+ * Live "Working (12s • esc to interrupt)" line. It renders at the end of the
+ * transcript, so it always sits just above the composer while a turn runs and
+ * ticks once a second until the turn finishes.
+ */
+function WorkingLine({ startedAt }: { startedAt: number | null | undefined }): ReactNode {
+	const startSec = useMemo(() => {
+		const ms = toMillis(startedAt);
+		return ms == null ? null : Math.floor(ms / 1000);
+	}, [startedAt]);
+	const [tick, setTick] = useState(0);
+	useEffect(() => {
+		if (startSec == null) return;
+		const t = setInterval(() => setTick((n) => n + 1), 1000);
+		return () => clearInterval(t);
+	}, [startSec]);
+	// `tick` only exists to re-render so the elapsed value below stays fresh.
+	void tick;
+	const elapsed = startSec == null ? null : Math.max(0, Math.floor(Date.now() / 1000) - startSec);
+	return (
+		<div className="working-line" role="status" aria-live="polite">
+			<span className="turn-status-dot inProgress" aria-hidden />
+			<span className="working-text">
+				Working{elapsed != null ? ` (${formatElapsedSeconds(elapsed)} • esc to interrupt)` : " (esc to interrupt)"}
+			</span>
+		</div>
+	);
+}
 
 interface ChatViewProps {
 	onOpenSidebar?: () => void;
@@ -51,6 +81,11 @@ export function ChatView(_props: ChatViewProps): ReactNode {
 		// Keep server order, but make sure the active streaming turn is last.
 		return list as Turn[];
 	}, [turns]);
+
+	const streamingTurn = useMemo(
+		() => (streamingTurnId ? (orderedTurns.find((t) => t.id === streamingTurnId) ?? null) : null),
+		[orderedTurns, streamingTurnId],
+	);
 
 	const threadErrors = useMemo(
 		() => (activeThread ? errors.filter((e) => e.threadId === activeThread.id || e.threadId == null) : errors),
@@ -110,6 +145,7 @@ export function ChatView(_props: ChatViewProps): ReactNode {
 						</span>
 					</div>
 				))}
+				{streamingTurnId ? <WorkingLine startedAt={streamingTurn?.startedAt} /> : null}
 				<div className="chat-bottom-pad" />
 			</div>
 			{showJump ? (

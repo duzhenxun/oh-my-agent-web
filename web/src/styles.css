@@ -1231,6 +1231,22 @@ button {
 	text-transform: uppercase;
 	letter-spacing: 0.05em;
 }
+/* Live working indicator pinned at the end of the transcript, above the composer. */
+.working-line {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 10px 0 4px;
+	padding-left: 10px;
+	padding-right: 10px;
+}
+.working-line .turn-status-dot {
+	flex: 0 0 auto;
+}
+.working-text {
+	font-size: 12px;
+	color: var(--text-dim);
+}
 .turn-items {
 	display: flex;
 	flex-direction: column;
@@ -2279,7 +2295,8 @@ button {
 	margin: 0;
 	border: 1px solid var(--border);
 	border-radius: 13px;
-	background: var(--bg);
+	/* A distinct surface from the transcript above (which sits on --bg). */
+	background: var(--bg-elev2);
 	/* 9px + the 1px border = a 10px gutter for both the text and the button,
 	 * matching the 10px the box itself keeps from the pane. */
 	padding: 5px 9px;
@@ -2326,6 +2343,31 @@ button {
 	gap: 12px;
 	margin: 6px 0 0;
 	font-size: 11.5px;
+}
+/* Codex-style footer: model / reasoning effort / project, in its own colour. */
+.composer-status {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 4px 0 0;
+	font-family: var(--mono);
+	font-size: 11.5px;
+	line-height: 1.4;
+}
+.composer-status .status-model {
+	color: var(--accent-strong);
+	font-weight: 600;
+}
+.composer-status .status-effort {
+	color: var(--text-dim);
+	text-transform: lowercase;
+}
+.composer-status .status-project {
+	color: var(--text-faint);
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 .running-hint {
 	margin-left: auto;

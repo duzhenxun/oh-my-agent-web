@@ -48,6 +48,20 @@ export function formatDuration(ms: number | null | undefined): string {
 	return `${h}h ${m % 60}m`;
 }
 
+/**
+ * Elapsed seconds as a live "timer" label: `4s`, `1m 05s`, `1h 12m`.
+ * Unlike `formatDuration` it never shows sub-second precision.
+ */
+export function formatElapsedSeconds(sec: number | null | undefined): string {
+	if (typeof sec !== "number" || !Number.isFinite(sec) || sec < 0) return "";
+	const total = Math.floor(sec);
+	if (total < 60) return `${total}s`;
+	const m = Math.floor(total / 60);
+	const s = total % 60;
+	if (m < 60) return `${m}m ${s}s`;
+	return `${Math.floor(m / 60)}h ${m % 60}m`;
+}
+
 export function formatBytes(bytes: number | null | undefined): string {
 	if (typeof bytes !== "number" || !Number.isFinite(bytes)) return "";
 	if (bytes < 1024) return `${bytes} B`;

@@ -171,6 +171,12 @@ oh-my-agent-web ws -t <threadId> "continue"  # resume an existing thread
 oh-my-agent-web ws -y --model gpt-5.5 "..."  # auto-approve approvals, pick a model
 ```
 
+Interactive mode prints the active model on connect and shows it in the prompt; use
+`/model` to pick from the server's models with ↑/↓ + Enter (or `/model <name>` to switch
+directly; applies from the next turn), `/help` for commands and `/quit` to exit. A turn
+that fails with the upstream "prompt flagged" false-positive is retried automatically
+once (`--retry <n>` / `--no-retry`).
+
 Run the same client through npm (pass flags after `--`):
 
 ```bash
@@ -185,11 +191,13 @@ npm run ws -- -t <threadId> "continue"
 | `--addr <host:port>` / `--host <h>` / `-p, --port <n>` | Address or port (default `127.0.0.1:25258`) |
 | `--cwd <dir>` | Working directory (default: current dir) |
 | `-t, --thread <id>` | Resume an existing thread |
-| `--model <name>` | Model id |
+| `--model <name>` | Model id (`/model` in interactive mode to list/switch) |
 | `--sandbox <mode>` / `--approval <mode>` | Session sandbox / approval policy |
 | `-y, --auto-approve` / `--decline` | Auto-answer approvals instead of prompting |
 | `-v, --verbose` / `--json` | Print reasoning deltas / raw event JSON |
 | `--timeout <sec>` | Max wait per turn (default 1800) |
+| `--retry <n>` / `--no-retry` | Retry a flagged/transient turn up to n times (default 1) |
+| `--retry-delay <ms>` | Base retry delay, default 1000 (grows per attempt) |
 
 Env: `CODEX_WS_URL` / `CODEX_WS_HOST` / `CODEX_WS_PORT`.
 

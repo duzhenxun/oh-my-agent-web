@@ -89,14 +89,18 @@ function TurnViewImpl({ turn, plan, diff, streaming }: TurnViewProps): ReactNode
 
 	return (
 		<div className={`turn turn-${status}`}>
-			<div className="turn-divider">
-				<span className={`turn-status-dot ${status}`} />
-				<span className="turn-meta">
-					{status === "inProgress" ? "Working" : status === "failed" ? "Failed" : status === "interrupted" ? "Interrupted" : "Done"}
-					{typeof turn.durationMs === "number" ? ` · ${formatDuration(turn.durationMs)}` : ""}
-					{turn.startedAt ? ` · ${relativeTime(turn.startedAt)}` : ""}
-				</span>
-			</div>
+			{/* While a turn is running, the live "Working (Ns • esc to interrupt)"
+			    line at the end of the transcript represents it; no divider here. */}
+			{status !== "inProgress" ? (
+				<div className="turn-divider">
+					<span className={`turn-status-dot ${status}`} />
+					<span className="turn-meta">
+						{status === "failed" ? "Failed" : status === "interrupted" ? "Interrupted" : "Done"}
+						{typeof turn.durationMs === "number" ? ` · ${formatDuration(turn.durationMs)}` : ""}
+						{turn.startedAt ? ` · ${relativeTime(turn.startedAt)}` : ""}
+					</span>
+				</div>
+			) : null}
 
 			{turn.error?.message ? (
 				<div className="inline-error" role="alert">

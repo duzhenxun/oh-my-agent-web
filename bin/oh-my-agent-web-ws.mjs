@@ -36,7 +36,7 @@ Connection:
 Session:
   --cwd <dir>              Working directory (default: current dir)
   -t, --thread <id>        Resume an existing thread
-  --model <name>           Model id
+  --model <name>           Model id (use /model interactively to list/switch)
   --sandbox <mode>         read-only | workspace-write | danger-full-access
   --approval <mode>        untrusted | on-request | on-failure | never
   -y, --auto-approve       Auto-accept approvals (acceptForSession)
@@ -44,7 +44,15 @@ Session:
   -v, --verbose            Print reasoning deltas
   --json                   Print raw event JSON only
   --timeout <sec>          Max wait for a turn, default 1800
+  --retry <n>              Retry a flagged/transient turn up to n times, default 1 (0 = off)
+  --retry-delay <ms>       Base delay between retries, default 1000 (grows per attempt)
   -h, --help               Show this help
+
+Interactive commands (type at the prompt):
+  /model                   Pick a model (↑/↓ + Enter), or list available ones
+  /model <name>            Switch the model for subsequent turns
+  /help                    Print this help
+  /quit                    Exit
 `;
 
 /** Parse `oh-my-agent-web ws [ ... ]` arguments. */
@@ -65,6 +73,8 @@ export function parseWsArgs(argv) {
 		verbose: false,
 		json: false,
 		timeout: 1800,
+		retry: 1,
+		retryDelayMs: 1000,
 		messages: [],
 		help: false,
 	};
@@ -130,6 +140,15 @@ export function parseWsArgs(argv) {
 				break;
 			case "--timeout":
 				opts.timeout = Number(next());
+				break;
+			case "--retry":
+				opts.retry = Number(next());
+				break;
+			case "--no-retry":
+				opts.retry = 0;
+				break;
+			case "--retry-delay":
+				opts.retryDelayMs = Number(next());
 				break;
 			case "-h":
 			case "--help":
@@ -384,9 +403,24 @@ export async function runWsClient(argv) {
 		: await client.request("thread/start", threadParams);
 
 	const threadId = threadResp.thread.id;
+	let currentModel = threadResp.model ?? opts.model ?? null;
 	log(
-		`[thread] ${threadId}  model=${threadResp.model}  cwd=${threadResp.cwd}  sandbox=${JSON.stringify(threadResp.sandbox)}`,
+		`[thread] ${threadId}  cwd=${threadResp.cwd}  sandbox=${JSON.stringify(threadResp.sandbox)}`,
 	);
+	log(`[model]  ${currentModel ?? "(server default)"}  \x1b[2m(/model to list or switch)\x1b[0m`);
+
+	/** Lazily fetch the server's model catalog (id / model / displayName / …). */
+	let modelsCache = null;
+	async function loadModels() {
+		if (modelsCache) return modelsCache;
+		try {
+			const resp = await client.request("model/list", {});
+			modelsCache = Array.isArray(resp?.data) ? resp.data : [];
+		} catch {
+			modelsCache = [];
+		}
+		return modelsCache;
+	}
 
 	/* -------- event rendering -------- */
 	let inAgentMessage = false;
@@ -503,20 +537,164 @@ export async function runWsClient(argv) {
 		decide(id, "decline");
 	});
 
-	async function ask(text) {
-		const done = new Promise((resolve) => client.on("turnDone", resolve, { once: true }));
+	/** Run one turn to completion and return its final state. */
+	async function runTurn(text) {
+		const done = new Promise((resolve) => client.on("turnDone", (ev) => resolve(ev.detail), { once: true }));
 		const started = await client.request("turn/start", {
 			threadId,
 			input: [{ type: "text", text, text_elements: [] }],
+			...(currentModel ? { model: currentModel } : {}),
 		});
 		activeTurn = { threadId, turnId: started?.turn?.id ?? null };
 		const timer = setTimeout(() => {
 			log(`\x1b[31m[timeout] turn did not finish within ${opts.timeout}s\x1b[0m`);
 			client.emit("turnDone", { status: "timeout" });
 		}, opts.timeout * 1000);
-		await done;
+		const turn = await done;
 		activeTurn = null;
 		clearTimeout(timer);
+		return turn;
+	}
+
+	/**
+	 * A failed turn worth retrying. The upstream moderation layer sometimes flags
+	 * a perfectly innocent prompt ("Invalid prompt … potentially violating our
+	 * usage policy") and codex reports willRetry:false, so without this the turn is
+	 * simply lost. Re-sending the same input almost always succeeds.
+	 */
+	function isRetryableTurn(turn) {
+		if (!turn || turn.status !== "failed") return false;
+		const msg = String(turn.error?.message ?? "");
+		return /flagged as potentially violating|Invalid prompt/i.test(msg);
+	}
+
+	async function ask(text) {
+		const maxRetries = Math.max(0, Math.floor(Number(opts.retry)) || 0);
+		const baseDelay = Math.max(0, Number(opts.retryDelayMs) || 0);
+		for (let attempt = 0; ; attempt++) {
+			const turn = await runTurn(text);
+			if (attempt >= maxRetries || !isRetryableTurn(turn)) return;
+			const wait = baseDelay * (attempt + 1);
+			log(
+				`\x1b[33m[retry] retryable failure — retrying in ${wait}ms (attempt ${attempt + 2}/${maxRetries + 1})\x1b[0m`,
+			);
+			await new Promise((r) => setTimeout(r, wait));
+		}
+	}
+
+	/** Arrow-key model chooser used by `/model`. Returns a chosen id, or null. */
+	async function pickModel(models, activeId) {
+		const rows = models.map((m) => {
+			const id = m.id ?? m.model;
+			const label = m.displayName && m.displayName !== id ? `  \x1b[2m${m.displayName}\x1b[0m` : "";
+			return { id, text: `${id}${label}` };
+		});
+		if (!process.stdin.isTTY) {
+			log("  available:");
+			for (const r of rows) log(`    ${r.text}`);
+			log("  pick one with `/model <name>`");
+			return null;
+		}
+		let index = Math.max(0, rows.findIndex((r) => r.id === activeId));
+		const total = rows.length;
+		const draw = (initial) => {
+			if (!initial) process.stderr.write(`\x1b[${total + 1}A`);
+			for (let i = 0; i < total; i++) {
+				const pointer = i === index ? "\x1b[36m›\x1b[0m" : " ";
+				const star = rows[i].id === activeId ? " \x1b[32m*\x1b[0m" : "";
+				process.stderr.write(`\x1b[2K${pointer} ${rows[i].text}${star}\n`);
+			}
+			process.stderr.write("\x1b[2K\x1b[2m  ↑/↓ move · Enter select · Esc cancel\x1b[0m\n");
+		};
+		log("[model] select a model:");
+		draw(true);
+		return await new Promise((resolve) => {
+			const stdin = process.stdin;
+			const wasRaw = Boolean(stdin.isRaw);
+			rl?.pause();
+			if (typeof stdin.setRawMode === "function") stdin.setRawMode(true);
+			stdin.resume();
+			const finish = (value) => {
+				stdin.removeListener("data", onData);
+				if (typeof stdin.setRawMode === "function") stdin.setRawMode(wasRaw);
+				stdin.pause();
+				rl?.resume();
+				resolve(value);
+			};
+			const onData = (buf) => {
+				const s = buf.toString("utf8");
+				if (s === "\u0003") {
+					finish(null);
+					process.kill(process.pid, "SIGINT");
+				} else if (s === "\u001b[A" || s === "k") {
+					index = (index - 1 + total) % total;
+					draw();
+				} else if (s === "\u001b[B" || s === "j") {
+					index = (index + 1) % total;
+					draw();
+				} else if (s === "\r" || s === "\n") {
+					finish(rows[index].id);
+				} else if (s === "\u001b" || s === "q") {
+					finish(null);
+				} else if (/^[1-9]$/.test(s)) {
+					const n = Number(s) - 1;
+					if (n < total) {
+						index = n;
+						draw();
+					}
+				}
+			};
+			stdin.on("data", onData);
+		});
+	}
+
+	/** Interactive slash commands (/model, /help, /quit). */
+	async function handleCommand(line) {
+		const [cmd, ...rest] = line.slice(1).trim().split(/\s+/);
+		switch (cmd) {
+			case "help":
+				process.stdout.write(HELP);
+				return true;
+			case "quit":
+			case "exit":
+				await shutdown(0);
+				return true;
+			case "model":
+			case "models": {
+				const models = await loadModels();
+				if (!rest.length) {
+					log(`[model] current: ${currentModel ?? "(server default)"}`);
+					if (!models.length) {
+						log("  (this server exposes no model list)");
+						return true;
+					}
+					const picked = await pickModel(models, currentModel);
+					if (picked && picked !== currentModel) {
+						currentModel = picked;
+						log(`[model] switched to ${currentModel} \x1b[2m(applies from the next turn)\x1b[0m`);
+						updatePrompt();
+					}
+					return true;
+				}
+				const wanted = rest[0];
+				const hit = models.find((m) => m.id === wanted || m.model === wanted || m.displayName === wanted);
+				if (models.length && !hit) {
+					log(`\x1b[31m[model] unknown model "${wanted}" — run /model to list\x1b[0m`);
+					return true;
+				}
+				currentModel = hit ? (hit.id ?? hit.model) : wanted;
+				log(`[model] switched to ${currentModel} \x1b[2m(applies from the next turn)\x1b[0m`);
+				updatePrompt();
+				return true;
+			}
+			default:
+				log(`unknown command: /${cmd} — try /help`);
+				return true;
+		}
+	}
+
+	function updatePrompt() {
+		if (rl && process.stdin.isTTY) rl.setPrompt(`\x1b[2m${currentModel ?? "model?"}\x1b[0m \x1b[36m›\x1b[0m `);
 	}
 
 	function setupRepl() {
@@ -527,10 +705,20 @@ export async function runWsClient(argv) {
 				if (process.stdin.isTTY) rl.prompt();
 				return;
 			}
+			if (text.startsWith("/")) {
+				try {
+					await handleCommand(text);
+				} catch (e) {
+					log(`\x1b[31m[error] ${e.message}\x1b[0m`);
+				}
+				if (process.stdin.isTTY) rl.prompt();
+				return;
+			}
 			if (pendingApproval) {
 				if (/^(y|yes)$/i.test(text)) decide(pendingApproval.id, "accept");
 				else if (/^(a|all)$/i.test(text)) decide(pendingApproval.id, "acceptForSession");
 				else decide(pendingApproval.id, "decline");
+				updatePrompt();
 				if (process.stdin.isTTY) rl.prompt();
 				return;
 			}
@@ -548,7 +736,8 @@ export async function runWsClient(argv) {
 			void shutdown(0);
 		});
 		if (process.stdin.isTTY) {
-			log("\ntype a message and press Enter (Ctrl-C: interrupt & close / Ctrl-D: exit). approvals: y=once / a=session / n=decline\n");
+			updatePrompt();
+			log("\ntype a message and press Enter (Ctrl-C: interrupt & close / Ctrl-D: exit). approvals: y=once / a=session / n=decline\n  /model to list or switch models · /help for all commands\n");
 			rl.prompt();
 		}
 	}

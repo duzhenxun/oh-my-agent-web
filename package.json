@@ -1,6 +1,6 @@
 {
 	"name": "oh-my-agent-web",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"description": "Browser cockpit for the Codex CLI app-server — chat, tool calls, diffs and approvals in one tab",
 	"license": "MIT",
 	"type": "module",
