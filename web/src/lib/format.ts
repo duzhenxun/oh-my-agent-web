@@ -113,7 +113,7 @@ export function pluralize(n: number, one: string, many?: string): string {
 }
 
 /**
- * Compact label for a workspace path, like `…a/ai/codex-web`.
+ * Compact label for a workspace path, like `…a/ai/oh-my-agent-web`.
  *
  * Unlike `shortenPath` this never returns `.` for the current directory — a
  * project chip always has to name the project — and it keeps the tail segments

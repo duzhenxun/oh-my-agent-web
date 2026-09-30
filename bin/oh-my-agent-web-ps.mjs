@@ -104,7 +104,7 @@ export function collect() {
 		const kind = classify(p.command);
 		if (kind) matched.push({ ...p, kind });
 	}
-	const codexWebPids = new Set(matched.filter((p) => p.kind === "oh-my-agent-web").map((p) => p.pid));
+	const omawPids = new Set(matched.filter((p) => p.kind === "oh-my-agent-web").map((p) => p.pid));
 	// Walk up the ancestor chain (the app-server re-execs, so the listener's
 	// parent is the shim, not oh-my-agent-web directly).
 	const isManaged = (pid) => {
@@ -112,7 +112,7 @@ export function collect() {
 		for (let hops = 0; hops < 12; hops += 1) {
 			const parent = ppidOf.get(cur);
 			if (parent === undefined || parent <= 1) return false;
-			if (codexWebPids.has(parent)) return true;
+			if (omawPids.has(parent)) return true;
 			cur = parent;
 		}
 		return false;

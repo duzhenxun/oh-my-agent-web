@@ -142,15 +142,15 @@ async function waitForCodexReady(handle: ServerHandle): Promise<void> {
 
 async function main(): Promise<void> {
 	await mkdir(SMOKE_CWD, { recursive: true });
-	const owaPort = await freePort();
+	const omawPort = await freePort();
 	const codexPort = await freePort();
 	console.log(`\n=== oh-my-agent-web smoke test ===`);
-	console.log(`cwd=${SMOKE_CWD}  owaPort=${owaPort}  codexPort=${codexPort}\n`);
+	console.log(`cwd=${SMOKE_CWD}  omawPort=${omawPort}  codexPort=${codexPort}\n`);
 
 	let handle: ServerHandle | null = null;
 	let browser: BrowserClient | null = null;
 	try {
-		handle = await startServer({ port: owaPort, host: "127.0.0.1", cwd: SMOKE_CWD, codexPort, quiet: true });
+		handle = await startServer({ port: omawPort, host: "127.0.0.1", cwd: SMOKE_CWD, codexPort, quiet: true });
 
 		// --- 1. supervisor / client readiness ---
 		try {
