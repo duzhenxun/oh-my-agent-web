@@ -1,65 +1,65 @@
-# open-web-app
+# oh-my-agent-web
 
 A browser cockpit for the [Codex CLI](https://github.com/openai/codex) `app-server`.
 Chat, tool calls, diffs and approval dialogs in one tab.
 
 The server is a **transparent JSON-RPC proxy + process supervisor**. It starts
 `codex app-server` on boot, keeps it alive, and lets the browser invoke any
-app-server method — while adding a few local `owa/*` helpers.
+app-server method — while adding a few local `omaw/*` helpers.
 
 ```
-browser  <--ws /ws-->  open-web-app server  <--ws-->  codex app-server (ws://127.0.0.1:25258)
+browser  <--ws /ws-->  oh-my-agent-web server  <--ws-->  codex app-server (ws://127.0.0.1:25258)
 ```
 
 ## Install
 
-The published package is **`open-web-app`**. It installs two equivalent
-commands: **`open-web-app`** and the short alias **`owa`**.
+The published package is **`oh-my-agent-web`**. It installs two equivalent
+commands: **`oh-my-agent-web`** and the short alias **`omaw`**.
 
 ```bash
 # global install
-npm install -g open-web-app
-npm install -g open-web-app@latest     # force the newest version
+npm install -g oh-my-agent-web
+npm install -g oh-my-agent-web@latest     # force the newest version
 
 # or run without installing
-npx open-web-app                       # start the UI
-npx open-web-app ws                    # WS client (default ws://127.0.0.1:25258)
-npx open-web-app ws --port 25258       # WS client on an explicit port
-npx open-web-app ps                    # list processes and ports
+npx oh-my-agent-web                       # start the UI
+npx oh-my-agent-web ws                    # WS client (default ws://127.0.0.1:25258)
+npx oh-my-agent-web ws --port 25258       # WS client on an explicit port
+npx oh-my-agent-web ps                    # list processes and ports
 ```
 
-After a global install, `open-web-app` and `owa` are the same program:
+After a global install, `oh-my-agent-web` and `omaw` are the same program:
 
 ```bash
-owa                                     # http://127.0.0.1:25257  (= open-web-app)
-owa ws                                  # interactive WS client
-owa ws --port 25259
-owa ps                                  # processes + ports
+omaw                                     # http://127.0.0.1:25257  (= oh-my-agent-web)
+omaw ws                                  # interactive WS client
+omaw ws --port 25259
+omaw ps                                  # processes + ports
 ```
 
-> Requires Node.js >= 22. If `npx open-web-app` fails to find the binary
-> on your setup, use `npx -p open-web-app open-web-app ...` or a global
+> Requires Node.js >= 22. If `npx oh-my-agent-web` fails to find the binary
+> on your setup, use `npx -p oh-my-agent-web oh-my-agent-web ...` or a global
 > install instead.
 
 ### Update notification
 
-Every run of `open-web-app` (including the `ws` and `ps` subcommands) checks npm for
+Every run of `oh-my-agent-web` (including the `ws` and `ps` subcommands) checks npm for
 a newer version and prints a short notice when one exists:
 
 ```
-  Update available: open-web-app 0.1.0 → 0.2.0
-      npm install -g open-web-app@latest
-      (disable this check with OWA_NO_UPDATE_CHECK=1)
+  Update available: oh-my-agent-web 0.1.0 → 0.2.0
+      npm install -g oh-my-agent-web@latest
+      (disable this check with OMAW_NO_UPDATE_CHECK=1)
 ```
 
 The check hits the registry at most once per 24h (result cached in
-`~/.cache/open-web-app/update-check.json`), never blocks on errors, and is skipped
+`~/.cache/oh-my-agent-web/update-check.json`), never blocks on errors, and is skipped
 for `--help` / `--version` / `--json`.
 
 | Env | Default | Meaning |
 | --- | --- | --- |
-| `OWA_NO_UPDATE_CHECK` | *(unset)* | `1` disables the version check |
-| `OWA_UPDATE_CHECK_INTERVAL_MS` | `86400000` (24h) | Minimum gap between registry checks |
+| `OMAW_NO_UPDATE_CHECK` | *(unset)* | `1` disables the version check |
+| `OMAW_UPDATE_CHECK_INTERVAL_MS` | `86400000` (24h) | Minimum gap between registry checks |
 
 Also skipped automatically when `CI` or `NO_UPDATE_NOTIFIER` is set.
 
@@ -73,9 +73,9 @@ npm start              # http://127.0.0.1:25257
 
 `npm start` boots the server, spawns `codex app-server --listen ws://127.0.0.1:25258`
 (unless a healthy one is already running), and opens your browser. The app-server
-is started as-is: by default open-web-app injects **no** `chatgpt_base_url` /
+is started as-is: by default oh-my-agent-web injects **no** `chatgpt_base_url` /
 `model_providers.capture.base_url` overrides and runs no capture proxy. Set
-`OWA_REQUEST_INSPECTOR=1` to opt into the loopback request/response inspector
+`OMAW_REQUEST_INSPECTOR=1` to opt into the loopback request/response inspector
 (which is what makes each session show live request/response logs).
 
 ## Development
@@ -85,7 +85,7 @@ npm run dev
 ```
 
 Runs the backend (`tsx watch`, port **25257**) and mounts Vite **in the same
-process** as middleware (`OWA_DEV_WEB=1`). There is only one port and one entry
+process** as middleware (`OMAW_DEV_WEB=1`). There is only one port and one entry
 point — **http://127.0.0.1:25257** — which serves the live frontend source (with
 HMR) and the `/ws` hub from the same origin. No build step, no second dev port.
 
@@ -110,44 +110,44 @@ Other useful scripts:
 | Script                   | What it does                                          |
 | ------------------------ | ----------------------------------------------------- |
 | `npm run build:server`   | `tsc -p tsconfig.server.json` → `dist/`               |
-| `npm run stop`           | Gracefully stops the service on `OWA_PORT` (default 25257) |
+| `npm run stop`           | Gracefully stops the service on `OMAW_PORT` (default 25257) |
 | `npm run restart`        | Stops and starts the service again                    |
 | `npm run typecheck`      | Typechecks server + web without emitting              |
 | `npm run smoke`          | End-to-end smoke test against a real codex app-server |
 | `npm run ws`             | WebSocket client for the app-server (see below) |
-| `npm run owa`            | Run from source: no args → dev stack on http://127.0.0.1:25257 (Vite in-process, no build) |
-| `npm run owa -- <args>`  | Run the CLI from source, e.g. `npm run owa -- ps`, `npm run owa -- ws -p 25259` |
+| `npm run omaw`            | Run from source: no args → dev stack on http://127.0.0.1:25257 (Vite in-process, no build) |
+| `npm run omaw -- <args>`  | Run the CLI from source, e.g. `npm run omaw -- ps`, `npm run omaw -- ws -p 25259` |
 
 ## CLI
 
 ```
-open-web-app [options]
+oh-my-agent-web [options]
 
-  --port <n>          Port for the web UI (env OWA_PORT, default 25257)
-  --host <h>          Host to bind (env OWA_HOST, default 127.0.0.1)
-  --cwd <path>        Working directory for codex (env OWA_CWD, default cwd)
-  --codex-port <n>    app-server port (env OWA_CODEX_PORT, default 25258)
-  --codex-bin <name>  codex executable (env OWA_CODEX_BIN, default "codex")
-  --no-browser        Do not open the browser (env OWA_OPEN=0)
+  --port <n>          Port for the web UI (env OMAW_PORT, default 25257)
+  --host <h>          Host to bind (env OMAW_HOST, default 127.0.0.1)
+  --cwd <path>        Working directory for codex (env OMAW_CWD, default cwd)
+  --codex-port <n>    app-server port (env OMAW_CODEX_PORT, default 25258)
+  --codex-bin <name>  codex executable (env OMAW_CODEX_BIN, default "codex")
+  --no-browser        Do not open the browser (env OMAW_OPEN=0)
   --help, -h          Show help
   --version, -v       Show version
 ```
 
 Flags win over environment variables.
 
-### `open-web-app ws` — WebSocket client
+### `oh-my-agent-web ws` — WebSocket client
 
 Connect straight to the app-server over its WebSocket (default
 `ws://127.0.0.1:25258`), without going through the browser UI:
 
 ```bash
-open-web-app ws                           # interactive: type a message, Enter to send (Ctrl-D to exit)
-open-web-app ws "list the files here"     # one-shot, then exit
-echo "write a hello world" | open-web-app ws
-open-web-app ws --port 25259              # explicit port
-open-web-app ws --url ws://host:port      # explicit address
-open-web-app ws -t <threadId> "continue"  # resume an existing thread
-open-web-app ws -y --model gpt-5.5 "..."  # auto-approve approvals, pick a model
+oh-my-agent-web ws                           # interactive: type a message, Enter to send (Ctrl-D to exit)
+oh-my-agent-web ws "list the files here"     # one-shot, then exit
+echo "write a hello world" | oh-my-agent-web ws
+oh-my-agent-web ws --port 25259              # explicit port
+oh-my-agent-web ws --url ws://host:port      # explicit address
+oh-my-agent-web ws -t <threadId> "continue"  # resume an existing thread
+oh-my-agent-web ws -y --model gpt-5.5 "..."  # auto-approve approvals, pick a model
 ```
 
 Run the same client through npm (pass flags after `--`):
@@ -175,21 +175,21 @@ Env: `CODEX_WS_URL` / `CODEX_WS_HOST` / `CODEX_WS_PORT`.
 Connection priority: `--url` > `--host`/`--port` (`--addr`) > env vars > defaults
 (`127.0.0.1:25258`).
 
-### `open-web-app ps` — processes & ports
+### `oh-my-agent-web ps` — processes & ports
 
-Show every running open-web-app / codex app-server process, whether it is managed by
+Show every running oh-my-agent-web / codex app-server process, whether it is managed by
 this project or external, and which TCP ports it listens on:
 
 ```bash
-open-web-app ps            # table
-open-web-app ps --json     # machine-readable
+oh-my-agent-web ps            # table
+oh-my-agent-web ps --json     # machine-readable
 ```
 
 ```
 TYPE        PID    PPID   SCOPE     PORTS  COMMAND
 app-server  16397  96476  managed   25258  node .../codex app-server --listen ws://127.0.0.1:25258
 app-server  5567   5216   external  -      /Applications/ChatGPT.app/.../codex app-server ...
-open-web-app   96476  1      -         25257  node bin/open-web-app.mjs --no-browser
+oh-my-agent-web   96476  1      -         25257  node bin/oh-my-agent-web.mjs --no-browser
 
 ports: ui=25257  app-server=25258
   25257  listening: yes  pid: 96476
@@ -200,20 +200,20 @@ ports: ui=25257  app-server=25258
 
 | Variable           | Default       | Meaning                                                          |
 | ------------------ | ------------- | ---------------------------------------------------------------- |
-| `OWA_PORT`          | `25257`        | Web UI / HTTP port                                               |
-| `OWA_HOST`          | `127.0.0.1`   | Bind host (loopback by default)                                  |
-| `OWA_CWD`           | `process.cwd()` | Default working directory for codex                            |
-| `OWA_CODEX_PORT`    | `25258`        | app-server port                                                  |
-| `OWA_CODEX_BIN`     | `codex`       | codex executable                                                 |
-| `OWA_ALLOW_ORIGINS` | *(unset)*     | Comma-separated extra allowed WS origins. When unset: same-origin + localhost only |
-| `OWA_OPEN`          | *(unset)*     | `0` disables auto-opening the browser                            |
-| `OWA_REQUEST_INSPECTOR` | *(unset)* | Set to `1` to enable the loopback request/response capture proxy. Off by default; when off, no `chatgpt_base_url` / `model_providers.capture.base_url` overrides are injected |
-| `OWA_CODEX_UPSTREAM` | `https://chatgpt.com/backend-api/codex` | Upstream URL for the capture proxy |
-| `OWA_LOG_MAX_BODY` | `16 MiB`        | Maximum body retained per exchange                               |
+| `OMAW_PORT`          | `25257`        | Web UI / HTTP port                                               |
+| `OMAW_HOST`          | `127.0.0.1`   | Bind host (loopback by default)                                  |
+| `OMAW_CWD`           | `process.cwd()` | Default working directory for codex                            |
+| `OMAW_CODEX_PORT`    | `25258`        | app-server port                                                  |
+| `OMAW_CODEX_BIN`     | `codex`       | codex executable                                                 |
+| `OMAW_ALLOW_ORIGINS` | *(unset)*     | Comma-separated extra allowed WS origins. When unset: same-origin + localhost only |
+| `OMAW_OPEN`          | *(unset)*     | `0` disables auto-opening the browser                            |
+| `OMAW_REQUEST_INSPECTOR` | *(unset)* | Set to `1` to enable the loopback request/response capture proxy. Off by default; when off, no `chatgpt_base_url` / `model_providers.capture.base_url` overrides are injected |
+| `OMAW_CODEX_UPSTREAM` | `https://chatgpt.com/backend-api/codex` | Upstream URL for the capture proxy |
+| `OMAW_LOG_MAX_BODY` | `16 MiB`        | Maximum body retained per exchange                               |
 
 ## Architecture
 
-- **`server/request-inspector.ts`** — optional (opt-in via `OWA_REQUEST_INSPECTOR=1`)
+- **`server/request-inspector.ts`** — optional (opt-in via `OMAW_REQUEST_INSPECTOR=1`)
   loopback Responses API proxy: forwards
   managed Codex traffic, redacts sensitive headers, incrementally captures SSE,
   persists `data/YYYY-MM-DD/*.json` with `0600` permissions, and serves
@@ -222,40 +222,40 @@ ports: ui=25257  app-server=25258
   - Reuses a healthy app-server if the port already answers `GET /readyz`
     (external attach); otherwise spawns one.
   - Readiness via stdout (`listening on:`) **and** `/readyz` polling.
-  - stdout/stderr → 500-line ring buffer (`owa/codex/log`).
+  - stdout/stderr → 500-line ring buffer (`omaw/codex/log`).
   - Auto-restart with exponential backoff (cap 10s), `restarts` counter.
   - Clean shutdown: SIGTERM then SIGKILL; only kills children **we** spawned.
 - **`server/codex-client.ts`** — WS JSON-RPC client: `initialize` on every
   (re)connect, id-correlated `request()`, `notification` / `serverRequest`
   events, `respond()` / `respondError()`.
-- **`server/fs-service.ts`** — `owa/paths`, `owa/fs/list`, `owa/fs/read`.
+- **`server/fs-service.ts`** — `omaw/paths`, `omaw/fs/list`, `omaw/fs/read`.
 - **`server/index.ts`** — express + `ws` hub, `/api/health`, `/api/version`,
   static SPA serving from `web/dist`, origin checks, 30s heartbeat.
-- **`bin/open-web-app.mjs`** — CLI entry, loads `dist/server/index.js`.
+- **`bin/oh-my-agent-web.mjs`** — CLI entry, loads `dist/server/index.js`.
 
 ## Browser ↔ server protocol
 
 See [`shared/protocol.ts`](./shared/protocol.ts) for the frozen envelope.
-Everything except `owa/*` is proxied verbatim to codex.
+Everything except `omaw/*` is proxied verbatim to codex.
 
 Client → server: `rpc`, `reply`, `ping`.
 Server → client: `welcome`, `status`, `rpcResult`, `event`, `serverRequest`, `pong`.
 
-### Local methods (`owa/*`)
+### Local methods (`omaw/*`)
 
 | Method                | Params                        | Result                                   |
 | --------------------- | ----------------------------- | ---------------------------------------- |
-| `owa/paths`            | —                             | `{ cwd, home, codexHome }`               |
-| `owa/fs/list`          | `{ path?, maxEntries? }`      | `{ path, entries: FsEntry[] }`           |
-| `owa/fs/read`          | `{ path, maxBytes? }`         | `{ path, text, truncated }`              |
-| `owa/codex/status`     | —                             | `{ status: CodexStatus }`                |
-| `owa/codex/restart`    | —                             | `{ ok: true }`                           |
-| `owa/codex/log`        | —                             | `{ lines: string[] }`                    |
-| `owa/request-logs/list` | `{ threadId, limit? }`       | Thread-filtered live/history summaries |
-| `owa/request-logs/detail` | `{ id }`                   | Full request/response exchange          |
+| `omaw/paths`            | —                             | `{ cwd, home, codexHome }`               |
+| `omaw/fs/list`          | `{ path?, maxEntries? }`      | `{ path, entries: FsEntry[] }`           |
+| `omaw/fs/read`          | `{ path, maxBytes? }`         | `{ path, text, truncated }`              |
+| `omaw/codex/status`     | —                             | `{ status: CodexStatus }`                |
+| `omaw/codex/restart`    | —                             | `{ ok: true }`                           |
+| `omaw/codex/log`        | —                             | `{ lines: string[] }`                    |
+| `omaw/request-logs/list` | `{ threadId, limit? }`       | Thread-filtered live/history summaries |
+| `omaw/request-logs/detail` | `{ id }`                   | Full request/response exchange          |
 
-`owa/fs/list` sorts directories first and skips `node_modules` / `.git` unless
-you are already inside one. `owa/fs/read` refuses binary files (NUL byte) and
+`omaw/fs/list` sorts directories first and skips `node_modules` / `.git` unless
+you are already inside one. `omaw/fs/read` refuses binary files (NUL byte) and
 truncates at `maxBytes` (default 256 KB).
 
 ### Error codes
@@ -268,7 +268,7 @@ RPC failures come back as `{ type: "rpcResult", ok: false, error: { code, messag
 | `-32002` | codex connection closed / client closed                        |
 | `-32003` | local request timeout (initialize only)                        |
 | `-32000` | generic fs / internal error                                    |
-| `-32601` | unknown `owa/*` method                                          |
+| `-32601` | unknown `omaw/*` method                                          |
 | `-32602` | invalid params                                                |
 
 ### Approvals / server requests
@@ -323,7 +323,7 @@ exercise the dialog.
   command output, `turn/diff/updated`. Deltas are coalesced on
   `requestAnimationFrame` so long turns stay smooth.
 - **Markdown** rendering with GFM + syntax highlighting; `[path](/abs/path)`
-  links open a file preview sheet backed by `owa/fs/read`.
+  links open a file preview sheet backed by `omaw/fs/read`.
 - **Command cards** — command, cwd, streamed output; only running/failed
   statuses are shown when they carry useful signal.
 - **Diff cards** — unified-diff rendering with line numbers and +/- colouring.

@@ -3,28 +3,28 @@
  * update-check.mjs — 轻量级「有新版本就提示」检查（无第三方依赖）。
  *
  * 设计要点：
- *  - 结果缓存到 ~/.cache/open-web-app/update-check.json，默认 24h 才联网检查一次，
+ *  - 结果缓存到 ~/.cache/oh-my-agent-web/update-check.json，默认 24h 才联网检查一次，
  *    避免每次运行都等网络；已知有新版时，每次运行都会提示（读缓存，0 延迟）。
  *  - 任何失败都静默忽略，绝不阻塞 / 影响 CLI 正常功能。
- *  - 可通过 OWA_NO_UPDATE_CHECK=1 关闭；CI 环境自动跳过。
+ *  - 可通过 OMAW_NO_UPDATE_CHECK=1 关闭；CI 环境自动跳过。
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-const PKG = "open-web-app";
+const PKG = "oh-my-agent-web";
 const REGISTRY = `https://registry.npmjs.org/${PKG.replace("/", "%2f")}/latest`;
 const DEFAULT_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24h
 const DEFAULT_TIMEOUT_MS = 1500;
 
 function cacheFile() {
 	const base = process.env.XDG_CACHE_HOME || join(homedir(), ".cache");
-	return join(base, "open-web-app", "update-check.json");
+	return join(base, "oh-my-agent-web", "update-check.json");
 }
 
 /** Should the check be skipped entirely? */
 export function isDisabled() {
-	const off = (process.env.OWA_NO_UPDATE_CHECK ?? "").toLowerCase();
+	const off = (process.env.OMAW_NO_UPDATE_CHECK ?? "").toLowerCase();
 	if (off === "1" || off === "true" || off === "yes") return true;
 	if (process.env.NO_UPDATE_NOTIFIER) return true;
 	if (process.env.CI) return true;
@@ -93,7 +93,7 @@ async function fetchLatest(timeoutMs) {
 export async function checkForUpdate(current, opts = {}) {
 	if (isDisabled()) return null;
 	const file = opts.cacheFile || cacheFile();
-	const interval = Number(process.env.OWA_UPDATE_CHECK_INTERVAL_MS ?? opts.intervalMs ?? DEFAULT_INTERVAL_MS);
+	const interval = Number(process.env.OMAW_UPDATE_CHECK_INTERVAL_MS ?? opts.intervalMs ?? DEFAULT_INTERVAL_MS);
 	const timeout = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 	const now = Date.now();
 
@@ -114,9 +114,9 @@ export async function checkForUpdate(current, opts = {}) {
 export function formatNotice(current, latest) {
 	const lines = [
 		"",
-		`  Update available: open-web-app ${current} -> ${latest}`,
+		`  Update available: oh-my-agent-web ${current} -> ${latest}`,
 		`      npm install -g ${PKG}@latest`,
-		`      (disable this check with OWA_NO_UPDATE_CHECK=1)`,
+		`      (disable this check with OMAW_NO_UPDATE_CHECK=1)`,
 		"",
 	];
 	return lines.join("\n") + "\n";
@@ -130,8 +130,8 @@ export async function notifyUpdate(current, opts = {}) {
 		let text = formatNotice(current, latest);
 		if (process.stderr.isTTY) {
 			text = text.replace(
-				`Update available: open-web-app ${current} -> ${latest}`,
-				`\x1b[33mUpdate available: open-web-app ${current} \u2192 ${latest}\x1b[0m`,
+				`Update available: oh-my-agent-web ${current} -> ${latest}`,
+				`\x1b[33mUpdate available: oh-my-agent-web ${current} \u2192 ${latest}\x1b[0m`,
 			);
 		}
 		process.stderr.write(text);

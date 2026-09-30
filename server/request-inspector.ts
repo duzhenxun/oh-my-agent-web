@@ -328,9 +328,9 @@ export class RequestInspector {
 	private baseUrl = "";
 
 	constructor(options: InspectorOptions) {
-		this.upstream = (options.upstream || process.env.OWA_CODEX_UPSTREAM || DEFAULT_UPSTREAM).replace(/\/$/, "");
+		this.upstream = (options.upstream || process.env.OMAW_CODEX_UPSTREAM || DEFAULT_UPSTREAM).replace(/\/$/, "");
 		this.dataDir = options.dataDir;
-		this.maxBody = options.maxBody ?? Number(process.env.OWA_LOG_MAX_BODY ?? DEFAULT_MAX_BODY);
+		this.maxBody = options.maxBody ?? Number(process.env.OMAW_LOG_MAX_BODY ?? DEFAULT_MAX_BODY);
 	}
 
 	async start(host = "127.0.0.1"): Promise<string> {

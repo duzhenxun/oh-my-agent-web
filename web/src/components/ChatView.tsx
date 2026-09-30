@@ -64,7 +64,7 @@ export function ChatView(_props: ChatViewProps): ReactNode {
 					<div className="empty-mark">
 						<IconSparkles size={28} />
 					</div>
-					<h2>Open Web App</h2>
+					<h2>Oh My Agent Web</h2>
 					<p className="muted">
 						{info?.cwd ? (
 							<>

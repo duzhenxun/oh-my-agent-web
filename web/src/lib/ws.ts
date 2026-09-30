@@ -1,4 +1,4 @@
-// Transport for the browser <-> open-web-app server WebSocket.
+// Transport for the browser <-> oh-my-agent-web server WebSocket.
 //
 // Responsibilities:
 //   * connect + auto-reconnect with exponential backoff + jitter
@@ -296,7 +296,7 @@ export class CodexSocket {
 		}
 	}
 
-	/** Invoke a codex method (or `owa/*`). Rejects on timeout, close, or RPC error. */
+	/** Invoke a codex method (or `omaw/*`). Rejects on timeout, close, or RPC error. */
 	rpc<T = unknown>(method: string, params?: unknown, options: RpcOptions = {}): Promise<T> {
 		const timeoutMs = options.timeoutMs ?? 60_000;
 		// Wait for OPEN first: a request fired during startup or a reconnect window is

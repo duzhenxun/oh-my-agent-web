@@ -6,7 +6,7 @@ import { dirname, join, resolve } from "node:path";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "..");
 
-// Dev has one entry point: `npm run dev` (OWA_DEV_WEB=1) runs the backend on
+// Dev has one entry point: `npm run dev` (OMAW_DEV_WEB=1) runs the backend on
 // :25257 and mounts this config's Vite instance **in-process** as middleware, so
 // there is no second port. The plain `vite` CLI mode (`npm run dev:web`) only
 // exists for the scripted mock backend in web/dev-mock-server.mjs, which cannot

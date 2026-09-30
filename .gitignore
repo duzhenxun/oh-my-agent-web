@@ -3,7 +3,7 @@ dist/
 web/dist/
 *.log
 .DS_Store
-.owa-data/
+.omaw-data/
 # Local request/response captures may contain prompts and source code.
 data/
 

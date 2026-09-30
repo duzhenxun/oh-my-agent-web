@@ -24,7 +24,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
 	componentDidCatch(error: Error, info: ErrorInfo): void {
 		// eslint-disable-next-line no-console
-		console.warn("[open-web-app] item renderer crashed", error, info.componentStack);
+		console.warn("[oh-my-agent-web] item renderer crashed", error, info.componentStack);
 	}
 
 	render(): ReactNode {

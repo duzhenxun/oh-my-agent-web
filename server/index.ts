@@ -1,11 +1,11 @@
 /**
- * open-web-app server — express + WebSocket hub in front of the codex app-server.
+ * oh-my-agent-web server — express + WebSocket hub in front of the codex app-server.
  *
  *   browser  <--ws /ws-->  [this]  <--ws-->  codex app-server (ws://127.0.0.1:25258)
  *
  * 我们是「透明 JSON-RPC 代理 + 进程守护」：
  *  - 浏览器可以按名字调用任意 codex 方法；所有 codex 通知原样广播。
- *  - `owa/*` 是本地方法（状态 / 日志 / 文件系统 / 路径），由本进程处理。
+ *  - `omaw/*` 是本地方法（状态 / 日志 / 文件系统 / 路径），由本进程处理。
  *  - codex 反向请求（审批 / user input / 动态工具）广播给所有标签页，谁先 reply 谁赢，
  *    随后广播 `serverRequest/resolved` 让其他标签页关掉弹窗。
  *  - 同一 `dist/server/index.js` 既能被 CLI `startServer()` 调用，也能直接 `node` 运行。
@@ -39,8 +39,8 @@ import {
 /* config                                                              */
 /* ------------------------------------------------------------------ */
 
-const DEFAULT_OWA_PORT = 25257;
-const DEFAULT_OWA_HOST = "127.0.0.1";
+const DEFAULT_OMAW_PORT = 25257;
+const DEFAULT_OMAW_HOST = "127.0.0.1";
 const DEFAULT_CODEX_PORT = 25258;
 const DEFAULT_CODEX_BIN = "codex";
 const HEARTBEAT_MS = 30_000;
@@ -54,19 +54,19 @@ const SERVER_REQUEST_HISTORY = 2_000;
 const CODEX_READY_WAIT_MS = 20_000;
 
 /**
- * `OWA_DEV_WEB=1` —— dev 时前端不经 `web/dist`，而是把 Vite **挂在同一个进程里**
+ * `OMAW_DEV_WEB=1` —— dev 时前端不经 `web/dist`，而是把 Vite **挂在同一个进程里**
  * 当中间件（middleware mode）。
  *
  * 这样对外只有一个源、一个端口：`http://127.0.0.1:25257`。页面由 Vite 现编
  * （源码 + HMR，不用 build），`/ws` 与页面同源，也没有第二个端口要记、要开、
  * 或者要配置跨源白名单。
  */
-const DEV_SOURCE = process.env.OWA_DEV_WEB === "1";
+const DEV_SOURCE = process.env.OMAW_DEV_WEB === "1";
 /**
  * Vite 的 HMR 通道挂在同一个 http server 上，得给个专属路径，
  * 否则会和下面 `/ws` 的 upgrade 拦截器撞车（非 /ws 一律 destroy）。
  */
-const DEV_HMR_PATH = "/owa-hmr";
+const DEV_HMR_PATH = "/omaw-hmr";
 
 export interface StartOptions {
 	port?: number;
@@ -133,7 +133,7 @@ function codexVersionFromHandshake(userAgent: string | undefined): string | null
 /* ------------------------------------------------------------------ */
 
 function parseAllowOrigins(): string[] {
-	return (process.env.OWA_ALLOW_ORIGINS ?? "")
+	return (process.env.OMAW_ALLOW_ORIGINS ?? "")
 		.split(",")
 		.map((s) => s.trim().toLowerCase())
 		.filter(Boolean);
@@ -142,7 +142,7 @@ function parseAllowOrigins(): string[] {
 /**
  * 浏览器 upgrade 的 Origin 校验：
  *  - 无 Origin（curl / 脚本 / ws 测试）放行；
- *  - 设置了 OWA_ALLOW_ORIGINS 就按白名单；
+ *  - 设置了 OMAW_ALLOW_ORIGINS 就按白名单；
  *  - 否则放行同源，以及 localhost / 127.0.0.1 / ::1 的任意端口（覆盖 Vite dev server）。
  */
 function originAllowed(req: { headers: Record<string, string | string[] | undefined> }): boolean {
@@ -197,27 +197,27 @@ function asJsonRpcError(err: unknown): JsonRpcError {
 
 export async function startServer(options: StartOptions = {}): Promise<ServerHandle> {
 	const version = readOwnVersion();
-	const cwd = resolve(options.cwd ?? process.env.OWA_CWD ?? process.cwd());
-	const port = options.port ?? Number(process.env.OWA_PORT ?? DEFAULT_OWA_PORT);
-	const host = options.host ?? process.env.OWA_HOST ?? DEFAULT_OWA_HOST;
-	const codexPort = options.codexPort ?? Number(process.env.OWA_CODEX_PORT ?? DEFAULT_CODEX_PORT);
-	const codexBin = options.codexBin ?? process.env.OWA_CODEX_BIN ?? DEFAULT_CODEX_BIN;
+	const cwd = resolve(options.cwd ?? process.env.OMAW_CWD ?? process.cwd());
+	const port = options.port ?? Number(process.env.OMAW_PORT ?? DEFAULT_OMAW_PORT);
+	const host = options.host ?? process.env.OMAW_HOST ?? DEFAULT_OMAW_HOST;
+	const codexPort = options.codexPort ?? Number(process.env.OMAW_CODEX_PORT ?? DEFAULT_CODEX_PORT);
+	const codexBin = options.codexBin ?? process.env.OMAW_CODEX_BIN ?? DEFAULT_CODEX_BIN;
 	const log = options.quiet
 		? (): void => undefined
 		: (...args: unknown[]): void => {
-				console.log("[open-web-app]", ...args);
+				console.log("[oh-my-agent-web]", ...args);
 			};
 
 	/* -------- supervisor + client (capture/inspector off by default) -------- */
-	// 抓包（loopback Responses 代理）默认关闭：只有显式设置 OWA_REQUEST_INSPECTOR=1
+	// 抓包（loopback Responses 代理）默认关闭：只有显式设置 OMAW_REQUEST_INSPECTOR=1
 	// 才会启动 inspector，也才会给 app-server 注入 chatgpt_base_url /
 	// model_providers.capture.base_url 这两个 -c 覆盖。默认一个都不加，codex 走自己的配置。
 	const inspector = new RequestInspector({ dataDir: join(PACKAGE_ROOT, "data") });
 	let inspectorUrl = "";
-	if (process.env.OWA_REQUEST_INSPECTOR === "1") {
+	if (process.env.OMAW_REQUEST_INSPECTOR === "1") {
 		try {
 			inspectorUrl = await inspector.start();
-			log(`request inspector: ${inspectorUrl} -> ${process.env.OWA_CODEX_UPSTREAM ?? "https://chatgpt.com/backend-api/codex"}`);
+			log(`request inspector: ${inspectorUrl} -> ${process.env.OMAW_CODEX_UPSTREAM ?? "https://chatgpt.com/backend-api/codex"}`);
 		} catch (error) {
 			log(`request inspector disabled: ${error instanceof Error ? error.message : String(error)}`);
 		}
@@ -248,7 +248,7 @@ export async function startServer(options: StartOptions = {}): Promise<ServerHan
 	app.get("/api/version", (_req: Request, res: Response) => {
 		const hs = client.handshake();
 		res.json({
-			name: "open-web-app",
+			name: "oh-my-agent-web",
 			version,
 			protocolVersion: PROTOCOL_VERSION,
 			codexVersion: codexVersionFromHandshake(hs?.userAgent),
@@ -351,7 +351,7 @@ export async function startServer(options: StartOptions = {}): Promise<ServerHan
 		}
 	}
 
-	/* -------- local `owa/*` methods -------- */
+	/* -------- local `omaw/*` methods -------- */
 	async function handleLocal(method: string, params: unknown): Promise<unknown> {
 		const p = isRecord(params) ? params : {};
 		switch (method) {
@@ -366,7 +366,7 @@ export async function startServer(options: StartOptions = {}): Promise<ServerHan
 			case LOCAL_METHODS.requestLogsList:
 				return inspector.list(typeof p.threadId === "string" ? p.threadId : undefined, typeof p.limit === "number" ? p.limit : undefined);
 			case LOCAL_METHODS.requestLogsDetail: {
-				if (typeof p.id !== "string" || !p.id) throw new FsError(-32602, "owa/request-logs/detail requires { id: string }");
+				if (typeof p.id !== "string" || !p.id) throw new FsError(-32602, "omaw/request-logs/detail requires { id: string }");
 				const entry = await inspector.get(p.id);
 				if (!entry) throw new FsError(-32004, "request log not found");
 				return entry;
@@ -378,7 +378,7 @@ export async function startServer(options: StartOptions = {}): Promise<ServerHan
 					maxEntries: typeof p.maxEntries === "number" ? p.maxEntries : undefined,
 				});
 			case LOCAL_METHODS.fsRead:
-				if (typeof p.path !== "string") throw new FsError(-32602, "owa/fs/read requires { path: string }");
+				if (typeof p.path !== "string") throw new FsError(-32602, "omaw/fs/read requires { path: string }");
 				return readTextFile({
 					path: p.path,
 					cwd,
@@ -397,7 +397,7 @@ export async function startServer(options: StartOptions = {}): Promise<ServerHan
 	async function handleRpc(ws: WebSocket, requestId: string, method: string, params: unknown): Promise<void> {
 		try {
 			let result: unknown;
-			if (method.startsWith("owa/")) {
+			if (method.startsWith("omaw/")) {
 				result = await handleLocal(method, params);
 			} else {
 				// A browser opened during startup races the app-server's boot (and a
@@ -578,14 +578,14 @@ if (invokedPath === import.meta.url) {
 	startServer()
 		.then((handle) => {
 			const shutdown = (signal: string): void => {
-				console.log(`\n[open-web-app] received ${signal}, shutting down…`);
+				console.log(`\n[oh-my-agent-web] received ${signal}, shutting down…`);
 				void handle.close().finally(() => process.exit(0));
 			};
 			process.on("SIGINT", () => shutdown("SIGINT"));
 			process.on("SIGTERM", () => shutdown("SIGTERM"));
 		})
 		.catch((err) => {
-			console.error("[open-web-app] failed to start:", err);
+			console.error("[oh-my-agent-web] failed to start:", err);
 			process.exit(1);
 		});
 }

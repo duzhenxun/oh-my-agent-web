@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * open-web-app ws — 连接 codex app-server WebSocket 的命令行客户端。
+ * oh-my-agent-web ws — 连接 codex app-server WebSocket 的命令行客户端。
  *
- * 参考 /Users/dds/data/ai/work/codex-ws-client.mjs，整理为 open-web-app 的子命令：
- *   open-web-app ws                          # 交互模式（Ctrl-C 中断当前 turn / Ctrl-D 退出）
- *   open-web-app ws "帮我看看这个目录"        # 单次提问后退出
- *   echo "写个 hello world" | open-web-app ws # 从管道读
- *   open-web-app ws --port 25259             # 指定端口
- *   open-web-app ws --url ws://host:port     # 指定完整地址
+ * 参考 /Users/dds/data/ai/work/codex-ws-client.mjs，整理为 oh-my-agent-web 的子命令：
+ *   oh-my-agent-web ws                          # 交互模式（Ctrl-C 中断当前 turn / Ctrl-D 退出）
+ *   oh-my-agent-web ws "帮我看看这个目录"        # 单次提问后退出
+ *   echo "写个 hello world" | oh-my-agent-web ws # 从管道读
+ *   oh-my-agent-web ws --port 25259             # 指定端口
+ *   oh-my-agent-web ws --url ws://host:port     # 指定完整地址
  *
  * 退出语义：turn 跑在 app-server 上而不在本进程里，所以直接掉线会留下一个没人看的
  * 生成过程（继续烧 token）。因此所有退出路径都走 shutdown()：先 `turn/interrupt`，
@@ -21,10 +21,10 @@ import { pathToFileURL } from "node:url";
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 25258;
 
-const HELP = `open-web-app ws — connect to the codex app-server over WebSocket
+const HELP = `oh-my-agent-web ws — connect to the codex app-server over WebSocket
 
 Usage:
-  open-web-app ws [options] ["message" ...]
+  oh-my-agent-web ws [options] ["message" ...]
 
 Connection:
   --url <ws://host:port>   Full address (also accepts bare host:port). Default ws://${DEFAULT_HOST}:${DEFAULT_PORT}
@@ -47,7 +47,7 @@ Session:
   -h, --help               Show this help
 `;
 
-/** Parse `open-web-app ws [ ... ]` arguments. */
+/** Parse `oh-my-agent-web ws [ ... ]` arguments. */
 export function parseWsArgs(argv) {
 	const opts = {
 		url: null,
@@ -284,7 +284,7 @@ export async function runWsClient(argv) {
 	try {
 		url = resolveWsUrl(opts);
 	} catch (e) {
-		console.error(`[open-web-app ws] ${e.message}`);
+		console.error(`[oh-my-agent-web ws] ${e.message}`);
 		process.exitCode = 2;
 		return;
 	}
@@ -361,14 +361,14 @@ export async function runWsClient(argv) {
 	try {
 		await client.connect();
 	} catch (e) {
-		console.error(`[open-web-app ws] failed to connect ${url} — ${e.message}`);
-		console.error("  make sure the app-server is running, e.g. `open-web-app` (default ws://127.0.0.1:25258)");
+		console.error(`[oh-my-agent-web ws] failed to connect ${url} — ${e.message}`);
+		console.error("  make sure the app-server is running, e.g. `oh-my-agent-web` (default ws://127.0.0.1:25258)");
 		process.exitCode = 1;
 		return;
 	}
 
 	const init = await client.request("initialize", {
-		clientInfo: { name: "open-web-app-ws", title: "Open Web App WS Client", version: "1.0.0" },
+		clientInfo: { name: "oh-my-agent-web-ws", title: "Oh My Agent Web WS Client", version: "1.0.0" },
 		capabilities: { experimentalApi: true, requestAttestation: false },
 	});
 	log(`[server] ${init.userAgent}  codexHome=${init.codexHome}`);
@@ -583,11 +583,11 @@ export async function runWsClient(argv) {
 	await shutdown(0);
 }
 
-// Allow running this file directly: `node bin/open-web-app-ws.mjs ...`
+// Allow running this file directly: `node bin/oh-my-agent-web-ws.mjs ...`
 const invoked = process.argv[1] ? pathToFileURL(process.argv[1]).href : "";
 if (invoked === import.meta.url) {
 	runWsClient(process.argv.slice(2)).catch((err) => {
-		console.error(`[open-web-app ws] ${err instanceof Error ? err.message : String(err)}`);
+		console.error(`[oh-my-agent-web ws] ${err instanceof Error ? err.message : String(err)}`);
 		process.exit(1);
 	});
 }

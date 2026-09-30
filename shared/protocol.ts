@@ -1,10 +1,10 @@
 /**
- * open-web-app — browser <-> server wire protocol.
+ * oh-my-agent-web — browser <-> server wire protocol.
  *
  * The browser talks to OUR server (not directly to codex). Our server is a thin,
  * transparent proxy in front of `codex app-server --listen ws://127.0.0.1:25258`:
  *
- *   browser  <--ws /ws-->  open-web-app server  <--ws-->  codex app-server
+ *   browser  <--ws /ws-->  oh-my-agent-web server  <--ws-->  codex app-server
  *
  * Because the proxy is transparent, the browser may invoke ANY codex app-server
  * JSON-RPC method by name (`thread/start`, `turn/start`, `model/list`, ...) and
@@ -17,7 +17,7 @@
  * Envelope rules
  * --------------
  * client -> server:
- *   { type: "rpc", requestId, method, params }   invoke a codex method (or `owa/*`)
+ *   { type: "rpc", requestId, method, params }   invoke a codex method (or `omaw/*`)
  *   { type: "reply", id, result }                answer a serverRequest (approval, user input)
  *   { type: "reply", id, error }                 reject a serverRequest
  *   { type: "ping" }
@@ -93,26 +93,26 @@ export type ServerMessage =
 	| { type: "pong" };
 
 /* ------------------------------------------------------------------ */
-/* local (`owa/*`) methods — handled by OUR server, not proxied         */
+/* local (`omaw/*`) methods — handled by OUR server, not proxied         */
 /* ------------------------------------------------------------------ */
 
 export const LOCAL_METHODS = {
 	/** -> { status: CodexStatus } */
-	codexStatus: "owa/codex/status",
+	codexStatus: "omaw/codex/status",
 	/** -> { ok: true } — kill + respawn the app-server */
-	codexRestart: "owa/codex/restart",
+	codexRestart: "omaw/codex/restart",
 	/** -> { lines: string[] } — tail of the app-server log */
-	codexLog: "owa/codex/log",
+	codexLog: "omaw/codex/log",
 	/** { threadId?: string, limit?: number } -> request/response summaries */
-	requestLogsList: "owa/request-logs/list",
+	requestLogsList: "omaw/request-logs/list",
 	/** { id: string } -> one full request/response exchange */
-	requestLogsDetail: "owa/request-logs/detail",
+	requestLogsDetail: "omaw/request-logs/detail",
 	/** { path?: string } -> { path, entries: [{name,path,kind,size,mtime}] } */
-	fsList: "owa/fs/list",
+	fsList: "omaw/fs/list",
 	/** { path: string, maxBytes?: number } -> { path, text, truncated } */
-	fsRead: "owa/fs/read",
+	fsRead: "omaw/fs/read",
 	/** -> { cwd, home, codexHome } */
-	paths: "owa/paths",
+	paths: "omaw/paths",
 } as const;
 
 export interface FsEntry {

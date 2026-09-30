@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * npm run stop / npm run restart helper for the local open-web-app service.
- * It only targets a open-web-app process listening on OWA_PORT.
+ * npm run stop / npm run restart helper for the local oh-my-agent-web service.
+ * It only targets a oh-my-agent-web process listening on OMAW_PORT.
  */
 import { execFileSync, spawn } from "node:child_process";
 
-const port = Number(process.env.OWA_PORT || 25257);
+const port = Number(process.env.OMAW_PORT || 25257);
 const command = process.argv[2] || "stop";
 const extraArgs = process.argv.slice(3);
 
@@ -56,9 +56,27 @@ function listeningPids() {
 	}
 }
 
+/**
+ * Is this pid one of ours?
+ *
+ * Matched against the **command line**, which differs by how the server was
+ * started:
+ *   - global install:  `…/bin/oh-my-agent-web.mjs` (or `…/bin/omaw` via the alias)
+ *   - repo, dev:       `tsx watch server/index.ts` → the listener child runs
+ *                      `node --require …/tsx … server/index.ts`
+ *   - repo, built:     `node …/dist/server/index.js`
+ *
+ * The checkout folder name is deliberately NOT used: it can be anything, and
+ * matching it only ever worked by accident (when the folder happened to be named
+ * after the package).
+ */
 function isProjectProcess(pid) {
 	const cmd = commandForPid(pid);
-	return /open-web-app|bin[\\/]open-web-app|dist[\\/]server[\\/]index/.test(cmd);
+	if (/oh-my-agent-web|bin[\\/](?:oh-my-agent-web|omaw)/.test(cmd)) return true;
+	// Dev / built entry point, however the runner was invoked. The path is
+	// relative in the child's argv (`… tsx/dist/loader.mjs server/index.ts`), so
+	// match on a word boundary rather than a preceding slash.
+	return /\bserver[\\/]index\.(?:ts|js)\b/.test(cmd) && /\b(?:node|tsx)\b/.test(cmd);
 }
 
 function isAlive(pid) {
@@ -77,7 +95,7 @@ function sleep(ms) {
 async function stop() {
 	const pids = listeningPids();
 	if (pids.length === 0) {
-		console.log(`open-web-app 未运行（端口 ${port}）。`);
+		console.log(`oh-my-agent-web 未运行（端口 ${port}）。`);
 		return true;
 	}
 
@@ -88,12 +106,12 @@ async function stop() {
 		return false;
 	}
 	if (owned.length === 0) {
-		console.error(`端口 ${port} 被占用，但不是 open-web-app 进程，未执行停止。`);
+		console.error(`端口 ${port} 被占用，但不是 oh-my-agent-web 进程，未执行停止。`);
 		return false;
 	}
 
 	for (const pid of owned) {
-		console.log(`正在停止 open-web-app (pid ${pid})…`);
+		console.log(`正在停止 oh-my-agent-web (pid ${pid})…`);
 		try {
 			process.kill(pid, "SIGTERM");
 		} catch (error) {
@@ -112,7 +130,7 @@ async function stop() {
 			/* already gone */
 		}
 	}
-	console.log("open-web-app 已停止。");
+	console.log("oh-my-agent-web 已停止。");
 	return true;
 }
 
@@ -122,7 +140,7 @@ if (command === "stop") {
 	if (!(await stop())) process.exit(1);
 	const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 	const args = extraArgs.length > 0 ? ["start", "--", ...extraArgs] : ["start"];
-	console.log("正在重新启动 open-web-app…");
+	console.log("正在重新启动 oh-my-agent-web…");
 	const child = spawn(npm, args, { stdio: "inherit", env: process.env });
 	child.on("error", (error) => {
 		console.error(`启动失败：${error.message}`);

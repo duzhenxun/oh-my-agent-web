@@ -1,4 +1,4 @@
-// web/.mock — DEV-ONLY mock of the open-web-app server. It is NOT imported by
+// web/.mock — DEV-ONLY mock of the oh-my-agent-web server. It is NOT imported by
 // the app bundle; run it manually:
 //
 //   node web/dev-mock-server.mjs
@@ -11,8 +11,8 @@
 
 import { WebSocketServer } from "ws";
 
-const PORT = Number(process.env.OWA_MOCK_PORT || 25257);
-const CWD = process.env.OWA_MOCK_CWD || "/Users/dev/projects/demo-app";
+const PORT = Number(process.env.OMAW_MOCK_PORT || 25257);
+const CWD = process.env.OMAW_MOCK_CWD || "/Users/dev/projects/demo-app";
 const NOW = Math.floor(Date.now() / 1000);
 
 /* ------------------------------------------------------------------ */
@@ -68,7 +68,7 @@ function baseThread(over) {
 		path: null,
 		cwd: CWD,
 		cliVersion: "0.0.0-mock",
-		originator: "open-web-app",
+		originator: "oh-my-agent-web",
 		source: "cli",
 		threadSource: null,
 		agentNickname: null,
@@ -582,18 +582,18 @@ async function handleMessage(ws, msg) {
 		case "account/read":
 			rpcResult(ws, requestId, { account: { type: "chatgpt", email: "dev@example.com", planType: "plus" }, requiresOpenaiAuth: false });
 			return;
-		case "owa/paths":
+		case "omaw/paths":
 			rpcResult(ws, requestId, { cwd: CWD, home: "/Users/dev", codexHome: "/Users/dev/.codex" });
 			return;
-		case "owa/codex/status":
+		case "omaw/codex/status":
 			rpcResult(ws, requestId, { status });
 			return;
-		case "owa/codex/restart":
+		case "omaw/codex/restart":
 			status.restarts += 1;
 			rpcResult(ws, requestId, { ok: true });
 			setTimeout(() => send(ws, { type: "status", codex: { ...status, phase: "ready", since: Date.now() } }), 800);
 			return;
-		case "owa/codex/log":
+		case "omaw/codex/log":
 			rpcResult(ws, requestId, {
 				lines: [
 					"[mock] app-server listening on ws://127.0.0.1:25258",
@@ -602,12 +602,12 @@ async function handleMessage(ws, msg) {
 				],
 			});
 			return;
-		case "owa/fs/list": {
+		case "omaw/fs/list": {
 			const path = typeof params.path === "string" && params.path ? params.path : CWD;
 			rpcResult(ws, requestId, { path, entries: fsEntries(path) });
 			return;
 		}
-		case "owa/fs/read": {
+		case "omaw/fs/read": {
 			const path = typeof params.path === "string" ? params.path : "";
 			rpcResult(ws, requestId, { path, text: fsText(path), truncated: false });
 			return;
@@ -792,6 +792,6 @@ async function handleMessage(ws, msg) {
 	}
 }
 
-console.log(`[mock] open-web-app mock server on ws://127.0.0.1:${PORT}/ws`);
+console.log(`[mock] oh-my-agent-web mock server on ws://127.0.0.1:${PORT}/ws`);
 console.log(`[mock] cwd = ${CWD}`);
 void approvalSeq;

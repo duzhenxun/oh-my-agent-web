@@ -974,7 +974,7 @@ export function CodexProvider({ children }: { children: ReactNode }): ReactNode 
 						/* mock/older server may not implement */
 					},
 				);
-				// `owa/paths` needs no codex, so it is the one call we make immediately —
+				// `omaw/paths` needs no codex, so it is the one call we make immediately —
 				// it tells us which project to scope the thread list to. Everything that
 				// depends on the app-server goes through `bootstrapCodex`, which the
 				// server-side ready-wait makes safe even while codex is still booting.
@@ -1160,7 +1160,7 @@ export function CodexProvider({ children }: { children: ReactNode }): ReactNode 
 	 * the thread list. Safe to call repeatedly.
 	 *
 	 * `cwdOverride` exists because on the very first attach the project may not be
-	 * in React state yet (the `owa/paths` reply dispatches it) — see the connect
+	 * in React state yet (the `omaw/paths` reply dispatches it) — see the connect
 	 * effect. On a reconnect `stateRef` is already settled and it can be omitted.
 	 */
 	const bootstrapCodex = useCallback(

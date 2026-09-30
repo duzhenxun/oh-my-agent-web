@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * open-web-app CLI — plain ESM (no build step).
+ * oh-my-agent-web CLI — plain ESM (no build step).
  *
  * 加载已编译的 dist/server/index.js，解析参数 / 环境变量，启动服务并在需要时打开浏览器。
  * 使用 `--help` 查看全部参数。
@@ -13,29 +13,29 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SERVER_ENTRY = resolve(__dirname, "..", "dist", "server", "index.js");
 
-const HELP = `open-web-app — browser UI for the Codex CLI app-server
+const HELP = `oh-my-agent-web — browser UI for the Codex CLI app-server
 
 Usage:
-  open-web-app [options]
-  open-web-app ws [options] ["message" ...]   Connect to the app-server over WebSocket
-  open-web-app ps [--json]                    Show running processes and their ports
+  oh-my-agent-web [options]
+  oh-my-agent-web ws [options] ["message" ...]   Connect to the app-server over WebSocket
+  oh-my-agent-web ps [--json]                    Show running processes and their ports
 
 Commands:
-  ws                  WebSocket client for the codex app-server (run 'open-web-app ws --help')
-  ps                  Show running open-web-app / app-server processes and their ports
+  ws                  WebSocket client for the codex app-server (run 'oh-my-agent-web ws --help')
+  ps                  Show running oh-my-agent-web / app-server processes and their ports
 
 Options:
-  --port <n>          Port for the web UI (env OWA_PORT, default 25257)
-  --host <h>          Host to bind (env OWA_HOST, default 127.0.0.1)
-  --cwd <path>        Working directory for codex (env OWA_CWD, default cwd)
-  --codex-port <n>    app-server port (env OWA_CODEX_PORT, default 25258)
-  --codex-bin <name>  codex executable (env OWA_CODEX_BIN, default "codex")
-  --no-browser        Do not open the browser (env OWA_OPEN=0)
+  --port <n>          Port for the web UI (env OMAW_PORT, default 25257)
+  --host <h>          Host to bind (env OMAW_HOST, default 127.0.0.1)
+  --cwd <path>        Working directory for codex (env OMAW_CWD, default cwd)
+  --codex-port <n>    app-server port (env OMAW_CODEX_PORT, default 25258)
+  --codex-bin <name>  codex executable (env OMAW_CODEX_BIN, default "codex")
+  --no-browser        Do not open the browser (env OMAW_OPEN=0)
   --help, -h          Show this help
   --version, -v       Show version
 
 Environment:
-  OWA_ALLOW_ORIGINS    Comma separated extra allowed WS origins
+  OMAW_ALLOW_ORIGINS    Comma separated extra allowed WS origins
 `;
 
 /** 支持 `--flag value` 与 `--flag=value` 两种写法。 */
@@ -156,16 +156,16 @@ async function main() {
 		}
 	}
 
-	// Subcommand: `open-web-app ws [...]` — WebSocket client for the app-server.
+	// Subcommand: `oh-my-agent-web ws [...]` — WebSocket client for the app-server.
 	if (argv[0] === "ws") {
-		const { runWsClient } = await import("./open-web-app-ws.mjs");
+		const { runWsClient } = await import("./oh-my-agent-web-ws.mjs");
 		await runWsClient(argv.slice(1));
 		return;
 	}
 
-	// Subcommand: `open-web-app ps [...]` (aliases: status, ports) — running processes/ports.
+	// Subcommand: `oh-my-agent-web ps [...]` (aliases: status, ports) — running processes/ports.
 	if (argv[0] === "ps" || argv[0] === "status" || argv[0] === "ports") {
-		const { runPs } = await import("./open-web-app-ps.mjs");
+		const { runPs } = await import("./oh-my-agent-web-ps.mjs");
 		await runPs(argv.slice(1));
 		return;
 	}
@@ -188,11 +188,11 @@ async function main() {
 		process.exit(1);
 	}
 
-	const port = parsePort(opts.port ?? process.env.OWA_PORT, 25257);
-	const host = opts.host ?? process.env.OWA_HOST ?? "127.0.0.1";
-	const cwd = opts.cwd ? resolve(opts.cwd) : process.env.OWA_CWD ? resolve(process.env.OWA_CWD) : process.cwd();
-	const codexPort = parsePort(opts.codexPort ?? process.env.OWA_CODEX_PORT, 25258);
-	const codexBin = opts.codexBin ?? process.env.OWA_CODEX_BIN ?? "codex";
+	const port = parsePort(opts.port ?? process.env.OMAW_PORT, 25257);
+	const host = opts.host ?? process.env.OMAW_HOST ?? "127.0.0.1";
+	const cwd = opts.cwd ? resolve(opts.cwd) : process.env.OMAW_CWD ? resolve(process.env.OMAW_CWD) : process.cwd();
+	const codexPort = parsePort(opts.codexPort ?? process.env.OMAW_CODEX_PORT, 25258);
+	const codexBin = opts.codexBin ?? process.env.OMAW_CODEX_BIN ?? "codex";
 
 	// 用户显式给的 --cwd 往往还不存在；create 出来而不是让 codex 子进程
 	// 以一个看不懂的 `spawn codex ENOENT` 失败。
@@ -204,11 +204,11 @@ async function main() {
 	}
 
 	// 同步进 env，dist 内的 startServer 也会读取（参数优先）。
-	process.env.OWA_PORT = String(port);
-	process.env.OWA_HOST = host;
-	process.env.OWA_CWD = cwd;
-	process.env.OWA_CODEX_PORT = String(codexPort);
-	process.env.OWA_CODEX_BIN = codexBin;
+	process.env.OMAW_PORT = String(port);
+	process.env.OMAW_HOST = host;
+	process.env.OMAW_CWD = cwd;
+	process.env.OMAW_CODEX_PORT = String(codexPort);
+	process.env.OMAW_CODEX_BIN = codexBin;
 
 	const { startServer } = await import(SERVER_ENTRY);
 	const handle = await startServer({ port, host, cwd, codexPort, codexBin });
@@ -216,22 +216,22 @@ async function main() {
 	const displayUrl = `http://${host === "0.0.0.0" || host === "::" ? "127.0.0.1" : host}:${handle.port}`;
 	console.log("");
 	console.log("  ┌──────────────────────────────────────────────────┐");
-	console.log("  │  open-web-app" + " ".repeat(36) + "│");
+	console.log("  │  oh-my-agent-web" + " ".repeat(36) + "│");
 	console.log("  └──────────────────────────────────────────────────┘");
 	console.log(`  ➜  Web UI:  ${displayUrl}`);
 	console.log(`  ➜  Codex:   ${handle.supervisor.url}  (${handle.supervisor.isExternal() ? "external" : "managed"})`);
 	console.log(`  ➜  cwd:     ${handle.cwd}`);
 	console.log("");
 
-	const noBrowser = !opts.open || process.env.OWA_OPEN === "0" || !process.stdout.isTTY;
+	const noBrowser = !opts.open || process.env.OMAW_OPEN === "0" || !process.stdout.isTTY;
 	if (!noBrowser) openBrowser(displayUrl);
-	else if (!process.env.OWA_OPEN && !process.stdout.isTTY) console.log("  (非交互终端，跳过自动打开浏览器；--no-browser 可显式关闭)");
+	else if (!process.env.OMAW_OPEN && !process.stdout.isTTY) console.log("  (非交互终端，跳过自动打开浏览器；--no-browser 可显式关闭)");
 
 	let shuttingDown = false;
 	const shutdown = async (signal) => {
 		if (shuttingDown) return;
 		shuttingDown = true;
-		console.log(`\n[open-web-app] received ${signal}, shutting down…`);
+		console.log(`\n[oh-my-agent-web] received ${signal}, shutting down…`);
 		try {
 			await handle.close();
 		} finally {
@@ -243,6 +243,6 @@ async function main() {
 }
 
 main().catch((err) => {
-	console.error(`[open-web-app] ${err instanceof Error ? err.message : String(err)}`);
+	console.error(`[oh-my-agent-web] ${err instanceof Error ? err.message : String(err)}`);
 	process.exit(1);
 });

@@ -1,12 +1,12 @@
 /**
- * Smoke test — boots a real open-web-app server against a real `codex app-server`.
+ * Smoke test — boots a real oh-my-agent-web server against a real `codex app-server`.
  *
  * 运行： npm run smoke
  *
  * 覆盖：
  *  1. 程序化启动（临时端口 + 临时 cwd），等到 supervisor ready 且 client 已 initialize。
  *  2. 浏览器 WS 握手（welcome / status）。
- *  3. owa/paths、thread/start、turn/start（真实模型调用，可能因未登录而 SKIP 模型部分）。
+ *  3. omaw/paths、thread/start、turn/start（真实模型调用，可能因未登录而 SKIP 模型部分）。
  *  4. thread/list、thread/read（非模型，必须通过）。
  *  5. 干净关闭；任何硬断言失败以非 0 退出。
  */
@@ -17,7 +17,7 @@ import { WebSocket } from "ws";
 import { startServer, type ServerHandle } from "../server/index.js";
 import type { ServerMessage } from "../shared/protocol.js";
 
-const SMOKE_CWD = "/tmp/open-web-app-smoke";
+const SMOKE_CWD = "/tmp/oh-my-agent-web-smoke";
 const CODEX_READY_TIMEOUT_MS = 40_000;
 const INIT_TIMEOUT_MS = 30_000;
 const TURN_TIMEOUT_MS = 180_000;
@@ -144,7 +144,7 @@ async function main(): Promise<void> {
 	await mkdir(SMOKE_CWD, { recursive: true });
 	const owaPort = await freePort();
 	const codexPort = await freePort();
-	console.log(`\n=== open-web-app smoke test ===`);
+	console.log(`\n=== oh-my-agent-web smoke test ===`);
 	console.log(`cwd=${SMOKE_CWD}  owaPort=${owaPort}  codexPort=${codexPort}\n`);
 
 	let handle: ServerHandle | null = null;
@@ -186,42 +186,42 @@ async function main(): Promise<void> {
 			return res.result;
 		};
 
-		// --- 3. owa/paths (local method) ---
+		// --- 3. omaw/paths (local method) ---
 		try {
-			const paths = await rpc("owa/paths");
+			const paths = await rpc("omaw/paths");
 			const ok = isRecord(paths) && typeof paths.cwd === "string" && typeof paths.home === "string";
-			assert(ok, "owa/paths returns cwd/home/codexHome", JSON.stringify(paths));
+			assert(ok, "omaw/paths returns cwd/home/codexHome", JSON.stringify(paths));
 			console.log(`           cwd=${(paths as Record<string, unknown>).cwd} codexHome=${(paths as Record<string, unknown>).codexHome}`);
 		} catch (err) {
-			fail("owa/paths", err instanceof Error ? err.message : String(err));
+			fail("omaw/paths", err instanceof Error ? err.message : String(err));
 		}
 
-		// --- 4. owa/fs/list + owa/fs/read (local methods) ---
+		// --- 4. omaw/fs/list + omaw/fs/read (local methods) ---
 		try {
-			const listed = await rpc("owa/fs/list", { path: SMOKE_CWD });
+			const listed = await rpc("omaw/fs/list", { path: SMOKE_CWD });
 			const entries = isRecord(listed) && Array.isArray(listed.entries) ? listed.entries : null;
-			assert(entries !== null, "owa/fs/list returns entries");
+			assert(entries !== null, "omaw/fs/list returns entries");
 		} catch (err) {
-			fail("owa/fs/list", err instanceof Error ? err.message : String(err));
+			fail("omaw/fs/list", err instanceof Error ? err.message : String(err));
 		}
 
 		try {
 			const textPath = `${SMOKE_CWD}/hello.txt`;
 			await writeFile(textPath, "hello codex\n");
-			const caught = await rpc("owa/fs/read", { path: textPath });
-			assert(isRecord(caught) && caught.text === "hello codex\n", "owa/fs/read returns text");
+			const caught = await rpc("omaw/fs/read", { path: textPath });
+			assert(isRecord(caught) && caught.text === "hello codex\n", "omaw/fs/read returns text");
 
 			const binPath = `${SMOKE_CWD}/blob.bin`;
 			await writeFile(binPath, Buffer.from([0x00, 0x01, 0x02, 0x00]));
 			let refused = false;
 			try {
-				await rpc("owa/fs/read", { path: binPath });
+				await rpc("omaw/fs/read", { path: binPath });
 			} catch {
 				refused = true;
 			}
-			assert(refused, "owa/fs/read refuses binary files");
+			assert(refused, "omaw/fs/read refuses binary files");
 		} catch (err) {
-			fail("owa/fs/read", err instanceof Error ? err.message : String(err));
+			fail("omaw/fs/read", err instanceof Error ? err.message : String(err));
 		}
 
 		// --- 5. thread/start ---

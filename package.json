@@ -1,5 +1,5 @@
 {
-	"name": "open-web-app",
+	"name": "oh-my-agent-web",
 	"version": "0.1.5",
 	"description": "Browser cockpit for the Codex CLI app-server — chat, tool calls, diffs and approvals in one tab",
 	"license": "MIT",
@@ -7,11 +7,11 @@
 	"author": "duzhenxun",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/duzhenxun/open-web-app.git"
+		"url": "git+https://github.com/duzhenxun/oh-my-agent-web.git"
 	},
-	"homepage": "https://github.com/duzhenxun/open-web-app#readme",
+	"homepage": "https://github.com/duzhenxun/oh-my-agent-web#readme",
 	"bugs": {
-		"url": "https://github.com/duzhenxun/open-web-app/issues"
+		"url": "https://github.com/duzhenxun/oh-my-agent-web/issues"
 	},
 	"keywords": [
 		"codex",
@@ -24,10 +24,10 @@
 		"cli"
 	],
 	"bin": {
-		"open-web-app": "bin/open-web-app.mjs",
-		"owa": "bin/open-web-app.mjs"
+		"oh-my-agent-web": "bin/oh-my-agent-web.mjs",
+		"omaw": "bin/oh-my-agent-web.mjs"
 	},
-	"main": "bin/open-web-app.mjs",
+	"main": "bin/oh-my-agent-web.mjs",
 	"files": [
 		"bin/",
 		"dist/",
@@ -43,15 +43,15 @@
 		"access": "public"
 	},
 	"scripts": {
-		"dev": "cross-env OWA_DEV_WEB=1 tsx watch server/index.ts",
+		"dev": "cross-env OMAW_DEV_WEB=1 tsx watch server/index.ts",
 		"dev:web": "vite --config web/vite.config.ts",
 		"build": "npm run build:web && npm run build:server",
 		"build:web": "vite build --config web/vite.config.ts",
 		"build:server": "tsc -p tsconfig.server.json",
 		"prepack": "npm run build",
-		"start": "node bin/open-web-app.mjs",
-		"ws": "node bin/open-web-app.mjs ws",
-		"owa": "node scripts/owa.mjs",
+		"start": "node bin/oh-my-agent-web.mjs",
+		"ws": "node bin/oh-my-agent-web.mjs ws",
+		"omaw": "node scripts/omaw.mjs",
 		"stop": "node scripts/manage-server.mjs stop",
 		"restart": "node scripts/manage-server.mjs restart",
 		"smoke": "tsx test/smoke.ts",
