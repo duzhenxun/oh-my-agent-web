@@ -135,6 +135,7 @@ const runtime = createRuntime({
 	rules: createFileRuleStore(config.dataDir),
 	workspace: config.workspace,
 	engineName: config.engine,
+	turnTimeoutMs: config.turnTimeoutMs,
 	settings: createFileSettingsStore(config.dataDir),
 	piSessions: makePiSessionsProvider(),
 	emit: {

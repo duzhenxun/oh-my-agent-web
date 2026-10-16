@@ -116,3 +116,23 @@ export function createMemorySettingsStore(seed: ClientSettings = defaultSettings
 		},
 	};
 }
+
+/**
+ * 把一次设置改动落到 state + 盘上（runtime 侧的粘合，从 runtime 拆出以守住 400 行护栏）。
+ * 写盘失败只回调警告：内存里的设置仍然生效（下次启动才会回到旧值）。
+ */
+export async function applySettingsPatch(input: {
+	state: { settings: ClientSettings };
+	store?: SettingsStore;
+	patch: unknown;
+	onError: (message: string) => void;
+}): Promise<ClientSettings> {
+	const next = mergeSettings(input.state.settings, input.patch);
+	input.state.settings = next;
+	try {
+		await input.store?.save(next);
+	} catch (error) {
+		input.onError(`保存设置失败：${error instanceof Error ? error.message : String(error)}`);
+	}
+	return next;
+}

@@ -27,11 +27,15 @@ export type Config = {
 	dataDir: string;
 	logLevel: LogLevel;
 	engine: EngineName;
+	/** 回合看门狗超时（ADR-0023）：超时自动中断并提示 */
+	turnTimeoutMs: number;
 	/** ADR-0006：v1 不实现，仅保留开关位 */
 	token: string | null;
 };
 
 export const DEFAULT_PORT = 8790;
+/** 回合看门狗默认超时：20 分钟（与参考实现同口径） */
+export const DEFAULT_TURN_TIMEOUT_MS = 20 * 60 * 1000;
 export const DEFAULT_DATA_DIR_NAME = ".agent-web";
 export const DATA_DIR_ENV = "AGENT_WEB_DATA_DIR";
 
@@ -71,6 +75,14 @@ export function readConfig(env: EnvLike, options: ReadConfigOptions): ConfigResu
 		else problems.push(`AGENT_WEB_LOG 不是合法级别：${rawLevel}（回落到 info）`);
 	}
 
+	let turnTimeoutMs = DEFAULT_TURN_TIMEOUT_MS;
+	const rawTimeout = env.AGENT_WEB_TURN_TIMEOUT_MS;
+	if (rawTimeout !== undefined && rawTimeout !== "") {
+		const parsedTimeout = Number.parseInt(rawTimeout, 10);
+		if (Number.isInteger(parsedTimeout) && parsedTimeout >= 0) turnTimeoutMs = parsedTimeout;
+		else problems.push(`AGENT_WEB_TURN_TIMEOUT_MS 不是合法毫秒数：${rawTimeout}（回落到默认）`);
+	}
+
 	let engine: EngineName = "pi";
 	const rawEngine = env.AGENT_WEB_ENGINE;
 	if (rawEngine !== undefined && rawEngine !== "") {
@@ -90,6 +102,7 @@ export function readConfig(env: EnvLike, options: ReadConfigOptions): ConfigResu
 					: join(options.home, DEFAULT_DATA_DIR_NAME),
 			logLevel,
 			engine,
+			turnTimeoutMs,
 			token: env.AGENT_WEB_TOKEN && env.AGENT_WEB_TOKEN !== "" ? env.AGENT_WEB_TOKEN : null,
 		},
 		problems,

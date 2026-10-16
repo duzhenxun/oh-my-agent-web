@@ -13,6 +13,7 @@ import type { RuleStore } from "../approval/rules.js";
 import { createApprovalBridge } from "./approval-bridge.js";
 import { createEngineBinding } from "./engine-binding.js";
 import {
+	createConversationCreator,
 	loadConversationMessages,
 	persistIndexSafely,
 	renameConversation,
@@ -20,8 +21,10 @@ import {
 } from "./conversation-meta.js";
 import { createMarkerStreamFilter } from "../markers/actions.js";
 import { createNoticeSink } from "./notices.js";
+import { createPiRefresher } from "./pi-refresh.js";
 import { settleTurnMarkers } from "./turn-markers.js";
-import { defaultSettings, mergeSettings, type SettingsStore } from "./settings.js";
+import { createRuntimeTurnWatchdog } from "./turn-watchdog.js";
+import { applySettingsPatch, defaultSettings, type SettingsStore } from "./settings.js";
 import { applyEngineEvent, type TurnEventContext } from "./turn-events.js";
 import { makeIdFactory } from "../util/ids.js";
 import type { ApprovalDecision, Notice, PiProject, ProtocolError, ServerEvent, Snapshot } from "../protocol.js";
@@ -66,6 +69,8 @@ export type RuntimeOptions = {
 	store: ConversationStore;
 	/** 审批规则落盘（ADR-0006）：「总是允许这类」跨重启生效 */
 	rules: RuleStore;
+	/** 回合看门狗超时（ADR-0023）；不给就用默认 20 分钟 */
+	turnTimeoutMs?: number;
 	/** 客户端设置存储（ADR-0020 §P1）；不给就用默认值（单测用） */
 	settings?: SettingsStore;
 	/** pi 已有会话的扫描器（ADR-0021 §1）；不给就不显示那一栏（单测用） */
@@ -86,8 +91,6 @@ export type RuntimeOptions = {
 
 export function createRuntime(options: RuntimeOptions): Runtime {
 	const now = options.now ?? (() => Date.now());
-	const piScanIntervalMs = options.piSessionsMinIntervalMs ?? 10_000;
-	let lastPiScanAt = Number.NEGATIVE_INFINITY;
 	const settings = options.settings;
 	const noticeDedupeMs = options.noticeDedupeMs ?? 5000;
 	const maxNotices = options.maxNotices ?? 20;
@@ -107,26 +110,31 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 	let markerFilter = createMarkerStreamFilter();
 	/** 本回合的原始文本（含标记）：建议要在回合结束从这里解析 */
 	let rawTurnText = "";
+
+	// 回合看门狗（ADR-0023）：卡住的回合要能自己收场 —— 全局只有 1 路在飞，卡一路等于堵死整个应用
+	const watchdog = createRuntimeTurnWatchdog({
+		timeoutMs: options.turnTimeoutMs,
+		engine: options.engine,
+		isWaitingForUser: () => state.pendingApproval !== null,
+		notice: (text, level) => notice(text, level),
+	});
 	let currentTurn: { conversationId: string; messageId: string } | null = null;
 	/** 回合结束时的落盘任务：sendMessage 必须在返回前等它完成（否则「应答已回、转录还没写」） */
 	let finishPromise: Promise<void> | null = null;
 
 	const pushSnapshot = () => options.emit.snapshot(buildSnapshot(state));
 
-	/** 重新扫 pi 已有的项目/会话（ADR-0021 §1）：带最小间隔，避免每次刷新都扫 247 个文件 */
-	async function refreshPiSessions(force = false): Promise<void> {
-		if (!options.piSessions) return;
-		const stamp = now();
-		if (!force && stamp - lastPiScanAt < piScanIntervalMs) return;
-		lastPiScanAt = stamp;
-		try {
-			state.piProjects = await options.piSessions();
+	// pi 已有会话列表的刷新节奏（ADR-0021 §1）：首扫立刻，之后带最小间隔（扫描器自带缓存）
+	const piRefresher = createPiRefresher({
+		list: () => options.piSessions?.() ?? Promise.resolve([]),
+		minIntervalMs: options.piSessionsMinIntervalMs,
+		now,
+		onLoaded: (projects) => {
+			state.piProjects = projects;
 			pushSnapshot();
-		} catch (error) {
-			// 扫不到（pi 没装 / 目录被删）不该影响主流程，只在界面上给一条提示
-			notice(`读取 pi 已有会话失败：${error instanceof Error ? error.message : String(error)}`, "warn");
-		}
-	}
+		},
+		onError: (message) => notice(message, "warn"),
+	});
 
 	const noticeSink = createNoticeSink({
 		now,
@@ -169,36 +177,16 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		},
 	});
 
-	async function createConversationInternal(title: string): Promise<string> {
-		const id = nextId("conv");
-		const ts = now();
-		const meta = createConversation({ id, title, workspace: state.workspace, now: ts });
-		state.conversations = [...state.conversations, meta];
-		state.messages[id] = [];
-		loadedConversations.add(id);
-		state.activeId = id;
-		try {
-			await options.store.create({ id, title, workspace: state.workspace, now: ts });
-			await binding.ensure(id);
-		} catch (error) {
-			// 回滚：不留「半存在的会话」
-			state.conversations = state.conversations.filter((conversation) => conversation.id !== id);
-			delete state.messages[id];
-			loadedConversations.delete(id);
-			binding.forget(id);
-			state.activeId = null;
-			throw error;
-		}
-		await persistIndexSafely(options.store, state.conversations, (message) => notice(message, "warn"));
-		pushSnapshot();
-		return id;
-	}
-
-	/** 没有活动会话时按首条输入建一个（会落盘，见 ADR-0015） */
-	async function ensureConversation(seedText: string): Promise<string> {
-		if (state.activeId) return state.activeId;
-		return createConversationInternal(deriveTitle(seedText, titleChars));
-	}
+	const conversations = createConversationCreator({
+		state,
+		store: options.store,
+		binding,
+		loaded: loadedConversations,
+		nextId,
+		now,
+		titleChars,
+		onChanged: pushSnapshot,
+	});
 
 	const turnContext: TurnEventContext = {
 		state,
@@ -262,23 +250,22 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 				notice(`已装载 ${ruleCount} 条审批规则（这些操作不会再询问）`, "info");
 			}
 			state.settings = settings ? await settings.load() : defaultSettings();
-			await refreshPiSessions(true);
+			await piRefresher.refresh(true);
 			pushSnapshot();
 		},
 
 		async applySettings(patch) {
-			const next = mergeSettings(state.settings, patch);
-			state.settings = next;
-			try {
-				await settings?.save(next);
-			} catch (error) {
-				notice(`保存设置失败：${error instanceof Error ? error.message : String(error)}`, "warn");
-			}
+			await applySettingsPatch({
+				state,
+				store: settings,
+				patch,
+				onError: (message) => notice(message, "warn"),
+			});
 			pushSnapshot();
 			return { ok: true };
 		},
 
-		refreshPiSessions,
+		refreshPiSessions: (force?: boolean) => piRefresher.refresh(force),
 
 		snapshot() {
 			return buildSnapshot(state);
@@ -304,7 +291,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 
 			inFlight = true;
 			try {
-				const conversationId = await ensureConversation(text);
+				const conversationId = await conversations.ensure(text);
 				await loadConversationMessages(options.store, state, loadedConversations, conversationId, (message) =>
 					notice(message, "warn"),
 				);
@@ -327,6 +314,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 				state.actions = []; // 新一轮开始：上一轮的建议作废（ADR-0022）
 				markerFilter = createMarkerStreamFilter();
 				rawTurnText = "";
+				watchdog.start(conversationId);
 				currentTurn = { conversationId, messageId: assistantMessage.id };
 				updateConversationMeta(state, conversationId, now());
 
@@ -346,6 +334,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 				pushSnapshot();
 				return { ok: false, error: { code: "session.turn_failed", message } };
 			} finally {
+				watchdog.stop();
 				// 等落盘完成再放开「在飞」闸门：下一次回合不应该与上一次的持久化重叠
 				if (finishPromise) {
 					await finishPromise;
@@ -373,7 +362,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 
 		async newConversation() {
 			try {
-				await createConversationInternal("新对话");
+				await conversations.create("新对话");
 				return { ok: true };
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
