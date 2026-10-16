@@ -1,0 +1,16 @@
+# 构建产物：一律不入库（ADR-0010）
+node_modules
+dist
+web/dist
+coverage
+
+# 文档：ADR 与 CONTEXT 的表格是手写的，不进 formatter（ADR-0010）
+docs
+*.md
+
+# 锁文件由 npm 维护，不做 prettier 检查
+package-lock.json
+
+# 本机数据与临时文件
+*.log
+.tmp-*
