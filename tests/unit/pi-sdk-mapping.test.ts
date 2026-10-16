@@ -5,7 +5,13 @@
  * 真实链路的手工验证在冒烟之外单独做（见 ROADMAP M3 的实际结果）。
  */
 import { describe, expect, it } from "vitest";
-import { mapSessionEvent, resultExitCode, resultText, summarizeArgs } from "../../server/engine/pi-sdk.js";
+import {
+	historyEntries,
+	mapSessionEvent,
+	resultExitCode,
+	resultText,
+	summarizeArgs,
+} from "../../server/engine/pi-sdk.js";
 
 describe("mapSessionEvent：正文增量", () => {
 	it("text_delta 映射成 EngineEvent.text_delta", () => {
@@ -139,5 +145,40 @@ describe("summarizeArgs", () => {
 
 	it("超长参数被截断到 200 字", () => {
 		expect(summarizeArgs({ text: "x".repeat(500) }).length).toBe(201);
+	});
+});
+
+describe("historyEntries（ADR-0018 的历史注入）", () => {
+	it("user/assistant 依次成链，parentId 串起来", () => {
+		const entries = historyEntries([
+			{ role: "user", text: "问一句", ts: 1000 },
+			{ role: "assistant", text: "答一句", ts: 2000 },
+		]);
+		expect(entries).toHaveLength(2);
+		expect(entries[0]).toMatchObject({ type: "message", id: "seed-0", parentId: null });
+		expect(entries[1]).toMatchObject({ type: "message", id: "seed-1", parentId: "seed-0" });
+	});
+
+	it("消息形状符合 SDK 要求（user 有 content，assistant 补齐元数据占位）", () => {
+		const [user, assistant] = historyEntries([
+			{ role: "user", text: "hi", ts: 1 },
+			{ role: "assistant", text: "hello", ts: 2 },
+		]) as Array<{ message: Record<string, unknown> }>;
+		expect(user.message).toMatchObject({ role: "user", content: [{ type: "text", text: "hi" }] });
+		expect(assistant.message).toMatchObject({
+			role: "assistant",
+			stopReason: "stop",
+			api: "replay",
+			provider: "replay",
+		});
+		expect(assistant.message.usage).toEqual({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
+	});
+
+	it("空白消息被跳过（不制造空条目）", () => {
+		expect(historyEntries([{ role: "user", text: "  ", ts: 1 }])).toEqual([]);
+	});
+
+	it("空历史给出空数组（新会话不该有任何种子）", () => {
+		expect(historyEntries([])).toEqual([]);
 	});
 });

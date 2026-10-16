@@ -5,6 +5,8 @@
 import { describe, expect, it } from "vitest";
 import type { RuleStore } from "../../server/approval/rules.js";
 import { createMemoryRuleStore } from "../../server/approval/rules.js";
+import { createFakeEngine } from "../../server/engine/fake.js";
+import { messagesToHistory } from "../../server/session/engine-binding.js";
 import { createMemoryStore } from "../../server/session/store.js";
 import {
 	appendTextForTest,
@@ -107,7 +109,8 @@ describe("M2：会话持久化与切换（ADR-0005）", () => {
 		const second = runtime.snapshot().active.conversationId!;
 
 		const turn = runtime.sendMessage("slow please");
-		await waitFor(() => runtime.isBusy());
+		// 等待纪律：断言的既然是「状态是 streaming」，就等这个状态本身（isBusy 会早于它变 true）
+		await waitFor(() => runtime.snapshot().running.status === "streaming");
 
 		// 切到另一个会话：回合继续在服务端跑
 		await runtime.switchConversation(first);
@@ -184,5 +187,121 @@ describe("M3：审批规则跨重启（ADR-0006 的「总是允许这类」）",
 		// 第二次同类操作：内存规则已经生效
 		await runtime.sendMessage("approve please");
 		expect(runtime.snapshot().notices.some((notice) => notice.text.includes("写盘失败"))).toBe(true);
+	});
+});
+
+describe("M3 修：引擎会话的生命周期与历史注入（ADR-0018）", () => {
+	it("假引擎忠实复现真引擎：没建会话就发 → engine.no_session", async () => {
+		const engine = createFakeEngine({ chunkDelayMs: 0 });
+		const events: string[] = [];
+		await engine.sendMessage("nope", "hi", (event) => events.push(event.type));
+		expect(events).toEqual(["error", "turn_end"]);
+	});
+
+	it("重启后（新 runtime + 同一 store）能给旧会话发消息，并把历史交给引擎", async () => {
+		const store = createMemoryStore({
+			conversations: [
+				{
+					id: "old-1",
+					title: "以前的会话",
+					createdAt: 100,
+					updatedAt: 200,
+					workspace: "/tmp/agent-web-test",
+					messageCount: 2,
+				},
+			],
+			messages: {
+				"old-1": [
+					appendTextForTest(createMessageForTest("m1", "user", 150), "以前问的"),
+					appendTextForTest(createMessageForTest("m2", "assistant", 151), "以前答的"),
+				],
+			},
+		});
+		const { runtime, engine } = harness(store);
+		await runtime.init();
+		await runtime.switchConversation("old-1");
+
+		const result = await runtime.sendMessage("接着聊");
+		expect(result.ok).toBe(true);
+
+		// 1) 引擎确实被建了起来，且拿到了历史（否则模型失忆）
+		const session = engine.sessions().get("old-1");
+		expect(session?.history.map((message) => `${message.role}:${message.text}`)).toEqual([
+			"user:以前问的",
+			"assistant:以前答的",
+		]);
+		// 2) 回合正常结束，没有 no_session 错误块
+		expect(messageTextForTest(runtime.snapshot())).not.toContain("engine.no_session");
+		expect(runtime.snapshot().active.messages.length).toBe(4);
+	});
+
+	it("同一个会话只建一次引擎会话（不重复扫描资源）", async () => {
+		const { runtime, engine } = harness();
+		await runtime.sendMessage("第一轮");
+		await runtime.sendMessage("第二轮");
+		expect(engine.sessions().size).toBe(1);
+		expect(engine.sessions().get(runtime.snapshot().active.conversationId!)?.transcript.length).toBeGreaterThan(0);
+	});
+});
+
+describe("messagesToHistory（ADR-0018 的纯函数部分）", () => {
+	it("只取文本块，工具卡与错误块不进历史", () => {
+		const messages = [
+			appendTextForTest(createMessageForTest("m1", "user", 1), "帮我看下"),
+			{
+				...createMessageForTest("m2", "assistant", 2),
+				blocks: [
+					{ kind: "text" as const, text: "我先读文件：" },
+					{
+						kind: "tool" as const,
+						toolCallId: "t1",
+						name: "read",
+						argsSummary: "a.ts",
+						status: "ok" as const,
+						outputExcerpt: "内容",
+						truncated: false,
+						startedAt: 2,
+					},
+					{ kind: "text" as const, text: "读完了。" },
+					{ kind: "error" as const, code: "x.y", message: "报错" },
+				],
+			},
+		];
+		expect(messagesToHistory(messages)).toEqual([
+			{ role: "user", text: "帮我看下", ts: 1 },
+			{ role: "assistant", text: "我先读文件：读完了。", ts: 2 },
+		]);
+	});
+
+	it("空白消息被丢掉（不制造空历史）", () => {
+		expect(messagesToHistory([createMessageForTest("m1", "user", 1)])).toEqual([]);
+	});
+});
+
+describe("id 必须全局唯一（ADR-0019）", () => {
+	it("两个 runtime（模拟两次启动）生成的会话 id 不重复", async () => {
+		const shared = createMemoryStore();
+		const first = harness(shared, createMemoryRuleStore(), { deterministicIds: false });
+		await first.runtime.sendMessage("第一次启动");
+		const firstId = first.runtime.snapshot().active.conversationId!;
+
+		const second = harness(shared, createMemoryRuleStore(), { deterministicIds: false });
+		await second.runtime.init();
+		await second.runtime.newConversation();
+		const secondId = second.runtime.snapshot().active.conversationId!;
+
+		expect(firstId).not.toBe(secondId);
+		expect(second.runtime.snapshot().conversations.map((meta) => meta.id)).toEqual(
+			expect.arrayContaining([firstId, secondId]),
+		);
+	});
+
+	it("同一进程内连续两条会话 id 也不同", async () => {
+		const { runtime } = harness(createMemoryStore(), createMemoryRuleStore(), { deterministicIds: false });
+		await runtime.newConversation();
+		const a = runtime.snapshot().active.conversationId!;
+		await runtime.newConversation();
+		const b = runtime.snapshot().active.conversationId!;
+		expect(a).not.toBe(b);
 	});
 });

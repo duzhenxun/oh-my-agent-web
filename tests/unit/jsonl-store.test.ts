@@ -2,7 +2,7 @@
  * 转录落盘（ADR-0005）：追加写 + 半行容错 + 标题事件 + 元数据推导。
  * 用真实临时目录（不碰用户数据目录）。
  */
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -168,5 +168,25 @@ describe("文件是纯追加的（可被外部工具消费）", () => {
 		for (const line of lines) expect(() => JSON.parse(line)).not.toThrow();
 		expect(JSON.parse(lines[0]).kind).toBe("meta");
 		expect(JSON.parse(lines[1]).kind).toBe("message");
+	});
+});
+
+describe("防御：id 撞车不许污染已有转录（ADR-0019）", () => {
+	it("createTranscript 遇到已存在的 id 直接报错（不追加 meta）", async () => {
+		await createTranscript(dataDir, meta);
+		await expect(createTranscript(dataDir, meta)).rejects.toThrow(/已存在/);
+		const lines = readFileSync(conversationFile(dataDir, "conv-1"), "utf8").trim().split("\n");
+		expect(lines).toHaveLength(1); // 只有一个 meta 行
+	});
+
+	it("appendMessage 目标会话不存在时报错（不静默新建孤儿文件）", async () => {
+		await expect(appendMessage(dataDir, "不存在", appendText(createMessage("m1", "user", 1), "hi"))).rejects.toThrow(
+			/不存在/,
+		);
+		expect(existsSync(conversationFile(dataDir, "不存在"))).toBe(false);
+	});
+
+	it("appendTitle 目标会话不存在时报错", async () => {
+		await expect(appendTitle(dataDir, "不存在", "t", 1)).rejects.toThrow(/不存在/);
 	});
 });

@@ -16,7 +16,7 @@
 - 环境变量前缀：`AGENT_WEB_` · 数据目录：`~/.agent-web/` · 端口：8790（dev 后端 8791 / vite 5174）
 - 引擎：默认真实 pi SDK；`AGENT_WEB_ENGINE=fake` 切假引擎（测试用，ADR-0016）
 - 当前阶段：**M3 已完成（真实引擎 + 审批落盘：189 单测 + 39 项冒烟 + 真实链路一次通过）—— 下一步 M4**
-- 最后更新：M3 落地 + 手工运行修复（2026-10-16）；[`ROADMAP.md`](ROADMAP.md) 进度 **4/7**
+- 最后更新：M3 落地 + 用户首次使用的两个真 bug 已修（2026-10-16）；[`ROADMAP.md`](ROADMAP.md) 进度 **4/7**
 
 ---
 
@@ -107,6 +107,8 @@
 | [ADR-0015](docs/adr/0015-transcript-write-timing.md) | 转录写入时机：用户消息即时写、助手消息回合结束整条写 | accepted | 2026-10-16 |
 | [ADR-0016](docs/adr/0016-engine-selection-env.md) | 引擎选择：`AGENT_WEB_ENGINE`（默认 pi，`fake` 留给测试） | accepted | 2026-10-16 |
 | [ADR-0017](docs/adr/0017-snapshot-engine-field.md) | 快照增加 `engine` 字段（ADR-0012 的增量修订） | accepted | 2026-10-16 |
+| [ADR-0018](docs/adr/0018-engine-session-lifecycle.md) | 引擎会话懒创建 + 历史注入；假引擎必须同样严格 | accepted | 2026-10-16 |
+| [ADR-0019](docs/adr/0019-globally-unique-ids.md) | id 跨进程唯一（禁止进程内自增）；存储拒绝 id 撞车 | accepted | 2026-10-16 |
 
 > 模板与状态含义见 [`docs/adr/README.md`](docs/adr/README.md)。
 

@@ -21,6 +21,7 @@ import {
 export type ServerState = {
 	workspace: string;
 	engine: EngineName;
+	model: string | null;
 	conversations: ConversationMeta[];
 	activeId: string | null;
 	messages: Record<string, UiMessage[]>;
@@ -39,6 +40,7 @@ export function createServerState(workspace: string, engine: EngineName = "pi"):
 	return {
 		workspace,
 		engine,
+		model: null,
 		conversations: [],
 		activeId: null,
 		messages: {},
@@ -73,6 +75,7 @@ export function buildSnapshot(state: ServerState, limit = SNAPSHOT_MESSAGE_LIMIT
 	return {
 		protocolVersion: PROTOCOL_VERSION,
 		engine: state.engine,
+		model: state.model,
 		conversations: state.conversations.map((conversation) => ({ ...conversation })),
 		active: {
 			conversationId: state.activeId,

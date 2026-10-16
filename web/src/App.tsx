@@ -41,6 +41,7 @@ export function App() {
 					{activeConversation ? <span className="chip chip-quiet">{activeConversation.title}</span> : null}
 					{snapshot?.files ? <span className="chip chip-quiet mono">{snapshot.files.root}</span> : null}
 					{snapshot ? <span className="chip chip-quiet">引擎 {snapshot.engine}</span> : null}
+					{snapshot?.model ? <span className="chip chip-quiet mono">{snapshot.model}</span> : null}
 					<span className="chip chip-quiet">协议 v{snapshot?.protocolVersion ?? "?"}</span>
 				</header>
 

@@ -285,6 +285,17 @@ try {
 	const restartTurn = await client.reply(client.send("send_message", { text: "after restart" }));
 	check(restartTurn.ok === true, "重启后仍能接着聊");
 
+	// ---- 重启后「接着聊」不能报 engine.no_session（ADR-0018 的回归点）----
+	// 这是 M3 手工运行时暴露的真 bug：引擎会话是进程内的，重启后必须重建 + 注入历史。
+	await sendTurn("restart-resume");
+	const resumeBlocks = client.latestSnapshot().active.messages.flatMap((message) => message.blocks);
+	check(
+		resumeBlocks.every((block) => block.kind !== "error" || block.code !== "engine.no_session"),
+		"重启后继续聊不会报 engine.no_session",
+	);
+	const sessionsAfterRestart = client.latestSnapshot().active.messages.length;
+	check(sessionsAfterRestart >= 4, "重启后的会话能继续追加消息", `实际 ${sessionsAfterRestart} 条`);
+
 	// ---- 新建会话（M2）----
 	const newChatReply = await client.reply(client.send("new_chat"));
 	check(newChatReply.ok === true, "new_chat 有 ok 应答");

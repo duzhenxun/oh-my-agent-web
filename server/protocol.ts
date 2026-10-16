@@ -91,6 +91,8 @@ export type EngineName = "pi" | "fake";
 export type Snapshot = {
 	protocolVersion: number;
 	engine: EngineName;
+	/** 当前模型（`provider/model`；取不到为 null）——M3 起界面要能看见自己在跟谁说话 */
+	model: string | null;
 	conversations: ConversationMeta[];
 	active: {
 		conversationId: string | null;

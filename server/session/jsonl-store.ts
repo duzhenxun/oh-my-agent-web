@@ -9,7 +9,7 @@
  * 为什么只追加：崩溃最多丢「最后一行」（甚至是半行）——这是结构性质，不需要事务。
  * 读取时的容错（ADR-0005 守卫 1）：**跳过解析失败的行**，特别是末尾的半行。
  */
-import { appendFile, mkdir, readFile, readdir } from "node:fs/promises";
+import { access, appendFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ConversationMeta, UiMessage } from "../protocol.js";
 
@@ -153,15 +153,35 @@ export async function ensureDataDirs(dataDir: string): Promise<void> {
 
 export async function createTranscript(dataDir: string, meta: TranscriptMeta): Promise<void> {
 	await ensureDataDirs(dataDir);
-	await appendFile(conversationFile(dataDir, meta.id), `${metaLine(meta)}\n`, "utf8");
+	const file = conversationFile(dataDir, meta.id);
+	// 防御（ADR-0019）：id 撞车时**绝不能**往已存在的脚本追加 —— 那会把两条会话混进一个文件
+	try {
+		await access(file);
+		throw new Error(`会话 id 已存在：${meta.id}（拒绝覆盖已有转录）`);
+	} catch (error) {
+		if (error instanceof Error && error.message.startsWith("会话 id 已存在")) throw error;
+		// 文件不存在 = 正常情况，继续创建
+	}
+	await writeFile(file, `${metaLine(meta)}\n`, "utf8");
 }
 
+/** 往已有转录追加消息；会话不存在时报错（不静默新建一个孤儿文件） */
 export async function appendMessage(dataDir: string, conversationId: string, message: UiMessage): Promise<void> {
+	await assertTranscriptExists(dataDir, conversationId);
 	await appendFile(conversationFile(dataDir, conversationId), `${messageLine(message)}\n`, "utf8");
 }
 
 export async function appendTitle(dataDir: string, conversationId: string, title: string, ts: number): Promise<void> {
+	await assertTranscriptExists(dataDir, conversationId);
 	await appendFile(conversationFile(dataDir, conversationId), `${titleLine(title, ts)}\n`, "utf8");
+}
+
+async function assertTranscriptExists(dataDir: string, conversationId: string): Promise<void> {
+	try {
+		await access(conversationFile(dataDir, conversationId));
+	} catch {
+		throw new Error(`会话不存在（或转录已被删）：${conversationId}`);
+	}
 }
 
 export type ReadTranscriptResult = ParsedTranscript & { exists: boolean };

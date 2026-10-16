@@ -42,6 +42,11 @@ export type EngineSessionOptions = {
 	sessionId: string;
 	/** 工作区根（ADR-0006 的路径约束在宿主侧强制，引擎只是被告知） */
 	workspace: string;
+	/**
+	 * 会话已有历史的纯文本形式（宿主的事实源是自家 JSONL，引擎侧是空的）。
+	 * **不传 = 模型会失忆**：从磁盘恢复的会话再接着聊时，它看不到之前说过什么。
+	 */
+	history?: EngineMessage[];
 };
 
 export type EnginePort = {
@@ -52,4 +57,6 @@ export type EnginePort = {
 	readTranscript(sessionId: string): Promise<EngineMessage[]>;
 	/** 危险操作前引擎会调用它；宿主负责弹给用户并等待决定（ADR-0006 审批三态） */
 	setApprovalHandler(handler: ApprovalHandler): void;
+	/** 当前模型（用于界面显示；取不到返回 null） */
+	currentModel?(sessionId: string): Promise<{ provider: string; model: string } | null>;
 };

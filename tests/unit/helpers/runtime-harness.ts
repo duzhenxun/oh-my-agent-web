@@ -32,23 +32,28 @@ export function recorder() {
 export function harness(
 	store: ConversationStore = createMemoryStore(),
 	rules: RuleStore = createMemoryRuleStore(),
+	options: { deterministicIds?: boolean } = {},
 ): {
 	runtime: Runtime;
 	recorder: ReturnType<typeof recorder>;
 	store: ConversationStore;
 	rules: RuleStore;
+	/** 假引擎本体：用来断言「宿主把什么交给了引擎」（会话、历史） */
+	engine: ReturnType<typeof createFakeEngine>;
 } {
 	const recorderInstance = recorder();
 	let seq = 0;
+	const engine = createFakeEngine({ chunkDelayMs: 0, slowChunkDelayMs: 5 });
 	const runtime = createRuntime({
-		engine: createFakeEngine({ chunkDelayMs: 0, slowChunkDelayMs: 5 }),
+		engine,
 		store,
 		rules,
 		workspace: "/tmp/agent-web-test",
 		emit: recorderInstance.emit,
-		idSeq: (prefix) => `${prefix}-${++seq}`,
+		// 默认确定性 id（用例好断言）；显式关掉时用真实运行的全局唯一 id（ADR-0019）
+		...(options.deterministicIds === false ? {} : { idSeq: (prefix: string) => `${prefix}-${++seq}` }),
 	});
-	return { runtime, recorder: recorderInstance, store, rules };
+	return { runtime, recorder: recorderInstance, store, rules, engine };
 }
 
 export const waitFor = async (predicate: () => boolean, timeoutMs = 1000) => {

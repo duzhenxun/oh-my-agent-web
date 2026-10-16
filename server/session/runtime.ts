@@ -11,6 +11,8 @@
  */
 import type { RuleStore } from "../approval/rules.js";
 import { createApprovalBridge } from "./approval-bridge.js";
+import { createEngineBinding } from "./engine-binding.js";
+import { makeIdFactory } from "../util/ids.js";
 import type { ApprovalDecision, Notice, ProtocolError, ServerEvent, Snapshot, UiMessage } from "../protocol.js";
 import type { EngineEvent, EnginePort } from "../engine/port.js";
 import { appendError, appendText, createMessage, finishTool, startTool } from "../snapshot/messages.js";
@@ -75,8 +77,8 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 	/** 哪些会话的消息已经从磁盘读进内存 */
 	const loadedConversations = new Set<string>();
 
-	let seq = 0;
-	const nextId = options.idSeq ?? ((prefix: string) => `${prefix}-${++seq}`);
+	// 默认真实运行用全局唯一 id（ADR-0019）；测试注入确定性 id
+	const nextId = options.idSeq ?? makeIdFactory();
 	let inFlight = false;
 	let currentTurn: { conversationId: string; messageId: string } | null = null;
 	/** 回合结束时的落盘任务：sendMessage 必须在返回前等它完成（否则「应答已回、转录还没写」） */
@@ -111,6 +113,17 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 	});
 	options.engine.setApprovalHandler(approval.handler);
 
+	// 引擎会话的生命周期（懒创建 + 历史注入 + 读模型），见 ADR-0018
+	const binding = createEngineBinding({
+		engine: options.engine,
+		workspace: state.workspace,
+		messagesOf: (conversationId) => state.messages[conversationId] ?? [],
+		onModel: (model) => {
+			state.model = model.provider + "/" + model.model;
+			pushSnapshot();
+		},
+	});
+
 	function updateConversationMeta(conversationId: string): void {
 		state.conversations = state.conversations.map((conversation) =>
 			conversation.id === conversationId
@@ -137,12 +150,13 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		state.activeId = id;
 		try {
 			await options.store.create({ id, title, workspace: state.workspace, now: ts });
-			await options.engine.createSession({ sessionId: id, workspace: state.workspace });
+			await binding.ensure(id);
 		} catch (error) {
 			// 回滚：不留「半存在的会话」
 			state.conversations = state.conversations.filter((conversation) => conversation.id !== id);
 			delete state.messages[id];
 			loadedConversations.delete(id);
+			binding.forget(id);
 			state.activeId = null;
 			throw error;
 		}
@@ -292,6 +306,8 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			try {
 				const conversationId = await ensureConversation(text);
 				await loadMessages(conversationId);
+				// 先建引擎会话（带上历史），再把新消息加进状态 —— 顺序反了会让新消息在历史里重复
+				await binding.ensure(conversationId);
 				const ts = now();
 				const userMessage = appendText(createMessage(nextId("msg"), "user", ts), text);
 				const assistantMessage = createMessage(nextId("msg"), "assistant", ts);

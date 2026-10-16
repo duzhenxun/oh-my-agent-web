@@ -5,6 +5,10 @@
  * 超大输出与错误。有了它，「协议 → 快照 → 会话 → 审批」的全链路可以零 token、零外网、
  * 秒级跑完 —— 这是参考实现没有的便宜。
  *
+ * ⚠️ 它必须**忠实复现真引擎的生命周期**：`sendMessage` 前没有 `createSession` 就回
+ * `engine.no_session`。历史教训：早期版本太宽容（没建会话也能跑），把「重启后旧会话发不出
+ * 消息」这个真 bug 藏了整整一个里程碑（见 ADR-0018）。
+ *
  * `planFor(text)` 是纯函数（单测直接覆盖）；`createFakeEngine` 只负责按计划、
  * 按可配置的延迟把事件吐出来（`chunkDelayMs: 0` 时同步返回，便于单测）。
  */
@@ -99,8 +103,8 @@ export type FakeEngineOptions = {
 };
 
 export type FakeEngine = EnginePort & {
-	/** 测试用：读出累积的转录 */
-	transcripts(): Map<string, EngineMessage[]>;
+	/** 测试钩子：会话表（含 createSession 收到的历史与累积转录） */
+	sessions(): Map<string, { workspace: string; history: EngineMessage[]; transcript: EngineMessage[] }>;
 	/** 测试用：清掉所有会话 */
 	reset(): void;
 };
@@ -112,7 +116,8 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
 	const chunkChars = options.chunkChars ?? 6;
 	const slowChunkDelayMs = options.slowChunkDelayMs ?? 250;
 
-	const transcripts = new Map<string, EngineMessage[]>();
+	/** 会话表：**必须先 createSession**，否则 sendMessage 报 engine.no_session（与真引擎一致） */
+	const sessions = new Map<string, { workspace: string; history: EngineMessage[]; transcript: EngineMessage[] }>();
 	const interrupted = new Set<string>();
 	let approvalHandler: ApprovalHandler | null = null;
 	let toolCallSeq = 0;
@@ -123,7 +128,7 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
 		onEvent: (event: EngineEvent) => void,
 		slow: boolean,
 	): Promise<boolean> {
-		const buffer = transcripts.get(sessionId);
+		const buffer = sessions.get(sessionId)?.transcript;
 		for (let index = 0; index < text.length; index += chunkChars) {
 			if (interrupted.has(sessionId)) return false;
 			const chunk = text.slice(index, index + chunkChars);
@@ -136,12 +141,22 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
 
 	return {
 		async createSession(sessionOptions: EngineSessionOptions) {
-			transcripts.set(sessionOptions.sessionId, []);
+			sessions.set(sessionOptions.sessionId, {
+				workspace: sessionOptions.workspace,
+				history: [...(sessionOptions.history ?? [])],
+				transcript: [],
+			});
 		},
 
 		async sendMessage(sessionId: string, text: string, onEvent) {
-			const transcript = transcripts.get(sessionId) ?? [];
-			transcripts.set(sessionId, transcript);
+			// 生命周期忠实于真引擎：**没有 createSession 就没有会话**（ADR-0018）
+			const session = sessions.get(sessionId);
+			if (!session) {
+				onEvent({ type: "error", code: "engine.no_session", message: `引擎里没有这个会话：${sessionId}` });
+				onEvent({ type: "turn_end", reason: "error" });
+				return;
+			}
+			const transcript = session.transcript;
 			transcript.push({ role: "user", text, ts: Date.now() });
 
 			const slow = text.toLowerCase().includes("slow");
@@ -207,19 +222,20 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
 		},
 
 		async readTranscript(sessionId: string) {
-			return [...(transcripts.get(sessionId) ?? [])];
+			return [...(sessions.get(sessionId)?.transcript ?? [])];
 		},
 
 		setApprovalHandler(handler: ApprovalHandler) {
 			approvalHandler = handler;
 		},
 
-		transcripts() {
-			return transcripts;
+		/** 测试钩子：看会话表（含 createSession 时收到的历史） */
+		sessions() {
+			return sessions;
 		},
 
 		reset() {
-			transcripts.clear();
+			sessions.clear();
 			interrupted.clear();
 			approvalHandler = null;
 		},

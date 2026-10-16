@@ -126,6 +126,50 @@ export function mapSessionEvent(event: unknown): EngineEvent | null {
 	return null;
 }
 
+/**
+ * 把宿主的纯文本历史转成 SDK 的会话条目（ADR-0018 的历史注入）。
+ *
+ * 为什么要它：我们的事实源是自家 JSONL（ADR-0005），SDK 侧是空会话；不喂历史，
+ * 「重启后接着聊」时模型会**失忆**。这里构造最朴素的 user/assistant 文本条目 ——
+ * 工具调用不重放（对连续性价值低、形状复杂），只保留对话主线。
+ *
+ * 纯函数：单测用合成历史直接覆盖，不需要连模型。
+ */
+export function historyEntries(history: EngineMessage[]): Array<Record<string, unknown>> {
+	const now = Date.now();
+	const entries: Array<Record<string, unknown>> = [];
+	let parentId: string | null = null;
+
+	history.forEach((message, index) => {
+		if (message.text.trim() === "") return;
+		const id = "seed-" + String(index);
+		const ts = message.ts || now;
+		const base = { type: "message", id, parentId, timestamp: new Date(ts).toISOString() };
+		const content = [{ type: "text", text: message.text }];
+		const entry =
+			message.role === "user"
+				? { ...base, message: { role: "user", content, timestamp: ts } }
+				: {
+						...base,
+						message: {
+							role: "assistant",
+							content,
+							// 以下字段是 SDK 的形状要求，但重放历史时无意义 → 用明确的占位值
+							api: "replay",
+							provider: "replay",
+							model: "replay",
+							usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+							stopReason: "stop",
+							timestamp: ts,
+						},
+					};
+		entries.push(entry);
+		parentId = id;
+	});
+
+	return entries;
+}
+
 export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort {
 	const sessions = new Map<string, SessionHandle>();
 	let approvalHandler: ApprovalHandler | null = null;
@@ -176,12 +220,15 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 			});
 			await resourceLoader.reload();
 
+			// 历史注入（ADR-0018）：SDK 侧是空会话，不喂历史模型会失忆
+			const seeded = historyEntries(sessionOptions.history ?? []);
+			const sessionManager = SessionManager.inMemory(sessionOptions.workspace, {}, seeded as never);
 			const { session } = await createAgentSession({
 				cwd: sessionOptions.workspace,
 				agentDir,
 				resourceLoader,
 				// 转录的事实源是我们自己的 JSONL（ADR-0005）→ 不让 SDK 再落一份
-				sessionManager: SessionManager.inMemory(),
+				sessionManager,
 			});
 
 			const handle: SessionHandle = {
@@ -280,6 +327,13 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 
 		setApprovalHandler(handler: ApprovalHandler) {
 			approvalHandler = handler;
+		},
+
+		async currentModel(sessionId: string) {
+			const handle = sessions.get(sessionId);
+			const model = (handle?.session as { model?: { id?: string; provider?: string } } | undefined)?.model;
+			if (!model) return null;
+			return { provider: String(model.provider ?? "?"), model: String(model.id ?? "?") };
 		},
 
 		// 关掉一个会话（宿主换会话/退出时用）
