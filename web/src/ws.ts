@@ -90,6 +90,11 @@ export function switchConversation(conversationId: string): void {
 	send({ id: `req-${++seq}`, type: "switch_conversation", payload: { conversationId } });
 }
 
+/** 改客户端设置（ADR-0020 §P1）：服务端归一化后落盘，并随快照回推 */
+export function setSettings(payload: { quickPhrases?: string[]; quickPhrasesEnabled?: boolean }): void {
+	send({ id: `req-${++seq}`, type: "set_settings", payload });
+}
+
 export function approve(requestId: string, decision: "once" | "always" | "deny"): void {
 	send({ id: `req-${++seq}`, type: "approve", payload: { requestId, decision } });
 }

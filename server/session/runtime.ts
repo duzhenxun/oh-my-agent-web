@@ -19,6 +19,7 @@ import {
 	updateConversationMeta,
 } from "./conversation-meta.js";
 import { createNoticeSink } from "./notices.js";
+import { defaultSettings, mergeSettings, type SettingsStore } from "./settings.js";
 import { applyEngineEvent, type TurnEventContext } from "./turn-events.js";
 import { makeIdFactory } from "../util/ids.js";
 import type { ApprovalDecision, Notice, PiProject, ProtocolError, ServerEvent, Snapshot } from "../protocol.js";
@@ -48,6 +49,8 @@ export type Runtime = {
 	interrupt(): Promise<Result>;
 	approve(requestId: string, decision: ApprovalDecision): Result;
 	newConversation(): Promise<Result>;
+	/** 改客户端设置（ADR-0020 §P1）：归一化 → 落盘 → 推快照 */
+	applySettings(patch: unknown): Promise<Result>;
 	switchConversation(conversationId: string): Promise<Result>;
 	/** 重新扫 pi 已有的项目/会话（ADR-0021 §1）；带最小间隔，避免每次刷新都扫盘 */
 	refreshPiSessions(force?: boolean): Promise<void>;
@@ -61,6 +64,8 @@ export type RuntimeOptions = {
 	store: ConversationStore;
 	/** 审批规则落盘（ADR-0006）：「总是允许这类」跨重启生效 */
 	rules: RuleStore;
+	/** 客户端设置存储（ADR-0020 §P1）；不给就用默认值（单测用） */
+	settings?: SettingsStore;
 	/** pi 已有会话的扫描器（ADR-0021 §1）；不给就不显示那一栏（单测用） */
 	piSessions?: () => Promise<PiProject[]>;
 	/** 两次扫描的最小间隔（默认 10s） */
@@ -81,6 +86,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 	const now = options.now ?? (() => Date.now());
 	const piScanIntervalMs = options.piSessionsMinIntervalMs ?? 10_000;
 	let lastPiScanAt = Number.NEGATIVE_INFINITY;
+	const settings = options.settings;
 	const noticeDedupeMs = options.noticeDedupeMs ?? 5000;
 	const maxNotices = options.maxNotices ?? 20;
 	const titleChars = options.titleChars ?? 24;
@@ -237,8 +243,21 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			if (ruleCount > 0) {
 				notice(`已装载 ${ruleCount} 条审批规则（这些操作不会再询问）`, "info");
 			}
+			state.settings = settings ? await settings.load() : defaultSettings();
 			await refreshPiSessions(true);
 			pushSnapshot();
+		},
+
+		async applySettings(patch) {
+			const next = mergeSettings(state.settings, patch);
+			state.settings = next;
+			try {
+				await settings?.save(next);
+			} catch (error) {
+				notice(`保存设置失败：${error instanceof Error ? error.message : String(error)}`, "warn");
+			}
+			pushSnapshot();
+			return { ok: true };
 		},
 
 		refreshPiSessions,

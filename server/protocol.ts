@@ -95,6 +95,12 @@ export type PiSessionSummary = {
 };
 
 /** 按项目（工作目录）分组的会话列表 */
+/** 客户端设置（ADR-0020 §P1）：界面直接读快照里的这一份 */
+export type SettingsView = {
+	quickPhrases: string[];
+	quickPhrasesEnabled: boolean;
+};
+
 export type PiProject = {
 	cwd: string;
 	name: string;
@@ -111,6 +117,8 @@ export type Snapshot = {
 	model: string | null;
 	/** pi 已有项目与会话（只读；ADR-0021 §1） */
 	piProjects: PiProject[];
+	/** 客户端设置（快捷短语等） */
+	settings: SettingsView;
 	conversations: ConversationMeta[];
 	active: {
 		conversationId: string | null;
@@ -139,8 +147,17 @@ export type ApproveRequest = {
 };
 export type GetStateRequest = { id: string; type: "get_state" };
 
+/** 改客户端设置（ADR-0020 §P1）：只带要改的字段，服务端归一化后落盘 */
+export type SetSettingsRequest = { id: string; type: "set_settings"; payload: Partial<SettingsView> };
+
 export type ClientRequest =
-	SendMessageRequest | InterruptRequest | ApproveRequest | GetStateRequest | NewChatRequest | SwitchConversationRequest;
+	| SendMessageRequest
+	| InterruptRequest
+	| ApproveRequest
+	| GetStateRequest
+	| SetSettingsRequest
+	| NewChatRequest
+	| SwitchConversationRequest;
 
 /** 新建会话（M2）：服务端建好并推快照，active 指向它 */
 export type NewChatRequest = { id: string; type: "new_chat" };
@@ -189,6 +206,7 @@ const REQUEST_TYPES: ClientRequestType[] = [
 	"get_state",
 	"new_chat",
 	"switch_conversation",
+	"set_settings",
 ];
 const DECISIONS: ApprovalDecision[] = ["once", "always", "deny"];
 
@@ -217,6 +235,10 @@ export function parseClientRequest(raw: unknown): ClientRequest | null {
 
 	if (type === "send_message") {
 		return nonEmptyString(payload.text) ? { id, type: "send_message", payload: { text: payload.text } } : null;
+	}
+	if (type === "set_settings") {
+		// 结构有意放宽：真正的归一化在服务端 settings 模块（超长/重复/条数都在那里收敛）
+		return { id, type: "set_settings", payload: payload as Partial<SettingsView> };
 	}
 	if (type === "switch_conversation") {
 		return nonEmptyString(payload.conversationId)

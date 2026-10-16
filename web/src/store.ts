@@ -11,13 +11,21 @@ export type AppState = {
 	snapshot: Snapshot | null;
 	connection: ConnectionState;
 	lastError: string | null;
+	/** 输入框草稿（纯客户端状态；ADR-0012 明确它不进快照） */
+	draft: string;
+	/** 侧栏的设置面板是否展开（同理：纯客户端 UI 状态） */
+	settingsOpen: boolean;
 };
 
-let state: AppState = { snapshot: null, connection: "connecting", lastError: null };
+let state: AppState = { snapshot: null, connection: "connecting", lastError: null, draft: "", settingsOpen: false };
 const listeners = new Set<() => void>();
 
 export function getAppState(): AppState {
 	return state;
+}
+
+export function setDraft(draft: string): void {
+	setAppState({ draft });
 }
 
 export function setAppState(patch: Partial<AppState>): void {

@@ -8,6 +8,7 @@ function makeSnapshot(tag: number): Snapshot {
 		engine: "fake",
 		model: "test/model",
 		piProjects: [],
+		settings: { quickPhrases: [], quickPhrasesEnabled: true },
 		conversations: [],
 		active: { conversationId: null, messages: [], hasMoreBefore: false },
 		running: { status: "idle", turnStartedAt: null, streamingText: `tag-${tag}`, activeTool: null },

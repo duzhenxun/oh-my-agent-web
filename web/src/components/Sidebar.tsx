@@ -1,5 +1,7 @@
 import type { ConversationMeta, PiProject } from "../types.ts";
+import { setAppState, useAppState } from "../store.ts";
 import { newChat, switchConversation } from "../ws.ts";
+import { SettingsPanel } from "./SettingsPanel.tsx";
 
 function shortTime(ts: number): string {
 	const date = new Date(ts);
@@ -87,6 +89,8 @@ export function Sidebar({
 	activeId: string | null;
 	piProjects: PiProject[];
 }) {
+	const { settingsOpen } = useAppState();
+
 	return (
 		<aside className="sidebar">
 			<div className="sidebar-head">
@@ -94,7 +98,16 @@ export function Sidebar({
 				<button type="button" className="btn btn-new" onClick={newChat} title="在当前工作区新建会话">
 					＋ 新建
 				</button>
+				<button
+					type="button"
+					className="btn btn-new"
+					title="快捷短语等设置"
+					onClick={() => setAppState({ settingsOpen: !settingsOpen })}
+				>
+					⚙
+				</button>
 			</div>
+			{settingsOpen ? <SettingsPanel /> : null}
 			<div className="sidebar-list">
 				<OwnSessions conversations={conversations} activeId={activeId} />
 				<PiProjects projects={piProjects} />

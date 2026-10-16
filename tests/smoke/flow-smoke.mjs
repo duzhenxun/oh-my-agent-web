@@ -13,7 +13,7 @@
  * （被 session.busy 拒掉，然后一路错位）。正确做法是**等这一轮的消息出现**（消息数增加）。
  */
 import { spawn } from "node:child_process";
-import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -165,6 +165,16 @@ try {
 	// ---- 正常连接 + 首屏快照 ----
 	client = await connectReady("连接建立");
 	check(client.latestSnapshot().active.messages.length === 0, "初始快照为空会话");
+
+	// ---- 客户端设置（ADR-0020 §P1）：快捷短语读写 + 归一化 + 落盘 ----
+	await waitFor(() => (client.latestSnapshot()?.settings.quickPhrases.length ?? 0) > 0, "默认快捷短语已下发");
+	const settingsReply = await client.reply(
+		client.send("set_settings", { quickPhrases: ["  继续  ", "总结", "总结", "  "], quickPhrasesEnabled: true }),
+	);
+	check(settingsReply.ok === true, "set_settings 有应答");
+	await waitFor(() => client.latestSnapshot()?.settings.quickPhrases.length === 2, "归一化后写回快照（去重去空）");
+	check(client.latestSnapshot().settings.quickPhrases.join(",") === "继续,总结", "短语内容与顺序正确");
+	check(existsSync(join(dataDir, "settings.json")), "设置已落盘到数据目录");
 
 	/**
 	 * 发一轮输入并等它真正结束。

@@ -7,6 +7,7 @@
 import { createFakeEngine } from "../../../server/engine/fake.js";
 import type { MessageBlock, ServerEvent, Snapshot } from "../../../server/protocol.js";
 import { createMemoryRuleStore, type RuleStore } from "../../../server/approval/rules.js";
+import type { SettingsStore } from "../../../server/session/settings.js";
 import { createRuntime, type Runtime } from "../../../server/session/runtime.js";
 import { createMemoryStore, type ConversationStore } from "../../../server/session/store.js";
 
@@ -32,7 +33,7 @@ export function recorder() {
 export function harness(
 	store: ConversationStore = createMemoryStore(),
 	rules: RuleStore = createMemoryRuleStore(),
-	options: { deterministicIds?: boolean } = {},
+	options: { deterministicIds?: boolean; settings?: SettingsStore } = {},
 ): {
 	runtime: Runtime;
 	recorder: ReturnType<typeof recorder>;
@@ -48,6 +49,7 @@ export function harness(
 		engine,
 		store,
 		rules,
+		...(options.settings ? { settings: options.settings } : {}),
 		workspace: "/tmp/agent-web-test",
 		emit: recorderInstance.emit,
 		// 默认确定性 id（用例好断言）；显式关掉时用真实运行的全局唯一 id（ADR-0019）

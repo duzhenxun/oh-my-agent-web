@@ -27,6 +27,8 @@ export type {
 	ProtocolError,
 	RunningState,
 	SendMessageRequest,
+	SetSettingsRequest,
+	SettingsView,
 	ServerEvent,
 	ServerMessage,
 	ServerReply,

@@ -27,6 +27,7 @@ import {
 } from "./protocol.js";
 import { acquireLock, describeHolder, releaseLock } from "./session/lock.js";
 import { createRuntime } from "./session/runtime.js";
+import { createFileSettingsStore } from "./session/settings.js";
 import { createJsonlStore } from "./session/store.js";
 import {
 	PI_AGENT_DIR_ENV,
@@ -134,6 +135,7 @@ const runtime = createRuntime({
 	rules: createFileRuleStore(config.dataDir),
 	workspace: config.workspace,
 	engineName: config.engine,
+	settings: createFileSettingsStore(config.dataDir),
 	piSessions: makePiSessionsProvider(),
 	emit: {
 		snapshot: (snapshot) => sender.pushSnapshot(snapshot),
@@ -272,6 +274,10 @@ async function handleMessage(socket: WebSocket, raw: string): Promise<void> {
 			}
 			case "switch_conversation": {
 				reply(socket, request.id, await runtime.switchConversation(request.payload.conversationId));
+				return;
+			}
+			case "set_settings": {
+				reply(socket, request.id, await runtime.applySettings(request.payload));
 				return;
 			}
 			case "get_state": {
