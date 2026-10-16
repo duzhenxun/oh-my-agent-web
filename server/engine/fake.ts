@@ -107,11 +107,11 @@ export type FakeEngineOptions = {
 };
 
 export type FakeEngine = EnginePort & {
+	/** 测试钩子：宿主交给引擎的图片 */
+	images(): Array<{ data: string; mimeType: string }>;
+
 	/** 测试钩子：会话表（含 createSession 收到的历史与累积转录） */
-	sessions(): Map<
-		string,
-		{ workspace: string; history: EngineMessage[]; transcript: EngineMessage[]; sessionPath: string | null }
-	>;
+	sessions(): Map<string, { workspace: string; transcript: EngineMessage[]; sessionPath: string | null }>;
 	/** 测试用：清掉所有会话 */
 	reset(): void;
 };
@@ -124,13 +124,12 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
 	const slowChunkDelayMs = options.slowChunkDelayMs ?? 250;
 
 	/** 会话表：**必须先 createSession**，否则 sendMessage 报 engine.no_session（与真引擎一致） */
-	const sessions = new Map<
-		string,
-		{ workspace: string; history: EngineMessage[]; transcript: EngineMessage[]; sessionPath: string | null }
-	>();
+	const sessions = new Map<string, { workspace: string; transcript: EngineMessage[]; sessionPath: string | null }>();
 	const interrupted = new Set<string>();
 	/** 假引擎自己的模型状态（只为了让 switchModel 有地方记） */
 	const models = new Map<string, string>();
+	/** 测试钩子：宿主交给引擎的图片（ADR-0020 §P3） */
+	const receivedImages: Array<{ data: string; mimeType: string }> = [];
 	let approvalHandler: ApprovalHandler | null = null;
 	let toolCallSeq = 0;
 
@@ -155,7 +154,6 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
 		async createSession(sessionOptions: EngineSessionOptions) {
 			sessions.set(sessionOptions.sessionId, {
 				workspace: sessionOptions.workspace,
-				history: [...(sessionOptions.history ?? [])],
 				transcript: [],
 				sessionPath: `fake-sessions/${sessionOptions.sessionId}.jsonl`,
 			});
@@ -167,7 +165,6 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
 			if (!sessions.has(openOptions.sessionId)) {
 				sessions.set(openOptions.sessionId, {
 					workspace: options.workspaceHint ?? "/tmp/agent-web-fake",
-					history: [],
 					transcript: [],
 					sessionPath: openOptions.sessionPath,
 				});
@@ -185,7 +182,14 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
 			}));
 		},
 
-		async sendMessage(sessionId: string, text: string, onEvent) {
+		async sendMessage(
+			sessionId: string,
+			text: string,
+			onEvent,
+			messageOptions?: { images?: Array<{ data: string; mimeType: string }> },
+		) {
+			// 记下宿主交给引擎的图片（测试用；ADR-0020 §P3 的视觉注入）
+			if (messageOptions?.images?.length) receivedImages.push(...messageOptions.images);
 			// 生命周期忠实于真引擎：**没有 createSession 就没有会话**（ADR-0018）
 			const session = sessions.get(sessionId);
 			if (!session) {
@@ -281,6 +285,11 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
 
 		setApprovalHandler(handler: ApprovalHandler) {
 			approvalHandler = handler;
+		},
+
+		/** 测试钩子：宿主交给引擎的图片（ADR-0020 §P3） */
+		images() {
+			return receivedImages;
 		},
 
 		/** 测试钩子：看会话表（含 createSession 时收到的历史） */

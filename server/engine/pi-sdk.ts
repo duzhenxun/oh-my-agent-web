@@ -68,50 +68,6 @@ function asRecord(value: unknown): AnyRecord {
 }
 
 /**
- * 把宿主的纯文本历史转成 SDK 的会话条目（ADR-0018 的历史注入）。
- *
- * 为什么要它：我们的事实源是自家 JSONL（ADR-0005），SDK 侧是空会话；不喂历史，
- * 「重启后接着聊」时模型会**失忆**。这里构造最朴素的 user/assistant 文本条目 ——
- * 工具调用不重放（对连续性价值低、形状复杂），只保留对话主线。
- *
- * 纯函数：单测用合成历史直接覆盖，不需要连模型。
- */
-export function historyEntries(history: EngineMessage[]): Array<Record<string, unknown>> {
-	const now = Date.now();
-	const entries: Array<Record<string, unknown>> = [];
-	let parentId: string | null = null;
-
-	history.forEach((message, index) => {
-		if (message.text.trim() === "") return;
-		const id = "seed-" + String(index);
-		const ts = message.ts || now;
-		const base = { type: "message", id, parentId, timestamp: new Date(ts).toISOString() };
-		const content = [{ type: "text", text: message.text }];
-		const entry =
-			message.role === "user"
-				? { ...base, message: { role: "user", content, timestamp: ts } }
-				: {
-						...base,
-						message: {
-							role: "assistant",
-							content,
-							// 以下字段是 SDK 的形状要求，但重放历史时无意义 → 用明确的占位值
-							api: "replay",
-							provider: "replay",
-							model: "replay",
-							usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-							stopReason: "stop",
-							timestamp: ts,
-						},
-					};
-		entries.push(entry);
-		parentId = id;
-	});
-
-	return entries;
-}
-
-/**
  * 教模型怎么写「下一步建议」（ADR-0022）。
  *
  * 刻意写得短：这段每次请求都要付 token，而细节交给解析器（它容忍各种畸形写法）。
@@ -226,7 +182,12 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 			return entriesToUiMessages(handle.sessionManager.getEntries());
 		},
 
-		async sendMessage(sessionId: string, text: string, onEvent: (event: EngineEvent) => void) {
+		async sendMessage(
+			sessionId: string,
+			text: string,
+			onEvent: (event: EngineEvent) => void,
+			messageOptions?: { images?: Array<{ data: string; mimeType: string }> },
+		) {
 			const handle = sessions.get(sessionId);
 			if (!handle) {
 				onEvent({ type: "error", code: "engine.no_session", message: `引擎里没有这个会话：${sessionId}` });
@@ -257,7 +218,19 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 			});
 
 			try {
-				await handle.session.prompt(text);
+				// 图片走 SDK 的 images 参数（视觉注入）；没有图片时不传，避免空数组影响提示词缓存
+				const images = messageOptions?.images?.map((image) => ({
+					type: "image" as const,
+					data: image.data,
+					mimeType: image.mimeType,
+				}));
+				if (images && images.length > 0) {
+					await (
+						handle.session as unknown as { prompt: (text: string, options: { images: unknown[] }) => Promise<void> }
+					).prompt(text, { images });
+				} else {
+					await handle.session.prompt(text);
+				}
 				// 等 settle：prompt() 返回后仍可能有收尾事件
 				await Promise.race([settled, new Promise((resolve) => setTimeout(resolve, 50))]);
 			} catch (error) {

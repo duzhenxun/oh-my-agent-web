@@ -45,14 +45,6 @@ export type EngineSessionOptions = {
 	sessionId: string;
 	/** 工作区根（ADR-0006 的路径约束在宿主侧强制，引擎只是被告知） */
 	workspace: string;
-	/**
-	 * 会话已有历史的纯文本形式（宿主的事实源是自家 JSONL，引擎侧是空的）。
-	 * **不传 = 模型会失忆**：从磁盘恢复的会话再接着聊时，它看不到之前说过什么。
-	 *
-	 * ⚠️ ADR-0021 §2（pi 会话当唯一事实源）落地后，新建会话不再需要它；
-	 * 打开已有会话请用 `openSession`（上下文来自会话自己的转录）。
-	 */
-	history?: EngineMessage[];
 };
 
 /** 打开一个已经存在的会话（ADR-0021 §2）：上下文由会话文件本身提供 */
@@ -68,7 +60,13 @@ export type EnginePort = {
 	/** 打开已有会话（ADR-0021 §2）：上下文来自会话自己的转录，不需要注入历史 */
 	openSession(options: EngineOpenOptions): Promise<void>;
 	/** 发一轮输入；事件通过 onEvent 推给宿主；Promise 在回合结束时 resolve */
-	sendMessage(sessionId: string, text: string, onEvent: (event: EngineEvent) => void): Promise<void>;
+	sendMessage(
+		sessionId: string,
+		text: string,
+		onEvent: (event: EngineEvent) => void,
+		/** 图片附件（ADR-0020 §P3）：base64 + mime，交给模型做视觉注入 */
+		options?: { images?: Array<{ data: string; mimeType: string }> },
+	): Promise<void>;
 	interrupt(sessionId: string): Promise<void>;
 	/** 关掉一个引擎会话（LRU 回收：同时打开太多会带来多次资源扫描） */
 	closeSession?(sessionId: string): Promise<void>;

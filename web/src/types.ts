@@ -8,6 +8,7 @@
 export type {
 	ActionItem,
 	ApprovalDecision,
+	AttachmentRef,
 	ApproveRequest,
 	ClientRequest,
 	ClientRequestType,

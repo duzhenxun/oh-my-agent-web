@@ -100,6 +100,18 @@ export type PiSessionSummary = {
 };
 
 /** 按项目（工作目录）分组的会话列表 */
+/**
+ * 附件引用（ADR-0020 §P3）：**只带引用，不带内容** —— 图片走 HTTP 上传（ADR-0004 的单条 ≤64KB），
+ * 消息里只有 id。服务端据此读回文件（图片交给模型做视觉注入，其它只给路径引用）。
+ */
+export type AttachmentRef = {
+	id: string;
+	kind: "image" | "file";
+	name: string;
+	mime: string;
+	bytes: number;
+};
+
 /** 可选模型（ADR-0020 §P2）：id 是 `provider/modelId`，label 给人看 */
 export type ModelOption = { id: string; label: string };
 
@@ -159,7 +171,11 @@ export type Snapshot = {
 
 export type ApprovalDecision = "once" | "always" | "deny";
 
-export type SendMessageRequest = { id: string; type: "send_message"; payload: { text: string } };
+export type SendMessageRequest = {
+	id: string;
+	type: "send_message";
+	payload: { text: string; attachments?: AttachmentRef[] };
+};
 export type InterruptRequest = { id: string; type: "interrupt"; payload: { conversationId: string } };
 export type ApproveRequest = {
 	id: string;
@@ -236,6 +252,18 @@ const REQUEST_TYPES: ClientRequestType[] = [
 ];
 const DECISIONS: ApprovalDecision[] = ["once", "always", "deny"];
 
+function isAttachmentRef(value: unknown): value is AttachmentRef {
+	if (!isRecord(value)) return false;
+	const { id, kind, name, mime, bytes } = value;
+	return (
+		nonEmptyString(id) &&
+		(kind === "image" || kind === "file") &&
+		typeof name === "string" &&
+		typeof mime === "string" &&
+		typeof bytes === "number"
+	);
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null;
 }
@@ -260,7 +288,16 @@ export function parseClientRequest(raw: unknown): ClientRequest | null {
 	if (!isRecord(payload)) return null;
 
 	if (type === "send_message") {
-		return nonEmptyString(payload.text) ? { id, type: "send_message", payload: { text: payload.text } } : null;
+		// 附件只校验形状（id/kind/name/mime/bytes）：真正的文件校验在服务端读回时做
+		const attachments = Array.isArray(payload.attachments)
+			? payload.attachments.filter(isAttachmentRef).slice(0, 5)
+			: undefined;
+		if (!nonEmptyString(payload.text) && !attachments?.length) return null;
+		return {
+			id,
+			type: "send_message",
+			payload: { text: String(payload.text ?? ""), ...(attachments?.length ? { attachments } : {}) },
+		};
 	}
 	if (type === "set_model") {
 		return nonEmptyString(payload.modelId) ? { id, type: "set_model", payload: { modelId: payload.modelId } } : null;
