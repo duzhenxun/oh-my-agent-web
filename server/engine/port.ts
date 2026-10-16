@@ -67,6 +67,8 @@ export type EnginePort = {
 	/** 发一轮输入；事件通过 onEvent 推给宿主；Promise 在回合结束时 resolve */
 	sendMessage(sessionId: string, text: string, onEvent: (event: EngineEvent) => void): Promise<void>;
 	interrupt(sessionId: string): Promise<void>;
+	/** 关掉一个引擎会话（LRU 回收：同时打开太多会带来多次资源扫描） */
+	closeSession?(sessionId: string): Promise<void>;
 	readTranscript(sessionId: string): Promise<EngineMessage[]>;
 	/** 读转录并映射成界面消息（text / tool 块）——侧栏与对话区都靠它 */
 	readUiMessages(sessionId: string): Promise<UiMessage[]>;

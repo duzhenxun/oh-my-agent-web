@@ -250,3 +250,15 @@ describe("标题归一（列表只显示一行）", () => {
 		expect(extractListMeta([userLine("a\t\tb   c")]).title).toBe("a b c");
 	});
 });
+
+describe("PiSessionSummary 需要的字段（ADR-0021 §2：宿主靠 sessionPath 打开会话）", () => {
+	it("扫描结果带 startedAt 与 path（不是 cwd 的目录名，而是会话文件）", async () => {
+		mkdirSync(join(dir, "sessions", "--repo-x--"), { recursive: true });
+		const file = join(dir, "sessions", "--repo-x--", "s.jsonl");
+		writeFileSync(file, `${headerLine("s1", "/repo/x", "2026-10-16T00:00:00.000Z")}\n${userLine("标题")}\n`, "utf8");
+		const result = await scanPiSessions({ sessionsRoot: join(dir, "sessions") });
+		const row = result.groups[0].sessions[0];
+		expect(row.path).toBe(file);
+		expect(row.startedAt).toBe(Date.parse("2026-10-16T00:00:00.000Z"));
+	});
+});

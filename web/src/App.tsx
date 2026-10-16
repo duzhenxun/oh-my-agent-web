@@ -19,7 +19,12 @@ export function App() {
 	const snapshot = state.snapshot;
 	const messages = snapshot?.active.messages ?? [];
 	const running = snapshot ? snapshot.running.status !== "idle" : false;
-	const activeConversation = snapshot?.conversations.find((item) => item.id === snapshot.active.conversationId) ?? null;
+	// 活动会话的标题：先找自己的会话，再回退到 pi 的项目列表（ADR-0021 §2 起两者都能被打开）
+	const activeId = snapshot?.active.conversationId ?? null;
+	const activeConversation =
+		snapshot?.conversations.find((item) => item.id === activeId) ??
+		snapshot?.piProjects.flatMap((project) => project.sessions).find((session) => session.id === activeId) ??
+		null;
 	const scroller = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {

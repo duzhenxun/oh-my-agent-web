@@ -30,6 +30,13 @@ import type { ApprovalHandler, EngineEvent, EngineMessage, EnginePort, EngineSes
 export type PiSdkEngineOptions = {
 	/** 引擎 SDK 的全局配置目录（默认 ~/.pi/agent，模型与凭据都在那里） */
 	agentDir?: string;
+	/**
+	 * 会话存储目录（默认由 SDK 决定：`~/.pi/agent/sessions/<编码后的 cwd>/`）。
+	 *
+	 * **测试必须显式传临时目录** —— 否则会写进用户的真实会话存储。
+	 * （真实教训：一次探针就直接落到了 `~/.pi/agent/sessions/` 里。）
+	 */
+	sessionDir?: string;
 	/** 出问题时给宿主看的提示（不抛给用户，避免把一轮对话打死） */
 	onNotice?: (text: string, level: "info" | "warn" | "error") => void;
 };
@@ -197,17 +204,18 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 
 	return {
 		async createSession(sessionOptions: EngineSessionOptions) {
-			// 历史注入（ADR-0018）：新会话没有历史，但保留这个参数是为了「从我们自己的
-			// 转录恢复」的过渡场景（ADR-0021 §2 完全落地后会被 openSession 取代）。
-			const seeded = historyEntries(sessionOptions.history ?? []);
-			const sessionManager = SessionManager.inMemory(sessionOptions.workspace, {}, seeded as never);
+			// ADR-0021 §2：新建会话就落在 **pi 的会话存储**里（不再用 inMemory + 自建 jsonl），
+			// 用我们的 sessionId 当 SDK 的会话 id → 两边 id 空间完全一致。
+			const sessionManager = SessionManager.create(sessionOptions.workspace, options.sessionDir, {
+				id: sessionOptions.sessionId,
+			});
 			const handle = await startSession(sessionOptions.sessionId, sessionOptions.workspace, sessionManager);
 			return { sessionPath: handle.sessionPath };
 		},
 
 		async openSession(openOptions) {
 			// SessionManager.open 会读首行 header 拿到 cwd，并把后续写入追加回**同一个文件**
-			const sessionManager = SessionManager.open(openOptions.sessionPath);
+			const sessionManager = SessionManager.open(openOptions.sessionPath, options.sessionDir);
 			const workspace = sessionManager.getCwd() || process.cwd();
 			await startSession(openOptions.sessionId, workspace, sessionManager, openOptions.sessionPath);
 		},
@@ -312,6 +320,18 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 			const model = (handle?.session as { model?: { id?: string; provider?: string } } | undefined)?.model;
 			if (!model) return null;
 			return { provider: String(model.provider ?? "?"), model: String(model.id ?? "?") };
+		},
+
+		async closeSession(sessionId: string) {
+			const handle = sessions.get(sessionId);
+			if (!handle) return;
+			handle.unsubscribe();
+			try {
+				handle.session.dispose();
+			} catch {
+				// 已经关掉了
+			}
+			sessions.delete(sessionId);
 		},
 
 		// 关掉一个会话（宿主换会话/退出时用）

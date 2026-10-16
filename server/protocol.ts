@@ -60,7 +60,8 @@ export type ConversationMeta = {
 	createdAt: number;
 	updatedAt: number;
 	workspace: string;
-	messageCount: number;
+	/** 消息数（扫描列表时给不出，打开过之后才知道 → 可选） */
+	messageCount?: number;
 };
 
 export type RunningState = {
@@ -89,9 +90,13 @@ export type FilesMeta = { root: string; treeVersion: number };
 export type PiSessionSummary = {
 	id: string;
 	title: string;
+	/** 会话开始时间（header 里的 timestamp） */
+	startedAt: number;
 	updatedAt: number;
 	cwd: string;
 	model: string | null;
+	/** 会话文件路径（宿主打开它要用；界面不显示） */
+	sessionPath: string;
 };
 
 /** 按项目（工作目录）分组的会话列表 */

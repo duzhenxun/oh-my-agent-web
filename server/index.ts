@@ -104,6 +104,8 @@ function makePiSessionsProvider(): () => Promise<PiProject[]> {
 			sessions: group.sessions.map((session) => ({
 				id: session.id,
 				title: session.title,
+				startedAt: session.startedAt,
+				sessionPath: session.path,
 				updatedAt: session.updatedAt,
 				cwd: session.cwd,
 				model: session.model,
@@ -131,11 +133,11 @@ const runtimeRef: { current: { notify: (text: string, level?: "info" | "warn" | 
 
 const runtime = createRuntime({
 	engine,
-	store: createJsonlStore(config.dataDir),
 	rules: createFileRuleStore(config.dataDir),
 	workspace: config.workspace,
 	engineName: config.engine,
 	turnTimeoutMs: config.turnTimeoutMs,
+	store: createJsonlStore(config.dataDir),
 	settings: createFileSettingsStore(config.dataDir),
 	piSessions: makePiSessionsProvider(),
 	emit: {

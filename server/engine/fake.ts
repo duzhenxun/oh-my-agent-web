@@ -252,6 +252,10 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
 			}
 		},
 
+		async closeSession(sessionId: string) {
+			sessions.delete(sessionId);
+		},
+
 		async interrupt(sessionId: string) {
 			interrupted.add(sessionId);
 		},

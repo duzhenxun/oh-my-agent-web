@@ -46,13 +46,13 @@ function OwnSessions({ conversations, activeId }: { conversations: ConversationM
 }
 
 /** 项目分组（pi 已有会话，只读；ADR-0021 §1） */
-function PiProjects({ projects }: { projects: PiProject[] }) {
+function PiProjects({ projects, activeId }: { projects: PiProject[]; activeId: string | null }) {
 	if (projects.length === 0) return null;
 	return (
 		<>
 			<div className="sidebar-section">
-				项目
-				<span className="sidebar-section-tag">只读</span>
+				pi 项目
+				<span className="sidebar-section-tag">可继续</span>
 			</div>
 			{projects.map((project, index) => {
 				const shown = project.sessions.slice(0, SESSIONS_PER_PROJECT);
@@ -65,10 +65,16 @@ function PiProjects({ projects }: { projects: PiProject[] }) {
 						</summary>
 						<div className="proj-body">
 							{shown.map((session) => (
-								<div className="pi-row" key={session.id} title={`${session.cwd}\n${session.id}`}>
+								<button
+									type="button"
+									className={`pi-row${session.id === activeId ? " pi-row-active" : ""}`}
+									key={session.id}
+									onClick={() => switchConversation(session.id)}
+									title={`${session.cwd}\n${session.id}\n点开即载入该会话，可直接继续聊`}
+								>
 									<span className="pi-row-title">{session.title || "（无标题）"}</span>
 									<span className="pi-row-time">{shortTime(session.updatedAt)}</span>
-								</div>
+								</button>
 							))}
 							{rest > 0 ? <div className="pi-row pi-row-more">还有 {rest} 个…</div> : null}
 						</div>
@@ -110,7 +116,7 @@ export function Sidebar({
 			{settingsOpen ? <SettingsPanel /> : null}
 			<div className="sidebar-list">
 				<OwnSessions conversations={conversations} activeId={activeId} />
-				<PiProjects projects={piProjects} />
+				<PiProjects projects={piProjects} activeId={activeId} />
 			</div>
 		</aside>
 	);

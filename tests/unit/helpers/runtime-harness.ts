@@ -5,7 +5,7 @@
  * 把「记录 emit / 起 runtime / 等待 / 造消息」这些与用例无关的脚手架集中在这里。
  */
 import { createFakeEngine } from "../../../server/engine/fake.js";
-import type { MessageBlock, ServerEvent, Snapshot } from "../../../server/protocol.js";
+import type { MessageBlock, PiProject, ServerEvent, Snapshot } from "../../../server/protocol.js";
 import { createMemoryRuleStore, type RuleStore } from "../../../server/approval/rules.js";
 import type { SettingsStore } from "../../../server/session/settings.js";
 import { createRuntime, type Runtime } from "../../../server/session/runtime.js";
@@ -33,7 +33,7 @@ export function recorder() {
 export function harness(
 	store: ConversationStore = createMemoryStore(),
 	rules: RuleStore = createMemoryRuleStore(),
-	options: { deterministicIds?: boolean; settings?: SettingsStore } = {},
+	options: { deterministicIds?: boolean; settings?: SettingsStore; piSessions?: () => Promise<PiProject[]> } = {},
 ): {
 	runtime: Runtime;
 	recorder: ReturnType<typeof recorder>;
@@ -50,6 +50,7 @@ export function harness(
 		store,
 		rules,
 		...(options.settings ? { settings: options.settings } : {}),
+		...(options.piSessions ? { piSessions: options.piSessions } : { piSessions: async () => [] }),
 		workspace: "/tmp/agent-web-test",
 		emit: recorderInstance.emit,
 		// 默认确定性 id（用例好断言）；显式关掉时用真实运行的全局唯一 id（ADR-0019）

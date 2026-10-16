@@ -187,3 +187,23 @@
 	color: var(--text-faint);
 	font-size: 11.5px;
 }
+
+/* pi 会话行现在可点（ADR-0021 §2）：样式按按钮处理，但保持列表的紧凑感 */
+.pi-row {
+	border: 1px solid transparent;
+	background: transparent;
+	text-align: left;
+	cursor: pointer;
+	font: inherit;
+	width: 100%;
+}
+
+.pi-row:hover {
+	background: var(--bg-elev-2);
+	border-color: var(--border);
+}
+
+.pi-row-active {
+	background: var(--bg-elev-2);
+	border-color: var(--accent-dim);
+}

@@ -10,7 +10,6 @@
  *     代价写清楚：进程在回合计中被杀 → 这一轮的助手输出丢失（用户消息还在）。
  */
 import type { RuleStore } from "../approval/rules.js";
-import { createApprovalBridge } from "./approval-bridge.js";
 import { createEngineBinding } from "./engine-binding.js";
 import {
 	createConversationCreator,
@@ -20,10 +19,10 @@ import {
 	updateConversationMeta,
 } from "./conversation-meta.js";
 import { createMarkerStreamFilter } from "../markers/actions.js";
-import { createNoticeSink } from "./notices.js";
+import { createRuntimeServices } from "./runtime-services.js";
+import { createPiSessionOpener } from "./pi-opener.js";
 import { createPiRefresher } from "./pi-refresh.js";
 import { settleTurnMarkers } from "./turn-markers.js";
-import { createRuntimeTurnWatchdog } from "./turn-watchdog.js";
 import { applySettingsPatch, defaultSettings, type SettingsStore } from "./settings.js";
 import { applyEngineEvent, type TurnEventContext } from "./turn-events.js";
 import { makeIdFactory } from "../util/ids.js";
@@ -100,7 +99,6 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 	// 工作区根是已知事实（ADR-0012 的 files 元数据；文件树内容在 M4）
 	state.files = { root: options.workspace, treeVersion: 0 };
 
-	/** 哪些会话的消息已经从磁盘读进内存 */
 	const loadedConversations = new Set<string>();
 
 	// 默认真实运行用全局唯一 id（ADR-0019）；测试注入确定性 id
@@ -112,12 +110,6 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 	let rawTurnText = "";
 
 	// 回合看门狗（ADR-0023）：卡住的回合要能自己收场 —— 全局只有 1 路在飞，卡一路等于堵死整个应用
-	const watchdog = createRuntimeTurnWatchdog({
-		timeoutMs: options.turnTimeoutMs,
-		engine: options.engine,
-		isWaitingForUser: () => state.pendingApproval !== null,
-		notice: (text, level) => notice(text, level),
-	});
 	let currentTurn: { conversationId: string; messageId: string } | null = null;
 	/** 回合结束时的落盘任务：sendMessage 必须在返回前等它完成（否则「应答已回、转录还没写」） */
 	let finishPromise: Promise<void> | null = null;
@@ -131,40 +123,31 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		now,
 		onLoaded: (projects) => {
 			state.piProjects = projects;
+			// 记下每个 pi 会话的文件路径（ADR-0021 §2：点开就是打开这个文件）
+			piOpener.remember(projects);
 			pushSnapshot();
 		},
 		onError: (message) => notice(message, "warn"),
 	});
 
-	const noticeSink = createNoticeSink({
+	// 提示牌 / 审批桥 / 看门狗（ADR-0013 / ADR-0006 / ADR-0023）：装配一次，见 runtime-services.ts
+	const services = createRuntimeServices({
+		options,
 		now,
 		nextId,
-		dedupeMs: noticeDedupeMs,
-		max: maxNotices,
 		onNotice: (entry) => {
-			// 快照的来源仍是 state（ADR-0012：快照是前端唯一事实源）
-			state.notices = [...state.notices, entry].slice(-maxNotices);
+			state.notices = [...state.notices, entry].slice(-(options.maxNotices ?? 20));
 			options.emit.event({ type: "event", event: "notice", notice: entry });
 			pushSnapshot();
 		},
-	});
-	const notice = (text: string, level: Notice["level"] = "info"): void => {
-		noticeSink.push(text, level);
-	};
-
-	// 审批桥（ADR-0006）：规则命中直接放行，否则等界面点一下（拆到单独模块，见 approval-bridge.ts）
-	const approval = createApprovalBridge({
-		rules: options.rules,
-		now,
-		nextId,
 		onPending: (nextPending) => {
 			state.pendingApproval = nextPending;
 			state.running.status = nextPending ? "awaiting_approval" : "streaming";
 			pushSnapshot();
 		},
-		onNotice: (text, level) => notice(text, level),
+		isWaitingForUser: () => state.pendingApproval !== null,
 	});
-	options.engine.setApprovalHandler(approval.handler);
+	const { notice, approval, watchdog } = services;
 
 	// 引擎会话的生命周期（懒创建 + 历史注入 + 读模型），见 ADR-0018
 	const binding = createEngineBinding({
@@ -186,6 +169,16 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		now,
 		titleChars,
 		onChanged: pushSnapshot,
+	});
+
+	// 打开 pi 已有的会话（ADR-0021 §2）：抽到 pi-opener 里
+	const piOpener = createPiSessionOpener({
+		engine: options.engine,
+		onModel: (model) => {
+			state.model = model;
+			pushSnapshot();
+		},
+		onError: (message) => notice(message, "error"),
 	});
 
 	const turnContext: TurnEventContext = {
@@ -233,6 +226,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 
 		updateConversationMeta(state, conversationId, now());
 		await persistIndexSafely(options.store, state.conversations, (message) => notice(message, "warn"));
+		void piRefresher.refresh(true);
 		if (reason === "interrupted") notice("回合已中断", "info");
 		pushSnapshot();
 	}
@@ -296,7 +290,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 					notice(message, "warn"),
 				);
 				// 先建引擎会话（带上历史），再把新消息加进状态 —— 顺序反了会让新消息在历史里重复
-				await binding.ensure(conversationId);
+				if (!piOpener.isOpen(conversationId)) await binding.ensure(conversationId);
 				const ts = now();
 				const userMessage = appendText(createMessage(nextId("msg"), "user", ts), text);
 				const assistantMessage = createMessage(nextId("msg"), "assistant", ts);
@@ -372,8 +366,25 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		},
 
 		async switchConversation(conversationId) {
-			if (!state.conversations.some((conversation) => conversation.id === conversationId)) {
+			const mine = state.conversations.some((conversation) => conversation.id === conversationId);
+			const fromPi = piOpener.infoOf(conversationId);
+			if (!mine && !fromPi) {
 				return { ok: false, error: { code: "session.not_found", message: `会话不存在：${conversationId}` } };
+			}
+
+			// pi 已有的会话：打开它的文件、读回转录（ADR-0021 §2）
+			if (!mine && fromPi) {
+				if (state.activeId !== conversationId || !state.messages[conversationId]) {
+					const messages = await piOpener.open(conversationId, (force) => piRefresher.refresh(force));
+					if (messages === null) {
+						return { ok: false, error: { code: "session.open_failed", message: `打开会话失败：${conversationId}` } };
+					}
+					state.messages[conversationId] = messages;
+					state.activeId = conversationId;
+					state.files = { root: fromPi.workspace, treeVersion: (state.files?.treeVersion ?? 0) + 1 };
+					pushSnapshot();
+				}
+				return { ok: true };
 			}
 			if (state.activeId !== conversationId) {
 				await loadConversationMessages(options.store, state, loadedConversations, conversationId, (message) =>
