@@ -85,7 +85,8 @@ describe("会话运行时（M1：内存态）", () => {
 		const { runtime, recorder: rec } = harness();
 		rec.reset();
 		const turn = runtime.sendMessage("slow please");
-		await waitFor(() => runtime.isBusy());
+		// 等待纪律：断言的既然是「回合在跑」，就等这个状态（isBusy 会早于它就绪）
+		await waitFor(() => runtime.snapshot().running.status === "streaming");
 		const result = await runtime.interrupt();
 		expect(result.ok).toBe(true);
 		await turn;

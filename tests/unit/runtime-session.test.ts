@@ -156,3 +156,30 @@ describe("M3.5-P1：客户端设置（ADR-0020）", () => {
 		expect(runtime.snapshot().settings.quickPhrases.length).toBeGreaterThan(0);
 	});
 });
+
+describe("M3.5-P2：模型列表与切换（ADR-0020）", () => {
+	it("打开/新建会话后能拿到可用模型列表", async () => {
+		const { runtime } = harness();
+		await runtime.sendMessage("你好");
+		await waitFor(() => (runtime.snapshot().models.length ?? 0) > 0);
+		expect(runtime.snapshot().models.map((model) => model.id)).toContain("fake/alpha");
+	});
+
+	it("切换模型：更新当前模型 + 给出提示", async () => {
+		const { runtime, engine } = harness();
+		await runtime.sendMessage("你好");
+		const result = await runtime.setModel("fake/beta");
+		expect(result.ok).toBe(true);
+		expect(runtime.snapshot().model).toBe("fake/beta");
+		expect(runtime.snapshot().notices.some((notice) => notice.text.includes("已切换模型"))).toBe(true);
+		expect(engine.sessions().size).toBeGreaterThan(0);
+	});
+
+	it("没有打开的会话时切换被拒（不静默失败）", async () => {
+		const { runtime } = harness();
+		await runtime.init();
+		const result = await runtime.setModel("fake/beta");
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.error.code).toBe("session.none");
+	});
+});

@@ -258,3 +258,20 @@ body {
 		--red: #cf222e;
 	}
 }
+
+/* 模型选择器（ADR-0020 §P2）：外观跟芯片一致，但可点开 */
+.chip-select {
+	appearance: none;
+	background: var(--bg-elev-2);
+	color: var(--text);
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	padding: 2px 8px;
+	font-size: 12px;
+	max-width: 26ch;
+	cursor: pointer;
+}
+
+.chip-select:hover {
+	border-color: var(--accent-dim);
+}

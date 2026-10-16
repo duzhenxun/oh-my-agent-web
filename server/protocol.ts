@@ -100,6 +100,9 @@ export type PiSessionSummary = {
 };
 
 /** 按项目（工作目录）分组的会话列表 */
+/** 可选模型（ADR-0020 §P2）：id 是 `provider/modelId`，label 给人看 */
+export type ModelOption = { id: string; label: string };
+
 /** 建议操作（ADR-0022）：模型用 [[action:suggest:...]] 给出的「下一步」，前端渲染成按钮 */
 export type ActionItem = {
 	id: string;
@@ -127,6 +130,8 @@ export type EngineName = "pi" | "fake";
 export type Snapshot = {
 	protocolVersion: number;
 	engine: EngineName;
+	/** 可用模型列表（ADR-0020 §P2；打开会话后才拿得到，可能为空） */
+	models: ModelOption[];
 	/** 当前模型（`provider/model`；取不到为 null）——M3 起界面要能看见自己在跟谁说话 */
 	model: string | null;
 	/** pi 已有项目与会话（只读；ADR-0021 §1） */
@@ -166,12 +171,16 @@ export type GetStateRequest = { id: string; type: "get_state" };
 /** 改客户端设置（ADR-0020 §P1）：只带要改的字段，服务端归一化后落盘 */
 export type SetSettingsRequest = { id: string; type: "set_settings"; payload: Partial<SettingsView> };
 
+/** 切换当前会话的模型（ADR-0020 §P2）：写进会话文件，续聊时不变 */
+export type SetModelRequest = { id: string; type: "set_model"; payload: { modelId: string } };
+
 export type ClientRequest =
 	| SendMessageRequest
 	| InterruptRequest
 	| ApproveRequest
 	| GetStateRequest
 	| SetSettingsRequest
+	| SetModelRequest
 	| NewChatRequest
 	| SwitchConversationRequest;
 
@@ -223,6 +232,7 @@ const REQUEST_TYPES: ClientRequestType[] = [
 	"new_chat",
 	"switch_conversation",
 	"set_settings",
+	"set_model",
 ];
 const DECISIONS: ApprovalDecision[] = ["once", "always", "deny"];
 
@@ -251,6 +261,9 @@ export function parseClientRequest(raw: unknown): ClientRequest | null {
 
 	if (type === "send_message") {
 		return nonEmptyString(payload.text) ? { id, type: "send_message", payload: { text: payload.text } } : null;
+	}
+	if (type === "set_model") {
+		return nonEmptyString(payload.modelId) ? { id, type: "set_model", payload: { modelId: payload.modelId } } : null;
 	}
 	if (type === "set_settings") {
 		// 结构有意放宽：真正的归一化在服务端 settings 模块（超长/重复/条数都在那里收敛）

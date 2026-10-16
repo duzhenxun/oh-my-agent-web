@@ -38,6 +38,9 @@ export type EngineEvent =
 /** 引擎侧的转录（宿主自己决定怎么映射成 UiMessage） */
 export type EngineMessage = { role: "user" | "assistant"; text: string; ts: number };
 
+/** 模型条目（ADR-0020 §P2）：id 是 `provider/modelId`，label 给人看 */
+export type EngineModelInfo = { id: string; label: string; current?: boolean };
+
 export type EngineSessionOptions = {
 	sessionId: string;
 	/** 工作区根（ADR-0006 的路径约束在宿主侧强制，引擎只是被告知） */
@@ -74,6 +77,10 @@ export type EnginePort = {
 	readUiMessages(sessionId: string): Promise<UiMessage[]>;
 	/** 危险操作前引擎会调用它；宿主负责弹给用户并等待决定（ADR-0006 审批三态） */
 	setApprovalHandler(handler: ApprovalHandler): void;
+	/** 可用模型列表（ADR-0020 §P2）：`provider/modelId` + 给人看的标签 */
+	listModels?(sessionId?: string): Promise<EngineModelInfo[]>;
+	/** 切换某个会话的模型（写进会话文件，续聊时模型不变） */
+	switchModel?(sessionId: string, modelId: string): Promise<boolean>;
 	/** 当前模型（用于界面显示；取不到返回 null） */
 	currentModel?(sessionId: string): Promise<{ provider: string; model: string } | null>;
 };

@@ -279,6 +279,10 @@ async function handleMessage(socket: WebSocket, raw: string): Promise<void> {
 				reply(socket, request.id, await runtime.switchConversation(request.payload.conversationId));
 				return;
 			}
+			case "set_model": {
+				reply(socket, request.id, await runtime.setModel(request.payload.modelId));
+				return;
+			}
 			case "set_settings": {
 				reply(socket, request.id, await runtime.applySettings(request.payload));
 				return;

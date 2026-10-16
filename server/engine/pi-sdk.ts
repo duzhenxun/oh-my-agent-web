@@ -315,6 +315,50 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 			approvalHandler = handler;
 		},
 
+		async listModels(sessionId?: string) {
+			// 模型注册表挂在会话的 modelRuntime 上：没有会话时给不出（界面在打开会话后才显示列表）
+			const handle = sessionId ? sessions.get(sessionId) : [...sessions.values()].at(-1);
+			const runtime = (handle?.session as { modelRuntime?: { getAvailable?: () => Promise<unknown[]> } } | undefined)
+				?.modelRuntime;
+			if (!runtime?.getAvailable) return [];
+			try {
+				const models = (await runtime.getAvailable()) as Array<{ provider?: string; id?: string; name?: string }>;
+				const current = await this.currentModel?.(sessionId ?? "");
+				return models
+					.map((model) => {
+						const id = `${String(model.provider ?? "?")}/${String(model.id ?? "?")}`;
+						return {
+							id,
+							label: String(model.name ?? model.id ?? id),
+							current: current ? id === `${current.provider}/${current.model}` : false,
+						};
+					})
+					.sort((a, b) => Number(b.current) - Number(a.current) || a.id.localeCompare(b.id));
+			} catch {
+				return [];
+			}
+		},
+
+		async switchModel(sessionId: string, modelId: string) {
+			// ModelRuntime 上没有 find（那是 ModelRegistry 的方法）→ 从可用列表里自己匹配
+			const handle = sessions.get(sessionId);
+			const runtime = (handle?.session as { modelRuntime?: { getAvailable?: () => Promise<unknown[]> } } | undefined)
+				?.modelRuntime;
+			if (!handle || !runtime?.getAvailable) return false;
+			const [provider, ...rest] = modelId.split("/");
+			const wanted = rest.join("/");
+			const available = (await runtime.getAvailable()) as Array<{ provider?: string; id?: string }>;
+			const model = available.find((item) => String(item.provider) === provider && String(item.id) === wanted);
+			if (!model) return false;
+			try {
+				await (handle.session as unknown as { setModel: (model: unknown) => Promise<void> }).setModel(model);
+				return true;
+			} catch (error) {
+				options.onNotice?.(`切换模型失败：${error instanceof Error ? error.message : String(error)}`, "error");
+				return false;
+			}
+		},
+
 		async currentModel(sessionId: string) {
 			const handle = sessions.get(sessionId);
 			const model = (handle?.session as { model?: { id?: string; provider?: string } } | undefined)?.model;

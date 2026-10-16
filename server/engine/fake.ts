@@ -129,6 +129,8 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
 		{ workspace: string; history: EngineMessage[]; transcript: EngineMessage[]; sessionPath: string | null }
 	>();
 	const interrupted = new Set<string>();
+	/** 假引擎自己的模型状态（只为了让 switchModel 有地方记） */
+	const models = new Map<string, string>();
 	let approvalHandler: ApprovalHandler | null = null;
 	let toolCallSeq = 0;
 
@@ -250,6 +252,19 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
 			} finally {
 				interrupted.delete(sessionId);
 			}
+		},
+
+		async listModels() {
+			// 假引擎固定给两个模型（零 token 也能验证「选模型」这条链路）
+			return [
+				{ id: "fake/alpha", label: "Fake Alpha", current: true },
+				{ id: "fake/beta", label: "Fake Beta", current: false },
+			];
+		},
+
+		async switchModel(_sessionId: string, modelId: string) {
+			models.set("current", modelId);
+			return true;
 		},
 
 		async closeSession(sessionId: string) {

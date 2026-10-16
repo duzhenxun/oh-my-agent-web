@@ -9,6 +9,7 @@ import {
 	PROTOCOL_VERSION,
 	type ConversationMeta,
 	type EngineName,
+	type ModelOption,
 	type PiProject,
 	type ActionItem,
 	type SettingsView,
@@ -25,6 +26,7 @@ export type ServerState = {
 	workspace: string;
 	engine: EngineName;
 	model: string | null;
+	models: ModelOption[];
 	piProjects: PiProject[];
 	settings: SettingsView;
 	actions: ActionItem[];
@@ -47,6 +49,7 @@ export function createServerState(workspace: string, engine: EngineName = "pi"):
 		workspace,
 		engine,
 		model: null,
+		models: [],
 		piProjects: [],
 		settings: { quickPhrases: [], quickPhrasesEnabled: true },
 		actions: [],
@@ -85,6 +88,7 @@ export function buildSnapshot(state: ServerState, limit = SNAPSHOT_MESSAGE_LIMIT
 		protocolVersion: PROTOCOL_VERSION,
 		engine: state.engine,
 		model: state.model,
+		models: state.models.map((model) => ({ ...model })),
 		actions: state.actions.map((action) => ({ ...action })),
 		settings: {
 			quickPhrases: [...state.settings.quickPhrases],

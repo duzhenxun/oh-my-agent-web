@@ -40,6 +40,8 @@ export type Runtime = {
 	newConversation(): Promise<Result>;
 	/** 改客户端设置（ADR-0020 §P1）：归一化 → 落盘 → 推快照 */
 	applySettings(patch: unknown): Promise<Result>;
+	/** 切换当前会话的模型（ADR-0020 §P2） */
+	setModel(modelId: string): Promise<Result>;
 	switchConversation(conversationId: string): Promise<Result>;
 	/** 重新扫 pi 已有的项目/会话（ADR-0021 §1）；带最小间隔，避免每次刷新都扫盘 */
 	refreshPiSessions(force?: boolean): Promise<void>;
@@ -47,7 +49,6 @@ export type Runtime = {
 	notify(text: string, level?: Notice["level"]): void;
 	isBusy(): boolean;
 };
-
 export type RuntimeOptions = {
 	engine: EnginePort;
 	/** 审批规则落盘（ADR-0006）：「总是允许这类」跨重启生效 */
@@ -130,7 +131,17 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 	const { notice, approval, watchdog } = services;
 
 	// 引擎会话的生命周期（懒创建 + 历史注入 + 读模型），见 ADR-0018
-	/** 会话元数据跟着更新（ADR-0021 §2 收尾后不再有自建索引，只改内存里的列表） */
+	async function refreshModels(conversationId: string): Promise<void> {
+		// 可用模型列表（best-effort）
+		try {
+			const list = (await options.engine.listModels?.(conversationId)) ?? [];
+			state.models = list.map((model) => ({ id: model.id, label: model.label }));
+		} catch {
+			state.models = [];
+		}
+	}
+
+	/** 更新会话元数据（只在内存里，不再有自建索引） */
 	function touchConversation(conversationId: string, patch: { title?: string } = {}): void {
 		state.conversations = state.conversations.map((conversation) =>
 			conversation.id === conversationId
@@ -144,7 +155,6 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		);
 	}
 
-	// 打开 pi 已有的会话（ADR-0021 §2）：抽到 pi-opener 里
 	const piOpener = createPiSessionOpener({
 		engine: options.engine,
 		onModel: (model) => {
@@ -164,6 +174,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		const title = seedText.replace(/\s+/g, " ").trim().slice(0, titleChars) || "新对话";
 		const { sessionPath } = await options.engine.createSession({ sessionId: id, workspace });
 		piOpener.register({ id, sessionPath, title, workspace });
+		await refreshModels(id);
 		state.messages[id] = [];
 		state.conversations = [
 			{ id, title, createdAt: now(), updatedAt: now(), workspace, messageCount: 0 },
@@ -270,6 +281,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 					const opened = await piOpener.open(conversationId, (force) => piRefresher.refresh(force));
 					if (opened === null) throw new Error(`会话打不开：${conversationId}`);
 					state.messages[conversationId] = opened;
+					await refreshModels(conversationId);
 				}
 				const ts = now();
 				const userMessage = appendText(createMessage(nextId("msg"), "user", ts), text);
@@ -330,6 +342,19 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			return result;
 		},
 
+		async setModel(modelId) {
+			const conversationId = state.activeId;
+			if (!conversationId) return { ok: false, error: { code: "session.none", message: "先打开一个会话" } };
+			const switched = (await options.engine.switchModel?.(conversationId, modelId)) ?? false;
+			if (!switched) {
+				return { ok: false, error: { code: "model.switch_failed", message: `切换模型失败：${modelId}` } };
+			}
+			state.model = modelId;
+			notice(`已切换模型：${modelId}`, "info");
+			pushSnapshot();
+			return { ok: true };
+		},
+
 		async newConversation() {
 			try {
 				await createNewConversation("新对话");
@@ -357,6 +382,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 						return { ok: false, error: { code: "session.open_failed", message: `打开会话失败：${conversationId}` } };
 					}
 					state.messages[conversationId] = messages;
+					await refreshModels(conversationId);
 					state.activeId = conversationId;
 					state.files = { root: fromPi.workspace, treeVersion: (state.files?.treeVersion ?? 0) + 1 };
 					pushSnapshot();
