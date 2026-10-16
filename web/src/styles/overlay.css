@@ -1,0 +1,60 @@
+/* ---- 浮层：唯一允许的弹窗是审批（ADR-0013）----
+ * 独立浮层必须 overscroll-behavior: contain（防止滚动穿透整页）；
+ * 反之，流内元素（工具卡输出、代码块）严禁声明它（ADR-0010 的滚轮黑洞条款）。
+ */
+.modal-backdrop {
+	position: fixed;
+	inset: 0;
+	background: rgb(0 0 0 / 55%);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	overscroll-behavior: contain;
+	padding: var(--gap);
+}
+
+.modal {
+	width: min(560px, 100%);
+	background: var(--bg-elev);
+	border: 1px solid var(--border-strong);
+	border-radius: 12px;
+	padding: 16px;
+	overscroll-behavior: contain;
+	max-height: 80vh;
+	overflow: auto;
+}
+
+.modal-title {
+	margin: 0 0 8px;
+	font-size: 16px;
+}
+
+.modal-risk {
+	margin: 0 0 12px;
+	color: var(--amber);
+}
+
+.modal-facts {
+	display: grid;
+	grid-template-columns: auto 1fr;
+	gap: 4px 12px;
+	margin: 0 0 16px;
+	min-width: 0;
+}
+
+.modal-facts dt {
+	color: var(--text-faint);
+	font-size: 12.5px;
+}
+
+.modal-facts dd {
+	margin: 0;
+	overflow-wrap: anywhere;
+	min-width: 0;
+}
+
+.modal-actions {
+	display: flex;
+	gap: 8px;
+	justify-content: flex-end;
+}

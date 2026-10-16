@@ -10,7 +10,7 @@
 > 4. 卡住时先回看对应 ADR 的「复审条件」——那是提前写好的判断标准，不是事后找借口。
 > 5. 完成一步就把 `[ ]` 改成 `[x]`，并记一行「实际用时 / 发现的新问题」。
 >
-> 状态：**进行中 —— M0 已完成（1/7）**，下一步 M1
+> 状态：**进行中 —— M0 / M1 已完成（2/7）**，下一步 M2
 
 ---
 
@@ -93,12 +93,12 @@ node scripts/check-deps.mjs   # 通过；故意多写一个依赖 → 必须红
 
 **任务**
 
-- [ ] `server/protocol.ts`：请求 / 应答 / 事件三类消息的形状（ADR-0004）
-- [ ] `server/snapshot/`：快照构造 + 60ms 节流 + 背压（**快照可丢、应答与事件不可丢**，写成纯函数）
-- [ ] `server/index.ts`：Express（静态 + `/api/health`）+ 一条 `/ws` + **Origin/Host 校验**（ADR-0006）
-- [ ] `server/engine/port.ts` + `server/engine/fake.ts`：端口五个动作 + 可脚本化事件（流式/工具/审批/慢速/超大输出/报错）
-- [ ] `web/src/`：WS hook + 模块级 store + `useReducer`；渲染消息块（text / tool / error）+ notices
-- [ ] 单测：协议校验 · 节流合并 · **丢帧收敛**（随机丢 N 帧后状态一致）
+- [x] `server/protocol.ts`：请求 / 应答 / 事件三类消息的形状（ADR-0004）
+- [x] `server/snapshot/`：快照构造 + 60ms 节流 + 背压（**快照可丢、应答与事件不可丢**，写成纯函数）
+- [x] `server/index.ts`：Express（静态 + `/api/health`）+ 一条 `/ws` + **Origin/Host 校验**（ADR-0006）
+- [x] `server/engine/port.ts` + `server/engine/fake.ts`：端口五个动作 + 可脚本化事件（流式/工具/审批/慢速/超大输出/报错）
+- [x] `web/src/`：WS hook + 模块级 store + `useReducer`；渲染消息块（text / tool / error）+ notices
+- [x] 单测：协议校验 · 节流合并 · **丢帧收敛**（随机丢 N 帧后状态一致）
 
 **DoD**
 
@@ -107,6 +107,29 @@ node scripts/check-deps.mjs   # 通过；故意多写一个依赖 → 必须红
 - **杀掉服务再拉起**：前端重连后自动恢复（快照）；
 - 非法 `Origin` 的连接被拒；
 - `npx vitest run` 里「丢帧收敛」用例绿。
+
+**实际结果（2026-10-16）**
+
+| 命令 / 验证 | 结果 |
+| ---- | ---- |
+| `npm run typecheck` / `lint` / `format:check` | 全绿（oxlint 零告警） |
+| `npm test` | **73 个用例通过**（9 个文件；含协议校验、节流合并、丢帧收敛、审批三态、origin、路径） |
+| `npm run check` / `check:guards` | 5/5 通过，5/5 自检通过 |
+| `npm run test:smoke` | **flow-smoke 27 项全过**（真起 server + 真连 WS） |
+| 端到端覆盖 | 握手拒绝非法 Origin · get_state · 流式增量 · 工具卡 ok/failed · 200KB 输出截断到 2000 字 · 审批三态（一次/总是/拒绝）· 断线重连拿到部分正文 · **服务重启后重连仍可用** · 非法请求与非法 JSON |
+| 开发态 | vite 5174 起得来、代理 /api → 8791 通、页面含 #root；后端 8791 直接提供已构建 SPA 与静态资源 |
+| 生产依赖 | **7 / 12**（react、react-dom、express、ws、react-markdown、remark-gfm、rehype-highlight） |
+
+**M1 的实际发现（六条，都是真踩到的）**
+
+1. **协议单源守卫第一次立功**：`web/src/types.ts` shim 漏了 `ApproveRequest`，守卫当场变红。（这条护栏值回票价。）
+2. **400 行护栏逼出一个真决定**：`styles.css` 长到 527 行 → 写 **ADR-0014**：允许「一个入口 + 按职责分区」，但框架/组件库禁用清单不变。
+3. **假引擎的中断标志不能在建回合时清**：宿主可能在「回合已开跑、还没进到引擎」的窗口里发中断，那时清标志就会把中断吞掉 → 改为**回合结束时**清理。
+4. **等待纪律（写测试会反复踩）**：不要用 `running.status === idle` 判断「我刚发的这轮结束了」——上一轮结束时它就是 idle，条件立刻为真，于是请求发给了还在跑的会话（被 `session.busy` 拒掉，然后一路错位）。正确做法是**等这一轮的消息出现**。
+5. **源码运行 vs 编译运行的层数不同**：`web/dist` 写死相对路径必然有一头 404（开发态指向了仓库外面）→ `server/util/paths.ts` 两个候选 + 单测。
+6. **两个 JS 坑**：① async 函数 `return promise` 会被自动链化 —— 审批测试因此死锁过一次；② runtime 的 `activeId` 必须在 `createSession` **之前**同步置位，否则「回合在跑但 interrupt 说没有会话」。
+
+> 环境备注：vite 8 与 vitest 5 必须同代（vitest 3 只接受 vite ≤7），`npm install` 会给一次 ERESOLVE；已在 package.json 里钉到 vite ^8 + vitest ^5。
 
 **本步不许做**：真实模型 · 会话落盘 · 文件树 · 终端 · 样式打磨 · 虚拟滚动。
 

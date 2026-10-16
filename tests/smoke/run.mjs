@@ -21,7 +21,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = dirname(dirname(HERE));
 
 /** CORE = 协议/快照/安全/审批代表用例，用于 PR 快检（ADR-0009 分层） */
-const CORE = [];
+const CORE = ["flow"];
 
 const argv = process.argv.slice(2);
 const useCore = argv.includes("--core");

@@ -11,6 +11,8 @@
 		"resolveJsonModule": true,
 		"allowJs": true,
 		"checkJs": false,
+		// web/src/lib/*.ts 会被单测直接引用（如流式增量助手），需要允许显式 .ts 扩展名
+		"allowImportingTsExtensions": true,
 		"noEmit": true,
 		"types": ["node", "vitest/globals"]
 	},

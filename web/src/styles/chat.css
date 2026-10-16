@@ -1,0 +1,179 @@
+/* ---- 对话流 ---- */
+.messages {
+	display: flex;
+	flex-direction: column;
+	gap: var(--gap);
+	min-width: 0;
+}
+
+.more-before {
+	color: var(--text-faint);
+	font-size: 12px;
+	text-align: center;
+}
+
+.msg {
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: 10px 12px;
+	min-width: 0;
+	background: var(--bg);
+}
+
+.msg-user {
+	border-color: var(--border-strong);
+	background: var(--bg-elev-2);
+}
+
+.msg-head {
+	display: flex;
+	gap: 8px;
+	align-items: baseline;
+	color: var(--text-faint);
+	font-size: 12px;
+	margin-bottom: 6px;
+}
+
+.msg-role {
+	color: var(--text-dim);
+	font-weight: 600;
+}
+
+.msg-body {
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+/* ---- markdown 正文：长文本防溢出一律 min-width:0 + overflow-wrap ---- */
+.md {
+	min-width: 0;
+	overflow-wrap: anywhere;
+	word-break: break-word;
+}
+
+.md p {
+	margin: 0 0 8px;
+}
+
+.md p:last-child {
+	margin-bottom: 0;
+}
+
+.md pre {
+	background: var(--bg-elev-2);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	padding: 8px 10px;
+	overflow-x: auto;
+	max-width: 100%;
+}
+
+.md code {
+	font-family: var(--mono);
+	font-size: 12.5px;
+	background: var(--bg-elev-2);
+	border-radius: 4px;
+	padding: 1px 4px;
+}
+
+.md pre code {
+	background: none;
+	padding: 0;
+}
+
+.md-link {
+	color: var(--accent);
+}
+
+/* ---- 工具卡（流内元素：**不要**加 overscroll-behavior: contain，否则滚轮会被黑洞锁死）---- */
+.tool {
+	border: 1px solid var(--border-strong);
+	border-radius: 8px;
+	background: var(--bg-elev);
+	padding: 6px 10px;
+	min-width: 0;
+}
+
+.tool-head {
+	display: flex;
+	gap: 8px;
+	align-items: baseline;
+	cursor: pointer;
+	min-width: 0;
+	flex-wrap: nowrap;
+	overflow: hidden;
+}
+
+.tool-name {
+	flex: none;
+	color: var(--accent);
+	font-family: var(--mono);
+	font-size: 12.5px;
+}
+
+.tool-args {
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--text-dim);
+	font-family: var(--mono);
+	font-size: 12.5px;
+}
+
+.tool-status {
+	flex: none;
+	margin-left: auto;
+	font-size: 12px;
+	color: var(--text-faint);
+}
+
+.tool-status-ok {
+	color: var(--green);
+}
+
+.tool-status-failed {
+	color: var(--red);
+}
+
+.tool-output {
+	margin: 8px 0 0;
+	padding: 8px 10px;
+	background: var(--bg);
+	border-radius: 6px;
+	max-height: 260px;
+	overflow: auto;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	font-size: 12.5px;
+	color: var(--text-dim);
+}
+
+.tool-truncated {
+	margin-top: 6px;
+	color: var(--amber);
+	font-size: 12px;
+}
+
+/* ---- 错误块（失败必须留在历史里，ADR-0013）---- */
+.block-error {
+	display: flex;
+	gap: 8px;
+	border: 1px solid var(--red);
+	border-radius: 8px;
+	padding: 8px 10px;
+	color: var(--text);
+	background: color-mix(in srgb, var(--red) 12%, transparent);
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.block-error-code {
+	flex: none;
+	font-family: var(--mono);
+	font-size: 12.5px;
+	color: var(--red);
+}

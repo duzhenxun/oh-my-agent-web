@@ -1,0 +1,35 @@
+/* ---- 代码高亮（highlight.js 的最小配色，避免再引一份主题文件 → 依赖预算）---- */
+.hljs-comment,
+.hljs-quote {
+	color: var(--text-faint);
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal {
+	color: #ff7b72;
+}
+
+.hljs-string,
+.hljs-attr,
+.hljs-addition {
+	color: #a5d6ff;
+}
+
+.hljs-number,
+.hljs-built_in,
+.hljs-type {
+	color: #79c0ff;
+}
+
+.hljs-title,
+.hljs-function,
+.hljs-section {
+	color: #d2a8ff;
+}
+
+.hljs-variable,
+.hljs-template-variable,
+.hljs-deletion {
+	color: #ffa657;
+}
