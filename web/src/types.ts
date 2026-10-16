@@ -22,6 +22,8 @@ export type {
 	Notice,
 	NoticeEvent,
 	PendingApproval,
+	PiProject,
+	PiSessionSummary,
 	ProtocolError,
 	RunningState,
 	SendMessageRequest,

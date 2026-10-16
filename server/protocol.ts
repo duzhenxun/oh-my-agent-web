@@ -85,6 +85,22 @@ export type TerminalMeta = { id: string; cols: number; rows: number; alive: bool
 
 export type FilesMeta = { root: string; treeVersion: number };
 
+/** pi 已有会话的列表行（ADR-0021 §1：只读展示） */
+export type PiSessionSummary = {
+	id: string;
+	title: string;
+	updatedAt: number;
+	cwd: string;
+	model: string | null;
+};
+
+/** 按项目（工作目录）分组的会话列表 */
+export type PiProject = {
+	cwd: string;
+	name: string;
+	sessions: PiSessionSummary[];
+};
+
 /** 当前引擎（ADR-0016）：界面靠它决定提示语与后续能力展示 */
 export type EngineName = "pi" | "fake";
 
@@ -93,6 +109,8 @@ export type Snapshot = {
 	engine: EngineName;
 	/** 当前模型（`provider/model`；取不到为 null）——M3 起界面要能看见自己在跟谁说话 */
 	model: string | null;
+	/** pi 已有项目与会话（只读；ADR-0021 §1） */
+	piProjects: PiProject[];
 	conversations: ConversationMeta[];
 	active: {
 		conversationId: string | null;

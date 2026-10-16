@@ -9,6 +9,7 @@
  */
 import { homedir } from "node:os";
 import { createServer, type IncomingMessage } from "node:http";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import express from "express";
 import { WebSocketServer, type WebSocket } from "ws";
@@ -17,10 +18,23 @@ import { createPiSdkEngine } from "./engine/pi-sdk.js";
 import type { EnginePort } from "./engine/port.js";
 import { createFileRuleStore } from "./approval/rules.js";
 import { existsSync } from "node:fs";
-import { PROTOCOL_VERSION, parseClientRequest, type ProtocolError, type ServerReply } from "./protocol.js";
+import {
+	PROTOCOL_VERSION,
+	parseClientRequest,
+	type PiProject,
+	type ProtocolError,
+	type ServerReply,
+} from "./protocol.js";
 import { acquireLock, describeHolder, releaseLock } from "./session/lock.js";
 import { createRuntime } from "./session/runtime.js";
 import { createJsonlStore } from "./session/store.js";
+import {
+	PI_AGENT_DIR_ENV,
+	readCacheFile,
+	scanPiSessions,
+	writeCacheFile,
+	type PiSessionsCache,
+} from "./session/pi-sessions.js";
 import { createSender, type OutFrame } from "./snapshot/sender.js";
 import { readConfig, validateConfig } from "./util/env.js";
 import { createLogger } from "./util/log.js";
@@ -63,6 +77,40 @@ const sender = createSender({
 	},
 });
 
+/** pi 的配置目录（与 SDK 的 getAgentDir 默认值一致；这里不 import SDK —— 边界守则见 ADR-0003） */
+function piAgentDir(): string {
+	return process.env[PI_AGENT_DIR_ENV] ?? join(homedir(), ".pi", "agent");
+}
+
+/** 扫 pi 已有会话（ADR-0021 §1）：首扫读内容，之后靠 path+mtime 缓存（实测 991ms → 7ms） */
+function makePiSessionsProvider(): () => Promise<PiProject[]> {
+	let cache: PiSessionsCache = { v: 1, entries: {} };
+	const cacheFile = join(config.dataDir, "pi-sessions-cache.json");
+	let loaded = false;
+
+	return async () => {
+		if (!loaded) {
+			cache = await readCacheFile(cacheFile);
+			loaded = true;
+		}
+		const result = await scanPiSessions({ sessionsRoot: join(piAgentDir(), "sessions"), cache });
+		cache = result.cache;
+		if (result.read > 0) await writeCacheFile(cacheFile, cache).catch(() => {});
+		logger.info("已读取 pi 已有会话", { projects: result.groups.length, sessions: result.total, read: result.read });
+		return result.groups.map((group) => ({
+			cwd: group.cwd,
+			name: group.name,
+			sessions: group.sessions.map((session) => ({
+				id: session.id,
+				title: session.title,
+				updatedAt: session.updatedAt,
+				cwd: session.cwd,
+				model: session.model,
+			})),
+		}));
+	};
+}
+
 /** 引擎选择（ADR-0016）：默认真实 pi SDK；`AGENT_WEB_ENGINE=fake` 切到假引擎 */
 const engine: EnginePort =
 	config.engine === "fake"
@@ -86,6 +134,7 @@ const runtime = createRuntime({
 	rules: createFileRuleStore(config.dataDir),
 	workspace: config.workspace,
 	engineName: config.engine,
+	piSessions: makePiSessionsProvider(),
 	emit: {
 		snapshot: (snapshot) => sender.pushSnapshot(snapshot),
 		event: (event) => {
@@ -226,7 +275,8 @@ async function handleMessage(socket: WebSocket, raw: string): Promise<void> {
 				return;
 			}
 			case "get_state": {
-				// 重连/刷新后的第一件事：拉一份权威快照（ADR-0004 §3）
+				// 重连/刷新后的第一件事：拉一份权威快照（ADR-0004 §3）；顺便刷一次 pi 会话列表（带 10s 下限）
+				await runtime.refreshPiSessions();
 				sender.pushSnapshot(runtime.snapshot());
 				sender.flush(Date.now());
 				reply(socket, request.id, { ok: true });

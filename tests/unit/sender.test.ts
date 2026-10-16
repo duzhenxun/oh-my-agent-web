@@ -7,6 +7,7 @@ function makeSnapshot(tag: number): Snapshot {
 		protocolVersion: PROTOCOL_VERSION,
 		engine: "fake",
 		model: "test/model",
+		piProjects: [],
 		conversations: [],
 		active: { conversationId: null, messages: [], hasMoreBefore: false },
 		running: { status: "idle", turnStartedAt: null, streamingText: `tag-${tag}`, activeTool: null },

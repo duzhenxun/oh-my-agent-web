@@ -12,10 +12,18 @@
 import type { RuleStore } from "../approval/rules.js";
 import { createApprovalBridge } from "./approval-bridge.js";
 import { createEngineBinding } from "./engine-binding.js";
+import {
+	loadConversationMessages,
+	persistIndexSafely,
+	renameConversation,
+	updateConversationMeta,
+} from "./conversation-meta.js";
+import { createNoticeSink } from "./notices.js";
+import { applyEngineEvent, type TurnEventContext } from "./turn-events.js";
 import { makeIdFactory } from "../util/ids.js";
-import type { ApprovalDecision, Notice, ProtocolError, ServerEvent, Snapshot, UiMessage } from "../protocol.js";
-import type { EngineEvent, EnginePort } from "../engine/port.js";
-import { appendError, appendText, createMessage, finishTool, startTool } from "../snapshot/messages.js";
+import type { ApprovalDecision, Notice, PiProject, ProtocolError, ServerEvent, Snapshot } from "../protocol.js";
+import type { EnginePort } from "../engine/port.js";
+import { appendText, createMessage } from "../snapshot/messages.js";
 import {
 	buildSnapshot,
 	createConversation,
@@ -41,6 +49,8 @@ export type Runtime = {
 	approve(requestId: string, decision: ApprovalDecision): Result;
 	newConversation(): Promise<Result>;
 	switchConversation(conversationId: string): Promise<Result>;
+	/** 重新扫 pi 已有的项目/会话（ADR-0021 §1）；带最小间隔，避免每次刷新都扫盘 */
+	refreshPiSessions(force?: boolean): Promise<void>;
 	/** 给宿主其他部分（引擎、启动流程）推一条界面提示 */
 	notify(text: string, level?: Notice["level"]): void;
 	isBusy(): boolean;
@@ -51,6 +61,10 @@ export type RuntimeOptions = {
 	store: ConversationStore;
 	/** 审批规则落盘（ADR-0006）：「总是允许这类」跨重启生效 */
 	rules: RuleStore;
+	/** pi 已有会话的扫描器（ADR-0021 §1）；不给就不显示那一栏（单测用） */
+	piSessions?: () => Promise<PiProject[]>;
+	/** 两次扫描的最小间隔（默认 10s） */
+	piSessionsMinIntervalMs?: number;
 	workspace: string;
 	/** 当前引擎名（ADR-0016）：会进快照，供界面决定提示语 */
 	engineName?: "pi" | "fake";
@@ -65,6 +79,8 @@ export type RuntimeOptions = {
 
 export function createRuntime(options: RuntimeOptions): Runtime {
 	const now = options.now ?? (() => Date.now());
+	const piScanIntervalMs = options.piSessionsMinIntervalMs ?? 10_000;
+	let lastPiScanAt = Number.NEGATIVE_INFINITY;
 	const noticeDedupeMs = options.noticeDedupeMs ?? 5000;
 	const maxNotices = options.maxNotices ?? 20;
 	const titleChars = options.titleChars ?? 24;
@@ -73,7 +89,6 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 	// 工作区根是已知事实（ADR-0012 的 files 元数据；文件树内容在 M4）
 	state.files = { root: options.workspace, treeVersion: 0 };
 
-	const recentNotices = new Map<string, number>();
 	/** 哪些会话的消息已经从磁盘读进内存 */
 	const loadedConversations = new Set<string>();
 
@@ -86,18 +101,36 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 
 	const pushSnapshot = () => options.emit.snapshot(buildSnapshot(state));
 
-	function notice(text: string, level: Notice["level"] = "info"): void {
-		const key = `${level}:${text}`;
-		const ts = now();
-		const last = recentNotices.get(key);
-		if (last !== undefined && ts - last < noticeDedupeMs) return;
-		recentNotices.set(key, ts);
-
-		const entry: Notice = { id: nextId("notice"), level, text, ts };
-		state.notices = [...state.notices, entry].slice(-maxNotices);
-		options.emit.event({ type: "event", event: "notice", notice: entry });
-		pushSnapshot();
+	/** 重新扫 pi 已有的项目/会话（ADR-0021 §1）：带最小间隔，避免每次刷新都扫 247 个文件 */
+	async function refreshPiSessions(force = false): Promise<void> {
+		if (!options.piSessions) return;
+		const stamp = now();
+		if (!force && stamp - lastPiScanAt < piScanIntervalMs) return;
+		lastPiScanAt = stamp;
+		try {
+			state.piProjects = await options.piSessions();
+			pushSnapshot();
+		} catch (error) {
+			// 扫不到（pi 没装 / 目录被删）不该影响主流程，只在界面上给一条提示
+			notice(`读取 pi 已有会话失败：${error instanceof Error ? error.message : String(error)}`, "warn");
+		}
 	}
+
+	const noticeSink = createNoticeSink({
+		now,
+		nextId,
+		dedupeMs: noticeDedupeMs,
+		max: maxNotices,
+		onNotice: (entry) => {
+			// 快照的来源仍是 state（ADR-0012：快照是前端唯一事实源）
+			state.notices = [...state.notices, entry].slice(-maxNotices);
+			options.emit.event({ type: "event", event: "notice", notice: entry });
+			pushSnapshot();
+		},
+	});
+	const notice = (text: string, level: Notice["level"] = "info"): void => {
+		noticeSink.push(text, level);
+	};
 
 	// 审批桥（ADR-0006）：规则命中直接放行，否则等界面点一下（拆到单独模块，见 approval-bridge.ts）
 	const approval = createApprovalBridge({
@@ -124,22 +157,6 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		},
 	});
 
-	function updateConversationMeta(conversationId: string): void {
-		state.conversations = state.conversations.map((conversation) =>
-			conversation.id === conversationId
-				? { ...conversation, updatedAt: now(), messageCount: state.messages[conversationId]?.length ?? 0 }
-				: conversation,
-		);
-	}
-
-	async function persistIndex(): Promise<void> {
-		try {
-			await options.store.saveIndex(state.conversations);
-		} catch (error) {
-			notice(`索引写入失败：${error instanceof Error ? error.message : String(error)}`, "warn");
-		}
-	}
-
 	async function createConversationInternal(title: string): Promise<string> {
 		const id = nextId("conv");
 		const ts = now();
@@ -160,7 +177,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			state.activeId = null;
 			throw error;
 		}
-		await persistIndex();
+		await persistIndexSafely(options.store, state.conversations, (message) => notice(message, "warn"));
 		pushSnapshot();
 		return id;
 	}
@@ -171,73 +188,16 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		return createConversationInternal(deriveTitle(seedText, titleChars));
 	}
 
-	async function loadMessages(conversationId: string): Promise<void> {
-		if (loadedConversations.has(conversationId)) return;
-		const { messages, skipped } = await options.store.readMessages(conversationId);
-		state.messages[conversationId] = messages;
-		loadedConversations.add(conversationId);
-		if (skipped > 0) notice(`会话 ${conversationId} 有 ${skipped} 行无法解析，已跳过（转录其余部分正常）`, "warn");
-	}
-
-	function patchMessage(conversationId: string, messageId: string, patch: (message: UiMessage) => UiMessage): void {
-		const list = state.messages[conversationId] ?? [];
-		state.messages[conversationId] = list.map((message) => (message.id === messageId ? patch(message) : message));
-	}
-
-	function handleEngineEvent(conversationId: string, messageId: string, event: EngineEvent): void {
-		switch (event.type) {
-			case "text_delta": {
-				patchMessage(conversationId, messageId, (message) => appendText(message, event.text));
-				state.running.streamingText += event.text;
-				options.emit.event({
-					type: "event",
-					event: "message_delta",
-					conversationId,
-					messageId,
-					text: event.text,
-				});
-				return;
-			}
-			case "tool_start": {
-				patchMessage(conversationId, messageId, (message) =>
-					startTool(message, {
-						toolCallId: event.toolCallId,
-						name: event.name,
-						argsSummary: event.argsSummary,
-						startedAt: now(),
-					}),
-				);
-				state.running.activeTool = { name: event.name, argsSummary: event.argsSummary, startedAt: now() };
-				pushSnapshot();
-				return;
-			}
-			case "tool_end": {
-				patchMessage(conversationId, messageId, (message) =>
-					finishTool(message, {
-						toolCallId: event.toolCallId,
-						status: event.status,
-						output: event.output,
-						endedAt: now(),
-						...(event.exitCode === undefined ? {} : { exitCode: event.exitCode }),
-					}),
-				);
-				state.running.activeTool = null;
-				pushSnapshot();
-				return;
-			}
-			case "error": {
-				patchMessage(conversationId, messageId, (message) => appendError(message, event.code, event.message));
-				state.running.status = "error";
-				notice(`${event.code}: ${event.message}`, "error");
-				pushSnapshot();
-				return;
-			}
-			case "turn_end": {
-				finishPromise = finishTurn(conversationId, event.reason);
-				return;
-			}
-		}
-	}
+	const turnContext: TurnEventContext = {
+		state,
+		now,
+		emitEvent: (event) => options.emit.event(event),
+		pushSnapshot,
+		notice,
+		onTurnEnd: (conversationId, reason) => {
+			finishPromise = finishTurn(conversationId, reason);
+		},
+	};
 
 	async function finishTurn(conversationId: string, reason: "done" | "interrupted" | "error"): Promise<void> {
 		const keepError = reason === "error" || state.running.status === "error";
@@ -259,8 +219,8 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			}
 		}
 
-		updateConversationMeta(conversationId);
-		await persistIndex();
+		updateConversationMeta(state, conversationId, now());
+		await persistIndexSafely(options.store, state.conversations, (message) => notice(message, "warn"));
 		if (reason === "interrupted") notice("回合已中断", "info");
 		pushSnapshot();
 	}
@@ -277,8 +237,11 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			if (ruleCount > 0) {
 				notice(`已装载 ${ruleCount} 条审批规则（这些操作不会再询问）`, "info");
 			}
+			await refreshPiSessions(true);
 			pushSnapshot();
 		},
+
+		refreshPiSessions,
 
 		snapshot() {
 			return buildSnapshot(state);
@@ -305,7 +268,9 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			inFlight = true;
 			try {
 				const conversationId = await ensureConversation(text);
-				await loadMessages(conversationId);
+				await loadConversationMessages(options.store, state, loadedConversations, conversationId, (message) =>
+					notice(message, "warn"),
+				);
 				// 先建引擎会话（带上历史），再把新消息加进状态 —— 顺序反了会让新消息在历史里重复
 				await binding.ensure(conversationId);
 				const ts = now();
@@ -317,23 +282,21 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 				if (isFirstMessage) {
 					const title = deriveTitle(text, titleChars);
 					await options.store.rename(conversationId, title, ts);
-					state.conversations = state.conversations.map((conversation) =>
-						conversation.id === conversationId ? { ...conversation, title } : conversation,
-					);
+					renameConversation(state, conversationId, title);
 				}
 
 				state.messages[conversationId] = [...(state.messages[conversationId] ?? []), userMessage, assistantMessage];
 				state.running = { status: "streaming", turnStartedAt: ts, streamingText: "", activeTool: null };
 				currentTurn = { conversationId, messageId: assistantMessage.id };
-				updateConversationMeta(conversationId);
+				updateConversationMeta(state, conversationId, now());
 
 				// 用户消息立即落盘（这样即使这一轮崩了，输入也不会丢）
 				await options.store.appendMessage(conversationId, userMessage);
 				pushSnapshot();
 
-				await options.engine.sendMessage(conversationId, text, (event) =>
-					handleEngineEvent(conversationId, assistantMessage.id, event),
-				);
+				await options.engine.sendMessage(conversationId, text, (event) => {
+					applyEngineEvent(turnContext, { conversationId, messageId: assistantMessage.id, event });
+				});
 				return { ok: true };
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
@@ -384,7 +347,9 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 				return { ok: false, error: { code: "session.not_found", message: `会话不存在：${conversationId}` } };
 			}
 			if (state.activeId !== conversationId) {
-				await loadMessages(conversationId);
+				await loadConversationMessages(options.store, state, loadedConversations, conversationId, (message) =>
+					notice(message, "warn"),
+				);
 				state.activeId = conversationId;
 				pushSnapshot();
 			}

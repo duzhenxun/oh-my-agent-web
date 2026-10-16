@@ -28,7 +28,11 @@ export function App() {
 
 	return (
 		<div className="app">
-			<Sidebar conversations={snapshot?.conversations ?? []} activeId={snapshot?.active.conversationId ?? null} />
+			<Sidebar
+				conversations={snapshot?.conversations ?? []}
+				activeId={snapshot?.active.conversationId ?? null}
+				piProjects={snapshot?.piProjects ?? []}
+			/>
 
 			<div className="workspace">
 				<header className="topbar">

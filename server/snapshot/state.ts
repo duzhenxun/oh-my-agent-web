@@ -9,6 +9,7 @@ import {
 	PROTOCOL_VERSION,
 	type ConversationMeta,
 	type EngineName,
+	type PiProject,
 	type FilesMeta,
 	type Notice,
 	type PendingApproval,
@@ -22,6 +23,7 @@ export type ServerState = {
 	workspace: string;
 	engine: EngineName;
 	model: string | null;
+	piProjects: PiProject[];
 	conversations: ConversationMeta[];
 	activeId: string | null;
 	messages: Record<string, UiMessage[]>;
@@ -41,6 +43,7 @@ export function createServerState(workspace: string, engine: EngineName = "pi"):
 		workspace,
 		engine,
 		model: null,
+		piProjects: [],
 		conversations: [],
 		activeId: null,
 		messages: {},
@@ -76,6 +79,10 @@ export function buildSnapshot(state: ServerState, limit = SNAPSHOT_MESSAGE_LIMIT
 		protocolVersion: PROTOCOL_VERSION,
 		engine: state.engine,
 		model: state.model,
+		piProjects: state.piProjects.map((project) => ({
+			...project,
+			sessions: project.sessions.map((session) => ({ ...session })),
+		})),
 		conversations: state.conversations.map((conversation) => ({ ...conversation })),
 		active: {
 			conversationId: state.activeId,
