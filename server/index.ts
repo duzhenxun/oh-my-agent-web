@@ -1,8 +1,8 @@
 /**
  * 入口（ADR-0004：一个 HTTP 端口 + 一条 WS；ADR-0006：只绑 loopback + 握手校验；ADR-0007：单实例锁）。
  *
- * M1 用**假引擎**（ADR-0009：零 token 跑全链路）；真实 pi SDK 在 M3 换上
- * （只换 `server/engine/` 里的实现，这个文件不需要改）。
+ * 引擎默认是**真实 pi SDK**（ADR-0003 的端口实现）；`AGENT_WEB_ENGINE=fake` 切到假引擎
+ * （ADR-0009 的测试通道：零 token 跑全链路）。换引擎只换 `server/engine/` 里的实现。
  *
  * 启动顺序：环境自检 → 数据目录可写 → **抢单实例锁** → 装填会话索引 → 监听端口。
  * 顺序有意义：锁要在读/写任何会话数据**之前**拿到，否则两个进程可能同时建索引。
@@ -13,6 +13,9 @@ import { fileURLToPath } from "node:url";
 import express from "express";
 import { WebSocketServer, type WebSocket } from "ws";
 import { createFakeEngine } from "./engine/fake.js";
+import { createPiSdkEngine } from "./engine/pi-sdk.js";
+import type { EnginePort } from "./engine/port.js";
+import { createFileRuleStore } from "./approval/rules.js";
 import { existsSync } from "node:fs";
 import { PROTOCOL_VERSION, parseClientRequest, type ProtocolError, type ServerReply } from "./protocol.js";
 import { acquireLock, describeHolder, releaseLock } from "./session/lock.js";
@@ -21,6 +24,7 @@ import { createJsonlStore } from "./session/store.js";
 import { createSender, type OutFrame } from "./snapshot/sender.js";
 import { readConfig, validateConfig } from "./util/env.js";
 import { createLogger } from "./util/log.js";
+import { createRotatingFileSink, logFileName, type RotatingFileSink } from "./util/log-file.js";
 import { describePolicy, isAllowedHost, isAllowedOrigin } from "./util/origin.js";
 import { pickExisting, webDistCandidates } from "./util/paths.js";
 import { checkDataDirWritable, describeListenError } from "./util/startup.js";
@@ -35,7 +39,16 @@ const TICK_MS = 20;
 const BACKPRESSURE_BYTES = 256 * 1024;
 
 const { config, problems: envProblems } = readConfig(process.env, { home: homedir(), cwd: process.cwd() });
-const logger = createLogger({ level: config.logLevel, scope: "app" });
+// 日志同时去 stdout 与文件（ADR-0013）；文件 sink 在「数据目录可写」自检通过后才挂上
+let fileSink: RotatingFileSink | null = null;
+const logger = createLogger({
+	level: config.logLevel,
+	scope: "app",
+	sink: (line) => {
+		process.stdout.write(`${line}\n`);
+		fileSink?.write(line);
+	},
+});
 const policy = { port: config.port, devPorts: [DEV_WEB_PORT] };
 
 const sockets = new Set<WebSocket>();
@@ -50,9 +63,27 @@ const sender = createSender({
 	},
 });
 
+/** 引擎选择（ADR-0016）：默认真实 pi SDK；`AGENT_WEB_ENGINE=fake` 切到假引擎 */
+const engine: EnginePort =
+	config.engine === "fake"
+		? createFakeEngine()
+		: createPiSdkEngine({
+				onNotice: (text, level) => {
+					logger.warn(text, { engine: "pi" });
+					// 引擎层的异常也要让用户看见（否则只在日志里，界面上像是卡住了）
+					runtimeRef.current?.notify(text, level);
+				},
+			});
+
+/** 引擎在 runtime 建好之前就会创建，用一个 ref 把「通知」转发给界面 */
+const runtimeRef: { current: { notify: (text: string, level?: "info" | "warn" | "error") => void } | null } = {
+	current: null,
+};
+
 const runtime = createRuntime({
-	engine: createFakeEngine(),
+	engine,
 	store: createJsonlStore(config.dataDir),
+	rules: createFileRuleStore(config.dataDir),
 	workspace: config.workspace,
 	emit: {
 		snapshot: (snapshot) => sender.pushSnapshot(snapshot),
@@ -62,6 +93,8 @@ const runtime = createRuntime({
 		},
 	},
 });
+
+runtimeRef.current = runtime;
 
 function broadcast(payload: string): void {
 	for (const socket of sockets) {
@@ -89,7 +122,7 @@ app.get("/api/health", (_request, response) => {
 		ok: true,
 		protocolVersion: PROTOCOL_VERSION,
 		workspace: config.workspace,
-		engine: "fake",
+		engine: config.engine,
 		conversations: runtime.state().conversations.length,
 	});
 });
@@ -223,6 +256,9 @@ async function main(): Promise<void> {
 		process.exit(1);
 	}
 
+	// 日志自己也住在数据目录里 → 确认可写之后再挂文件 sink
+	fileSink = createRotatingFileSink({ file: logFileName(config.dataDir), onError: (message) => logger.warn(message) });
+
 	// 单实例锁（ADR-0007）：必须在读/写任何会话数据之前拿到
 	const acquired = await acquireLock(config.dataDir, { pid: process.pid, port: config.port, startedAt: Date.now() });
 	if (!acquired.ok) {
@@ -250,7 +286,7 @@ async function main(): Promise<void> {
 		url: `http://${config.host}:${config.port}`,
 		workspace: config.workspace,
 		dataDir: config.dataDir,
-		engine: "fake",
+		engine: config.engine,
 		protocolVersion: PROTOCOL_VERSION,
 		conversations: runtime.state().conversations.length,
 	});

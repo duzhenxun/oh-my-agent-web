@@ -43,6 +43,16 @@ describe("readConfig", () => {
 		expect(config.token).toBe("secret");
 	});
 
+	it("引擎选择：默认 pi，显式 fake 生效，非法值回落并报问题（ADR-0016）", () => {
+		expect(readConfig({}, { home: HOME, cwd: CWD }).config.engine).toBe("pi");
+		expect(readConfig({ AGENT_WEB_ENGINE: "fake" }, { home: HOME, cwd: CWD }).config.engine).toBe("fake");
+		expect(readConfig({ AGENT_WEB_ENGINE: "FAKE" }, { home: HOME, cwd: CWD }).config.engine).toBe("fake");
+		const bad = readConfig({ AGENT_WEB_ENGINE: "gpt" }, { home: HOME, cwd: CWD });
+		expect(bad.config.engine).toBe("pi");
+		expect(bad.problems).toHaveLength(1);
+		expect(readConfig({ AGENT_WEB_ENGINE: "" }, { home: HOME, cwd: CWD }).problems).toEqual([]);
+	});
+
 	it("非法端口与非法日志级别回落默认值，并给出问题说明", () => {
 		const { config, problems } = readConfig(
 			{ AGENT_WEB_PORT: "abc", AGENT_WEB_LOG: "verbose" },

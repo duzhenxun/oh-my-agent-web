@@ -10,7 +10,7 @@
 > 4. 卡住时先回看对应 ADR 的「复审条件」——那是提前写好的判断标准，不是事后找借口。
 > 5. 完成一步就把 `[ ]` 改成 `[x]`，并记一行「实际用时 / 发现的新问题」。
 >
-> 状态：**进行中 —— M0 / M1 / M2 已完成（3/7）**，下一步 M3
+> 状态：**进行中 —— M0 / M1 / M2 / M3 已完成（4/7）**，下一步 M4
 
 ---
 
@@ -182,19 +182,19 @@ node scripts/check-deps.mjs   # 通过；故意多写一个依赖 → 必须红
 
 ---
 
-## M3 — 真实引擎 + 审批（2 天）→ **核心回路闭环**
+## M3 — 真实引擎 + 审批（2 天）→ **核心回路闭环** ✅ **已完成（2026-10-16）**
 
 **目标**：ADR-0002 验收的第 ①②④ 条达成——真的能改文件、跑命令，且危险操作会问。
 
 **任务**
 
-- [ ] `server/engine/pi-sdk.ts`：端口的 SDK 实现（建会话 / 发消息 / 中断 / 读转录 / 审批钩子）
-- [ ] **`check-engine-imports.mjs` 变严**：除 `server/engine/` 外 import SDK → 红
-- [ ] `server/approval/`：三态（允许一次 / 总是允许这类 / 拒绝）+「这类」归类（命令取可执行名、文件取目标目录）+ 规则落 `<dataDir>/approval-rules.json`
-- [ ] 工具块渲染：参数摘要、输出摘录、**失败与退出码可见**、>64KB 截断提示
-- [ ] 中断：`interrupt` 动作 + UI「停止」按钮（停在可预期的中间态）
-- [ ] 错误块进转录（ADR-0013）；日志落地（JSON 行 + 文件轮转 + 脱敏）
-- [ ] 单测：审批三态 · 「这类」归类 · 日志脱敏 · 截断
+- [x] `server/engine/pi-sdk.ts`：端口的 SDK 实现（建会话 / 发消息 / 中断 / 读转录 / 审批钩子）
+- [x] **`check-engine-imports.mjs` 变严**：除 `server/engine/` 外 import SDK → 红
+- [x] `server/approval/`：三态（允许一次 / 总是允许这类 / 拒绝）+「这类」归类（命令取可执行名、文件取目标目录）+ 规则落 `<dataDir>/approval-rules.json`
+- [x] 工具块渲染：参数摘要、输出摘录、**失败与退出码可见**、>64KB 截断提示
+- [x] 中断：`interrupt` 动作 + UI「停止」按钮（停在可预期的中间态）
+- [x] 错误块进转录（ADR-0013）；日志落地（JSON 行 + 文件轮转 + 脱敏）
+- [x] 单测：审批三态 · 「这类」归类 · 日志脱敏 · 截断
 
 **DoD**
 
@@ -202,6 +202,25 @@ node scripts/check-deps.mjs   # 通过；故意多写一个依赖 → 必须红
 - 写文件/跑命令前**弹审批**；「总是允许这类」**第二次生效**（不再问）；拒绝后模型收到明确结果；
 - 跑到一半点「停止」→ 回合真的停下，会话没有半死状态；
 - `~/.agent-web/logs/agent-web.log` 有对应记录且**不含** API key 与文件正文。
+
+**实际结果（2026-10-16）**
+
+| 命令 / 验证 | 结果 |
+| ---- | ---- |
+| `npm run typecheck` / `lint` / `format:check` | 全绿（oxlint 零告警） |
+| `npm test` | **189 个用例通过**（18 个文件；新增审批归类 / 规则落盘 / 日志脱敏与轮转 / SDK 事件映射 / 规则跨运行） |
+| `npm run check` / `check:guards` | 5/5 通过，5/5 自检通过 |
+| `npm run test:smoke` | **flow-smoke 39 项全过**（显式 `AGENT_WEB_ENGINE=fake`，并断言 health 报告的引擎） |
+| **真实链路（`node scripts/live-m3-check.mjs`，临时工作区/数据目录）** | **一次通过**：30 个流式增量帧 · 2 次工具调用（write ok / bash ok）· **2 次审批**（`write` → 「目录 …」、`bash` → 「命令 cat」）· **hello.txt 真的被创建且内容为 hi** · `cat hello.txt` 真跑了 · 日志是合法 JSON 行且**无明文 key** · 规则已落 `approval-rules.json` |
+
+**M3 的实际发现**
+
+1. **SDK 的审批拦截点用公开 API 就够**：`DefaultResourceLoader({ extensionFactories })` + `pi.on("tool_call")` → 返回 `{ block: true, reason }`。参考实现为了与第三方扩展共存去改 SDK 私有字段（`_customTools`/`_refreshToolRegistry`），我们不需要 —— 这正是 ADR-0003「薄边界」的收益。
+2. **`DefaultResourceLoaderOptions.agentDir` 是必填**（默认值在别处），要用 SDK 的 `getAgentDir()` 补；`createAgentSession` 的 `agentDir` 才是可选的。
+3. **400 行护栏第二次咬人，两次都咬出更好的边界**：`runtime.ts` 409 行 → 抽出 `server/session/approval-bridge.ts`（审批的「等一次点击」是一个独立职责）；单测文件 420 行 → 抽出 `tests/unit/helpers/runtime-harness.ts`。
+4. **审批归类必须处理包装命令的选项取值**：`sudo -u root npm ci` 若只跳 `-` 开头的 token，可执行名会算成 `root` → scopeKey 变成 `bash|root`，**「总是允许这类」永远命中不了**。现在会跳过 `-u` 及其取值。
+5. **换引擎真的只换了一个文件**：`server/engine/pi-sdk.ts`（+ 一处 index.ts 的引擎选择）。协议、快照、会话、审批、前端全部零改动 —— ADR-0003 当年那句「薄边界让不可逆变可逆」在真实运行中被验证。
+6. **会话转录交给自己的 JSONL**：SDK 侧用 `SessionManager.inMemory()`，避免同一个会话落两份盘（ADR-0005 才是事实源）。
 
 **本步不许做**：多引擎 · 自定义工具注册 · 模型管理 UI · 工具开关面板 · 上下文压缩。
 

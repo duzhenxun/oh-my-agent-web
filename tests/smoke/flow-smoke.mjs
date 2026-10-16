@@ -53,6 +53,8 @@ function startServer(port = PORT, onStderr) {
 			AGENT_WEB_DATA_DIR: dataDir,
 			AGENT_WEB_CWD: REPO_ROOT,
 			AGENT_WEB_LOG: "warn",
+			// 冒烟断言的是假引擎的剧本（tool/fail/huge/approve/slow），所以显式指定引擎（ADR-0016）
+			AGENT_WEB_ENGINE: "fake",
 		},
 		stdio: ["ignore", "pipe", "pipe"],
 	});
@@ -151,6 +153,7 @@ try {
 
 	const health = await waitForHealth();
 	check(health.ok === true && health.protocolVersion === 1, "健康检查返回协议版本", JSON.stringify(health));
+	check(health.engine === "fake", "健康检查报告当前引擎（ADR-0016）", JSON.stringify(health));
 
 	// ---- 握手校验：非法 Origin 必须被拒（ADR-0006 核心条目）----
 	const evil = connect("https://evil.example.com");
@@ -209,8 +212,8 @@ try {
 	await waitFor(() => client.latestSnapshot()?.pendingApproval !== null, "审批弹窗出现在快照里");
 	const approval = client.latestSnapshot().pendingApproval;
 	check(
-		approval.toolName === "write_file" && approval.scopeHint.includes("write_file"),
-		"审批快照带工具名与「这类」描述",
+		approval.toolName === "write_file" && approval.scopeHint.includes("目录"),
+		"审批快照带工具名与「这类」描述（ADR-0006：文件类取目标目录）",
 	);
 	check(client.latestSnapshot().running.status === "awaiting_approval", "运行状态切到 awaiting_approval");
 

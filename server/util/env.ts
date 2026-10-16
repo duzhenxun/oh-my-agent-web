@@ -17,12 +17,16 @@ import { join, resolve, sep } from "node:path";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
+/** 引擎选择（ADR-0016）：默认用真实 pi SDK；`fake` 只给测试与离线演示用。 */
+export type EngineName = "pi" | "fake";
+
 export type Config = {
 	port: number;
 	readonly host: "127.0.0.1";
 	workspace: string;
 	dataDir: string;
 	logLevel: LogLevel;
+	engine: EngineName;
 	/** ADR-0006：v1 不实现，仅保留开关位 */
 	token: string | null;
 };
@@ -67,6 +71,14 @@ export function readConfig(env: EnvLike, options: ReadConfigOptions): ConfigResu
 		else problems.push(`AGENT_WEB_LOG 不是合法级别：${rawLevel}（回落到 info）`);
 	}
 
+	let engine: EngineName = "pi";
+	const rawEngine = env.AGENT_WEB_ENGINE;
+	if (rawEngine !== undefined && rawEngine !== "") {
+		const normalized = rawEngine.toLowerCase();
+		if (normalized === "pi" || normalized === "fake") engine = normalized;
+		else problems.push(`AGENT_WEB_ENGINE 不是合法值：${rawEngine}（可选 pi / fake，回落到 pi）`);
+	}
+
 	return {
 		config: {
 			port,
@@ -77,6 +89,7 @@ export function readConfig(env: EnvLike, options: ReadConfigOptions): ConfigResu
 					? resolve(env[DATA_DIR_ENV] as string)
 					: join(options.home, DEFAULT_DATA_DIR_NAME),
 			logLevel,
+			engine,
 			token: env.AGENT_WEB_TOKEN && env.AGENT_WEB_TOKEN !== "" ? env.AGENT_WEB_TOKEN : null,
 		},
 		problems,

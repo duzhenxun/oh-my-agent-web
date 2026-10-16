@@ -9,8 +9,10 @@
  *   - 转录**追加写**：用户消息发出时落盘；助手消息**在回合结束时**落盘（整条，不留半条）。
  *     代价写清楚：进程在回合计中被杀 → 这一轮的助手输出丢失（用户消息还在）。
  */
+import type { RuleStore } from "../approval/rules.js";
+import { createApprovalBridge } from "./approval-bridge.js";
 import type { ApprovalDecision, Notice, ProtocolError, ServerEvent, Snapshot, UiMessage } from "../protocol.js";
-import type { ApprovalRequest, EngineEvent, EnginePort } from "../engine/port.js";
+import type { EngineEvent, EnginePort } from "../engine/port.js";
 import { appendError, appendText, createMessage, finishTool, startTool } from "../snapshot/messages.js";
 import {
 	buildSnapshot,
@@ -37,12 +39,16 @@ export type Runtime = {
 	approve(requestId: string, decision: ApprovalDecision): Result;
 	newConversation(): Promise<Result>;
 	switchConversation(conversationId: string): Promise<Result>;
+	/** 给宿主其他部分（引擎、启动流程）推一条界面提示 */
+	notify(text: string, level?: Notice["level"]): void;
 	isBusy(): boolean;
 };
 
 export type RuntimeOptions = {
 	engine: EnginePort;
 	store: ConversationStore;
+	/** 审批规则落盘（ADR-0006）：「总是允许这类」跨重启生效 */
+	rules: RuleStore;
 	workspace: string;
 	emit: RuntimeEmit;
 	now?: () => number;
@@ -62,7 +68,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 	const state = createServerState(options.workspace);
 	// 工作区根是已知事实（ADR-0012 的 files 元数据；文件树内容在 M4）
 	state.files = { root: options.workspace, treeVersion: 0 };
-	const alwaysAllowed = new Set<string>();
+
 	const recentNotices = new Map<string, number>();
 	/** 哪些会话的消息已经从磁盘读进内存 */
 	const loadedConversations = new Set<string>();
@@ -73,7 +79,6 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 	let currentTurn: { conversationId: string; messageId: string } | null = null;
 	/** 回合结束时的落盘任务：sendMessage 必须在返回前等它完成（否则「应答已回、转录还没写」） */
 	let finishPromise: Promise<void> | null = null;
-	let pending: { requestId: string; scopeKey: string; resolve: (decision: ApprovalDecision) => void } | null = null;
 
 	const pushSnapshot = () => options.emit.snapshot(buildSnapshot(state));
 
@@ -90,26 +95,19 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		pushSnapshot();
 	}
 
-	async function handleApproval(request: ApprovalRequest): Promise<ApprovalDecision> {
-		const scopeKey = `${request.toolName}|${request.scopeHint}`;
-		if (alwaysAllowed.has(scopeKey)) return "always";
-
-		const requestId = nextId("appr");
-		state.pendingApproval = {
-			requestId,
-			toolName: request.toolName,
-			argsSummary: request.argsSummary,
-			riskNote: request.riskNote,
-			scopeHint: request.scopeHint,
-		};
-		state.running.status = "awaiting_approval";
-		pushSnapshot();
-
-		return new Promise<ApprovalDecision>((resolve) => {
-			pending = { requestId, scopeKey, resolve };
-		});
-	}
-	options.engine.setApprovalHandler(handleApproval);
+	// 审批桥（ADR-0006）：规则命中直接放行，否则等界面点一下（拆到单独模块，见 approval-bridge.ts）
+	const approval = createApprovalBridge({
+		rules: options.rules,
+		now,
+		nextId,
+		onPending: (nextPending) => {
+			state.pendingApproval = nextPending;
+			state.running.status = nextPending ? "awaiting_approval" : "streaming";
+			pushSnapshot();
+		},
+		onNotice: (text, level) => notice(text, level),
+	});
+	options.engine.setApprovalHandler(approval.handler);
 
 	function updateConversationMeta(conversationId: string): void {
 		state.conversations = state.conversations.map((conversation) =>
@@ -229,7 +227,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		const keepError = reason === "error" || state.running.status === "error";
 		state.running = { ...emptyRunning(), status: keepError ? "error" : "idle" };
 		state.pendingApproval = null;
-		pending = null;
+		approval.cancelPending();
 
 		// 助手消息在回合结束落盘：整条写入，不留半条（代价：进程在回合计中被杀会丢这一轮的助手输出）
 		const turn = currentTurn;
@@ -256,8 +254,12 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			const { conversations, rebuilt } = await options.store.init();
 			state.conversations = conversations;
 			for (const meta of conversations) state.messages[meta.id] = [];
+			const ruleCount = await approval.loadRules();
 			if (rebuilt && conversations.length > 0) {
 				notice(`会话索引已从转录重建（${conversations.length} 个会话）`, "info");
+			}
+			if (ruleCount > 0) {
+				notice(`已装载 ${ruleCount} 条审批规则（这些操作不会再询问）`, "info");
 			}
 			pushSnapshot();
 		},
@@ -272,6 +274,10 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 
 		isBusy() {
 			return inFlight;
+		},
+
+		notify(text, level = "info") {
+			notice(text, level);
 		},
 
 		async sendMessage(text: string) {
@@ -339,20 +345,9 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		},
 
 		approve(requestId, decision) {
-			if (!pending || pending.requestId !== requestId) {
-				return { ok: false, error: { code: "approval.unknown_request", message: "没有待处理的审批请求" } };
-			}
-			if (decision === "always") {
-				alwaysAllowed.add(pending.scopeKey);
-				notice("已记住：以后这类操作不再询问（M2 仍只在本次运行内有效）", "info");
-			}
-			const resolveDecision = pending.resolve;
-			pending = null;
-			state.pendingApproval = null;
-			if (state.running.status === "awaiting_approval") state.running.status = "streaming";
-			pushSnapshot();
-			resolveDecision(decision);
-			return { ok: true };
+			const result = approval.approve(requestId, decision);
+			if (result.ok) pushSnapshot();
+			return result;
 		},
 
 		async newConversation() {

@@ -13,7 +13,7 @@ import type { ApprovalHandler, EngineEvent, EngineMessage, EnginePort, EngineSes
 export type FakePlanStep =
 	| { kind: "text"; text: string }
 	| { kind: "tool"; name: string; argsSummary: string; output: string; exitCode?: number }
-	| { kind: "approval"; toolName: string; argsSummary: string; scopeHint: string; riskNote: string }
+	| { kind: "approval"; toolName: string; argsSummary: string; scopeKey: string; scopeHint: string; riskNote: string }
 	| { kind: "error"; code: string; message: string };
 
 const BIG_OUTPUT_CHARS = 200 * 1024;
@@ -36,7 +36,8 @@ export function planFor(text: string): FakePlanStep[] {
 				kind: "approval",
 				toolName: "write_file",
 				argsSummary: 'path="docs/notes.md", bytes=128',
-				scopeHint: "write_file:/Users/me/code/agent-web/docs",
+				scopeKey: "write_file|/Users/me/code/agent-web/docs",
+				scopeHint: "目录 /Users/me/code/agent-web/docs",
 				riskNote: "写文件会改动磁盘内容，确认后才能执行",
 			},
 			{ kind: "text", text: "（按你的决定，我要么继续、要么收手。）\n" },
@@ -185,6 +186,7 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
 						? await approvalHandler({
 								toolName: step.toolName,
 								argsSummary: step.argsSummary,
+								scopeKey: step.scopeKey,
 								scopeHint: step.scopeHint,
 								riskNote: step.riskNote,
 							})

@@ -12,7 +12,9 @@ import type { ApprovalDecision } from "../protocol.js";
 export type ApprovalRequest = {
 	toolName: string;
 	argsSummary: string;
-	/** 「这类」的可读描述（命令名 / 目标目录），用于「总是允许这类」 */
+	/** 机器用的稳定键（`bash|npm`、`write|/repo/docs`）：规则匹配靠它 */
+	scopeKey: string;
+	/** 「这类」的可读描述（命令名 / 目标目录），用于界面与「总是允许这类」 */
 	scopeHint: string;
 	riskNote: string;
 };

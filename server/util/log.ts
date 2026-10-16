@@ -14,6 +14,33 @@ const LEVEL_ORDER: Record<LogLevel, number> = { debug: 10, info: 20, warn: 30, e
 
 export type LogContext = Record<string, unknown>;
 
+/** 这些 key 的值一律不写日志（ADR-0013 §脱敏） */
+const SECRET_KEY_RE = /(key|token|secret|password|passwd|credential|authorization|cookie)/i;
+const MAX_VALUE_CHARS = 200;
+
+function redactValue(key: string, value: unknown): unknown {
+	if (SECRET_KEY_RE.test(key)) return "[redacted]";
+	if (typeof value === "string" && value.length > MAX_VALUE_CHARS) {
+		return `${value.slice(0, MAX_VALUE_CHARS)}…[${value.length} 字]`;
+	}
+	if (Array.isArray(value)) return value.slice(0, 20).map((item, index) => redactValue(`${key}.${index}`, item));
+	if (typeof value === "object" && value !== null) {
+		const out: Record<string, unknown> = {};
+		for (const [childKey, childValue] of Object.entries(value as Record<string, unknown>)) {
+			out[childKey] = redactValue(childKey, childValue);
+		}
+		return out;
+	}
+	return value;
+}
+
+/** 纯函数：把上下文里的敏感值抹掉、把长值截断（可单测） */
+export function redactLogContext(ctx: LogContext): LogContext {
+	const out: LogContext = {};
+	for (const [key, value] of Object.entries(ctx)) out[key] = redactValue(key, value);
+	return out;
+}
+
 export type LogEntry = {
 	ts: number;
 	level: LogLevel;
@@ -36,7 +63,6 @@ export type LoggerOptions = {
 	now?: () => number;
 	sink?: (line: string) => void;
 };
-
 /** 纯函数：把一条日志格式化成单行 JSON（便于单测脱敏与字段形状） */
 export function formatLogLine(entry: LogEntry): string {
 	return JSON.stringify(entry.ctx ? entry : { ...entry, ctx: undefined });
@@ -50,7 +76,8 @@ export function createLogger(options: LoggerOptions): Logger {
 
 	const write = (level: LogLevel, message: string, ctx?: LogContext) => {
 		if (LEVEL_ORDER[level] < threshold) return;
-		sink(formatLogLine({ ts: now(), level, scope, msg: message, ...(ctx ? { ctx } : {}) }));
+		const safeCtx = ctx ? redactLogContext(ctx) : undefined;
+		sink(formatLogLine({ ts: now(), level, scope, msg: message, ...(safeCtx ? { ctx: safeCtx } : {}) }));
 	};
 
 	return {
