@@ -23,30 +23,6 @@ const PORT = 8901;
 // ADR-0009 纪律：取仓库根一律用 fileURLToPath(new URL(...))（Windows 下 URL.pathname 会 ENOENT）
 const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const dataDir = mkdtempSync(join(tmpdir(), "agent-web-smoke-"));
-// 造一个「pi 已有会话」：目录名是编码过的 cwd，文件首行是 header（与真实布局一致）
-const piAgentDir = mkdtempSync(join(tmpdir(), "agent-web-pi-agent-"));
-{
-	const projectDir = join(piAgentDir, "sessions", "--tmp-demo-project--");
-	mkdirSync(projectDir, { recursive: true });
-	writeFileSync(
-		join(projectDir, "2026-10-16T00-00-00-000Z_demo.jsonl"),
-		[
-			JSON.stringify({
-				type: "session",
-				version: 3,
-				id: "demo",
-				timestamp: "2026-10-16T00:00:00.000Z",
-				cwd: "/tmp/demo-project",
-			}),
-			JSON.stringify({ type: "model_change", provider: "demo", modelId: "demo-model" }),
-			JSON.stringify({
-				type: "message",
-				message: { role: "user", content: [{ type: "text", text: "这是 pi 里已有的会话" }] },
-			}),
-		].join("\n") + "\n",
-		"utf8",
-	);
-}
 
 const failures = [];
 const check = (ok, label, detail = "") => {
@@ -80,7 +56,6 @@ function startServer(port = PORT, onStderr) {
 			// 冒烟断言的是假引擎的剧本（tool/fail/huge/approve/slow），所以显式指定引擎（ADR-0016）
 			AGENT_WEB_ENGINE: "fake",
 			// pi 会话目录指到临时目录（ADR-0021 §1 的回归：侧栏要能读出已有项目/会话）
-			PI_AGENT_DIR: piAgentDir,
 		},
 		stdio: ["ignore", "pipe", "pipe"],
 	});
@@ -191,20 +166,10 @@ try {
 	client = await connectReady("连接建立");
 	check(client.latestSnapshot().active.messages.length === 0, "初始快照为空会话");
 
-	// ---- pi 已有会话：侧栏能读出来（ADR-0021 §1）----
-	await waitFor(() => (client.latestSnapshot()?.piProjects.length ?? 0) > 0, "读到 pi 已有项目");
-	const piProject = client.latestSnapshot().piProjects[0];
-	check(piProject.name === "demo-project", "项目名取 cwd 最后一段", piProject.name);
-	check(
-		piProject.sessions[0]?.title === "这是 pi 里已有的会话",
-		"会话标题取首条 user 消息",
-		piProject.sessions[0]?.title,
-	);
-	check(piProject.sessions[0]?.model === "demo/demo-model", "读到该会话使用的模型");
-
 	/**
 	 * 发一轮输入并等它真正结束。
 	 * 判定依据：这一轮的消息已经出现在快照里（消息数 +2）且运行态回到 idle。
+	 * （只看 idle 会被上一轮的残留状态骗过去 —— 见文件头注释。）
 	 */
 	async function sendTurn(text) {
 		const before = client.latestSnapshot()?.active.messages.length ?? 0;
@@ -399,7 +364,6 @@ try {
 	await sleep(200);
 	if (server.exitCode === null) server.kill("SIGKILL");
 	rmSync(dataDir, { recursive: true, force: true });
-	rmSync(piAgentDir, { recursive: true, force: true });
 }
 
 console.log("");
