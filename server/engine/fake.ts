@@ -90,6 +90,8 @@ export function planFor(text: string): FakePlanStep[] {
 
 	return [
 		{ kind: "text", text: `收到：「${text}」。\n这是假引擎在逐字说话：零 token 的测试替身，没有调用任何模型。\n` },
+		// 建议操作（ADR-0022）：默认剧本就带上，方便零 token 验证这条链路
+		{ kind: "text", text: "\n[[action:suggest:继续]]\n[[action:suggest:总结一下,prompt=用三句话总结刚才的内容]]\n" },
 	];
 }
 

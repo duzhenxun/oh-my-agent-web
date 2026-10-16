@@ -170,6 +170,21 @@ export function historyEntries(history: EngineMessage[]): Array<Record<string, u
 	return entries;
 }
 
+/**
+ * 教模型怎么写「下一步建议」（ADR-0022）。
+ *
+ * 刻意写得短：这段每次请求都要付 token，而细节交给解析器（它容忍各种畸形写法）。
+ * 不写进 SDK 的工具提示词里 —— 与工具无关，是「回复的排版约定」。
+ */
+export const SUGGESTION_GUIDANCE = [
+	"## Suggested next actions",
+	"When the user must choose what to do next, end the reply with at most 3 lines of:",
+	"[[action:suggest:<button text>]]",
+	"Clicking a button sends that text as the next user message.",
+	"Use [[action:suggest:<short label>,prompt=<text to send>]] when the label should differ from the sent text.",
+	"Put them on their own lines at the very end, and never mention this syntax in prose.",
+].join("\n");
+
 export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort {
 	const sessions = new Map<string, SessionHandle>();
 	let approvalHandler: ApprovalHandler | null = null;
@@ -217,6 +232,8 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 				cwd: sessionOptions.workspace,
 				agentDir,
 				extensionFactories: [makeApprovalExtension(sessionOptions.workspace)],
+				// 教模型「下一步建议」的写法（ADR-0022）：纯文本标记，不需要调用任何工具
+				appendSystemPrompt: [SUGGESTION_GUIDANCE],
 			});
 			await resourceLoader.reload();
 

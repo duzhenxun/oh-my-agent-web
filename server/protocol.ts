@@ -95,6 +95,15 @@ export type PiSessionSummary = {
 };
 
 /** 按项目（工作目录）分组的会话列表 */
+/** 建议操作（ADR-0022）：模型用 [[action:suggest:...]] 给出的「下一步」，前端渲染成按钮 */
+export type ActionItem = {
+	id: string;
+	/** 按钮显示文字 */
+	label: string;
+	/** 点击后发送的文本 */
+	prompt: string;
+};
+
 /** 客户端设置（ADR-0020 §P1）：界面直接读快照里的这一份 */
 export type SettingsView = {
 	quickPhrases: string[];
@@ -119,6 +128,8 @@ export type Snapshot = {
 	piProjects: PiProject[];
 	/** 客户端设置（快捷短语等） */
 	settings: SettingsView;
+	/** 建议操作（ADR-0022）：新一轮开始时清空 */
+	actions: ActionItem[];
 	conversations: ConversationMeta[];
 	active: {
 		conversationId: string | null;

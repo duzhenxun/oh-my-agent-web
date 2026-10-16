@@ -18,7 +18,9 @@ import {
 	renameConversation,
 	updateConversationMeta,
 } from "./conversation-meta.js";
+import { createMarkerStreamFilter } from "../markers/actions.js";
 import { createNoticeSink } from "./notices.js";
+import { settleTurnMarkers } from "./turn-markers.js";
 import { defaultSettings, mergeSettings, type SettingsStore } from "./settings.js";
 import { applyEngineEvent, type TurnEventContext } from "./turn-events.js";
 import { makeIdFactory } from "../util/ids.js";
@@ -101,6 +103,10 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 	// 默认真实运行用全局唯一 id（ADR-0019）；测试注入确定性 id
 	const nextId = options.idSeq ?? makeIdFactory();
 	let inFlight = false;
+	/** 当前回合的流式标记过滤器（ADR-0022） */
+	let markerFilter = createMarkerStreamFilter();
+	/** 本回合的原始文本（含标记）：建议要在回合结束从这里解析 */
+	let rawTurnText = "";
 	let currentTurn: { conversationId: string; messageId: string } | null = null;
 	/** 回合结束时的落盘任务：sendMessage 必须在返回前等它完成（否则「应答已回、转录还没写」） */
 	let finishPromise: Promise<void> | null = null;
@@ -197,6 +203,10 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 	const turnContext: TurnEventContext = {
 		state,
 		now,
+		onTextDelta: (chunk) => {
+			rawTurnText += chunk;
+			return markerFilter.push(chunk);
+		},
 		emitEvent: (event) => options.emit.event(event),
 		pushSnapshot,
 		notice,
@@ -214,11 +224,19 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		// 助手消息在回合结束落盘：整条写入，不留半条（代价：进程在回合计中被杀会丢这一轮的助手输出）
 		const turn = currentTurn;
 		currentTurn = null;
-		if (turn && turn.conversationId === conversationId) {
-			const message = (state.messages[conversationId] ?? []).find((item) => item.id === turn.messageId);
+		if (turn) {
+			settleTurnMarkers({
+				state,
+				conversationId: turn.conversationId,
+				messageId: turn.messageId,
+				rawText: rawTurnText,
+				nextId,
+			});
+			// 落盘整条助手消息（含刚剥离过标记的正文）
+			const message = (state.messages[turn.conversationId] ?? []).find((item) => item.id === turn.messageId);
 			if (message) {
 				try {
-					await options.store.appendMessage(conversationId, message);
+					await options.store.appendMessage(turn.conversationId, message);
 				} catch (error) {
 					notice(`转录写入失败：${error instanceof Error ? error.message : String(error)}`, "error");
 				}
@@ -306,6 +324,9 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 
 				state.messages[conversationId] = [...(state.messages[conversationId] ?? []), userMessage, assistantMessage];
 				state.running = { status: "streaming", turnStartedAt: ts, streamingText: "", activeTool: null };
+				state.actions = []; // 新一轮开始：上一轮的建议作废（ADR-0022）
+				markerFilter = createMarkerStreamFilter();
+				rawTurnText = "";
 				currentTurn = { conversationId, messageId: assistantMessage.id };
 				updateConversationMeta(state, conversationId, now());
 

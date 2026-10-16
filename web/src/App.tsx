@@ -51,7 +51,13 @@ export function App() {
 
 				<main className="main" ref={scroller}>
 					{snapshot ? (
-						<MessageList messages={messages} hasMoreBefore={snapshot.active.hasMoreBefore} engine={snapshot.engine} />
+						<MessageList
+							messages={messages}
+							hasMoreBefore={snapshot.active.hasMoreBefore}
+							engine={snapshot.engine}
+							actions={snapshot.actions}
+							running={running}
+						/>
 					) : (
 						<div className="empty">等待服务端快照…（后端没起来的话看终端日志）</div>
 					)}

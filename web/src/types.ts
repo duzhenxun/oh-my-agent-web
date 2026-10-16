@@ -6,6 +6,7 @@
  * 以及「protocol.ts 里的每个协议类型都在这里出现」。
  */
 export type {
+	ActionItem,
 	ApprovalDecision,
 	ApproveRequest,
 	ClientRequest,

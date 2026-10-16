@@ -1,6 +1,5 @@
 /**
  * 端到端冒烟（ADR-0009 第 2 层）：真起一个 server 进程 + 真连一条 WS。
- *
  * 零 token、无外网、自包含：临时数据目录 + 专用端口（≥8900），结束自己清理。
  *
  * 覆盖（M1 协议/快照/假引擎 + M2 落盘/锁 + M3 审批规则）：
@@ -196,6 +195,22 @@ try {
 	await sendTurn("hello");
 	check(client.events("message_delta").length > 3, "收到多条 message_delta 增量");
 	check(client.text().includes("假引擎"), "助手消息包含假引擎回复");
+
+	// ---- 建议操作（ADR-0022）：模型写标记 → 服务端剥离 → 建议进快照 ----
+	await waitFor(() => (client.latestSnapshot()?.actions.length ?? 0) > 0, "建议出现在快照里");
+	const actions = client.latestSnapshot().actions;
+	check(actions.length === 2, "假引擎剧本的两条建议都在", String(actions.length));
+	check(actions[0].label === "继续" && actions[0].prompt === "继续", "第一条建议的显示与发送内容");
+	check(actions[1].label === "总结一下" && actions[1].prompt === "用三句话总结刚才的内容", "label/prompt 分离生效");
+	check(!client.text().includes("[[action:"), "正文里的标记已被剥离（用户看不到语法）");
+	check(
+		!client
+			.events("message_delta")
+			.map((event) => event.text)
+			.join("")
+			.includes("[["),
+		"流式增量里也从不出现标记开头（边流边剥）",
+	);
 	check(
 		client
 			.latestSnapshot()

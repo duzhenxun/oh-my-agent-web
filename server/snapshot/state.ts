@@ -10,6 +10,7 @@ import {
 	type ConversationMeta,
 	type EngineName,
 	type PiProject,
+	type ActionItem,
 	type SettingsView,
 	type FilesMeta,
 	type Notice,
@@ -26,6 +27,7 @@ export type ServerState = {
 	model: string | null;
 	piProjects: PiProject[];
 	settings: SettingsView;
+	actions: ActionItem[];
 	conversations: ConversationMeta[];
 	activeId: string | null;
 	messages: Record<string, UiMessage[]>;
@@ -47,6 +49,7 @@ export function createServerState(workspace: string, engine: EngineName = "pi"):
 		model: null,
 		piProjects: [],
 		settings: { quickPhrases: [], quickPhrasesEnabled: true },
+		actions: [],
 		conversations: [],
 		activeId: null,
 		messages: {},
@@ -82,6 +85,7 @@ export function buildSnapshot(state: ServerState, limit = SNAPSHOT_MESSAGE_LIMIT
 		protocolVersion: PROTOCOL_VERSION,
 		engine: state.engine,
 		model: state.model,
+		actions: state.actions.map((action) => ({ ...action })),
 		settings: {
 			quickPhrases: [...state.settings.quickPhrases],
 			quickPhrasesEnabled: state.settings.quickPhrasesEnabled,

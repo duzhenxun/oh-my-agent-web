@@ -111,6 +111,8 @@
 | [ADR-0017](docs/adr/0017-snapshot-engine-field.md) | 快照增加 `engine` 字段（ADR-0012 的增量修订） | accepted | 2026-10-16 |
 | [ADR-0018](docs/adr/0018-engine-session-lifecycle.md) | 引擎会话懒创建 + 历史注入；假引擎必须同样严格 | accepted | 2026-10-16 |
 | [ADR-0019](docs/adr/0019-globally-unique-ids.md) | id 跨进程唯一（禁止进程内自增）；存储拒绝 id 撞车 | accepted | 2026-10-16 |
+| [ADR-0021](docs/adr/0021-multi-project-and-pi-sessions.md) | 多项目侧栏 + 会话事实源改用 pi 的会话存储（§1 已落地） | accepted | 2026-10-16 |
+| [ADR-0022](docs/adr/0022-action-suggest-markers.md) | 建议操作标记 `[[action:suggest:…]]`（模型给下一步，一点即发） | accepted | 2026-10-16 |
 | [ADR-0020](docs/adr/0020-composer-upgrade.md) | 输入区升级四期；推翻「不做附件/模型 UI/工具开关」三条排除 | accepted | 2026-10-16 |
 
 > 模板与状态含义见 [`docs/adr/README.md`](docs/adr/README.md)。

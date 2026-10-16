@@ -1,4 +1,5 @@
-import type { EngineName, UiMessage } from "../types.ts";
+import type { ActionItem, EngineName, UiMessage } from "../types.ts";
+import { ActionSuggestions } from "./ActionSuggestions.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { ToolCard } from "./ToolCard.tsx";
 
@@ -82,10 +83,14 @@ export function MessageList({
 	messages,
 	hasMoreBefore,
 	engine,
+	actions,
+	running,
 }: {
 	messages: UiMessage[];
 	hasMoreBefore: boolean;
 	engine: EngineName;
+	actions: ActionItem[];
+	running: boolean;
 }) {
 	if (messages.length === 0) return <EmptyState engine={engine} />;
 
@@ -95,6 +100,8 @@ export function MessageList({
 			{messages.map((message) => (
 				<MessageView key={message.id} message={message} />
 			))}
+			{/* 建议操作紧跟在最后一条消息之后（ADR-0022）：它是「针对这一轮」的下一步 */}
+			<ActionSuggestions actions={actions} running={running} />
 		</div>
 	);
 }
