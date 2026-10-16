@@ -9,7 +9,7 @@
  * 断线重连：指数退避（0.5s → 8s 封顶）。服务端在断线期间继续干活（ADR-0004 §6）。
  */
 import { getAppState, setAppState } from "./store.ts";
-import type { ClientRequest, ClientRequestType, ServerMessage, Snapshot } from "./types.ts";
+import type { AttachmentRef, ClientRequest, ClientRequestType, ServerMessage, Snapshot } from "./types.ts";
 import { appendTextToMessage } from "./lib/delta.ts";
 
 const MAX_BACKOFF_MS = 8000;
@@ -74,8 +74,13 @@ export function send(requestMessage: ClientRequest): void {
 	socket.send(JSON.stringify(requestMessage));
 }
 
-export function sendMessage(text: string): void {
-	send({ id: `req-${++seq}`, type: "send_message", payload: { text } });
+/** 发一条用户消息（可带附件引用；图片本体早就通过 HTTP 上传了） */
+export function sendMessage(text: string, attachments?: AttachmentRef[]): void {
+	send({
+		id: `req-${++seq}`,
+		type: "send_message",
+		payload: attachments && attachments.length > 0 ? { text, attachments } : { text },
+	});
 }
 
 export function interrupt(conversationId: string): void {

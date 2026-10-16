@@ -318,3 +318,79 @@
 	opacity: 0.45;
 	cursor: not-allowed;
 }
+
+/* ---- 待发附件（ADR-0020 §P3）：粘贴截图后的小卡片 ---- */
+.attach-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+}
+
+.attach-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	max-width: 100%;
+	background: var(--bg-elev);
+	border: 1px solid var(--border-strong);
+	border-radius: 8px;
+	padding: 3px 6px 3px 3px;
+	font-size: 12px;
+	color: var(--text-dim);
+	min-width: 0;
+}
+
+.attach-thumb {
+	width: 28px;
+	height: 28px;
+	object-fit: cover;
+	border-radius: 5px;
+	border: 1px solid var(--border);
+	flex: none;
+}
+
+.attach-kind {
+	flex: none;
+	padding: 0 4px;
+}
+
+.attach-name {
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.attach-size {
+	flex: none;
+	color: var(--text-faint);
+}
+
+.attach-remove {
+	flex: none;
+	background: none;
+	border: none;
+	color: var(--text-faint);
+	cursor: pointer;
+	font-size: 14px;
+	line-height: 1;
+	padding: 0 2px;
+}
+
+.attach-remove:hover {
+	color: var(--red);
+}
+
+.attach-hint {
+	color: var(--text-faint);
+	font-size: 12px;
+}
+
+.attach-error {
+	color: var(--red);
+	font-size: 12px;
+	overflow-wrap: anywhere;
+}

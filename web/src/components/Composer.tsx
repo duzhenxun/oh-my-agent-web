@@ -1,23 +1,70 @@
+import { useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
+import { imagesMarkdown, pickUploadableFiles, uploadFile } from "../attachments.ts";
 import { setDraft, useAppState } from "../store.ts";
+import type { AttachmentRef } from "../types.ts";
 import { interrupt, sendMessage } from "../ws.ts";
 
+function formatBytes(bytes: number): string {
+	if (bytes < 1024) return `${bytes}B`;
+	if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}KB`;
+	return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+}
+
 /**
- * 输入区：快捷短语行（ADR-0020 §P1）+ 多行输入框。
+ * 输入区：快捷短语行（ADR-0020 §P1）+ 待发附件（ADR-0020 §P3）+ 多行输入框。
  *
- * 快捷短语的交互（与参考实现一致）：
- *   - 点一下 = **直接发送**；
- *   - Shift + 点击 = 只填进输入框（想改一改再发的时候用）。
- * 草稿放在客户端 store 里（ADR-0012 明确：草稿不进快照）。
+ * 粘贴截图：剪贴板里的图片直接上传（不塞 WS），显示成待发 chip；
+ * 发送时把 `AttachmentRef` 交给服务端（图片做视觉注入），并把 markdown 图片引用写进正文，
+ * 这样**刷新之后图片仍然显示**（引用随会话文件落盘）。
  */
 export function Composer({ running, conversationId }: { running: boolean; conversationId: string | null }) {
 	const { draft, snapshot } = useAppState();
+	const [pending, setPending] = useState<AttachmentRef[]>([]);
+	const [uploading, setUploading] = useState(false);
+	const [uploadError, setUploadError] = useState<string | null>(null);
+	const inputRef = useRef<HTMLTextAreaElement>(null);
+
 	const quickPhrases = snapshot?.settings.quickPhrasesEnabled ? (snapshot?.settings.quickPhrases ?? []) : [];
+
+	const addFiles = async (files: File[]) => {
+		if (files.length === 0) return;
+		const { accepted, rejected } = pickUploadableFiles(files, pending.length);
+		if (rejected.length > 0) setUploadError(rejected.join("；"));
+		if (accepted.length === 0) return;
+
+		setUploading(true);
+		const uploaded: AttachmentRef[] = [];
+		for (const file of accepted) {
+			const result = await uploadFile(file);
+			if (result.ok) uploaded.push(result.attachment);
+			else setUploadError(result.error);
+		}
+		setUploading(false);
+		if (uploaded.length > 0) {
+			setPending((current) => [...current, ...uploaded].slice(0, 5));
+			setUploadError(null);
+		}
+	};
+
+	const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+		// 只看图片：纯文本粘贴交回给浏览器默认行为
+		const files = [...event.clipboardData.items]
+			.filter((item) => item.kind === "file")
+			.map((item) => item.getAsFile())
+			.filter((file): file is File => file !== null);
+		if (files.length === 0) return;
+		event.preventDefault();
+		void addFiles(files);
+	};
 
 	const submit = () => {
 		const value = draft.trim();
-		if (!value || running) return;
-		sendMessage(value);
+		if ((!value && pending.length === 0) || running) return;
+		// 图片引用写进正文（刷新后仍显示）；附件本体走 references
+		sendMessage(value + imagesMarkdown(pending), pending.length > 0 ? pending : undefined);
 		setDraft("");
+		setPending([]);
+		setUploadError(null);
 	};
 
 	return (
@@ -34,6 +81,7 @@ export function Composer({ running, conversationId }: { running: boolean; conver
 							onClick={(event) => {
 								if (event.shiftKey) {
 									setDraft(phrase);
+									inputRef.current?.focus();
 									return;
 								}
 								if (running) return;
@@ -46,14 +94,43 @@ export function Composer({ running, conversationId }: { running: boolean; conver
 				</div>
 			) : null}
 
+			{pending.length > 0 || uploading || uploadError ? (
+				<div className="attach-row">
+					{pending.map((attachment) => (
+						<span className="attach-chip" key={attachment.id} title={`${attachment.mime} · ${attachment.name}`}>
+							{attachment.kind === "image" ? (
+								<img className="attach-thumb" src={`/api/uploads/${attachment.id}`} alt={attachment.name} />
+							) : (
+								<span className="attach-kind">📄</span>
+							)}
+							<span className="attach-name">{attachment.name}</span>
+							<span className="attach-size">{formatBytes(attachment.bytes)}</span>
+							<button
+								type="button"
+								className="attach-remove"
+								title="移除"
+								onClick={() => setPending((current) => current.filter((item) => item.id !== attachment.id))}
+							>
+								×
+							</button>
+						</span>
+					))}
+					{uploading ? <span className="attach-hint">上传中…</span> : null}
+					{uploadError ? <span className="attach-error">{uploadError}</span> : null}
+				</div>
+			) : null}
+
 			<div className="composer">
 				<textarea
+					ref={inputRef}
 					className="composer-input"
 					value={draft}
-					placeholder={running ? "正在跑…（回车排队会被拒绝，先点停止）" : "说点什么，回车发送 · Shift+回车换行"}
+					placeholder={
+						running ? "正在跑…（回车排队会被拒绝，先点停止）" : "说点什么，回车发送 · Shift+回车换行 · 可直接粘贴截图"
+					}
 					onChange={(event) => setDraft(event.target.value)}
-					onKeyDown={(event) => {
-						// Enter 发送，Shift+Enter 换行（中文输入法组合期间不触发）
+					onPaste={onPaste}
+					onKeyDown={(event: KeyboardEvent<HTMLTextAreaElement>) => {
 						if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
 						event.preventDefault();
 						submit();
@@ -66,7 +143,12 @@ export function Composer({ running, conversationId }: { running: boolean; conver
 							停止
 						</button>
 					) : (
-						<button type="button" className="btn btn-send" onClick={submit} disabled={draft.trim().length === 0}>
+						<button
+							type="button"
+							className="btn btn-send"
+							onClick={submit}
+							disabled={draft.trim().length === 0 && pending.length === 0}
+						>
 							发送
 						</button>
 					)}

@@ -18,23 +18,10 @@ import { createPiSdkEngine } from "./engine/pi-sdk.js";
 import type { EnginePort } from "./engine/port.js";
 import { createFileRuleStore } from "./approval/rules.js";
 import { existsSync } from "node:fs";
-import {
-	PROTOCOL_VERSION,
-	parseClientRequest,
-	type PiProject,
-	type ProtocolError,
-	type ServerReply,
-} from "./protocol.js";
+import { PROTOCOL_VERSION, parseClientRequest, type ProtocolError, type ServerReply } from "./protocol.js";
 import { acquireLock, describeHolder, releaseLock } from "./session/lock.js";
 import { createRuntime } from "./session/runtime.js";
 import { createFileSettingsStore } from "./session/settings.js";
-import {
-	PI_AGENT_DIR_ENV,
-	readCacheFile,
-	scanPiSessions,
-	writeCacheFile,
-	type PiSessionsCache,
-} from "./session/pi-sessions.js";
 import { createSender, type OutFrame } from "./snapshot/sender.js";
 import { createPiSessionsProvider, piAgentDir } from "./session/pi-sessions-provider.js";
 import { createUploadStore, uploadsDir } from "./uploads/upload-store.js";
