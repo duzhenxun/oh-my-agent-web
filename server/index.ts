@@ -36,6 +36,9 @@ import {
 	type PiSessionsCache,
 } from "./session/pi-sessions.js";
 import { createSender, type OutFrame } from "./snapshot/sender.js";
+import { createPiSessionsProvider, piAgentDir } from "./session/pi-sessions-provider.js";
+import { createUploadStore, uploadsDir } from "./uploads/upload-store.js";
+import { registerUploadRoutes } from "./uploads/upload-routes.js";
 import { readConfig, validateConfig } from "./util/env.js";
 import { createLogger } from "./util/log.js";
 import { createRotatingFileSink, logFileName, type RotatingFileSink } from "./util/log-file.js";
@@ -77,42 +80,6 @@ const sender = createSender({
 	},
 });
 
-/** pi 的配置目录（与 SDK 的 getAgentDir 默认值一致；这里不 import SDK —— 边界守则见 ADR-0003） */
-function piAgentDir(): string {
-	return process.env[PI_AGENT_DIR_ENV] ?? join(homedir(), ".pi", "agent");
-}
-
-/** 扫 pi 已有会话（ADR-0021 §1）：首扫读内容，之后靠 path+mtime 缓存（实测 991ms → 7ms） */
-function makePiSessionsProvider(): () => Promise<PiProject[]> {
-	let cache: PiSessionsCache = { v: 1, entries: {} };
-	const cacheFile = join(config.dataDir, "pi-sessions-cache.json");
-	let loaded = false;
-
-	return async () => {
-		if (!loaded) {
-			cache = await readCacheFile(cacheFile);
-			loaded = true;
-		}
-		const result = await scanPiSessions({ sessionsRoot: join(piAgentDir(), "sessions"), cache });
-		cache = result.cache;
-		if (result.read > 0) await writeCacheFile(cacheFile, cache).catch(() => {});
-		logger.info("已读取 pi 已有会话", { projects: result.groups.length, sessions: result.total, read: result.read });
-		return result.groups.map((group) => ({
-			cwd: group.cwd,
-			name: group.name,
-			sessions: group.sessions.map((session) => ({
-				id: session.id,
-				title: session.title,
-				startedAt: session.startedAt,
-				sessionPath: session.path,
-				updatedAt: session.updatedAt,
-				cwd: session.cwd,
-				model: session.model,
-			})),
-		}));
-	};
-}
-
 /** 引擎选择（ADR-0016）：默认真实 pi SDK；`AGENT_WEB_ENGINE=fake` 切到假引擎 */
 const engine: EnginePort =
 	config.engine === "fake"
@@ -137,7 +104,15 @@ const runtime = createRuntime({
 	engineName: config.engine,
 	turnTimeoutMs: config.turnTimeoutMs,
 	settings: createFileSettingsStore(config.dataDir),
-	piSessions: makePiSessionsProvider(),
+	uploadStore: {
+		read: (id) => uploadStore.read(id),
+		pathOf: (id) => join(uploadsDir(config.dataDir), id),
+	},
+	piSessions: createPiSessionsProvider({
+		agentDir: piAgentDir(),
+		dataDir: config.dataDir,
+		logger,
+	}),
 	emit: {
 		snapshot: (snapshot) => sender.pushSnapshot(snapshot),
 		event: (event) => {
@@ -169,6 +144,11 @@ function reply(socket: WebSocket, id: string, result: { ok: true } | { ok: false
 const app = express();
 // 开发态（tsx 跑源码）与生产态（node 跑 dist/）的层数不同，两个候选都试（见 util/paths.ts）
 const webDist = pickExisting(webDistCandidates(HERE), existsSync);
+
+/** 附件上传存储（ADR-0020 §P3）：图片走 HTTP，不塞 WS */
+const uploadStore = createUploadStore({ dataDir: config.dataDir });
+
+registerUploadRoutes(app, { uploadStore, logger });
 
 app.get("/api/health", (_request, response) => {
 	response.json({
@@ -260,7 +240,7 @@ async function handleMessage(socket: WebSocket, raw: string): Promise<void> {
 	try {
 		switch (request.type) {
 			case "send_message": {
-				reply(socket, request.id, await runtime.sendMessage(request.payload.text));
+				reply(socket, request.id, await runtime.sendMessage(request.payload.text, request.payload.attachments));
 				return;
 			}
 			case "interrupt": {

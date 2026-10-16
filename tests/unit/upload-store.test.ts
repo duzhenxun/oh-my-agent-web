@@ -14,6 +14,7 @@ import {
 	sniffMime,
 	uploadsDir,
 } from "../../server/uploads/upload-store.js";
+import { decodeFileName } from "../../server/uploads/upload-routes.js";
 
 let dir = "";
 
@@ -124,5 +125,28 @@ describe("createUploadStore", () => {
 		const store = createUploadStore({ dataDir: dir, ttlMs: 0 });
 		await store.save({ bytes: PNG_HEADER });
 		expect(existsSync(join(dir, "notes.txt"))).toBe(true);
+	});
+});
+
+describe("decodeFileName（请求头的两种编码都要伺候）", () => {
+	it("百分号编码（我们前端发的）", () => {
+		expect(decodeFileName(encodeURIComponent("截图 2026.png"))).toBe("截图 2026.png");
+	});
+
+	it("原样 UTF-8（curl 发的）也能解出来 —— Node 会按 latin1 解请求头", () => {
+		const latin1 = Buffer.from("中文名.png", "utf8").toString("latin1");
+		expect(decodeFileName(latin1)).toBe("中文名.png");
+	});
+
+	it("纯 ASCII 不受影响", () => {
+		expect(decodeFileName("shot.png")).toBe("shot.png");
+	});
+
+	it("空头给默认名", () => {
+		expect(decodeFileName("   ")).toBe("粘贴的图片");
+	});
+
+	it("乱糟糟的内容不至于变成乱码（转不出就原样返回）", () => {
+		expect(decodeFileName("%E4%B8")).toContain("%E4%B8");
 	});
 });
