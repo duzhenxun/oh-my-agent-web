@@ -82,6 +82,14 @@ export function interrupt(conversationId: string): void {
 	send({ id: `req-${++seq}`, type: "interrupt", payload: { conversationId } });
 }
 
+export function newChat(): void {
+	send({ id: `req-${++seq}`, type: "new_chat" });
+}
+
+export function switchConversation(conversationId: string): void {
+	send({ id: `req-${++seq}`, type: "switch_conversation", payload: { conversationId } });
+}
+
 export function approve(requestId: string, decision: "once" | "always" | "deny"): void {
 	send({ id: `req-${++seq}`, type: "approve", payload: { requestId, decision } });
 }

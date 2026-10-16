@@ -1,23 +1,29 @@
 /**
- * 入口（ADR-0004：一个 HTTP 端口 + 一条 WS；ADR-0006：只绑 loopback + 握手校验）。
+ * 入口（ADR-0004：一个 HTTP 端口 + 一条 WS；ADR-0006：只绑 loopback + 握手校验；ADR-0007：单实例锁）。
  *
  * M1 用**假引擎**（ADR-0009：零 token 跑全链路）；真实 pi SDK 在 M3 换上
  * （只换 `server/engine/` 里的实现，这个文件不需要改）。
+ *
+ * 启动顺序：环境自检 → 数据目录可写 → **抢单实例锁** → 装填会话索引 → 监听端口。
+ * 顺序有意义：锁要在读/写任何会话数据**之前**拿到，否则两个进程可能同时建索引。
  */
-import { existsSync } from "node:fs";
-import { createServer, type IncomingMessage } from "node:http";
 import { homedir } from "node:os";
+import { createServer, type IncomingMessage } from "node:http";
 import { fileURLToPath } from "node:url";
 import express from "express";
 import { WebSocketServer, type WebSocket } from "ws";
 import { createFakeEngine } from "./engine/fake.js";
+import { existsSync } from "node:fs";
 import { PROTOCOL_VERSION, parseClientRequest, type ProtocolError, type ServerReply } from "./protocol.js";
+import { acquireLock, describeHolder, releaseLock } from "./session/lock.js";
 import { createRuntime } from "./session/runtime.js";
+import { createJsonlStore } from "./session/store.js";
 import { createSender, type OutFrame } from "./snapshot/sender.js";
 import { readConfig, validateConfig } from "./util/env.js";
 import { createLogger } from "./util/log.js";
 import { describePolicy, isAllowedHost, isAllowedOrigin } from "./util/origin.js";
 import { pickExisting, webDistCandidates } from "./util/paths.js";
+import { checkDataDirWritable, describeListenError } from "./util/startup.js";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 /** 开发态前端端口（vite），生产态不需要（ADR-0007） */
@@ -30,16 +36,10 @@ const BACKPRESSURE_BYTES = 256 * 1024;
 
 const { config, problems: envProblems } = readConfig(process.env, { home: homedir(), cwd: process.cwd() });
 const logger = createLogger({ level: config.logLevel, scope: "app" });
-const problems = [...envProblems, ...validateConfig(config, { home: homedir() })];
-
-if (problems.length > 0) {
-	for (const problem of problems) logger.error(`启动自检失败：${problem}`);
-	process.exit(1);
-}
-
 const policy = { port: config.port, devPorts: [DEV_WEB_PORT] };
-const engine = createFakeEngine();
+
 const sockets = new Set<WebSocket>();
+let shuttingDown = false;
 
 const sender = createSender({
 	windowMs: SNAPSHOT_WINDOW_MS,
@@ -51,7 +51,8 @@ const sender = createSender({
 });
 
 const runtime = createRuntime({
-	engine,
+	engine: createFakeEngine(),
+	store: createJsonlStore(config.dataDir),
 	workspace: config.workspace,
 	emit: {
 		snapshot: (snapshot) => sender.pushSnapshot(snapshot),
@@ -89,6 +90,7 @@ app.get("/api/health", (_request, response) => {
 		protocolVersion: PROTOCOL_VERSION,
 		workspace: config.workspace,
 		engine: "fake",
+		conversations: runtime.state().conversations.length,
 	});
 });
 
@@ -98,7 +100,7 @@ if (webDist) {
 	app.get("/", (_request, response) => {
 		response
 			.type("text/plain")
-			.send(`agent-web 服务已启动（M1）\n\n前端开发态请用：npm run dev（vite 在 http://127.0.0.1:${DEV_WEB_PORT}）\n`);
+			.send(`agent-web 服务已启动\n\n前端开发态请用：npm run dev（vite 在 http://127.0.0.1:${DEV_WEB_PORT}）\n`);
 	});
 }
 
@@ -170,17 +172,23 @@ async function handleMessage(socket: WebSocket, raw: string): Promise<void> {
 	try {
 		switch (request.type) {
 			case "send_message": {
-				const result = await runtime.sendMessage(request.payload.text);
-				reply(socket, request.id, result);
+				reply(socket, request.id, await runtime.sendMessage(request.payload.text));
 				return;
 			}
 			case "interrupt": {
-				const result = await runtime.interrupt();
-				reply(socket, request.id, result);
+				reply(socket, request.id, await runtime.interrupt());
 				return;
 			}
 			case "approve": {
 				reply(socket, request.id, runtime.approve(request.payload.requestId, request.payload.decision));
+				return;
+			}
+			case "new_chat": {
+				reply(socket, request.id, await runtime.newConversation());
+				return;
+			}
+			case "switch_conversation": {
+				reply(socket, request.id, await runtime.switchConversation(request.payload.conversationId));
 				return;
 			}
 			case "get_state": {
@@ -199,44 +207,87 @@ async function handleMessage(socket: WebSocket, raw: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// 节奏：快照 tick + 心跳
+// 启动
 // ---------------------------------------------------------------------------
 
-const tickTimer = setInterval(() => {
-	const buffered = [...sockets].reduce((max, socket) => Math.max(max, socket.bufferedAmount), 0);
-	sender.setBusy(buffered > BACKPRESSURE_BYTES);
-	sender.tick(Date.now());
-}, TICK_MS);
-
-const heartbeatTimer = setInterval(() => {
-	for (const socket of sockets) {
-		if (socket.readyState === socket.OPEN) socket.ping();
+async function main(): Promise<void> {
+	const problems = [...envProblems, ...validateConfig(config, { home: homedir() })];
+	if (problems.length > 0) {
+		for (const problem of problems) logger.error(`启动自检失败：${problem}`);
+		process.exit(1);
 	}
-}, 25_000);
 
-httpServer.listen(config.port, config.host, () => {
+	const writable = await checkDataDirWritable(config.dataDir);
+	if (!writable.ok) {
+		logger.error(`启动自检失败：${writable.reason}`);
+		process.exit(1);
+	}
+
+	// 单实例锁（ADR-0007）：必须在读/写任何会话数据之前拿到
+	const acquired = await acquireLock(config.dataDir, { pid: process.pid, port: config.port, startedAt: Date.now() });
+	if (!acquired.ok) {
+		logger.error("已经有一个 agent-web 在跑，本进程退出", { holder: describeHolder(acquired.holder) });
+		console.error(`\n已经有一个 agent-web 在这个数据目录上跑着：\n  ${describeHolder(acquired.holder)}\n`);
+		console.error(`  → 打开它：http://127.0.0.1:${acquired.holder.port}`);
+		console.error("  → 或者先停掉它（前台运行时 Ctrl-C 即可）\n");
+		process.exit(1);
+	}
+	if (acquired.stale && acquired.previous) {
+		logger.warn("接管陈旧锁（上一个进程已不在）", { previous: describeHolder(acquired.previous) });
+	}
+
+	const { conversations } = await runtime.init().then(() => ({ conversations: runtime.state().conversations }));
+	logger.info("会话索引已装载", { conversations: conversations.length });
+
+	httpServer.on("error", (error: NodeJS.ErrnoException) => {
+		logger.error(describeListenError(error, config.port, `可能是另一个 agent-web 或别的程序占着这个端口`));
+		void releaseLock(config.dataDir, process.pid).finally(() => process.exit(1));
+	});
+
+	await new Promise<void>((resolve) => httpServer.listen(config.port, config.host, resolve));
+
 	logger.info("agent-web 已启动", {
 		url: `http://${config.host}:${config.port}`,
 		workspace: config.workspace,
 		dataDir: config.dataDir,
 		engine: "fake",
 		protocolVersion: PROTOCOL_VERSION,
+		conversations: runtime.state().conversations.length,
 	});
 	if (!webDist) {
 		logger.info("前端未构建，开发态请访问", { vite: `http://127.0.0.1:${DEV_WEB_PORT}` });
 	}
-});
 
-function shutdown(signal: string): void {
+	setInterval(() => {
+		const buffered = [...sockets].reduce((max, socket) => Math.max(max, socket.bufferedAmount), 0);
+		sender.setBusy(buffered > BACKPRESSURE_BYTES);
+		sender.tick(Date.now());
+	}, TICK_MS);
+
+	setInterval(() => {
+		for (const socket of sockets) {
+			if (socket.readyState === socket.OPEN) socket.ping();
+		}
+	}, 25_000);
+}
+
+async function shutdown(signal: string): Promise<void> {
+	if (shuttingDown) return;
+	shuttingDown = true;
 	logger.info("收到退出信号，正在关闭", { signal });
-	clearInterval(tickTimer);
-	clearInterval(heartbeatTimer);
 	sender.flush(Date.now());
 	for (const socket of sockets) socket.close(1001, "server shutting down");
 	wss.close();
-	httpServer.close(() => process.exit(0));
-	setTimeout(() => process.exit(0), 500);
+	httpServer.close();
+	// 锁要还回去：只有还属于自己时才删（避免删掉接管者的锁）
+	await releaseLock(config.dataDir, process.pid);
+	process.exit(0);
 }
 
-process.on("SIGINT", () => shutdown("SIGINT"));
-process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => void shutdown("SIGINT"));
+process.on("SIGTERM", () => void shutdown("SIGTERM"));
+
+main().catch((error: unknown) => {
+	logger.error("启动失败", { message: error instanceof Error ? error.message : String(error) });
+	process.exit(1);
+});

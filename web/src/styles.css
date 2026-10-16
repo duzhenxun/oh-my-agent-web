@@ -3,9 +3,10 @@
  *
  * 仍然只有一个入口、一套 CSS 变量、不引任何框架；只是按职责拆成几个分区文件，
  * 免得单文件越过 ADR-0010 的 400 行护栏。新增样式请放进对应分区，别往这里堆。
- *   分区顺序有意义：base（变量/布局）→ chat（对话）→ overlay（浮层）→ highlight（代码）
+ *   分区顺序有意义：base（变量/布局）→ sidebar（会话列表）→ chat（对话）→ overlay（浮层）→ highlight（代码）
  */
 @import "./styles/base.css";
+@import "./styles/sidebar.css";
 @import "./styles/chat.css";
 @import "./styles/overlay.css";
 @import "./styles/highlight.css";

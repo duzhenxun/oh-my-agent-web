@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createFakeEngine } from "../../server/engine/fake.js";
 import { TOOL_EXCERPT_CHARS, type ServerEvent, type Snapshot } from "../../server/protocol.js";
 import { createRuntime, type Runtime } from "../../server/session/runtime.js";
+import { createMemoryStore, type ConversationStore } from "../../server/session/store.js";
 
 /** 记录 emit 的快照与事件，便于断言「推了什么、什么时候推」 */
 function recorder() {
@@ -22,16 +23,21 @@ function recorder() {
 	};
 }
 
-function harness(): { runtime: Runtime; recorder: ReturnType<typeof recorder> } {
+function harness(store: ConversationStore = createMemoryStore()): {
+	runtime: Runtime;
+	recorder: ReturnType<typeof recorder>;
+	store: ConversationStore;
+} {
 	const recorderInstance = recorder();
 	let seq = 0;
 	const runtime = createRuntime({
 		engine: createFakeEngine({ chunkDelayMs: 0, slowChunkDelayMs: 5 }),
+		store,
 		workspace: "/tmp/agent-web-test",
 		emit: recorderInstance.emit,
 		idSeq: (prefix) => `${prefix}-${++seq}`,
 	});
-	return { runtime, recorder: recorderInstance };
+	return { runtime, recorder: recorderInstance, store };
 }
 
 const waitFor = async (predicate: () => boolean, timeoutMs = 1000) => {
@@ -209,3 +215,140 @@ describe("notice 去重（ADR-0013）", () => {
 		expect(errors).toHaveLength(1);
 	});
 });
+
+describe("M2：会话持久化与切换（ADR-0005）", () => {
+	function seededStore() {
+		return createMemoryStore({
+			conversations: [
+				{
+					id: "old-1",
+					title: "以前的会话",
+					createdAt: 100,
+					updatedAt: 200,
+					workspace: "/tmp/agent-web-test",
+					messageCount: 2,
+				},
+			],
+			messages: {
+				"old-1": [
+					appendTextForTest(createMessageForTest("m-old-1", "user", 150), "以前问的"),
+					appendTextForTest(createMessageForTest("m-old-2", "assistant", 151), "以前答的"),
+				],
+			},
+		});
+	}
+
+	async function harnessWithSeed() {
+		const store = seededStore();
+		const instance = harness(store);
+		await instance.runtime.init();
+		return instance;
+	}
+
+	it("init 装载索引里的会话（重启后侧栏还有会话）", async () => {
+		const { runtime } = await harnessWithSeed();
+		const snapshot = runtime.snapshot();
+		expect(snapshot.conversations.map((meta) => meta.id)).toEqual(["old-1"]);
+		expect(snapshot.active.conversationId).toBeNull(); // 需要用户点开（不会偷偷占用一个会话）
+	});
+
+	it("switchConversation 把历史消息从存储读进快照", async () => {
+		const { runtime: seeded } = await harnessWithSeed();
+		expect(seeded.snapshot().active.messages).toEqual([]); // 还没点开任何会话
+
+		const result = await seeded.switchConversation("old-1");
+		expect(result.ok).toBe(true);
+		const snapshot = seeded.snapshot();
+		expect(snapshot.active.conversationId).toBe("old-1");
+		expect(snapshot.active.messages.map((message) => message.id)).toEqual(["m-old-1", "m-old-2"]);
+		expect(messageTextForTest(snapshot)).toContain("以前问的");
+	});
+
+	it("切换不存在的会话被拒（session.not_found）", async () => {
+		const { runtime } = await harnessWithSeed();
+		const result = await runtime.switchConversation("不存在");
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.error.code).toBe("session.not_found");
+	});
+
+	it("newConversation 建一个新会话并切过去（索引里也多一条）", async () => {
+		const { runtime, store } = await harnessWithSeed();
+		const result = await runtime.newConversation();
+		expect(result.ok).toBe(true);
+
+		const snapshot = runtime.snapshot();
+		expect(snapshot.conversations).toHaveLength(2);
+		expect(snapshot.active.conversationId).toBeTruthy();
+		expect(snapshot.active.messages).toEqual([]);
+		expect(snapshot.conversations.find((meta) => meta.id === snapshot.active.conversationId)?.title).toBe("新对话");
+		expect((await store.readMessages(snapshot.active.conversationId!)).messages).toEqual([]);
+	});
+
+	it("首条用户消息决定标题（并且落盘）", async () => {
+		const { runtime } = await harness();
+		await runtime.sendMessage("帮我给登录加个限流");
+		const active = runtime.snapshot().conversations[0];
+		expect(active.title).toBe("帮我给登录加个限流");
+		expect(active.messageCount).toBe(2);
+	});
+
+	it("落盘顺序：用户消息立即写，助手消息在回合结束时整条写", async () => {
+		const { runtime, store } = await harness();
+		await runtime.sendMessage("hello");
+		const conversationId = runtime.snapshot().active.conversationId!;
+		const stored = await store.readMessages(conversationId);
+		expect(stored.messages.map((message) => message.role)).toEqual(["user", "assistant"]);
+		expect(stored.messages[1].blocks.some((block) => block.kind === "text")).toBe(true);
+	});
+
+	it("切换会话不中断在跑的回合：切回来看得到结果", async () => {
+		const { runtime } = await harness();
+		await runtime.newConversation();
+		const first = runtime.snapshot().active.conversationId!;
+		await runtime.newConversation();
+		const second = runtime.snapshot().active.conversationId!;
+
+		const turn = runtime.sendMessage("slow please");
+		await waitFor(() => runtime.isBusy());
+
+		// 切到另一个会话：回合继续在服务端跑
+		await runtime.switchConversation(first);
+		expect(runtime.snapshot().active.conversationId).toBe(first);
+		expect(runtime.snapshot().running.status).toBe("streaming");
+		expect(runtime.snapshot().active.messages).toEqual([]); // 这是另一个会话，还没内容
+
+		// 切回去：内容在（同一时刻只有一个回合在飞，但内容归属各自的会话）
+		await runtime.switchConversation(second);
+		expect(runtime.snapshot().active.messages.length).toBe(2);
+
+		// 中断：中断的是「在飞的那个回合」，不是当前正在看的会话
+		const result = await runtime.interrupt();
+		expect(result.ok).toBe(true);
+		await turn;
+		expect(runtime.snapshot().running.status).toBe("idle");
+	});
+});
+
+// 小工具：测试里造消息用（避免直接依赖后端模块的导入顺序）
+function createMessageForTest(id: string, role: "user" | "assistant", ts: number) {
+	return { id, role, ts, blocks: [] as import("../../server/protocol.js").MessageBlock[] };
+}
+
+function appendTextForTest(
+	message: {
+		id: string;
+		role: "user" | "assistant";
+		ts: number;
+		blocks: import("../../server/protocol.js").MessageBlock[];
+	},
+	text: string,
+) {
+	return { ...message, blocks: [...message.blocks, { kind: "text" as const, text }] };
+}
+
+function messageTextForTest(snapshot: Snapshot): string {
+	return snapshot.active.messages
+		.flatMap((message) => message.blocks)
+		.map((block) => (block.kind === "text" ? block.text : ""))
+		.join("");
+}

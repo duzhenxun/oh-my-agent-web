@@ -14,8 +14,8 @@
 - 项目代号：**`agent-web`**（npm 发布名 `agentweb`；见 ADR-0011）
 - 一句话定位：**跑在 `127.0.0.1`、给一个人用的编码智能体 Web 工作台 —— 对话 + 文件 + 终端 + 会话落盘「四件套」+ 危险操作确认（见 ADR-0001）**
 - 环境变量前缀：`AGENT_WEB_` · 数据目录：`~/.agent-web/` · 端口：8790（dev 后端 8791 / vite 5174）
-- 当前阶段：**M1 已完成（协议 + 快照 + 假引擎：73 单测 + 27 项端到端冒烟全绿）—— 下一步 M2**
-- 最后更新：M1 落地（2026-10-16）；[`ROADMAP.md`](ROADMAP.md) 进度 **2/7**
+- 当前阶段：**M2 已完成（会话落盘 + 单实例锁：123 单测 + 37 项端到端冒烟全绿）—— 下一步 M3**
+- 最后更新：M2 落地（2026-10-16）；[`ROADMAP.md`](ROADMAP.md) 进度 **3/7**
 
 ---
 
@@ -103,6 +103,7 @@
 | [ADR-0012](docs/adr/0012-snapshot-shape.md) | 快照形状：只放「重连必须恢复 + 侧栏列表」；消息由块构成；N=100 | accepted | 2026-10-16 |
 | [ADR-0013](docs/adr/0013-errors-and-logging.md) | 错误与日志分家：错误进转录 + notices 去重；JSON 日志按大小轮转；无 telemetry | accepted | 2026-10-16 |
 | [ADR-0014](docs/adr/0014-css-file-split.md) | 样式拆为「一个入口 + 分区文件」（细化 ADR-0008 的「单文件 CSS」） | accepted | 2026-10-16 |
+| [ADR-0015](docs/adr/0015-transcript-write-timing.md) | 转录写入时机：用户消息即时写、助手消息回合结束整条写 | accepted | 2026-10-16 |
 
 > 模板与状态含义见 [`docs/adr/README.md`](docs/adr/README.md)。
 

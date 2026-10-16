@@ -115,7 +115,18 @@ export type ApproveRequest = {
 };
 export type GetStateRequest = { id: string; type: "get_state" };
 
-export type ClientRequest = SendMessageRequest | InterruptRequest | ApproveRequest | GetStateRequest;
+export type ClientRequest =
+	SendMessageRequest | InterruptRequest | ApproveRequest | GetStateRequest | NewChatRequest | SwitchConversationRequest;
+
+/** 新建会话（M2）：服务端建好并推快照，active 指向它 */
+export type NewChatRequest = { id: string; type: "new_chat" };
+
+/** 切换会话（M2） */
+export type SwitchConversationRequest = {
+	id: string;
+	type: "switch_conversation";
+	payload: { conversationId: string };
+};
 
 export type ClientRequestType = ClientRequest["type"];
 
@@ -147,7 +158,14 @@ export type ServerMessage = ServerReply | ServerEvent;
 // 校验（纯函数：服务端用它拒绝垃圾输入，单测直接覆盖）
 // ---------------------------------------------------------------------------
 
-const REQUEST_TYPES: ClientRequestType[] = ["send_message", "interrupt", "approve", "get_state"];
+const REQUEST_TYPES: ClientRequestType[] = [
+	"send_message",
+	"interrupt",
+	"approve",
+	"get_state",
+	"new_chat",
+	"switch_conversation",
+];
 const DECISIONS: ApprovalDecision[] = ["once", "always", "deny"];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -168,13 +186,18 @@ export function parseClientRequest(raw: unknown): ClientRequest | null {
 	if (!nonEmptyString(id) || !nonEmptyString(type)) return null;
 	if (!REQUEST_TYPES.includes(type as ClientRequestType)) return null;
 
-	if (type === "get_state") return { id, type: "get_state" };
+	if (type === "get_state" || type === "new_chat") return { id, type };
 
 	const payload = raw.payload;
 	if (!isRecord(payload)) return null;
 
 	if (type === "send_message") {
 		return nonEmptyString(payload.text) ? { id, type: "send_message", payload: { text: payload.text } } : null;
+	}
+	if (type === "switch_conversation") {
+		return nonEmptyString(payload.conversationId)
+			? { id, type: "switch_conversation", payload: { conversationId: payload.conversationId } }
+			: null;
 	}
 	if (type === "interrupt") {
 		return nonEmptyString(payload.conversationId)

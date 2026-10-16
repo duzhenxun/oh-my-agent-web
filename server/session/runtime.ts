@@ -1,11 +1,13 @@
 /**
- * 会话运行时（宿主侧）：把引擎事件翻译成 UI 状态 / 协议事件（ADR-0003、ADR-0004、ADR-0005）。
+ * 会话运行时（宿主侧）：把引擎事件翻译成 UI 状态 / 协议事件，并把转录落盘（M2）。
  *
- * M1 版是**内存态**：会话只活在进程里（落盘是 M2 的事），但已经遵守 M2 之后也不会变的规则：
+ * 遵守的规则（都已由 ADR 定死）：
  *   - 全局同时只允许 **1 路在飞回合**（ADR-0005）：再发就拒绝 + 提示，不排队；
+ *   - 切换会话**不中断**在跑的回合（ADR-0005）：引擎在服务端继续干活，切回来靠快照看结果；
  *   - 危险操作走审批三态（ADR-0006）：允许一次 / 总是允许这类 / 拒绝；
- *   - 快照只在**结构性变化**时推：正文靠 message_delta 增量，避免每字重推全量（ADR-0004 §3）；
- *   - notice 同码去重（ADR-0013）。
+ *   - 快照只在**结构性变化**时推：正文靠 message_delta 增量（ADR-0004 §3）；
+ *   - 转录**追加写**：用户消息发出时落盘；助手消息**在回合结束时**落盘（整条，不留半条）。
+ *     代价写清楚：进程在回合计中被杀 → 这一轮的助手输出丢失（用户消息还在）。
  */
 import type { ApprovalDecision, Notice, ProtocolError, ServerEvent, Snapshot, UiMessage } from "../protocol.js";
 import type { ApprovalRequest, EngineEvent, EnginePort } from "../engine/port.js";
@@ -17,6 +19,7 @@ import {
 	emptyRunning,
 	type ServerState,
 } from "../snapshot/state.js";
+import { deriveTitle, type ConversationStore } from "./store.js";
 
 export type RuntimeEmit = {
 	snapshot(snapshot: Snapshot): void;
@@ -26,16 +29,20 @@ export type RuntimeEmit = {
 export type Result = { ok: true } | { ok: false; error: ProtocolError };
 
 export type Runtime = {
+	init(): Promise<void>;
 	snapshot(): Snapshot;
 	state(): ServerState;
 	sendMessage(text: string): Promise<Result>;
 	interrupt(): Promise<Result>;
 	approve(requestId: string, decision: ApprovalDecision): Result;
+	newConversation(): Promise<Result>;
+	switchConversation(conversationId: string): Promise<Result>;
 	isBusy(): boolean;
 };
 
 export type RuntimeOptions = {
 	engine: EnginePort;
+	store: ConversationStore;
 	workspace: string;
 	emit: RuntimeEmit;
 	now?: () => number;
@@ -53,12 +60,19 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 	const titleChars = options.titleChars ?? 24;
 
 	const state = createServerState(options.workspace);
+	// 工作区根是已知事实（ADR-0012 的 files 元数据；文件树内容在 M4）
+	state.files = { root: options.workspace, treeVersion: 0 };
 	const alwaysAllowed = new Set<string>();
 	const recentNotices = new Map<string, number>();
+	/** 哪些会话的消息已经从磁盘读进内存 */
+	const loadedConversations = new Set<string>();
 
 	let seq = 0;
 	const nextId = options.idSeq ?? ((prefix: string) => `${prefix}-${++seq}`);
 	let inFlight = false;
+	let currentTurn: { conversationId: string; messageId: string } | null = null;
+	/** 回合结束时的落盘任务：sendMessage 必须在返回前等它完成（否则「应答已回、转录还没写」） */
+	let finishPromise: Promise<void> | null = null;
 	let pending: { requestId: string; scopeKey: string; resolve: (decision: ApprovalDecision) => void } | null = null;
 
 	const pushSnapshot = () => options.emit.snapshot(buildSnapshot(state));
@@ -97,40 +111,58 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 	}
 	options.engine.setApprovalHandler(handleApproval);
 
-	async function ensureConversation(seedText: string): Promise<string> {
-		if (state.activeId) return state.activeId;
+	function updateConversationMeta(conversationId: string): void {
+		state.conversations = state.conversations.map((conversation) =>
+			conversation.id === conversationId
+				? { ...conversation, updatedAt: now(), messageCount: state.messages[conversationId]?.length ?? 0 }
+				: conversation,
+		);
+	}
+
+	async function persistIndex(): Promise<void> {
+		try {
+			await options.store.saveIndex(state.conversations);
+		} catch (error) {
+			notice(`索引写入失败：${error instanceof Error ? error.message : String(error)}`, "warn");
+		}
+	}
+
+	async function createConversationInternal(title: string): Promise<string> {
 		const id = nextId("conv");
-		const title = firstLine(seedText).slice(0, titleChars) || "新对话";
-		state.conversations = [
-			...state.conversations,
-			createConversation({ id, title, workspace: state.workspace, now: now() }),
-		];
+		const ts = now();
+		const meta = createConversation({ id, title, workspace: state.workspace, now: ts });
+		state.conversations = [...state.conversations, meta];
 		state.messages[id] = [];
-		// 同步置位 activeId：单写入者假设（ADR-0005）靠它 —— interrupt 与审批在 createSession 完成前
-		// 就得看得到「当前会话」，否则会出现「回合在跑但没有会话」的窗口。
+		loadedConversations.add(id);
 		state.activeId = id;
 		try {
+			await options.store.create({ id, title, workspace: state.workspace, now: ts });
 			await options.engine.createSession({ sessionId: id, workspace: state.workspace });
 		} catch (error) {
+			// 回滚：不留「半存在的会话」
 			state.conversations = state.conversations.filter((conversation) => conversation.id !== id);
 			delete state.messages[id];
+			loadedConversations.delete(id);
 			state.activeId = null;
 			throw error;
 		}
+		await persistIndex();
 		pushSnapshot();
 		return id;
 	}
 
-	function updateConversationMeta(conversationId: string): void {
-		state.conversations = state.conversations.map((conversation) =>
-			conversation.id === conversationId
-				? {
-						...conversation,
-						updatedAt: now(),
-						messageCount: state.messages[conversationId]?.length ?? 0,
-					}
-				: conversation,
-		);
+	/** 没有活动会话时按首条输入建一个（M1 起的行为，M2 起落盘） */
+	async function ensureConversation(seedText: string): Promise<string> {
+		if (state.activeId) return state.activeId;
+		return createConversationInternal(deriveTitle(seedText, titleChars));
+	}
+
+	async function loadMessages(conversationId: string): Promise<void> {
+		if (loadedConversations.has(conversationId)) return;
+		const { messages, skipped } = await options.store.readMessages(conversationId);
+		state.messages[conversationId] = messages;
+		loadedConversations.add(conversationId);
+		if (skipped > 0) notice(`会话 ${conversationId} 有 ${skipped} 行无法解析，已跳过（转录其余部分正常）`, "warn");
 	}
 
 	function patchMessage(conversationId: string, messageId: string, patch: (message: UiMessage) => UiMessage): void {
@@ -143,7 +175,6 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			case "text_delta": {
 				patchMessage(conversationId, messageId, (message) => appendText(message, event.text));
 				state.running.streamingText += event.text;
-				// 正文只走增量事件（ADR-0004 §3）：快照等下一次结构性变化再推
 				options.emit.event({
 					type: "event",
 					event: "message_delta",
@@ -188,23 +219,49 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 				return;
 			}
 			case "turn_end": {
-				finishTurn(conversationId, event.reason);
+				finishPromise = finishTurn(conversationId, event.reason);
 				return;
 			}
 		}
 	}
 
-	function finishTurn(conversationId: string, reason: "done" | "interrupted" | "error"): void {
+	async function finishTurn(conversationId: string, reason: "done" | "interrupted" | "error"): Promise<void> {
 		const keepError = reason === "error" || state.running.status === "error";
 		state.running = { ...emptyRunning(), status: keepError ? "error" : "idle" };
 		state.pendingApproval = null;
 		pending = null;
+
+		// 助手消息在回合结束落盘：整条写入，不留半条（代价：进程在回合计中被杀会丢这一轮的助手输出）
+		const turn = currentTurn;
+		currentTurn = null;
+		if (turn && turn.conversationId === conversationId) {
+			const message = (state.messages[conversationId] ?? []).find((item) => item.id === turn.messageId);
+			if (message) {
+				try {
+					await options.store.appendMessage(conversationId, message);
+				} catch (error) {
+					notice(`转录写入失败：${error instanceof Error ? error.message : String(error)}`, "error");
+				}
+			}
+		}
+
 		updateConversationMeta(conversationId);
+		await persistIndex();
 		if (reason === "interrupted") notice("回合已中断", "info");
 		pushSnapshot();
 	}
 
 	return {
+		async init() {
+			const { conversations, rebuilt } = await options.store.init();
+			state.conversations = conversations;
+			for (const meta of conversations) state.messages[meta.id] = [];
+			if (rebuilt && conversations.length > 0) {
+				notice(`会话索引已从转录重建（${conversations.length} 个会话）`, "info");
+			}
+			pushSnapshot();
+		},
+
 		snapshot() {
 			return buildSnapshot(state);
 		},
@@ -226,12 +283,28 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			inFlight = true;
 			try {
 				const conversationId = await ensureConversation(text);
+				await loadMessages(conversationId);
 				const ts = now();
 				const userMessage = appendText(createMessage(nextId("msg"), "user", ts), text);
 				const assistantMessage = createMessage(nextId("msg"), "assistant", ts);
+
+				// 首条用户消息决定标题（ADR-0005）
+				const isFirstMessage = (state.messages[conversationId] ?? []).length === 0;
+				if (isFirstMessage) {
+					const title = deriveTitle(text, titleChars);
+					await options.store.rename(conversationId, title, ts);
+					state.conversations = state.conversations.map((conversation) =>
+						conversation.id === conversationId ? { ...conversation, title } : conversation,
+					);
+				}
+
 				state.messages[conversationId] = [...(state.messages[conversationId] ?? []), userMessage, assistantMessage];
 				state.running = { status: "streaming", turnStartedAt: ts, streamingText: "", activeTool: null };
+				currentTurn = { conversationId, messageId: assistantMessage.id };
 				updateConversationMeta(conversationId);
+
+				// 用户消息立即落盘（这样即使这一轮崩了，输入也不会丢）
+				await options.store.appendMessage(conversationId, userMessage);
 				pushSnapshot();
 
 				await options.engine.sendMessage(conversationId, text, (event) =>
@@ -242,18 +315,26 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 				const message = error instanceof Error ? error.message : String(error);
 				notice(`回合执行失败：${message}`, "error");
 				state.running = { ...emptyRunning(), status: "error" };
+				currentTurn = null;
 				pushSnapshot();
 				return { ok: false, error: { code: "session.turn_failed", message } };
 			} finally {
+				// 等落盘完成再放开「在飞」闸门：下一次回合不应该与上一次的持久化重叠
+				if (finishPromise) {
+					await finishPromise;
+					finishPromise = null;
+				}
 				inFlight = false;
 			}
 		},
 
 		async interrupt() {
-			if (!inFlight || !state.activeId) {
+			// 中断的是**在飞的那个回合**，不一定是你正在看的那个会话（可以切走再停）
+			const target = currentTurn?.conversationId ?? state.activeId;
+			if (!inFlight || !target) {
 				return { ok: false, error: { code: "session.idle", message: "当前没有在跑的回合" } };
 			}
-			await options.engine.interrupt(state.activeId);
+			await options.engine.interrupt(target);
 			return { ok: true };
 		},
 
@@ -263,7 +344,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			}
 			if (decision === "always") {
 				alwaysAllowed.add(pending.scopeKey);
-				notice("已记住：以后这类操作不再询问（M1 只在本次运行内有效）", "info");
+				notice("已记住：以后这类操作不再询问（M2 仍只在本次运行内有效）", "info");
 			}
 			const resolveDecision = pending.resolve;
 			pending = null;
@@ -273,9 +354,28 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			resolveDecision(decision);
 			return { ok: true };
 		},
-	};
-}
 
-function firstLine(text: string): string {
-	return (text.split("\n")[0] ?? "").trim();
+		async newConversation() {
+			try {
+				await createConversationInternal("新对话");
+				return { ok: true };
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				notice(`新建会话失败：${message}`, "error");
+				return { ok: false, error: { code: "session.create_failed", message } };
+			}
+		},
+
+		async switchConversation(conversationId) {
+			if (!state.conversations.some((conversation) => conversation.id === conversationId)) {
+				return { ok: false, error: { code: "session.not_found", message: `会话不存在：${conversationId}` } };
+			}
+			if (state.activeId !== conversationId) {
+				await loadMessages(conversationId);
+				state.activeId = conversationId;
+				pushSnapshot();
+			}
+			return { ok: true };
+		},
+	};
 }
