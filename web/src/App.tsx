@@ -40,12 +40,13 @@ export function App() {
 					<span className="topbar-spacer" />
 					{activeConversation ? <span className="chip chip-quiet">{activeConversation.title}</span> : null}
 					{snapshot?.files ? <span className="chip chip-quiet mono">{snapshot.files.root}</span> : null}
+					{snapshot ? <span className="chip chip-quiet">引擎 {snapshot.engine}</span> : null}
 					<span className="chip chip-quiet">协议 v{snapshot?.protocolVersion ?? "?"}</span>
 				</header>
 
 				<main className="main" ref={scroller}>
 					{snapshot ? (
-						<MessageList messages={messages} hasMoreBefore={snapshot.active.hasMoreBefore} />
+						<MessageList messages={messages} hasMoreBefore={snapshot.active.hasMoreBefore} engine={snapshot.engine} />
 					) : (
 						<div className="empty">等待服务端快照…（后端没起来的话看终端日志）</div>
 					)}

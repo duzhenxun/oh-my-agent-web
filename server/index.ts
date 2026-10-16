@@ -85,6 +85,7 @@ const runtime = createRuntime({
 	store: createJsonlStore(config.dataDir),
 	rules: createFileRuleStore(config.dataDir),
 	workspace: config.workspace,
+	engineName: config.engine,
 	emit: {
 		snapshot: (snapshot) => sender.pushSnapshot(snapshot),
 		event: (event) => {

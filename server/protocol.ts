@@ -85,8 +85,12 @@ export type TerminalMeta = { id: string; cols: number; rows: number; alive: bool
 
 export type FilesMeta = { root: string; treeVersion: number };
 
+/** 当前引擎（ADR-0016）：界面靠它决定提示语与后续能力展示 */
+export type EngineName = "pi" | "fake";
+
 export type Snapshot = {
 	protocolVersion: number;
+	engine: EngineName;
 	conversations: ConversationMeta[];
 	active: {
 		conversationId: string | null;

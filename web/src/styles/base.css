@@ -201,8 +201,13 @@ body {
 	font: inherit;
 }
 
-.btn:hover {
+.btn:hover:not(:disabled) {
 	border-color: var(--accent-dim);
+}
+
+.btn:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
 }
 
 .btn-primary {

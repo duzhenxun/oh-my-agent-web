@@ -50,6 +50,8 @@ export type RuntimeOptions = {
 	/** 审批规则落盘（ADR-0006）：「总是允许这类」跨重启生效 */
 	rules: RuleStore;
 	workspace: string;
+	/** 当前引擎名（ADR-0016）：会进快照，供界面决定提示语 */
+	engineName?: "pi" | "fake";
 	emit: RuntimeEmit;
 	now?: () => number;
 	/** 测试注入可预测的 id；默认 `<前缀>-<序号>` */
@@ -65,7 +67,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 	const maxNotices = options.maxNotices ?? 20;
 	const titleChars = options.titleChars ?? 24;
 
-	const state = createServerState(options.workspace);
+	const state = createServerState(options.workspace, options.engineName ?? "pi");
 	// 工作区根是已知事实（ADR-0012 的 files 元数据；文件树内容在 M4）
 	state.files = { root: options.workspace, treeVersion: 0 };
 
@@ -149,7 +151,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		return id;
 	}
 
-	/** 没有活动会话时按首条输入建一个（M1 起的行为，M2 起落盘） */
+	/** 没有活动会话时按首条输入建一个（会落盘，见 ADR-0015） */
 	async function ensureConversation(seedText: string): Promise<string> {
 		if (state.activeId) return state.activeId;
 		return createConversationInternal(deriveTitle(seedText, titleChars));

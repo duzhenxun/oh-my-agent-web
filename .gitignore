@@ -13,6 +13,9 @@ coverage/
 .idea/
 .vscode/
 
+# 本地运行日志与截图（npm run dev 的输出、UI 验证截图）
+.run/
+
 # 临时
 .tmp-*
 *.tgz

@@ -8,6 +8,7 @@ import {
 	SNAPSHOT_MESSAGE_LIMIT,
 	PROTOCOL_VERSION,
 	type ConversationMeta,
+	type EngineName,
 	type FilesMeta,
 	type Notice,
 	type PendingApproval,
@@ -19,6 +20,7 @@ import {
 
 export type ServerState = {
 	workspace: string;
+	engine: EngineName;
 	conversations: ConversationMeta[];
 	activeId: string | null;
 	messages: Record<string, UiMessage[]>;
@@ -33,9 +35,10 @@ export function emptyRunning(): RunningState {
 	return { status: "idle", turnStartedAt: null, streamingText: "", activeTool: null };
 }
 
-export function createServerState(workspace: string): ServerState {
+export function createServerState(workspace: string, engine: EngineName = "pi"): ServerState {
 	return {
 		workspace,
+		engine,
 		conversations: [],
 		activeId: null,
 		messages: {},
@@ -69,6 +72,7 @@ export function buildSnapshot(state: ServerState, limit = SNAPSHOT_MESSAGE_LIMIT
 	const messages = all.length > limit ? all.slice(all.length - limit) : all;
 	return {
 		protocolVersion: PROTOCOL_VERSION,
+		engine: state.engine,
 		conversations: state.conversations.map((conversation) => ({ ...conversation })),
 		active: {
 			conversationId: state.activeId,

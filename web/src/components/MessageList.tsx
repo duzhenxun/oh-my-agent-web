@@ -1,4 +1,4 @@
-import type { UiMessage } from "../types.ts";
+import type { EngineName, UiMessage } from "../types.ts";
 import { Markdown } from "./Markdown.tsx";
 import { ToolCard } from "./ToolCard.tsx";
 
@@ -29,31 +29,65 @@ function MessageView({ message }: { message: UiMessage }) {
 	);
 }
 
-const HINTS = ["tool", "approve", "fail", "huge", "boom", "slow"];
+/** 假引擎（AGENT_WEB_ENGINE=fake）的剧本触发词，只在那个模式下才有意义 */
+const FAKE_HINTS: Array<[string, string]> = [
+	["tool", "工具卡片"],
+	["approve", "审批弹窗"],
+	["fail", "失败的工具（退出码）"],
+	["huge", "超大输出截断"],
+	["boom", "错误块 + notice"],
+	["slow", "慢速输出（用来试「停止」）"],
+];
 
-export function MessageList({ messages, hasMoreBefore }: { messages: UiMessage[]; hasMoreBefore: boolean }) {
-	if (messages.length === 0) {
+/** 真实引擎下该说什么：引导它干活，并说明安全边界 */
+const REAL_HINTS = [
+	"读一个文件，先说清它做什么",
+	"改一处代码，然后跑一次测试",
+	"在仓库里搜一个符号，列出在哪儿定义、在哪儿用",
+];
+
+function EmptyState({ engine }: { engine: EngineName }) {
+	if (engine === "fake") {
 		return (
 			<div className="empty">
-				<p>M1：假引擎已就绪（没有调用任何模型）。试试这些触发词：</p>
+				<p>
+					当前是<strong>假引擎</strong>（<code>AGENT_WEB_ENGINE=fake</code>
+					）：不调用任何模型，只按剧本回话。试试这些触发词：
+				</p>
 				<ul>
-					{HINTS.map((hint) => (
-						<li key={hint}>
-							<code>{hint}</code>
-							<span className="empty-hint">
-								{hint === "tool" ? "工具卡片" : null}
-								{hint === "approve" ? "审批弹窗" : null}
-								{hint === "fail" ? "失败的工具（退出码）" : null}
-								{hint === "huge" ? "超大输出截断" : null}
-								{hint === "boom" ? "错误块 + notice" : null}
-								{hint === "slow" ? "慢速输出（用来试「停止」）" : null}
-							</span>
+					{FAKE_HINTS.map(([keyword, description]) => (
+						<li key={keyword}>
+							<code>{keyword}</code>
+							<span className="empty-hint">{description}</span>
 						</li>
 					))}
 				</ul>
 			</div>
 		);
 	}
+	return (
+		<div className="empty">
+			<p>直接在下面说话就行 —— 它会读文件、改代码、跑命令，危险操作会先弹窗问你。</p>
+			<ul>
+				{REAL_HINTS.map((hint) => (
+					<li key={hint}>{hint}</li>
+				))}
+			</ul>
+			<p className="empty-hint">工作区就是上面那个目录；会话会自动存到 ~/.agent-web。</p>
+		</div>
+	);
+}
+
+export function MessageList({
+	messages,
+	hasMoreBefore,
+	engine,
+}: {
+	messages: UiMessage[];
+	hasMoreBefore: boolean;
+	engine: EngineName;
+}) {
+	if (messages.length === 0) return <EmptyState engine={engine} />;
 
 	return (
 		<div className="messages">

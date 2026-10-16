@@ -5,6 +5,7 @@ import { createSender, type OutFrame } from "../../server/snapshot/sender.js";
 function makeSnapshot(tag: number): Snapshot {
 	return {
 		protocolVersion: PROTOCOL_VERSION,
+		engine: "fake",
 		conversations: [],
 		active: { conversationId: null, messages: [], hasMoreBefore: false },
 		running: { status: "idle", turnStartedAt: null, streamingText: `tag-${tag}`, activeTool: null },

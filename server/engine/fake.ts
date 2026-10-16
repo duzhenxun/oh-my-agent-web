@@ -84,7 +84,9 @@ export function planFor(text: string): FakePlanStep[] {
 		return [{ kind: "text", text: "慢慢说：\n" }, ...chunks.map((chunk) => ({ kind: "text" as const, text: chunk }))];
 	}
 
-	return [{ kind: "text", text: `收到：「${text}」。\n这是假引擎（M1）在逐字说话，没有调用任何模型。\n` }];
+	return [
+		{ kind: "text", text: `收到：「${text}」。\n这是假引擎在逐字说话：零 token 的测试替身，没有调用任何模型。\n` },
+	];
 }
 
 export type FakeEngineOptions = {

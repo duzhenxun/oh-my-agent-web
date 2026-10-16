@@ -50,8 +50,9 @@ async function main() {
 
 	console.log(`\n冒烟测试：${cases.length} 个用例${useCore ? "（--core）" : ""}${noBuild ? "（--no-build）" : ""}\n`);
 	if (!noBuild) {
-		// M0 之前没有需要构建的产物；M1 起这里接「串行构建一次」（避免并行下互相踩 dist/）。
-		console.log("（构建步骤：待 M1 接入）");
+		// 当前所有用例都用 tsx 直接跑源码（不需要 dist/），所以没有预构建步骤。
+		// 将来若有依赖 dist/ 的用例（浏览器 E2E），在这里**串行构建一次**（避免并行下互相踩 dist/）。
+		console.log("（当前用例都用 tsx 跑源码，无需预构建）");
 	}
 
 	const failed = [];
