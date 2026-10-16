@@ -23,6 +23,8 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI, ToolCallEventResult } from "@earendil-works/pi-coding-agent";
 import { classifyScope } from "../approval/scope.js";
+import { mapSessionEvent } from "./pi-events.js";
+import { entriesToUiMessages } from "./pi-transcript.js";
 import type { ApprovalHandler, EngineEvent, EngineMessage, EnginePort, EngineSessionOptions } from "./port.js";
 
 export type PiSdkEngineOptions = {
@@ -46,84 +48,16 @@ type SessionHandle = {
 	unsubscribe: () => void;
 	/** 正在被 abort（用来把 agent_settled 翻译成「中断」而不是「完成」） */
 	aborting: boolean;
+	/** 会话转录的管理器（ADR-0021 §2：读条目 → 界面消息） */
+	sessionManager: { getEntries: () => unknown[]; getSessionFile: () => string | undefined };
+	/** 会话文件路径（新建后由 SDK 告知；打开时即入参） */
+	sessionPath: string | null;
 };
 
 type AnyRecord = Record<string, unknown>;
 
 function asRecord(value: unknown): AnyRecord {
 	return typeof value === "object" && value !== null ? (value as AnyRecord) : {};
-}
-
-/** 把工具结果里的文本抽出来（content 是 {type:"text",text} 数组） */
-export function resultText(result: unknown): string {
-	const content = asRecord(result).content;
-	if (!Array.isArray(content)) return "";
-	return content
-		.map((part) => {
-			const record = asRecord(part);
-			return typeof record.text === "string" ? record.text : "";
-		})
-		.filter(Boolean)
-		.join("\n");
-}
-
-/** 把 bash 工具结果的退出码抠出来（不同工具 details 形状不同，取不到就不给） */
-export function resultExitCode(result: unknown): number | undefined {
-	const details = asRecord(asRecord(result).details);
-	const value = details.exitCode ?? asRecord(asRecord(result).structuredContent).exitCode;
-	return typeof value === "number" ? value : undefined;
-}
-
-/** 参数摘要（给界面与审批用） */
-export function summarizeArgs(args: unknown): string {
-	if (typeof args === "string") return args;
-	try {
-		const text = JSON.stringify(args ?? {});
-		return text.length > 200 ? `${text.slice(0, 200)}…` : text;
-	} catch {
-		return "(无法序列化的参数)";
-	}
-}
-
-/**
- * 纯函数：把 SDK 会话事件翻译成端口事件。返回 null 表示这个事件不影响 UI。
- * （单测用合成事件直接覆盖这张映射表 —— 不需要真的连模型。）
- */
-export function mapSessionEvent(event: unknown): EngineEvent | null {
-	const record = asRecord(event);
-	const type = record.type;
-
-	if (type === "message_update") {
-		const assistantEvent = asRecord(record.assistantMessageEvent);
-		if (
-			assistantEvent.type === "text_delta" &&
-			typeof assistantEvent.delta === "string" &&
-			assistantEvent.delta !== ""
-		) {
-			return { type: "text_delta", text: assistantEvent.delta };
-		}
-		return null; // thinking_delta / tool_use 等：v1 不展示
-	}
-
-	if (type === "tool_execution_start") {
-		const toolCallId = String(record.toolCallId ?? "");
-		const name = String(record.toolName ?? "");
-		return { type: "tool_start", toolCallId, name, argsSummary: summarizeArgs(record.args) };
-	}
-
-	if (type === "tool_execution_end") {
-		const toolCallId = String(record.toolCallId ?? "");
-		const exitCode = resultExitCode(record.result);
-		return {
-			type: "tool_end",
-			toolCallId,
-			status: record.isError === true ? "failed" : "ok",
-			output: resultText(record.result),
-			...(exitCode === undefined ? {} : { exitCode }),
-		};
-	}
-
-	return null;
 }
 
 /**
@@ -224,37 +158,64 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 		};
 	}
 
+	/** 建 resourceLoader 并拉起一个 AgentSession（createSession 与 openSession 共用） */
+	async function startSession(
+		sessionId: string,
+		workspace: string,
+		sessionManager: ReturnType<typeof SessionManager.inMemory>,
+		sessionPath: string | null = null,
+	): Promise<SessionHandle> {
+		const agentDir = options.agentDir ?? getAgentDir();
+		const resourceLoader = new DefaultResourceLoader({
+			cwd: workspace,
+			agentDir,
+			extensionFactories: [makeApprovalExtension(workspace)],
+			// 教模型「下一步建议」的写法（ADR-0022）：纯文本标记，不需要调用任何工具
+			appendSystemPrompt: [SUGGESTION_GUIDANCE],
+		});
+		await resourceLoader.reload();
+
+		const { session } = await createAgentSession({
+			cwd: workspace,
+			agentDir,
+			resourceLoader,
+			// ADR-0021 §2：转录的事实源就是 SDK 自己的会话文件（新建或打开的那个）
+			sessionManager,
+		});
+
+		const handle: SessionHandle = {
+			session: session as unknown as SessionHandle["session"],
+			workspace,
+			unsubscribe: () => {},
+			aborting: false,
+			sessionManager: sessionManager as unknown as SessionHandle["sessionManager"],
+			sessionPath: sessionPath ?? sessionManager.getSessionFile() ?? null,
+		};
+		sessions.set(sessionId, handle);
+		return handle;
+	}
+
 	return {
 		async createSession(sessionOptions: EngineSessionOptions) {
-			// agentDir 是 SDK 的全局配置目录（模型与凭据都在那里）——默认 ~/.pi/agent
-			const agentDir = options.agentDir ?? getAgentDir();
-			const resourceLoader = new DefaultResourceLoader({
-				cwd: sessionOptions.workspace,
-				agentDir,
-				extensionFactories: [makeApprovalExtension(sessionOptions.workspace)],
-				// 教模型「下一步建议」的写法（ADR-0022）：纯文本标记，不需要调用任何工具
-				appendSystemPrompt: [SUGGESTION_GUIDANCE],
-			});
-			await resourceLoader.reload();
-
-			// 历史注入（ADR-0018）：SDK 侧是空会话，不喂历史模型会失忆
+			// 历史注入（ADR-0018）：新会话没有历史，但保留这个参数是为了「从我们自己的
+			// 转录恢复」的过渡场景（ADR-0021 §2 完全落地后会被 openSession 取代）。
 			const seeded = historyEntries(sessionOptions.history ?? []);
 			const sessionManager = SessionManager.inMemory(sessionOptions.workspace, {}, seeded as never);
-			const { session } = await createAgentSession({
-				cwd: sessionOptions.workspace,
-				agentDir,
-				resourceLoader,
-				// 转录的事实源是我们自己的 JSONL（ADR-0005）→ 不让 SDK 再落一份
-				sessionManager,
-			});
+			const handle = await startSession(sessionOptions.sessionId, sessionOptions.workspace, sessionManager);
+			return { sessionPath: handle.sessionPath };
+		},
 
-			const handle: SessionHandle = {
-				session: session as unknown as SessionHandle["session"],
-				workspace: sessionOptions.workspace,
-				unsubscribe: () => {},
-				aborting: false,
-			};
-			sessions.set(sessionOptions.sessionId, handle);
+		async openSession(openOptions) {
+			// SessionManager.open 会读首行 header 拿到 cwd，并把后续写入追加回**同一个文件**
+			const sessionManager = SessionManager.open(openOptions.sessionPath);
+			const workspace = sessionManager.getCwd() || process.cwd();
+			await startSession(openOptions.sessionId, workspace, sessionManager, openOptions.sessionPath);
+		},
+
+		async readUiMessages(sessionId: string) {
+			const handle = sessions.get(sessionId);
+			if (!handle) return [];
+			return entriesToUiMessages(handle.sessionManager.getEntries());
 		},
 
 		async sendMessage(sessionId: string, text: string, onEvent: (event: EngineEvent) => void) {

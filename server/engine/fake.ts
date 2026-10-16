@@ -102,11 +102,16 @@ export type FakeEngineOptions = {
 	chunkChars?: number;
 	/** slow 模式下的每块延迟 */
 	slowChunkDelayMs?: number;
+	/** openSession 时假引擎不知道 cwd（真引擎从 header 读）→ 用一个显式回退值 */
+	workspaceHint?: string;
 };
 
 export type FakeEngine = EnginePort & {
 	/** 测试钩子：会话表（含 createSession 收到的历史与累积转录） */
-	sessions(): Map<string, { workspace: string; history: EngineMessage[]; transcript: EngineMessage[] }>;
+	sessions(): Map<
+		string,
+		{ workspace: string; history: EngineMessage[]; transcript: EngineMessage[]; sessionPath: string | null }
+	>;
 	/** 测试用：清掉所有会话 */
 	reset(): void;
 };
@@ -119,7 +124,10 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
 	const slowChunkDelayMs = options.slowChunkDelayMs ?? 250;
 
 	/** 会话表：**必须先 createSession**，否则 sendMessage 报 engine.no_session（与真引擎一致） */
-	const sessions = new Map<string, { workspace: string; history: EngineMessage[]; transcript: EngineMessage[] }>();
+	const sessions = new Map<
+		string,
+		{ workspace: string; history: EngineMessage[]; transcript: EngineMessage[]; sessionPath: string | null }
+	>();
 	const interrupted = new Set<string>();
 	let approvalHandler: ApprovalHandler | null = null;
 	let toolCallSeq = 0;
@@ -147,7 +155,32 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
 				workspace: sessionOptions.workspace,
 				history: [...(sessionOptions.history ?? [])],
 				transcript: [],
+				sessionPath: `fake-sessions/${sessionOptions.sessionId}.jsonl`,
 			});
+			return { sessionPath: `fake-sessions/${sessionOptions.sessionId}.jsonl` };
+		},
+
+		/** 打开已有会话（ADR-0021 §2）：假引擎没有真文件，只登记「已打开」 */
+		async openSession(openOptions) {
+			if (!sessions.has(openOptions.sessionId)) {
+				sessions.set(openOptions.sessionId, {
+					workspace: options.workspaceHint ?? "/tmp/agent-web-fake",
+					history: [],
+					transcript: [],
+					sessionPath: openOptions.sessionPath,
+				});
+			}
+		},
+
+		async readUiMessages(sessionId: string) {
+			const session = sessions.get(sessionId);
+			if (!session) return [];
+			return session.transcript.map((message, index) => ({
+				id: `fake-${sessionId}-${index}`,
+				role: message.role,
+				ts: message.ts,
+				blocks: [{ kind: "text" as const, text: message.text }],
+			}));
 		},
 
 		async sendMessage(sessionId: string, text: string, onEvent) {

@@ -5,13 +5,8 @@
  * 真实链路的手工验证在冒烟之外单独做（见 ROADMAP M3 的实际结果）。
  */
 import { describe, expect, it } from "vitest";
-import {
-	historyEntries,
-	mapSessionEvent,
-	resultExitCode,
-	resultText,
-	summarizeArgs,
-} from "../../server/engine/pi-sdk.js";
+import { mapSessionEvent, resultExitCode, resultText, summarizeArgs } from "../../server/engine/pi-events.js";
+import { historyEntries } from "../../server/engine/pi-sdk.js";
 
 describe("mapSessionEvent：正文增量", () => {
 	it("text_delta 映射成 EngineEvent.text_delta", () => {
