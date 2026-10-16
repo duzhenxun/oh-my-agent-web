@@ -176,6 +176,8 @@ app.get("/api/health", (_request, response) => {
 		protocolVersion: PROTOCOL_VERSION,
 		workspace: config.workspace,
 		engine: config.engine,
+		// 会话事实源是 pi 的会话存储（ADR-0021 §2）→ 报它的数量，而不是「本地新建了几个」
+		sessions: runtime.state().piProjects.reduce((total, project) => total + project.sessions.length, 0),
 		conversations: runtime.state().conversations.length,
 	});
 });
