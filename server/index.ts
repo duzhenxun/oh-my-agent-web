@@ -28,7 +28,6 @@ import {
 import { acquireLock, describeHolder, releaseLock } from "./session/lock.js";
 import { createRuntime } from "./session/runtime.js";
 import { createFileSettingsStore } from "./session/settings.js";
-import { createJsonlStore } from "./session/store.js";
 import {
 	PI_AGENT_DIR_ENV,
 	readCacheFile,
@@ -137,7 +136,6 @@ const runtime = createRuntime({
 	workspace: config.workspace,
 	engineName: config.engine,
 	turnTimeoutMs: config.turnTimeoutMs,
-	store: createJsonlStore(config.dataDir),
 	settings: createFileSettingsStore(config.dataDir),
 	piSessions: makePiSessionsProvider(),
 	emit: {

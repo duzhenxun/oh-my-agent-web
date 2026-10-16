@@ -9,7 +9,6 @@ import type { MessageBlock, PiProject, ServerEvent, Snapshot } from "../../../se
 import { createMemoryRuleStore, type RuleStore } from "../../../server/approval/rules.js";
 import type { SettingsStore } from "../../../server/session/settings.js";
 import { createRuntime, type Runtime } from "../../../server/session/runtime.js";
-import { createMemoryStore, type ConversationStore } from "../../../server/session/store.js";
 
 /** 记录 emit 的快照与事件，便于断言「推了什么、什么时候推」 */
 export function recorder() {
@@ -31,13 +30,16 @@ export function recorder() {
 }
 
 export function harness(
-	store: ConversationStore = createMemoryStore(),
 	rules: RuleStore = createMemoryRuleStore(),
-	options: { deterministicIds?: boolean; settings?: SettingsStore; piSessions?: () => Promise<PiProject[]> } = {},
+	options: {
+		deterministicIds?: boolean;
+		settings?: SettingsStore;
+		/** 会话列表来源（ADR-0021 §2 起是唯一来源）：默认空列表 */
+		piSessions?: () => Promise<PiProject[]>;
+	} = {},
 ): {
 	runtime: Runtime;
 	recorder: ReturnType<typeof recorder>;
-	store: ConversationStore;
 	rules: RuleStore;
 	/** 假引擎本体：用来断言「宿主把什么交给了引擎」（会话、历史） */
 	engine: ReturnType<typeof createFakeEngine>;
@@ -47,7 +49,6 @@ export function harness(
 	const engine = createFakeEngine({ chunkDelayMs: 0, slowChunkDelayMs: 5 });
 	const runtime = createRuntime({
 		engine,
-		store,
 		rules,
 		...(options.settings ? { settings: options.settings } : {}),
 		...(options.piSessions ? { piSessions: options.piSessions } : { piSessions: async () => [] }),
@@ -56,7 +57,7 @@ export function harness(
 		// 默认确定性 id（用例好断言）；显式关掉时用真实运行的全局唯一 id（ADR-0019）
 		...(options.deterministicIds === false ? {} : { idSeq: (prefix: string) => `${prefix}-${++seq}` }),
 	});
-	return { runtime, recorder: recorderInstance, store, rules, engine };
+	return { runtime, recorder: recorderInstance, rules, engine };
 }
 
 export const waitFor = async (predicate: () => boolean, timeoutMs = 1000) => {

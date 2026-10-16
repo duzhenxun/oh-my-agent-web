@@ -20,11 +20,6 @@ export type TurnMarkersInput = {
 export function settleTurnMarkers(input: TurnMarkersInput): void {
 	const { state, conversationId, messageId } = input;
 
-	const patch = (change: (message: UiMessage) => UiMessage) => {
-		const list = state.messages[conversationId] ?? [];
-		state.messages[conversationId] = list.map((message) => (message.id === messageId ? change(message) : message));
-	};
-
 	// 1) 建议从**原始文本**里收（ADR-0022）：流式过滤器为了不漏语法已经把标记丢掉了，
 	//    所以回合结束必须回看原始文本，否则建议永远收不到。
 	const reduced = reduceActionMarkers(input.rawText, state.actions, () => input.nextId("act"));

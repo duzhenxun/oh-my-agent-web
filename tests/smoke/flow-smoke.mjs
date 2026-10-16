@@ -12,7 +12,7 @@
  * （被 session.busy 拒掉，然后一路错位）。正确做法是**等这一轮的消息出现**（消息数增加）。
  */
 import { spawn } from "node:child_process";
-import { appendFileSync, existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,6 +22,32 @@ const PORT = 8901;
 // ADR-0009 纪律：取仓库根一律用 fileURLToPath(new URL(...))（Windows 下 URL.pathname 会 ENOENT）
 const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const dataDir = mkdtempSync(join(tmpdir(), "agent-web-smoke-"));
+const piAgentDir = mkdtempSync(join(tmpdir(), "agent-web-smoke-pi-"));
+// 预置一个「pi 已有的会话」：目录名是编码过的 cwd，首行是 header
+{
+	const projectDir = join(piAgentDir, "sessions", "--tmp-demo-project--");
+	mkdirSync(projectDir, { recursive: true });
+	writeFileSync(
+		join(projectDir, "2026-10-16T00-00-00-000Z_seeded.jsonl"),
+		JSON.stringify({
+			type: "session",
+			version: 3,
+			id: "seeded",
+			timestamp: "2026-10-16T00:00:00.000Z",
+			cwd: "/tmp/demo-project",
+		}) +
+			"\n" +
+			JSON.stringify({
+				type: "message",
+				id: "m1",
+				parentId: null,
+				timestamp: "2026-10-16T00:00:01.000Z",
+				message: { role: "user", content: [{ type: "text", text: "pi 里的老会话" }] },
+			}) +
+			"\n",
+		"utf8",
+	);
+}
 
 const failures = [];
 const check = (ok, label, detail = "") => {
@@ -54,6 +80,8 @@ function startServer(port = PORT, onStderr) {
 			AGENT_WEB_LOG: "warn",
 			// 冒烟断言的是假引擎的剧本（tool/fail/huge/approve/slow），所以显式指定引擎（ADR-0016）
 			AGENT_WEB_ENGINE: "fake",
+			// 会话列表来自 pi 的会话存储（ADR-0021 §2）→ 指到临时目录并预置一个会话
+			PI_AGENT_DIR: piAgentDir,
 			// pi 会话目录指到临时目录（ADR-0021 §1 的回归：侧栏要能读出已有项目/会话）
 		},
 		stdio: ["ignore", "pipe", "pipe"],
@@ -164,7 +192,6 @@ try {
 	// ---- 正常连接 + 首屏快照 ----
 	client = await connectReady("连接建立");
 	check(client.latestSnapshot().active.messages.length === 0, "初始快照为空会话");
-
 	// ---- 客户端设置（ADR-0020 §P1）：快捷短语读写 + 归一化 + 落盘 ----
 	await waitFor(() => (client.latestSnapshot()?.settings.quickPhrases.length ?? 0) > 0, "默认快捷短语已下发");
 	const settingsReply = await client.reply(
@@ -195,7 +222,6 @@ try {
 	await sendTurn("hello");
 	check(client.events("message_delta").length > 3, "收到多条 message_delta 增量");
 	check(client.text().includes("假引擎"), "助手消息包含假引擎回复");
-
 	// ---- 建议操作（ADR-0022）：模型写标记 → 服务端剥离 → 建议进快照 ----
 	await waitFor(() => (client.latestSnapshot()?.actions.length ?? 0) > 0, "建议出现在快照里");
 	const actions = client.latestSnapshot().actions;
@@ -293,65 +319,39 @@ try {
 	);
 	client = reconnected;
 
-	// ---- 服务重启（M2）：历史必须还在 ----
+	// ---- 服务重启：会话列表与可打开性（ADR-0021 §2：列表来自 pi 的会话存储）----
 	client.close();
 	server.kill("SIGTERM");
 	await sleep(400);
 	server = startServer();
 	await waitForHealth();
 	client = await connectReady("服务重启后重连");
-	const sidebar = client.latestSnapshot().conversations;
-	check(sidebar.length >= 1, "重启后侧栏仍有会话（M2 落盘生效）", `实际 ${sidebar.length} 个`);
-	check(client.latestSnapshot().active.conversationId === null, "重启后不自动占用会话（等用户点开）");
+	await waitFor(() => (client.latestSnapshot()?.piProjects.length ?? 0) > 0, "重启后仍能读到 pi 的会话列表");
+	const seededSession = client.latestSnapshot().piProjects[0].sessions[0];
+	check(seededSession.title === "pi 里的老会话", "预置会话的标题正确", seededSession.title);
+	const switchReply = await client.reply(client.send("switch_conversation", { conversationId: seededSession.id }));
+	check(switchReply.ok === true, "重启后能打开这个会话（带 sessionPath）");
+	// 快照是节流的（60ms）：断言「切换生效」必须等快照跟上，而不是紧接着读
+	await waitFor(() => client.latestSnapshot()?.active.conversationId === seededSession.id, "active 跟上切换");
+	await waitFor(() => client.latestSnapshot()?.files?.root === "/tmp/demo-project", "工作区跟上切换");
+	check(client.latestSnapshot().files?.root === "/tmp/demo-project", "工作区跟随会话的 cwd（多项目）");
 
-	const targetId = sidebar[0].id;
-	const switchReply = await client.reply(client.send("switch_conversation", { conversationId: targetId }));
-	check(switchReply.ok === true, "切换会话有 ok 应答");
-	await waitFor(() => (client.latestSnapshot()?.active.messages.length ?? 0) >= 2, "历史消息从磁盘读回来");
-	check(client.text().includes("假引擎"), "重启后仍能看到之前的对话内容");
-	const restartTurn = await client.reply(client.send("send_message", { text: "after restart" }));
-	check(restartTurn.ok === true, "重启后仍能接着聊");
-
-	// ---- 重启后「接着聊」不能报 engine.no_session（ADR-0018 的回归点）----
-	// 这是 M3 手工运行时暴露的真 bug：引擎会话是进程内的，重启后必须重建 + 注入历史。
-	await sendTurn("restart-resume");
-	const resumeBlocks = client.latestSnapshot().active.messages.flatMap((message) => message.blocks);
-	check(
-		resumeBlocks.every((block) => block.kind !== "error" || block.code !== "engine.no_session"),
-		"重启后继续聊不会报 engine.no_session",
-	);
-	const sessionsAfterRestart = client.latestSnapshot().active.messages.length;
-	check(sessionsAfterRestart >= 4, "重启后的会话能继续追加消息", `实际 ${sessionsAfterRestart} 条`);
+	// 在这个 pi 会话上继续聊：回合正常结束（假引擎没有真转录，内容层由 live 脚本覆盖）
+	const resumeTurn = await client.reply(client.send("send_message", { text: "接着聊" }));
+	check(resumeTurn.ok === true, "在 pi 的会话里能继续对话");
 
 	// ---- 新建会话（M2）----
+	const conversationsBefore = client.latestSnapshot().conversations.length;
 	const newChatReply = await client.reply(client.send("new_chat"));
 	check(newChatReply.ok === true, "new_chat 有 ok 应答");
 	// 快照是节流的（60ms），所以「应答 ok」不等于「快照已跟上」——要等快照，不能直接断言
 	await waitFor(
-		() => (client.latestSnapshot()?.conversations.length ?? 0) === sidebar.length + 1,
+		() => (client.latestSnapshot()?.conversations.length ?? 0) === conversationsBefore + 1,
 		"新会话进了侧栏（快照已跟上）",
 	);
 	const afterNew = client.latestSnapshot();
-	check(afterNew.active.conversationId !== targetId, "active 指向新会话");
+	check(afterNew.active.conversationId !== seededSession.id, "active 指向新会话");
 	await waitFor(() => (client.latestSnapshot()?.active.messages.length ?? -1) === 0, "新会话是空的");
-
-	// ---- 半行容错 + 索引重建（M2）----
-	client.close();
-	server.kill("SIGTERM");
-	await sleep(400);
-	appendFileSync(join(dataDir, "conversations", `${targetId}.jsonl`), '{"kind":"message","id":"torn","role":"assist');
-	rmSync(join(dataDir, "sessions.json"));
-	server = startServer();
-	await waitForHealth();
-	client = await connectReady("第三次重连");
-	check(
-		client.latestSnapshot().conversations.some((meta) => meta.id === targetId),
-		"sessions.json 被删后自动从转录重建（会话没丢）",
-	);
-	await client.reply(client.send("switch_conversation", { conversationId: targetId }));
-	await waitFor(() => (client.latestSnapshot()?.active.messages.length ?? 0) >= 2, "半行损坏的会话仍能打开");
-	check(client.text().includes("假引擎"), "半行只丢自己，其余消息照常读回");
-
 	// ---- 单实例锁（M2）：第二个进程必须明确退出 ----
 	let secondStderr = "";
 	const second = startServer(PORT + 1, (chunk) => {
@@ -365,7 +365,6 @@ try {
 	check(secondStderr.includes("已经有一个 agent-web"), "第二个实例明确说明「已有实例在跑」");
 	check(secondStderr.includes(String(PORT)), "提示里带上已运行实例的端口");
 	if (secondExit !== 1) second.kill("SIGKILL");
-
 	// ---- 非法请求：不合法类型/载荷被明确拒绝 ----
 	const badReply = await client.reply(client.send("nope"));
 	check(badReply.ok === false && badReply.error.code.startsWith("protocol."), "非法请求被拒并带协议错误码");
@@ -389,6 +388,7 @@ try {
 	await sleep(200);
 	if (server.exitCode === null) server.kill("SIGKILL");
 	rmSync(dataDir, { recursive: true, force: true });
+	rmSync(piAgentDir, { recursive: true, force: true });
 }
 
 console.log("");

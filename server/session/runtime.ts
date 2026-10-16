@@ -10,14 +10,6 @@
  *     代价写清楚：进程在回合计中被杀 → 这一轮的助手输出丢失（用户消息还在）。
  */
 import type { RuleStore } from "../approval/rules.js";
-import { createEngineBinding } from "./engine-binding.js";
-import {
-	createConversationCreator,
-	loadConversationMessages,
-	persistIndexSafely,
-	renameConversation,
-	updateConversationMeta,
-} from "./conversation-meta.js";
 import { createMarkerStreamFilter } from "../markers/actions.js";
 import { createRuntimeServices } from "./runtime-services.js";
 import { createPiSessionOpener } from "./pi-opener.js";
@@ -29,14 +21,7 @@ import { makeIdFactory } from "../util/ids.js";
 import type { ApprovalDecision, Notice, PiProject, ProtocolError, ServerEvent, Snapshot } from "../protocol.js";
 import type { EnginePort } from "../engine/port.js";
 import { appendText, createMessage } from "../snapshot/messages.js";
-import {
-	buildSnapshot,
-	createConversation,
-	createServerState,
-	emptyRunning,
-	type ServerState,
-} from "../snapshot/state.js";
-import { deriveTitle, type ConversationStore } from "./store.js";
+import { buildSnapshot, createServerState, emptyRunning, type ServerState } from "../snapshot/state.js";
 
 export type RuntimeEmit = {
 	snapshot(snapshot: Snapshot): void;
@@ -65,7 +50,6 @@ export type Runtime = {
 
 export type RuntimeOptions = {
 	engine: EnginePort;
-	store: ConversationStore;
 	/** 审批规则落盘（ADR-0006）：「总是允许这类」跨重启生效 */
 	rules: RuleStore;
 	/** 回合看门狗超时（ADR-0023）；不给就用默认 20 分钟 */
@@ -91,15 +75,11 @@ export type RuntimeOptions = {
 export function createRuntime(options: RuntimeOptions): Runtime {
 	const now = options.now ?? (() => Date.now());
 	const settings = options.settings;
-	const noticeDedupeMs = options.noticeDedupeMs ?? 5000;
-	const maxNotices = options.maxNotices ?? 20;
 	const titleChars = options.titleChars ?? 24;
 
 	const state = createServerState(options.workspace, options.engineName ?? "pi");
 	// 工作区根是已知事实（ADR-0012 的 files 元数据；文件树内容在 M4）
 	state.files = { root: options.workspace, treeVersion: 0 };
-
-	const loadedConversations = new Set<string>();
 
 	// 默认真实运行用全局唯一 id（ADR-0019）；测试注入确定性 id
 	const nextId = options.idSeq ?? makeIdFactory();
@@ -150,26 +130,19 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 	const { notice, approval, watchdog } = services;
 
 	// 引擎会话的生命周期（懒创建 + 历史注入 + 读模型），见 ADR-0018
-	const binding = createEngineBinding({
-		engine: options.engine,
-		workspace: state.workspace,
-		messagesOf: (conversationId) => state.messages[conversationId] ?? [],
-		onModel: (model) => {
-			state.model = model.provider + "/" + model.model;
-			pushSnapshot();
-		},
-	});
-
-	const conversations = createConversationCreator({
-		state,
-		store: options.store,
-		binding,
-		loaded: loadedConversations,
-		nextId,
-		now,
-		titleChars,
-		onChanged: pushSnapshot,
-	});
+	/** 会话元数据跟着更新（ADR-0021 §2 收尾后不再有自建索引，只改内存里的列表） */
+	function touchConversation(conversationId: string, patch: { title?: string } = {}): void {
+		state.conversations = state.conversations.map((conversation) =>
+			conversation.id === conversationId
+				? {
+						...conversation,
+						...patch,
+						updatedAt: now(),
+						messageCount: state.messages[conversationId]?.length ?? conversation.messageCount,
+					}
+				: conversation,
+		);
+	}
 
 	// 打开 pi 已有的会话（ADR-0021 §2）：抽到 pi-opener 里
 	const piOpener = createPiSessionOpener({
@@ -180,6 +153,26 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		},
 		onError: (message) => notice(message, "error"),
 	});
+
+	/** 新建会话（ADR-0021 §2 收尾）：直接落在 pi 的会话存储里，与 pi CLI 共用同一份 */
+	async function createNewConversation(seedText: string): Promise<string> {
+		const id = nextId("conv");
+		const previousWorkspace = state.activeId
+			? state.conversations.find((item) => item.id === state.activeId)?.workspace
+			: undefined;
+		const workspace = previousWorkspace ?? state.files?.root ?? state.workspace;
+		const title = seedText.replace(/\s+/g, " ").trim().slice(0, titleChars) || "新对话";
+		const { sessionPath } = await options.engine.createSession({ sessionId: id, workspace });
+		piOpener.register({ id, sessionPath, title, workspace });
+		state.messages[id] = [];
+		state.conversations = [
+			{ id, title, createdAt: now(), updatedAt: now(), workspace, messageCount: 0 },
+			...state.conversations,
+		];
+		state.activeId = id;
+		state.files = { root: workspace, treeVersion: (state.files?.treeVersion ?? 0) + 1 };
+		return id;
+	}
 
 	const turnContext: TurnEventContext = {
 		state,
@@ -213,19 +206,10 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 				rawText: rawTurnText,
 				nextId,
 			});
-			// 落盘整条助手消息（含刚剥离过标记的正文）
-			const message = (state.messages[turn.conversationId] ?? []).find((item) => item.id === turn.messageId);
-			if (message) {
-				try {
-					await options.store.appendMessage(turn.conversationId, message);
-				} catch (error) {
-					notice(`转录写入失败：${error instanceof Error ? error.message : String(error)}`, "error");
-				}
-			}
+			// 转录由 SDK 写进会话文件（ADR-0021 §2）—— 我们不再自己追加任何东西
 		}
 
-		updateConversationMeta(state, conversationId, now());
-		await persistIndexSafely(options.store, state.conversations, (message) => notice(message, "warn"));
+		touchConversation(conversationId);
 		void piRefresher.refresh(true);
 		if (reason === "interrupted") notice("回合已中断", "info");
 		pushSnapshot();
@@ -233,13 +217,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 
 	return {
 		async init() {
-			const { conversations, rebuilt } = await options.store.init();
-			state.conversations = conversations;
-			for (const meta of conversations) state.messages[meta.id] = [];
 			const ruleCount = await approval.loadRules();
-			if (rebuilt && conversations.length > 0) {
-				notice(`会话索引已从转录重建（${conversations.length} 个会话）`, "info");
-			}
 			if (ruleCount > 0) {
 				notice(`已装载 ${ruleCount} 条审批规则（这些操作不会再询问）`, "info");
 			}
@@ -285,22 +263,22 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 
 			inFlight = true;
 			try {
-				const conversationId = await conversations.ensure(text);
-				await loadConversationMessages(options.store, state, loadedConversations, conversationId, (message) =>
-					notice(message, "warn"),
-				);
-				// 先建引擎会话（带上历史），再把新消息加进状态 —— 顺序反了会让新消息在历史里重复
-				if (!piOpener.isOpen(conversationId)) await binding.ensure(conversationId);
+				// 没有活动会话才新建（否则复用当前会话 —— 这里曾经写成「每轮都新建」）
+				const conversationId = state.activeId ?? (await createNewConversation(text));
+				// 消息来自扫描/打开（ADR-0021 §2）：新会话此时是空的，无需再读盘
+				if (!piOpener.isOpen(conversationId)) {
+					const opened = await piOpener.open(conversationId, (force) => piRefresher.refresh(force));
+					if (opened === null) throw new Error(`会话打不开：${conversationId}`);
+					state.messages[conversationId] = opened;
+				}
 				const ts = now();
 				const userMessage = appendText(createMessage(nextId("msg"), "user", ts), text);
 				const assistantMessage = createMessage(nextId("msg"), "assistant", ts);
 
-				// 首条用户消息决定标题（ADR-0005）
+				// 首条用户消息决定标题（本地先显示；扫描回来后以会话里的首条消息为准）
 				const isFirstMessage = (state.messages[conversationId] ?? []).length === 0;
 				if (isFirstMessage) {
-					const title = deriveTitle(text, titleChars);
-					await options.store.rename(conversationId, title, ts);
-					renameConversation(state, conversationId, title);
+					touchConversation(conversationId, { title: text.replace(/\s+/g, " ").trim().slice(0, titleChars) });
 				}
 
 				state.messages[conversationId] = [...(state.messages[conversationId] ?? []), userMessage, assistantMessage];
@@ -310,10 +288,8 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 				rawTurnText = "";
 				watchdog.start(conversationId);
 				currentTurn = { conversationId, messageId: assistantMessage.id };
-				updateConversationMeta(state, conversationId, now());
+				touchConversation(conversationId);
 
-				// 用户消息立即落盘（这样即使这一轮崩了，输入也不会丢）
-				await options.store.appendMessage(conversationId, userMessage);
 				pushSnapshot();
 
 				await options.engine.sendMessage(conversationId, text, (event) => {
@@ -356,7 +332,8 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 
 		async newConversation() {
 			try {
-				await conversations.create("新对话");
+				await createNewConversation("新对话");
+				pushSnapshot(); // ← 少了这一句，侧栏不会更新（冒烟抓到的）
 				return { ok: true };
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
@@ -387,9 +364,6 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 				return { ok: true };
 			}
 			if (state.activeId !== conversationId) {
-				await loadConversationMessages(options.store, state, loadedConversations, conversationId, (message) =>
-					notice(message, "warn"),
-				);
 				state.activeId = conversationId;
 				pushSnapshot();
 			}

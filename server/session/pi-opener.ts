@@ -10,6 +10,8 @@ import type { PiProject, UiMessage } from "../protocol.js";
 export type PiSessionInfo = { title: string; workspace: string };
 
 export type PiSessionOpener = {
+	/** 新建会话后立即登记（不等扫描）：这样切/发消息马上可用 */
+	register: (input: { id: string; sessionPath: string | null; title: string; workspace: string }) => void;
 	/** 每次扫描后登记「id → 文件路径 / 展示信息」 */
 	remember: (projects: PiProject[]) => void;
 	isOpen: (conversationId: string) => boolean;
@@ -31,6 +33,12 @@ export function createPiSessionOpener(options: PiSessionOpenerOptions): PiSessio
 	const opened = new Set<string>();
 
 	return {
+		register(input) {
+			if (input.sessionPath) pathById.set(input.id, input.sessionPath);
+			infoById.set(input.id, { title: input.title, workspace: input.workspace });
+			opened.add(input.id); // createSession 已经把它建好了
+		},
+
 		remember(projects) {
 			for (const project of projects) {
 				for (const session of project.sessions) {

@@ -4,8 +4,6 @@
  */
 import { describe, expect, it } from "vitest";
 import { createMemoryRuleStore } from "../../server/approval/rules.js";
-import type { PiProject } from "../../server/protocol.js";
-import { createMemoryStore } from "../../server/session/store.js";
 import { harness } from "./helpers/runtime-harness.js";
 
 describe("ADR-0021 §2：打开 pi 已有的会话（点开即读、点开即续）", () => {
@@ -28,7 +26,7 @@ describe("ADR-0021 §2：打开 pi 已有的会话（点开即读、点开即续
 	];
 
 	function harnessWithPi() {
-		const instance = harness(createMemoryStore(), createMemoryRuleStore(), { piSessions: async () => piProjects });
+		const instance = harness(createMemoryRuleStore(), { piSessions: async () => piProjects });
 		return instance;
 	}
 
