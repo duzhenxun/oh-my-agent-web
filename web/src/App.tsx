@@ -10,6 +10,7 @@ import { ConversationOutline } from "./components/ConversationOutline.tsx";
 import { SidebarMenu } from "./components/SidebarMenu.tsx";
 import { PreviewPanel, type PanelItem } from "./components/PreviewPanel.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
+import { StatusBar } from "./components/StatusBar.tsx";
 
 const CONNECTION_LABEL = { connecting: "连接中…", open: "已连接", closed: "已断开（自动重连）" } as const;
 
@@ -221,9 +222,11 @@ export function App() {
 						}}
 					/>
 				) : null}
-
-				{snapshot?.pendingApproval ? <ApprovalDialog approval={snapshot.pendingApproval} /> : null}
 			</div>
+
+			<StatusBar connection={state.connection} snapshot={snapshot} />
+
+			{snapshot?.pendingApproval ? <ApprovalDialog approval={snapshot.pendingApproval} /> : null}
 		</div>
 	);
 }

@@ -135,3 +135,57 @@
 	border-bottom: none;
 	border-radius: 0;
 }
+
+/* ---- 底部状态栏 ---- */
+.statusbar {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 4px 12px;
+	border-top: 1px solid var(--border);
+	background: var(--bg-elev);
+	color: var(--text-faint);
+	font-size: 11.5px;
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+}
+
+.status-item {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.status-spacer {
+	flex: 1 1 auto;
+}
+
+.status-path {
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.status-dot {
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: var(--text-faint);
+	flex: none;
+}
+
+.status-dot-open {
+	background: var(--green);
+}
+
+.status-dot-closed {
+	background: var(--red);
+}
+
+.status-dot-connecting {
+	background: var(--amber);
+}

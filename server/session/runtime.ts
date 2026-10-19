@@ -13,7 +13,7 @@ import { createMarkerStreamFilter } from "../markers/actions.js";
 import { createRuntimeServices } from "./runtime-services.js";
 import { createStatsRefresher } from "./stats-refresher.js";
 import { awaitTurnPersisted, createTurnFinisher, setRunning, settleWith } from "./turn-finish.js";
-import { createBusyHandler, createTurnQueue } from "./turn-queue.js";
+import { createBusyHandler, createTurnQueue, dequeueWith, enqueueWith } from "./turn-queue.js";
 import { createConversationFactory } from "./conversation-create.js";
 import { resolveAttachments } from "./attachment-resolve.js";
 import { createModelController } from "./model-controller.js";
@@ -58,7 +58,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 	const busy = createBusyHandler({
 		activeId: () => state.activeId,
 		steer: (id, prompt) => options.engine.sendMessage(id, prompt, () => undefined, { streamingBehavior: "steer" }),
-		queue: (id, message) => turnQueue.push(id, message),
+		queue: (id, message) => enqueueWith(state, turnQueue, id, message),
 		appendUser: (id, value) =>
 			void (state.messages[id] = [
 				...(state.messages[id] ?? []),
@@ -187,7 +187,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 	const finishTurn = createTurnFinisher({
 		state,
 		turns,
-		shiftQueued: (conversationId) => turnQueue.shift(conversationId),
+		shiftQueued: (conversationId) => dequeueWith(state, turnQueue, conversationId),
 		sendNext: (message) => setTimeout(() => void apiRef?.sendMessage(message.text, message.attachments, "now"), 0),
 		cancelPending: () => approval.cancelPending(),
 		settle: settleWith(state, nextId),

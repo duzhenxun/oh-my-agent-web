@@ -236,6 +236,8 @@ export type Snapshot = {
 	engineCapabilities: EngineCapabilities;
 	/** 已配置的 provider（ADR-0025 B 期）：**不含明文 key**，只给 hasKey/尾 4 位 */
 	providers: ProviderView[];
+	/** 排队中的后续消息条数（所有会话合计，底部状态栏用） */
+	queuedCount: number;
 	/** 每个会话的运行状态（ADR-0030 §2）：并行时侧栏可以同时多行转圈 */
 	runningByConversation: Record<string, { status: RunningState["status"]; turnStartedAt: number }>;
 	/** 会话统计（顶部会话信息）：消息数 / 工具调用 / token 与上下文占用 */

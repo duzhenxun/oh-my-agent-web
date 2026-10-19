@@ -72,3 +72,26 @@ export function createBusyHandler(deps: {
 		return { ok: false, error: { code: "session.busy", message: "已有回合在跑（ADR-0005：全局 1 路）" } };
 	};
 }
+
+/** 入队并同步 state.queuedCount（底部状态栏显示"排队 N"） */
+export function enqueueWith(
+	state: { queuedCount: number },
+	queue: { push: (conversationId: string, message: QueuedMessage) => number },
+	conversationId: string,
+	message: QueuedMessage,
+): number {
+	const depth = queue.push(conversationId, message);
+	state.queuedCount += 1;
+	return depth;
+}
+
+/** 出队并同步计数 */
+export function dequeueWith(
+	state: { queuedCount: number },
+	queue: { shift: (conversationId: string) => QueuedMessage | null },
+	conversationId: string,
+): QueuedMessage | null {
+	const next = queue.shift(conversationId);
+	if (next) state.queuedCount = Math.max(0, state.queuedCount - 1);
+	return next;
+}
