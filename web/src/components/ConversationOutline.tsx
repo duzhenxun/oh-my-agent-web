@@ -34,38 +34,45 @@ function buildItems(messages: UiMessage[]): Item[] {
  * 只依赖已有的消息数组，不额外拉数据。
  */
 export function ConversationOutline({ messages }: { messages: UiMessage[] }) {
-	const [hoverId, setHoverId] = useState<string | null>(null);
+	const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 	const items = buildItems(messages);
 	if (items.length === 0) return null;
 
 	const jump = (id: string) => {
-		const element = document.getElementById(`msg-${id}`);
-		element?.scrollIntoView({ behavior: "smooth", block: "start" });
+		document.getElementById(`msg-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
 	};
+
+	// 悬停时不止显示这一条：上下各带两条，方便看清前后语境（对齐参考实现）
+	const window =
+		hoverIndex === null ? [] : items.slice(Math.max(0, hoverIndex - 2), Math.min(items.length, hoverIndex + 3));
 
 	return (
 		<div className="outline" aria-label="对话大纲">
-			<div className="outline-rail">
-				{items.map((item) => (
+			<div className="outline-rail" onMouseLeave={() => setHoverIndex(null)}>
+				{items.map((item, index) => (
 					<button
 						type="button"
 						key={item.id}
-						className={`outline-dot${hoverId === item.id ? " outline-dot-on" : ""}`}
-						onMouseEnter={() => setHoverId(item.id)}
-						onMouseLeave={() => setHoverId((current) => (current === item.id ? null : current))}
-						onFocus={() => setHoverId(item.id)}
+						className={`outline-dot${hoverIndex === index ? " outline-dot-on" : ""}`}
+						onMouseEnter={() => setHoverIndex(index)}
+						onFocus={() => setHoverIndex(index)}
 						onClick={() => jump(item.id)}
 						title={`第 ${item.index} 问`}
 					/>
 				))}
 			</div>
-			{hoverId ? (
-				<div className="outline-preview">
-					{(() => {
-						const item = items.find((entry) => entry.id === hoverId);
-						if (!item) return null;
+			{hoverIndex !== null ? (
+				<div className="outline-preview" onMouseLeave={() => setHoverIndex(null)}>
+					{window.map((item) => {
+						const isCurrent = items[hoverIndex]?.id === item.id;
 						return (
-							<>
+							<button
+								type="button"
+								key={item.id}
+								className={`outline-entry${isCurrent ? " outline-entry-on" : ""}`}
+								onClick={() => jump(item.id)}
+								title="点击定位到这条消息"
+							>
 								<div className="outline-item">
 									<span className="outline-num mono">{String(item.index).padStart(2, "0")}</span>
 									<span className="outline-q">{item.question}</span>
@@ -76,10 +83,10 @@ export function ConversationOutline({ messages }: { messages: UiMessage[] }) {
 										<span className="outline-a">{item.answer}</span>
 									</div>
 								) : null}
-								<div className="outline-hint">点击定位到这条消息</div>
-							</>
+							</button>
 						);
-					})()}
+					})}
+					<div className="outline-hint">点击任意一条定位过去</div>
 				</div>
 			) : null}
 		</div>

@@ -185,7 +185,12 @@ body {
 	border: 1px solid var(--border);
 	border-radius: var(--radius);
 	/* 右侧给「发送」按钮留出位置：按钮在框内右下角（对齐参考实现） */
-	padding: 8px 104px 8px 10px;
+	padding: 10px 104px 10px 12px;
+	/* 单行起步，随内容向上长（JS 控制 height，这里给上下限与滚动） */
+	min-height: 44px;
+	max-height: 240px;
+	overflow-y: auto;
+	line-height: 1.5;
 	font: inherit;
 }
 

@@ -70,6 +70,7 @@ export function Composer({ running, conversationId }: { running: boolean; conver
 		// 图片引用写进正文（刷新后仍显示）；附件本体走 references
 		sendMessage(value + imagesMarkdown(pending), pending.length > 0 ? pending : undefined);
 		setDraft("");
+		if (inputRef.current) inputRef.current.style.height = "auto";
 		setPending([]);
 		setUploadError(null);
 	};
@@ -135,14 +136,20 @@ export function Composer({ running, conversationId }: { running: boolean; conver
 					placeholder={
 						running ? "正在跑…（回车排队会被拒绝，先点停止）" : "说点什么，回车发送 · Shift+回车换行 · 可直接粘贴截图"
 					}
-					onChange={(event) => setDraft(event.target.value)}
+					onChange={(event) => {
+						setDraft(event.target.value);
+						// 自动高度：先归零再按内容算，上限 240px（超过就内部滚动）
+						const element = event.currentTarget;
+						element.style.height = "auto";
+						element.style.height = `${Math.min(element.scrollHeight, 240)}px`;
+					}}
 					onPaste={onPaste}
 					onKeyDown={(event: KeyboardEvent<HTMLTextAreaElement>) => {
 						if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
 						event.preventDefault();
 						submit();
 					}}
-					rows={3}
+					rows={1}
 				/>
 				<div className="composer-actions">
 					{running ? (
