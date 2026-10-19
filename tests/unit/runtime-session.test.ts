@@ -171,13 +171,13 @@ describe("M3.5-P2：模型列表与切换（ADR-0020）", () => {
 		expect(runtime.snapshot().models.map((model) => model.id)).toContain("fake/alpha");
 	});
 
-	it("切换模型：更新当前模型 + 给出提示", async () => {
+	it("切换模型：更新当前模型，且**不**往对话流里推提示（状态已由输入区显示）", async () => {
 		const { runtime, engine } = harness();
 		await runtime.sendMessage("你好");
 		const result = await runtime.setModel("fake/beta");
 		expect(result.ok).toBe(true);
 		expect(runtime.snapshot().model).toBe("fake/beta");
-		expect(runtime.snapshot().notices.some((notice) => notice.text.includes("已切换模型"))).toBe(true);
+		expect(runtime.snapshot().notices.some((notice) => notice.text.includes("已切换模型"))).toBe(false);
 		expect(engine.sessions().size).toBeGreaterThan(0);
 	});
 
@@ -190,13 +190,12 @@ describe("M3.5-P2：模型列表与切换（ADR-0020）", () => {
 	});
 });
 
-describe("审批模式提示（替换语义）", () => {
-	it("反复切换只留一行，且内容跟着最后状态", async () => {
+describe("状态类操作不占对话空间", () => {
+	it("反复切换审批模式：一条提示都不产生（输入区的芯片已经在显示状态）", async () => {
 		const { runtime } = harness(createMemoryRuleStore());
 		await runtime.init();
 		for (const mode of ["allow", "ask", "allow", "ask"] as const) runtime.setApprovalMode(mode);
-		const rows = runtime.snapshot().notices.filter((notice) => notice.key === "approval-mode");
-		expect(rows).toHaveLength(1);
-		expect(rows[0]?.text).toBe("审批模式：照旧询问");
+		expect(runtime.snapshot().notices.filter((notice) => notice.key === "approval-mode")).toHaveLength(0);
+		expect(runtime.snapshot().approvalMode).toBe("ask");
 	});
 });

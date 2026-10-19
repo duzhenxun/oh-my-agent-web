@@ -41,7 +41,7 @@ export function createModelController(options: {
 				return { ok: false, error: { code: "model.switch_failed", message: `切换模型失败：${modelId}` } };
 			}
 			options.state.model = modelId;
-			options.notice(`已切换模型：${modelId}`, "info");
+			// 不再推提示：输入区的模型选择器已经在显示当前模型（提示条太占地方）
 			options.onChanged();
 			return { ok: true };
 		},

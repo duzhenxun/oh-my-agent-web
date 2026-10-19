@@ -339,12 +339,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			approval.setMode(mode);
 			state.approvalMode = mode;
 			pushSnapshot();
-			// 同一个 key：反复点芯片只**替换**这一行（顶栏芯片本身也在显示状态）
-			notice(
-				mode === "allow" ? "审批模式：本会话全部放行（重启即恢复询问）" : "审批模式：照旧询问",
-				mode === "allow" ? "warn" : "info",
-				"approval-mode",
-			);
+			// 不再推提示：输入区的审批芯片已经显示当前模式（状态类提示不该占对话空间）
 			return { ok: true };
 		},
 
