@@ -23,9 +23,24 @@ export function SidebarMenu() {
 	const [panel, setPanel] = useState<Panel>(null);
 	const [adding, setAdding] = useState(false);
 	const [editingProvider, setEditingProvider] = useState<string | null>(null);
-	const providers: ProviderView[] = snapshot?.providers ?? [];
+	const configured: ProviderView[] = snapshot?.providers ?? [];
 	const models = snapshot?.models ?? [];
 	const groups = groupModels(models);
+	// 内置 provider（nexita / nexita-anthropic …）不在 models-store 里，直接从引擎模型归组，
+	// 与「模型选择器」同源 —— 这样会话一打开它们就出现在列表里，不用等后端刷新
+	const configuredNames = new Set(configured.map((view) => view.provider));
+	const builtinProviders: ProviderView[] = groups
+		.filter((group) => !configuredNames.has(group.provider))
+		.map((group) => ({
+			provider: group.provider,
+			source: "builtin",
+			baseUrl: "",
+			api: "",
+			hasKey: group.models.some((model) => model.id === snapshot?.model) || true,
+			keyHint: null,
+			models: group.models.map((model) => ({ id: model.id, name: model.label })),
+		}));
+	const providers: ProviderView[] = [...configured, ...builtinProviders];
 
 	const item = (key: Exclude<Panel, null>, icon: string, label: string) => (
 		<button
@@ -99,44 +114,55 @@ export function SidebarMenu() {
 													{providers.map((provider) => (
 														<div className="side-provider" key={provider.provider}>
 															<div className="side-provider-head" title={provider.baseUrl}>
-																<span className="side-provider-name">{provider.provider}</span>
+																<span className="side-provider-name">
+																	{provider.provider}
+																	{provider.source === "builtin" ? (
+																		<span className="side-provider-badge">内置</span>
+																	) : null}
+																</span>
 																<span className="side-provider-meta">
 																	{provider.models.length} 模型 ·{" "}
 																	{provider.hasKey ? `key ${provider.keyHint ?? ""}` : "无 key"}
 																</span>
 															</div>
-															<div className="side-provider-actions">
-																<button
-																	type="button"
-																	className="msg-action"
-																	onClick={() => setEditingProvider(provider.provider)}
-																>
-																	✏️ 编辑
-																</button>
-																<button
-																	type="button"
-																	className="msg-action"
-																	onClick={() => testProvider(provider.provider)}
-																>
-																	🔌 测试
-																</button>
-																<button
-																	type="button"
-																	className="msg-action"
-																	onClick={() => {
-																		// 二次确认：删的是模型表 + 凭证，误删要重填 key
-																		if (
-																			!window.confirm(
-																				`删除 provider「${provider.provider}」？它的 api key 也会一起删掉。`,
+															{provider.source === "custom" ? (
+																<div className="side-provider-actions">
+																	<button
+																		type="button"
+																		className="msg-action"
+																		onClick={() => setEditingProvider(provider.provider)}
+																	>
+																		✏️ 编辑
+																	</button>
+																	<button
+																		type="button"
+																		className="msg-action"
+																		onClick={() => testProvider(provider.provider)}
+																	>
+																		🔌 测试
+																	</button>
+																	<button
+																		type="button"
+																		className="msg-action"
+																		onClick={() => {
+																			// 二次确认：删的是模型表 + 凭证，误删要重填 key
+																			if (
+																				!window.confirm(
+																					`删除 provider「${provider.provider}」？它的 api key 也会一起删掉。`,
+																				)
 																			)
-																		)
-																			return;
-																		deleteProvider(provider.provider);
-																	}}
-																>
-																	🗑 删除
-																</button>
-															</div>
+																				return;
+																			deleteProvider(provider.provider);
+																		}}
+																	>
+																		🗑 删除
+																	</button>
+																</div>
+															) : (
+																<div className="side-provider-actions">
+																	<span className="side-panel-hint">由 pi 内置目录管理，这里只读</span>
+																</div>
+															)}
 														</div>
 													))}
 												</div>

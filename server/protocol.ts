@@ -127,6 +127,12 @@ export type ModelOption = { id: string; label: string };
  */
 export type ProviderView = {
 	provider: string;
+	/**
+	 * custom = 我们（用户）在 models-store.json 里配的，可以编辑/删除；
+	 * builtin = pi 内置目录里的 provider（nexita / nexita-anthropic / …），
+	 *           只读展示 —— 它的 baseUrl 与模型表由 pi 自己管，我们改它只会写坏配置。
+	 */
+	source: "custom" | "builtin";
 	baseUrl: string;
 	api: string;
 	hasKey: boolean;

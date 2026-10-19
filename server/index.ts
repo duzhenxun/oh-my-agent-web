@@ -26,7 +26,7 @@ import { createFileSettingsStore } from "./session/settings.js";
 import { createSender, type OutFrame } from "./snapshot/sender.js";
 import { createPiSessionsProvider, piAgentDir } from "./session/pi-sessions-provider.js";
 import { createUploadStore, uploadsDir } from "./uploads/upload-store.js";
-import { createProviderRunner } from "./providers/provider-handlers.js";
+import { builtinProviderGroups, createProviderRunner } from "./providers/provider-handlers.js";
 import { probeProvider } from "./providers/probe.js";
 import { createProviderStore } from "./providers/provider-store.js";
 import { registerFileRoutes } from "./files/files-routes.js";
@@ -49,7 +49,6 @@ const TICK_MS = 20;
 const BACKPRESSURE_BYTES = 256 * 1024;
 
 const { config, problems: envProblems } = readConfig(process.env, { home: homedir(), cwd: process.cwd() });
-// 日志同时去 stdout 与文件（ADR-0013）；文件 sink 在「数据目录可写」自检通过后才挂上
 let fileSink: RotatingFileSink | null = null;
 const logger = createLogger({
 	level: config.logLevel,
@@ -104,17 +103,18 @@ const engine: EnginePort = resolved.engine;
 /** 引擎在 runtime 建好之前就会创建，用一个 ref 把「通知」转发给界面 */
 /** provider 配置存储（ADR-0025）：复用 pi 自己的 models-store.json / auth.json */
 const providerStore = createProviderStore({ agentDir: piAgentDir(), now: Date.now });
+
 const runProviderRequest = createProviderRunner({
 	store: providerStore,
 	notify: (text, level) => runtime.notify(text, level),
 	logger,
 	probe: probeProvider,
+	builtinProviders: () => builtinProviderGroups(runtime.state().models),
 	refresh: async () => {
 		runtime.state().providers = await providerStore.list();
 		runtime.notify("", "info");
 	},
 });
-void runProviderRequest({ type: "list_providers" }, () => {}); // 启动先填一次，否则面板首次打开是空的
 
 const runtimeRef: { current: { notify: (text: string, level?: "info" | "warn" | "error") => void } | null } = {
 	current: null,
@@ -342,6 +342,7 @@ async function main(): Promise<void> {
 	}
 
 	const { conversations } = await runtime.init().then(() => ({ conversations: runtime.state().conversations }));
+	void runProviderRequest({ type: "list_providers" }, () => {}); // 启动先填一次 provider 列表
 	logger.info("会话索引已装载", { conversations: conversations.length });
 
 	httpServer.on("error", (error: NodeJS.ErrnoException) => {

@@ -254,3 +254,13 @@
 .big-modal-body .side-provider-list {
 	flex: 1 1 auto;
 }
+
+.side-provider-badge {
+	margin-left: 6px;
+	padding: 0 6px;
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	color: var(--text-faint);
+	font-size: 10px;
+	font-weight: 400;
+}

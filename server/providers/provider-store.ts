@@ -28,9 +28,15 @@ type ModelDefinition = {
 type ModelsStore = Record<string, { models?: ModelDefinition[]; lastModified?: number; [key: string]: unknown }>;
 type AuthStore = Record<string, { type?: string; key?: string; [key: string]: unknown }>;
 
+/** 引擎报上来的内置 provider（pi 自己的目录，不在 models-store.json 里） */
+export type BuiltinProvider = { provider: string; models: { id: string; name: string }[] };
+
 export type ProviderStore = {
-	/** 已配置的 provider（不含明文 key） */
-	list: () => Promise<ProviderView[]>;
+	/**
+	 * 已配置的 provider（不含明文 key）。
+	 * `builtin` 传引擎报上来的内置 provider：合并展示，标成 source=builtin（只读）。
+	 */
+	list: (builtin?: BuiltinProvider[]) => Promise<ProviderView[]>;
 	/** 新增或覆盖一个 provider 的模型表（apiKey 缺省 = 不动已有 key） */
 	upsert: (input: ProviderInput) => Promise<{ ok: true; view: ProviderView } | { ok: false; error: string }>;
 	/** 删掉一个 provider（模型表 + 凭证一起删，B 期；调用方必须先二次确认） */
@@ -69,16 +75,17 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 	const authPath = join(options.agentDir, AUTH_FILE);
 
 	return {
-		async list() {
+		async list(builtin = []) {
 			const [models, auth] = await Promise.all([
 				readJson<ModelsStore>(modelsPath, {}),
 				readJson<AuthStore>(authPath, {}),
 			]);
-			return Object.entries(models).map(([provider, entry]) => {
+			const custom = Object.entries(models).map(([provider, entry]) => {
 				const list = Array.isArray(entry.models) ? entry.models : [];
 				const key = auth[provider]?.key;
 				return {
 					provider,
+					source: "custom" as const,
 					baseUrl: list.find((model) => typeof model.baseUrl === "string")?.baseUrl ?? "",
 					api: list.find((model) => typeof model.api === "string")?.api ?? "",
 					hasKey: typeof key === "string" && key !== "",
@@ -86,6 +93,23 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 					models: list.map((model) => ({ id: model.id, name: model.name ?? model.id })),
 				};
 			});
+			// 内置 provider（nexita / nexita-anthropic …）：pi 的目录里，models-store 里没有它们
+			const known = new Set(custom.map((view) => view.provider));
+			const builtinViews: ProviderView[] = builtin
+				.filter((item) => !known.has(item.provider))
+				.map((item) => {
+					const key = auth[item.provider]?.key;
+					return {
+						provider: item.provider,
+						source: "builtin" as const,
+						baseUrl: "",
+						api: "",
+						hasKey: typeof key === "string" && key !== "",
+						keyHint: maskKey(typeof key === "string" ? key : undefined),
+						models: item.models,
+					};
+				});
+			return [...custom, ...builtinViews];
 		},
 
 		async readKey(provider) {
@@ -156,6 +180,7 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 				ok: true,
 				view: {
 					provider: input.provider,
+					source: "custom" as const,
 					baseUrl: input.baseUrl,
 					api: input.api,
 					hasKey: typeof key === "string" && key !== "",

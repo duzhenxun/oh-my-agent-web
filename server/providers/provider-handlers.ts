@@ -4,7 +4,7 @@
  * 保持极简：校验 → 写盘 → 用提示条回传结果（前端没有 request/response 配对机制）。
  */
 import type { UpsertProviderRequest } from "../protocol.js";
-import type { ProviderStore } from "./provider-store.js";
+import type { BuiltinProvider, ProviderStore } from "./provider-store.js";
 import { validateProviderInput } from "./validate.js";
 
 export type ProviderHandlerDeps = {
@@ -12,6 +12,8 @@ export type ProviderHandlerDeps = {
 	/** 给界面推一条提示（成功/失败都用它回传结果） */
 	notify: (text: string, level: "info" | "warn" | "error") => void;
 	logInfo: (message: string, meta?: Record<string, unknown>) => void;
+	/** 引擎报上来的内置 provider（pi 内置目录里的 nexita / nexita-anthropic …） */
+	builtinProviders: () => { provider: string; models: { id: string; name: string }[] }[];
 	/** 测试连通性时要读明文 key（只在这一处、只用于发出请求，不返回给界面） */
 	readKey: (provider: string) => Promise<string | null>;
 	probe: (options: {
@@ -27,7 +29,8 @@ export async function handleProviderRequest(
 	request: { type: string } & Record<string, unknown>,
 	deps: ProviderHandlerDeps,
 ): Promise<ProviderReply | null> {
-	if (request.type === "list_providers") return { ok: true, result: { providers: await deps.store.list() } };
+	if (request.type === "list_providers")
+		return { ok: true, result: { providers: await deps.store.list(deps.builtinProviders()) } };
 
 	if (request.type === "upsert_provider") {
 		const parsed = validateProviderInput((request as unknown as UpsertProviderRequest).payload);
@@ -99,12 +102,14 @@ export function createProviderDeps(options: {
 	notify: (text: string, level: "info" | "warn" | "error") => void;
 	logger: { info: (message: string, meta?: Record<string, unknown>) => void };
 	probe: ProviderHandlerDeps["probe"];
+	builtinProviders: ProviderHandlerDeps["builtinProviders"];
 }): ProviderHandlerDeps {
 	return {
 		store: options.store,
 		notify: options.notify,
 		logInfo: (message, meta) => options.logger.info(message, meta),
 		readKey: (provider) => options.store.readKey(provider),
+		builtinProviders: options.builtinProviders,
 		probe: options.probe,
 	};
 }
@@ -118,6 +123,7 @@ export function createProviderRunner(options: {
 	notify: (text: string, level: "info" | "warn" | "error") => void;
 	logger: { info: (message: string, meta?: Record<string, unknown>) => void };
 	probe: ProviderHandlerDeps["probe"];
+	builtinProviders: ProviderHandlerDeps["builtinProviders"];
 	/** 变更后把最新列表塞回 state 并推快照（前端只认快照，ADR-0004） */
 	refresh: () => Promise<void>;
 }): (request: { type: string } & Record<string, unknown>, reply: (result: ProviderReply) => void) => Promise<void> {
@@ -127,4 +133,16 @@ export function createProviderRunner(options: {
 		await options.refresh();
 		if (handled) reply(handled);
 	};
+}
+
+/** 引擎报上来的模型按 provider 前缀分组（`provider/modelId`）→「内置 provider」列表 */
+export function builtinProviderGroups(models: { id: string; label: string }[]): BuiltinProvider[] {
+	const groups = new Map<string, { id: string; name: string }[]>();
+	for (const model of models) {
+		const slash = model.id.indexOf("/");
+		if (slash <= 0) continue;
+		const provider = model.id.slice(0, slash);
+		groups.set(provider, [...(groups.get(provider) ?? []), { id: model.id.slice(slash + 1), name: model.label }]);
+	}
+	return [...groups].map(([provider, list]) => ({ provider, models: list }));
 }
