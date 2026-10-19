@@ -69,6 +69,27 @@ export function Sidebar({
 		setSettings({ projectPrefs: { ...prefs, aliases: { ...prefs.aliases, [cwd]: name } } });
 	};
 
+	/** 上移/下移：置顶段改 pinned 顺序，其余改 order 顺序（ADR-0028 §5 的键盘等价物） */
+	const moveWithin = (cwd: string, direction: -1 | 1) => {
+		const isPinned = pinned.includes(cwd);
+		// order 还空的时候（从没用过上下移）要先按「当前看到的顺序」播种，
+		// 否则 indexOf 找不到 → 点了没反应（这正是第一次实现踩的坑）
+		const currentOrder = prefs.order.filter((item) => !pinned.includes(item));
+		const seeded =
+			currentOrder.length > 0
+				? currentOrder
+				: groups.filter((group) => !pinned.includes(group.cwd)).map((group) => group.cwd);
+		const list = (isPinned ? pinned : seeded) as string[];
+		const current = list.indexOf(cwd);
+		if (current < 0) return;
+		const target = current + direction;
+		if (target < 0 || target >= list.length) return;
+		const next = [...list];
+		next.splice(current, 1);
+		next.splice(target, 0, cwd);
+		setSettings({ projectPrefs: isPinned ? { ...prefs, pinned: next } : { ...prefs, order: next } });
+	};
+
 	const togglePin = (cwd: string) => {
 		const next = pinned.includes(cwd) ? pinned.filter((item) => item !== cwd) : [cwd, ...pinned];
 		setSettings({ projectPrefs: { ...prefs, pinned: next } });
@@ -191,6 +212,28 @@ export function Sidebar({
 										}}
 									>
 										{pinned.includes(project.cwd) ? "📌 取消置顶" : "📌 置顶项目"}
+									</button>
+									<button
+										type="button"
+										className="proj-menu-item"
+										title="在同组内上移一格"
+										onClick={() => {
+											moveWithin(project.cwd, -1);
+											setMenuFor(null);
+										}}
+									>
+										↑ 上移
+									</button>
+									<button
+										type="button"
+										className="proj-menu-item"
+										title="在同组内下移一格"
+										onClick={() => {
+											moveWithin(project.cwd, 1);
+											setMenuFor(null);
+										}}
+									>
+										↓ 下移
 									</button>
 									<button
 										type="button"
