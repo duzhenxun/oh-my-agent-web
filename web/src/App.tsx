@@ -121,11 +121,24 @@ export function App() {
 				{panelItems.length > 0 ? (
 					<button
 						type="button"
-						className={`chip chip-quiet${previewVisible ? " chip-on" : ""}`}
+						className={`side-foot-btn appbar-panel-btn${previewVisible ? " side-foot-btn-on" : ""}`}
 						onClick={() => setPreviewVisible((visible) => !visible)}
 						title={previewVisible ? "收起右侧面板" : "展开右侧面板"}
 					>
-						▤ 面板
+						<svg className="appbar-panel-icon" viewBox="0 0 16 16" aria-hidden="true">
+							<rect
+								x="1.6"
+								y="2.6"
+								width="12.8"
+								height="10.8"
+								rx="2.2"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth="1.4"
+							/>
+							<line x1="10.2" y1="2.6" x2="10.2" y2="13.4" stroke="currentColor" strokeWidth="1.4" />
+						</svg>
+						{previewVisible ? "收起" : "展开"}
 					</button>
 				) : null}
 			</div>

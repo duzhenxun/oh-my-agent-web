@@ -64,7 +64,9 @@ export function SidebarMenu({
 			className={`side-foot-btn${panel === key ? " side-foot-btn-on" : ""}`}
 			onClick={() => setPanel(panel === key ? null : key)}
 		>
-			<span aria-hidden="true">{icon}</span>
+			<span className="side-foot-icon" aria-hidden="true">
+				{icon}
+			</span>
 			{label}
 		</button>
 	);
