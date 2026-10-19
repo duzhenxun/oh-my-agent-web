@@ -10,6 +10,7 @@
  */
 import { getAppState, setAppState } from "./store.ts";
 import type {
+	PromptTemplate,
 	ApprovalMode,
 	AttachmentRef,
 	ClientRequest,
@@ -118,7 +119,12 @@ export function setModel(modelId: string): void {
 	send({ id: `req-${++seq}`, type: "set_model", payload: { modelId } });
 }
 
-export function setSettings(payload: { quickPhrases?: string[]; quickPhrasesEnabled?: boolean }): void {
+export function setSettings(payload: {
+	quickPhrases?: string[];
+	quickPhrasesEnabled?: boolean;
+	/** null = 恢复默认模板库（服务端专门处理这个手势） */
+	templates?: PromptTemplate[] | null;
+}): void {
 	send({ id: `req-${++seq}`, type: "set_settings", payload });
 }
 

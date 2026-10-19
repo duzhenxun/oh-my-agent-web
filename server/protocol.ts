@@ -133,7 +133,15 @@ export type ActionItem = {
 
 /** 客户端设置（ADR-0020 §P1）：界面直接读快照里的这一份 */
 /** 提示词模板（P5）：一个模板 = 名字 + 一句说明 + 图标 + 正文 */
-export type PromptTemplate = { id: string; name: string; description: string; icon: string; text: string };
+export type PromptTemplate = {
+	id: string;
+	name: string;
+	description: string;
+	icon: string;
+	text: string;
+	/** 软删除（P5）：内置模板「移出模板库」只隐藏，恢复默认模板即可复原 */
+	hidden?: boolean;
+};
 
 export type SettingsView = {
 	quickPhrases: string[];
@@ -210,8 +218,15 @@ export type ApproveRequest = {
 };
 export type GetStateRequest = { id: string; type: "get_state" };
 
-/** 改客户端设置（ADR-0020 §P1）：只带要改的字段，服务端归一化后落盘 */
-export type SetSettingsRequest = { id: string; type: "set_settings"; payload: Partial<SettingsView> };
+/**
+ * 改客户端设置（ADR-0020 §P1）：只带要改的字段，服务端归一化后落盘。
+ * `templates: null` 是**显式**手势 = 恢复默认模板库（见 settings.ts 的 mergeSettings）。
+ */
+export type SetSettingsRequest = {
+	id: string;
+	type: "set_settings";
+	payload: Partial<Omit<SettingsView, "templates">> & { templates?: PromptTemplate[] | null };
+};
 
 /**
  * 审批模式（P4 第一件）：

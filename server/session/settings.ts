@@ -184,6 +184,8 @@ export function normalizeTemplates(input: unknown): PromptTemplate[] {
 					: "",
 			icon: typeof record.icon === "string" ? ([...record.icon][0] ?? "✳️") : "✳️",
 			text,
+			// 软删除标记：只有明确 true 才带上，缺省即显示
+			...(record.hidden === true ? { hidden: true } : {}),
 		});
 		if (out.length >= MAX_TEMPLATES) break;
 	}

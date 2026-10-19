@@ -3,10 +3,7 @@ import { setDraft } from "../store.ts";
 import type { PromptTemplate } from "../types.ts";
 import { setSettings, sendMessage } from "../ws.ts";
 
-/** 内置模板的 id 都以 `t-` 开头（用来显示「内置」标记并禁止移出） */
-export function isBuiltin(template: PromptTemplate): boolean {
-	return template.id.startsWith("t-");
-}
+import { isBuiltin, removeTemplate, visibleTemplates } from "../templates-lib.ts";
 
 /** 模板库（P5）：卡片墙，点卡片直接填进输入框；铅笔进编辑；底部恢复默认。 */
 export function TemplateGallery({
@@ -37,7 +34,7 @@ export function TemplateGallery({
 				</div>
 				<div className="tpl-hint">点击卡片直接填入输入框，✏️ 可编辑或删除，也能新增自己的模板</div>
 				<div className="tpl-grid">
-					{templates.map((template) => (
+					{visibleTemplates(templates).map((template) => (
 						<div className="tpl-card" key={template.id}>
 							<button
 								type="button"
@@ -111,7 +108,7 @@ export function TemplateEditor({
 			icon: template?.icon ?? "✳️",
 			text: text.trim(),
 		};
-		const next = template ? base.map((item) => (item.id === template.id ? draft : item)) : [...base, draft];
+		const next = template ? library.map((item) => (item.id === template.id ? draft : item)) : [...library, draft];
 		return next;
 	};
 
@@ -160,16 +157,17 @@ export function TemplateEditor({
 				{error ? <div className="tpl-error">{error}</div> : null}
 
 				<div className="tpl-foot tpl-foot-editor">
-					{template && !isBuiltin(template) ? (
+					{template ? (
 						<button
 							type="button"
 							className="btn btn-tiny btn-danger"
+							title={isBuiltin(template) ? "内置模板只是隐藏，点「恢复默认模板」就能复原" : "自建模板会被彻底删除"}
 							onClick={() => {
-								commit(library.filter((item) => item.id !== template.id));
+								commit(removeTemplate(library, template.id));
 								onClose();
 							}}
 						>
-							🗑 移出模板库
+							🗑 移出模板库{isBuiltin(template) ? "（可恢复）" : ""}
 						</button>
 					) : null}
 					<span className="topbar-spacer" />
