@@ -1,7 +1,5 @@
 import type { ConversationMeta, PiProject } from "../types.ts";
-import { setAppState, useAppState } from "../store.ts";
 import { newChat, switchConversation } from "../ws.ts";
-import { SettingsPanel } from "./SettingsPanel.tsx";
 import { SidebarMenu } from "./SidebarMenu.tsx";
 
 /** 相对时间（参考实现的风格：刚刚 / 5分 / 3小时 / 2天 / 1个月） */
@@ -32,15 +30,16 @@ export function Sidebar({
 	activeId,
 	piProjects,
 	onCollapse,
+	running = false,
 }: {
 	conversations: ConversationMeta[];
 	activeId: string | null;
 	piProjects: PiProject[];
 	/** 提供时在标题栏显示「收起」按钮（‹） */
 	onCollapse?: () => void;
+	/** 有回合在飞：给**当前会话**那一行加转圈动画（一眼看出哪个在跑） */
+	running?: boolean;
 }) {
-	const { settingsOpen } = useAppState();
-
 	// 把「本地待归档」的会话按 workspace 归组；workspace 不在已知项目里的，单独成组（避免新建的会话消失）
 	const knownWorkspaces = new Set(piProjects.map((project) => project.cwd));
 	const groups: PiProject[] = piProjects.map((project) => ({ ...project }));
@@ -87,17 +86,7 @@ export function Sidebar({
 				<button type="button" className="btn btn-new" onClick={() => newChat()} title="在当前工作区新建会话">
 					＋ 新建
 				</button>
-				<button
-					type="button"
-					className="btn btn-new"
-					title="快捷短语等设置"
-					onClick={() => setAppState({ settingsOpen: !settingsOpen })}
-				>
-					⚙
-				</button>
 			</div>
-
-			{settingsOpen ? <SettingsPanel /> : null}
 
 			<div className="sidebar-list">
 				{groups.length === 0 ? <div className="sidebar-empty">还没有会话。发一条消息就会自动建一个。</div> : null}
@@ -135,7 +124,13 @@ export function Sidebar({
 										title={`${session.cwd}\n${session.id}`}
 									>
 										<span className="pi-row-title">{session.title || "（无标题）"}</span>
-										<span className="pi-row-time">{relativeTime(session.updatedAt)}</span>
+										{session.id === activeId && running ? (
+											<span className="pi-spinner" aria-label="正在运行" title="这个会话正在运行">
+												◌
+											</span>
+										) : (
+											<span className="pi-row-time">{relativeTime(session.updatedAt)}</span>
+										)}
 									</button>
 								))}
 								{rest > 0 ? <div className="pi-row pi-row-more">还有 {rest} 个…</div> : null}

@@ -362,3 +362,24 @@ details[open] > .proj-head .proj-chevron {
 	background: var(--bg-elev-2);
 	color: var(--text);
 }
+
+/* 运行中的会话：转圈（用 CSS 动画，不引图标库） */
+.pi-spinner {
+	flex: none;
+	color: var(--accent);
+	font-size: 12px;
+	line-height: 1;
+	animation: pi-spin 1s linear infinite;
+}
+
+@keyframes pi-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.pi-spinner {
+		animation: none;
+	}
+}

@@ -58,12 +58,6 @@ export function App() {
 	const snapshot = state.snapshot;
 	const messages = snapshot?.active.messages ?? [];
 	const running = snapshot ? snapshot.running.status !== "idle" : false;
-	// 活动会话的标题：先找自己的会话，再回退到 pi 的项目列表（ADR-0021 §2 起两者都能被打开）
-	const activeId = snapshot?.active.conversationId ?? null;
-	const activeConversation =
-		snapshot?.conversations.find((item) => item.id === activeId) ??
-		snapshot?.piProjects.flatMap((project) => project.sessions).find((session) => session.id === activeId) ??
-		null;
 	// 粘底滚动：条数、末条正文长度、流式文本任一变化都算「内容更新」
 	const lastTextLength =
 		messages.at(-1)?.blocks.reduce((sum, block) => sum + (block.kind === "text" ? block.text.length : 0), 0) ?? 0;
@@ -107,6 +101,7 @@ export function App() {
 						activeId={snapshot?.active.conversationId ?? null}
 						piProjects={snapshot?.piProjects ?? []}
 						onCollapse={() => setCollapsed(true)}
+						running={snapshot?.running.status === "streaming" || snapshot?.running.status === "awaiting_approval"}
 					/>
 					{/* 拖拽条：右边边缘 6px，双击回到默认宽度 */}
 					<div
@@ -128,8 +123,6 @@ export function App() {
 						<span className={`chip chip-run-${snapshot.running.status}`}>{RUNNING_LABEL[snapshot.running.status]}</span>
 					) : null}
 					<span className="topbar-spacer" />
-					{activeConversation ? <span className="chip chip-quiet">{activeConversation.title}</span> : null}
-					{snapshot?.files ? <span className="chip chip-quiet mono">{snapshot.files.root}</span> : null}
 					<button
 						type="button"
 						className={`chip chip-quiet${filePanelOpen ? " chip-on" : ""}`}
