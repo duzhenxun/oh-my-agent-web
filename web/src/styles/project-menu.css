@@ -1,0 +1,68 @@
+/* ---- 项目行的「⋯」菜单 ---- */
+.proj-menu-btn {
+	flex: none;
+	display: none;
+	width: 20px;
+	height: 20px;
+	align-items: center;
+	justify-content: center;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--bg-elev);
+	color: var(--text-dim);
+	font: inherit;
+	font-size: 12px;
+	line-height: 1;
+	cursor: pointer;
+}
+
+.proj-head:hover .proj-menu-btn {
+	display: inline-flex;
+}
+
+.proj-menu-btn:hover {
+	color: var(--text);
+	border-color: var(--accent-dim);
+}
+
+.proj-menu {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	margin: 2px 0 6px 6px;
+	padding: 4px;
+	border: 1px solid var(--border-strong, var(--border));
+	border-radius: 8px;
+	background: var(--bg-elev-2);
+	box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+}
+
+.proj-menu-item {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	width: 100%;
+	border: none;
+	border-radius: 6px;
+	background: none;
+	color: var(--text-dim);
+	font: inherit;
+	font-size: 12px;
+	text-align: left;
+	padding: 5px 8px;
+	cursor: pointer;
+}
+
+.proj-menu-item:hover:not(:disabled) {
+	background: var(--bg-elev);
+	color: var(--text);
+}
+
+.proj-menu-item:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+
+.proj-menu-danger {
+	color: var(--red);
+}

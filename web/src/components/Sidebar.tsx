@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { ConversationMeta, PiProject } from "../types.ts";
 import { newChat, switchConversation } from "../ws.ts";
 import { SidebarMenu } from "./SidebarMenu.tsx";
@@ -40,6 +41,26 @@ export function Sidebar({
 	/** 正在跑的是哪个会话（不是当前选中）—— 那一行显示转圈 + 「运行中」 */
 	runningConversationId?: string | null;
 }) {
+	// 置顶项目（存 localStorage：先做客户端排序，落服务端 settings 是下一步）
+	const [pinned, setPinned] = useState<string[]>(() => {
+		try {
+			return JSON.parse(localStorage.getItem("agent-web.pinnedProjects") ?? "[]") as string[];
+		} catch {
+			return [];
+		}
+	});
+	// 受控展开：菜单里的「折叠其他项目 / 展开全部」需要它
+	const [openMap, setOpenMap] = useState<Record<string, boolean>>({});
+	const [menuFor, setMenuFor] = useState<string | null>(null);
+
+	const togglePin = (cwd: string) => {
+		setPinned((current) => {
+			const next = current.includes(cwd) ? current.filter((item) => item !== cwd) : [...current, cwd];
+			localStorage.setItem("agent-web.pinnedProjects", JSON.stringify(next));
+			return next;
+		});
+	};
+
 	// 把「本地待归档」的会话按 workspace 归组；workspace 不在已知项目里的，单独成组（避免新建的会话消失）
 	const knownWorkspaces = new Set(piProjects.map((project) => project.cwd));
 	const groups: PiProject[] = piProjects.map((project) => ({ ...project }));
@@ -72,7 +93,11 @@ export function Sidebar({
 	// 绝不能用 updatedAt —— 切会话 / 跑一轮都会把它顶起来，项目就会自己跳到最上面。
 	const newestOf = (project: PiProject) =>
 		project.sessions.reduce((max, session) => Math.max(max, session.startedAt), 0);
-	groups.sort((a, b) => newestOf(b) - newestOf(a) || a.cwd.localeCompare(b.cwd));
+	groups.sort((a, b) => {
+		const pinDiff = Number(pinned.includes(b.cwd)) - Number(pinned.includes(a.cwd));
+		if (pinDiff !== 0) return pinDiff;
+		return newestOf(b) - newestOf(a) || a.cwd.localeCompare(b.cwd);
+	});
 
 	return (
 		<aside className="sidebar">
@@ -98,10 +123,30 @@ export function Sidebar({
 					const name = project.name || "（未知项目）";
 					void knownWorkspaces;
 					return (
-						<details className="proj" key={project.cwd || name} open={index === 0 || hasActive}>
+						<details
+							className="proj"
+							key={project.cwd || name}
+							open={menuFor === project.cwd ? true : (openMap[project.cwd] ?? (index === 0 || hasActive))}
+							onToggle={(event) => {
+								const next = (event.currentTarget as HTMLDetailsElement).open;
+								setOpenMap((current) => ({ ...current, [project.cwd]: next }));
+							}}
+						>
 							<summary className="proj-head" title={`${project.cwd || "（未知项目）"}\n点「+」在这个项目下新建会话`}>
 								<span className="proj-chevron" aria-hidden="true" />
 								<span className="proj-name">{name}</span>
+								<button
+									type="button"
+									className="proj-menu-btn"
+									title="更多操作"
+									onClick={(event) => {
+										event.preventDefault();
+										event.stopPropagation();
+										setMenuFor(menuFor === project.cwd ? null : project.cwd);
+									}}
+								>
+									⋯
+								</button>
 								<button
 									type="button"
 									className="proj-new"
@@ -115,6 +160,58 @@ export function Sidebar({
 									+
 								</button>
 							</summary>
+							{menuFor === project.cwd ? (
+								<div className="proj-menu" role="menu">
+									<button
+										type="button"
+										className="proj-menu-item"
+										onClick={() => {
+											togglePin(project.cwd);
+											setMenuFor(null);
+										}}
+									>
+										{pinned.includes(project.cwd) ? "📌 取消置顶" : "📌 置顶项目"}
+									</button>
+									<button
+										type="button"
+										className="proj-menu-item"
+										onClick={() => {
+											newChat(project.cwd);
+											setMenuFor(null);
+										}}
+									>
+										＋ 新建会话
+									</button>
+									<button
+										type="button"
+										className="proj-menu-item"
+										onClick={() => {
+											setOpenMap(Object.fromEntries(groups.map((group) => [group.cwd, group.cwd === project.cwd])));
+											setMenuFor(null);
+										}}
+									>
+										⌄ 折叠其他项目
+									</button>
+									<button
+										type="button"
+										className="proj-menu-item"
+										onClick={() => {
+											setOpenMap(Object.fromEntries(groups.map((group) => [group.cwd, true])));
+											setMenuFor(null);
+										}}
+									>
+										⌃ 展开全部项目
+									</button>
+									<button
+										type="button"
+										className="proj-menu-item proj-menu-danger"
+										title="会删除这个项目下的所有会话文件，需要二次确认（下一步实现）"
+										disabled
+									>
+										🗑 删除项目（未实现）
+									</button>
+								</div>
+							) : null}
 							<div className="proj-body">
 								{shown.map((session) => (
 									<button
