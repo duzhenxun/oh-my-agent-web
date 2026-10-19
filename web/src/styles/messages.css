@@ -166,3 +166,54 @@
 .msg-tools-caret-open {
 	transform: rotate(90deg);
 }
+
+/* 思考过程（reasoning）：一行预览 + 展开看全文 */
+.thinking-block {
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--bg-elev);
+	overflow: hidden;
+}
+
+.thinking-head {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	width: 100%;
+	border: none;
+	background: none;
+	color: var(--text-faint);
+	font: inherit;
+	font-size: 12px;
+	text-align: left;
+	padding: 4px 8px;
+	cursor: pointer;
+	min-width: 0;
+}
+
+.thinking-head:hover {
+	color: var(--text-dim);
+}
+
+.thinking-preview {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.thinking-caret {
+	flex: none;
+	font-size: 10px;
+}
+
+.thinking-body {
+	padding: 6px 10px 8px;
+	border-top: 1px solid var(--border);
+	color: var(--text-dim);
+	font-size: 12px;
+	line-height: 1.6;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}

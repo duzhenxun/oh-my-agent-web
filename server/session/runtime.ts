@@ -12,6 +12,7 @@
 import { createMarkerStreamFilter } from "../markers/actions.js";
 import { createRuntimeServices } from "./runtime-services.js";
 import { createStatsRefresher } from "./stats-refresher.js";
+import { createThrottle } from "./throttle.js";
 import { awaitTurnPersisted, createTurnFinisher, setRunning, settleWith } from "./turn-finish.js";
 import { createBusyHandler, createTurnQueue, dequeueWith, enqueueWith } from "./turn-queue.js";
 import { createConversationFactory } from "./conversation-create.js";
@@ -163,12 +164,12 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		onTextDelta: (chunk, conversationId) => {
 			const turn = turns.get(conversationId);
 			if (!turn) return "";
-			turn.rawText += chunk;
-			return turn.filter.push(chunk);
+			return ((turn.rawText += chunk), turn.filter.push(chunk));
 		},
 		emitEvent: (event) => options.emit.event(event),
 		pushSnapshot,
 		notice,
+		onThinkingDelta: createThrottle(250, pushSnapshot), // 思考增量节流
 		onTurnEnd: (conversationId, reason) => {
 			const turn = turns.get(conversationId);
 			const promise = finishTurn(conversationId, reason);

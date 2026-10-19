@@ -46,6 +46,7 @@ export type {
 	SessionStats,
 	SetThinkingLevelRequest,
 	TestProviderRequest,
+	ThinkingBlock,
 	UpdateModelRequest,
 	SettingsView,
 	ServerEvent,

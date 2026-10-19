@@ -60,7 +60,15 @@ export function mapSessionEvent(event: unknown): EngineEvent | null {
 		) {
 			return { type: "text_delta", text: assistantEvent.delta };
 		}
-		return null; // thinking_delta / tool_use 等：v1 不展示
+		// 模型的思考过程：单独一类事件，界面上折叠展示（不是正文）
+		if (
+			assistantEvent.type === "thinking_delta" &&
+			typeof assistantEvent.delta === "string" &&
+			assistantEvent.delta !== ""
+		) {
+			return { type: "thinking_delta", text: assistantEvent.delta };
+		}
+		return null; // tool_use 等：v1 不展示
 	}
 
 	if (type === "tool_execution_start") {

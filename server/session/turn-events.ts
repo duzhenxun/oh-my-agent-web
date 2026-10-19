@@ -13,7 +13,7 @@
 import type { Notice, ServerEvent, UiMessage } from "../protocol.js";
 import type { EngineEvent } from "../engine/port.js";
 import type { ServerState } from "../snapshot/state.js";
-import { appendError, appendText, finishTool, startTool } from "../snapshot/messages.js";
+import { appendError, appendText, appendThinking, finishTool, startTool } from "../snapshot/messages.js";
 
 export type TurnEventContext = {
 	state: ServerState;
@@ -27,6 +27,8 @@ export type TurnEventContext = {
 	 * 并返回**可以显示的部分**（把可能是 [[action:...]] 开头的内容扣住）。
 	 */
 	onTextDelta: (chunk: string, conversationId: string) => string;
+	/** 思考增量到达（runtime 负责节流推快照，避免每个 token 都推一帧） */
+	onThinkingDelta?: (conversationId: string) => void;
 	/** 回合结束（done / interrupted / error）：由 runtime 负责落盘与状态收尾 */
 	onTurnEnd: (conversationId: string, reason: "done" | "interrupted" | "error") => void;
 };
@@ -53,6 +55,11 @@ export function applyEngineEvent(context: TurnEventContext, input: TurnEventInpu
 			patch((message) => appendText(message, visible));
 			if (conversationId === state.activeId) state.running.streamingText += visible;
 			context.emitEvent({ type: "event", event: "message_delta", conversationId, messageId, text: visible });
+			return;
+		}
+		case "thinking_delta": {
+			patch((message) => appendThinking(message, event.text));
+			context.onThinkingDelta?.(conversationId);
 			return;
 		}
 		case "tool_start": {

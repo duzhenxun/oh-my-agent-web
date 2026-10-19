@@ -75,3 +75,12 @@ export function messageText(message: UiMessage): string {
 		)
 		.join("");
 }
+
+/** 追加思考文本（与正文分开：正文说结论，思考说过程） */
+export function appendThinking(message: UiMessage, text: string): UiMessage {
+	const blocks = [...message.blocks];
+	const last = blocks[blocks.length - 1];
+	if (last && last.kind === "thinking") blocks[blocks.length - 1] = { kind: "thinking", text: last.text + text };
+	else blocks.push({ kind: "thinking", text });
+	return { ...message, blocks };
+}

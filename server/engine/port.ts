@@ -24,6 +24,8 @@ export type ApprovalHandler = (request: ApprovalRequest) => Promise<ApprovalDeci
 /** 引擎发出的原子事件（宿主负责翻译成 UI 状态与协议事件） */
 export type EngineEvent =
 	| { type: "text_delta"; text: string }
+	/** 模型的"思考"增量（reasoning）：单独一类，界面上折叠展示 */
+	| { type: "thinking_delta"; text: string }
 	| { type: "tool_start"; toolCallId: string; name: string; argsSummary: string }
 	| {
 			type: "tool_end";

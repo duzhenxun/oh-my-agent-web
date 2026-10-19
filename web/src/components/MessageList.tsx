@@ -14,6 +14,22 @@ export function textOfMessage(message: UiMessage): string {
 		.join("\n\n");
 }
 
+/** 思考过程：默认折叠成一行，点开看全文（和工具调用一样"想看的才看"） */
+function ThinkingBlockView({ text }: { text: string }) {
+	const [open, setOpen] = useState(false);
+	if (text.trim() === "") return null;
+	return (
+		<div className="thinking-block">
+			<button type="button" className="thinking-head" onClick={() => setOpen((value) => !value)}>
+				<span aria-hidden="true">💡</span>
+				<span className="thinking-preview">{text.replace(/\s+/g, " ").trim().slice(0, 120)}</span>
+				<span className="thinking-caret">{open ? "▾" : "▸"}</span>
+			</button>
+			{open ? <div className="thinking-body">{text}</div> : null}
+		</div>
+	);
+}
+
 function MessageView({ message }: { message: UiMessage }) {
 	const text = textOfMessage(message);
 	// 工具调用默认折叠：只把"最终处理好的回答"露出来，想看过程再展开
@@ -54,6 +70,9 @@ function MessageView({ message }: { message: UiMessage }) {
 					</button>
 				) : null}
 				{message.blocks.map((block, index) => {
+					if (block.kind === "thinking") {
+						return <ThinkingBlockView key={index} text={block.text} />;
+					}
 					if (block.kind === "text") {
 						return block.text.trim() ? <Markdown key={index} text={block.text} /> : null;
 					}

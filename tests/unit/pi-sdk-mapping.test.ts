@@ -13,10 +13,10 @@ describe("mapSessionEvent：正文增量", () => {
 		expect(mapSessionEvent(event)).toEqual({ type: "text_delta", text: "你好" });
 	});
 
-	it("thinking_delta 不展示（v1 不渲染思考过程）", () => {
+	it("thinking_delta 映射成 thinking_delta 事件（界面折叠展示）", () => {
 		expect(
 			mapSessionEvent({ type: "message_update", assistantMessageEvent: { type: "thinking_delta", delta: "想…" } }),
-		).toBeNull();
+		).toEqual({ type: "thinking_delta", text: "想…" });
 	});
 
 	it("空的 text_delta 不产生事件（避免无意义的增量帧）", () => {

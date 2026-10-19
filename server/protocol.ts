@@ -27,6 +27,7 @@ export const TOOL_EXCERPT_CHARS = 2000;
 // ---------------------------------------------------------------------------
 
 export type TextBlock = { kind: "text"; text: string };
+export type ThinkingBlock = { kind: "thinking"; text: string }; // 思考过程：默认折叠
 
 export type ToolBlock = {
 	kind: "tool";
@@ -43,7 +44,7 @@ export type ToolBlock = {
 
 export type ErrorBlock = { kind: "error"; code: string; message: string };
 
-export type MessageBlock = TextBlock | ToolBlock | ErrorBlock;
+export type MessageBlock = TextBlock | ThinkingBlock | ToolBlock | ErrorBlock;
 
 export type UiMessage = {
 	id: string;
@@ -238,7 +239,6 @@ export type Snapshot = {
 	providers: ProviderView[];
 	/** 排队中的后续消息条数（所有会话合计，底部状态栏用） */
 	queuedCount: number;
-	/** 每个会话的运行状态（ADR-0030 §2）：并行时侧栏可以同时多行转圈 */
 	runningByConversation: Record<string, { status: RunningState["status"]; turnStartedAt: number }>;
 	/** 会话统计（顶部会话信息）：消息数 / 工具调用 / token 与上下文占用 */
 	sessionStats: SessionStats | null;
