@@ -388,3 +388,11 @@
 	border-radius: 8px;
 	background: #0d1117;
 }
+
+/* 引导 / 排队 / 停止：三个按钮统一大小（和发送键一样紧凑） */
+.btn.btn-queue,
+.btn.btn-stop {
+	padding: 4px 10px;
+	font-size: 12px;
+	border-radius: 8px;
+}

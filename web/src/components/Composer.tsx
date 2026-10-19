@@ -148,7 +148,8 @@ export function Composer({ running, conversationId }: { running: boolean; conver
 					onKeyDown={(event: KeyboardEvent<HTMLTextAreaElement>) => {
 						if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
 						event.preventDefault();
-						submit();
+						// 回车默认：空闲时直接发；回合进行中默认「引导」（排队要点按钮）
+						submit(running ? "steer" : "now");
 					}}
 					rows={1}
 				/>
