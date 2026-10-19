@@ -7,7 +7,7 @@
  * `workspaceOf()` 返回**当前会话**的工作区（多项目：文件树跟着当前会话走，ADR-0021 §3）。
  */
 import type { Express } from "express";
-import { listDirectory, readPreview } from "./file-service.js";
+import { listDirectory, readPreview, readRaw } from "./file-service.js";
 
 export function registerFileRoutes(app: Express, options: { workspaceOf: () => string | null }): void {
 	app.get("/api/files/list", async (request, response) => {
@@ -25,6 +25,26 @@ export function registerFileRoutes(app: Express, options: { workspaceOf: () => s
 			return;
 		}
 		response.json(result);
+	});
+
+	// markdown 图片用：直接回字节（只放行图片/PDF 白名单，仍受工作区约束）
+	app.get("/api/files/raw", async (request, response) => {
+		const root = options.workspaceOf();
+		if (!root) {
+			response
+				.status(409)
+				.json({ error: { code: "files.no_workspace", message: "还没有打开会话（不知道是哪个项目）" } });
+			return;
+		}
+		const relPath = typeof request.query.path === "string" ? request.query.path : "";
+		const result = await readRaw(root, relPath);
+		if (!result.ok) {
+			response.status(result.tooLarge ? 413 : 400).json({ error: { code: "files.raw_failed", message: result.error } });
+			return;
+		}
+		response.setHeader("Content-Type", result.mime);
+		response.setHeader("Cache-Control", "private, max-age=60");
+		response.send(result.bytes);
 	});
 
 	app.get("/api/files/read", async (request, response) => {

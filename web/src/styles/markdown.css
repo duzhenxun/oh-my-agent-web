@@ -1,0 +1,49 @@
+/* ---- markdown 正文里的「代码块」与「图片」（分区：markdown 渲染）---- */
+
+.md-pre {
+	position: relative;
+	margin: 10px 0;
+}
+
+.md-pre pre {
+	margin: 0;
+	padding: 10px 12px;
+	overflow-x: auto;
+	background: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	font-size: 12.5px;
+	line-height: 1.55;
+}
+
+/* 语言标签：贴在代码块右上角，不挡字（右侧留 8px，滚动手感不变） */
+.md-lang {
+	position: absolute;
+	top: 6px;
+	right: 8px;
+	z-index: 1;
+	padding: 0 6px;
+	border-radius: 999px;
+	background: var(--bg-elev-2);
+	color: var(--text-faint);
+	font-size: 10.5px;
+	letter-spacing: 0.04em;
+	text-transform: lowercase;
+	pointer-events: none;
+}
+
+/* 图片：不超出正文宽度，点击在新窗口看原图 */
+.md-img {
+	display: block;
+	max-width: 100%;
+	max-height: 520px;
+	margin: 8px 0;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--bg);
+}
+
+.md-img-blocked {
+	color: var(--text-faint);
+	font-size: 12px;
+}

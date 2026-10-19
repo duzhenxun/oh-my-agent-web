@@ -33,3 +33,60 @@
 .hljs-deletion {
 	color: #ffa657;
 }
+
+/* 补齐常用 token（原来只有 6 类，模型输出的代码看着还是近乎单色） */
+.hljs-title,
+.hljs-title.function_,
+.hljs-section {
+	color: #d2a8ff;
+}
+
+.hljs-variable,
+.hljs-template-variable,
+.hljs-params {
+	color: #ffa657;
+}
+
+.hljs-type,
+.hljs-title.class_,
+.hljs-class .hljs-title {
+	color: #7ee787;
+}
+
+.hljs-symbol,
+.hljs-bullet,
+.hljs-link,
+.hljs-selector-id,
+.hljs-selector-class {
+	color: #79c0ff;
+}
+
+.hljs-meta,
+.hljs-meta .hljs-keyword,
+.hljs-doctag {
+	color: #8b949e;
+}
+
+.hljs-regexp,
+.hljs-deletion {
+	color: #ffa198;
+}
+
+.hljs-addition {
+	color: #aff5b4;
+	background: rgba(46, 160, 67, 0.15);
+}
+
+.hljs-emphasis {
+	font-style: italic;
+}
+
+.hljs-strong {
+	font-weight: 600;
+}
+
+.hljs-tag,
+.hljs-name,
+.hljs-attribute {
+	color: #7ee787;
+}

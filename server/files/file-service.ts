@@ -7,7 +7,7 @@
  *   3. **有上限**：预览只读前 N 字节，二进制给「不可预览」而不是塞满界面。
  */
 import { realpathSync } from "node:fs";
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { resolveInsideRoot } from "../util/paths.js";
 
@@ -81,6 +81,47 @@ export async function readPreview(root: string, relPath: string, limit = MAX_PRE
 			truncated: handle.byteLength > limit,
 			binary,
 		};
+	} catch (error) {
+		return { ok: false, error: error instanceof Error ? error.message : String(error) };
+	}
+}
+
+/** 允许直接当图片/文档发给浏览器的扩展名（其余一律拒绝，避免变成任意文件下载器） */
+const RAW_MIME: Record<string, string> = {
+	png: "image/png",
+	jpg: "image/jpeg",
+	jpeg: "image/jpeg",
+	gif: "image/gif",
+	webp: "image/webp",
+	avif: "image/avif",
+	svg: "image/svg+xml",
+	ico: "image/x-icon",
+	bmp: "image/bmp",
+	pdf: "application/pdf",
+};
+
+/** 图片原始大小上限（超过就拒绝，别让浏览器卡死） */
+export const MAX_RAW_BYTES = 20 * 1024 * 1024;
+
+export type RawResult = { ok: true; bytes: Buffer; mime: string } | { ok: false; error: string; tooLarge?: boolean };
+
+/** 纯函数：按扩展名给 Content-Type（不在白名单里返回空串 = 拒绝） */
+export function mimeOf(path: string): string {
+	const extension = path.split(".").pop()?.toLowerCase() ?? "";
+	return RAW_MIME[extension] ?? "";
+}
+
+/** 读取图片原始字节（markdown 里 \`![](docs/shot.png)\` 能直接显示的关键一环） */
+export async function readRaw(root: string, relPath: string): Promise<RawResult> {
+	const mime = mimeOf(relPath);
+	if (mime === "") return { ok: false, error: `不支持的文件类型：${relPath.split(".").pop() ?? "无扩展名"}` };
+	const safe = resolveInsideRoot(root, join(root, relPath), realpathSync);
+	if (!safe.ok) return { ok: false, error: safe.reason };
+	try {
+		const info = await stat(safe.path);
+		if (info.isDirectory()) return { ok: false, error: "这是一个目录" };
+		if (info.size > MAX_RAW_BYTES) return { ok: false, error: "文件太大（上限 20MB）", tooLarge: true };
+		return { ok: true, bytes: await readFile(safe.path), mime };
 	} catch (error) {
 		return { ok: false, error: error instanceof Error ? error.message : String(error) };
 	}
