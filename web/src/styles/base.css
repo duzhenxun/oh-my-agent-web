@@ -45,7 +45,7 @@ body {
 .app {
 	height: 100%;
 	display: flex;
-	flex-direction: row;
+	flex-direction: column; /* 顶栏一层，三栏在它下面 */
 	gap: var(--gap);
 	padding: var(--gap);
 	min-width: 0;

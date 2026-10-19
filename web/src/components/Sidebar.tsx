@@ -5,21 +5,9 @@ import type { ConversationMeta, PiProject, ProjectPrefs } from "../types.ts";
 import { sortProjects } from "../project-sort.ts";
 import { newChat, setSettings, switchConversation } from "../ws.ts";
 import { NewProjectDialog } from "./NewProjectDialog.tsx";
+import { ArchivedSessions } from "./ArchivedSessions.tsx";
 import { SessionRow } from "./SessionRow.tsx";
 import { SidebarFiles } from "./SidebarFiles.tsx";
-
-/** 相对时间（参考实现的风格：刚刚 / 5分 / 3小时 / 2天 / 1个月） */
-function relativeTime(ts: number, now = Date.now()): string {
-	const diff = Math.max(0, now - ts);
-	const minute = 60_000;
-	if (diff < minute) return "刚刚";
-	if (diff < 60 * minute) return `${Math.floor(diff / minute)}分`;
-	if (diff < 24 * 60 * minute) return `${Math.floor(diff / (60 * minute))}小时`;
-	const days = Math.floor(diff / (24 * 60 * minute));
-	if (days < 30) return `${days}天`;
-	const months = Math.floor(days / 30);
-	return months < 12 ? `${months}个月` : `${Math.floor(months / 12)}年`;
-}
 
 /** 每个项目下最多显示几个会话（其余折叠成一行计数，避免侧栏被 91 个会话撑爆） */
 const SESSIONS_PER_PROJECT = 5;
@@ -71,6 +59,11 @@ export function Sidebar({
 	const [sessionMenu, setSessionMenu] = useState<string | null>(null);
 	const patchSessionPrefs = (patch: Partial<typeof sessionPrefs>) =>
 		setSettings({ sessionPrefs: { ...sessionPrefs, ...patch } });
+	// 用 props 里的 piProjects 查标题（groups 在下面才构建，早引用会触发 TDZ）
+	const archivedItems = sessionPrefs.archived.map((id) => {
+		const found = piProjects.flatMap((project) => project.sessions).find((session) => session.id === id);
+		return { id, title: sessionPrefs.titles[id] ?? found?.title ?? id };
+	});
 	const currentRoot = snapshot?.files?.root ?? null;
 	// 「还有 N 个…」点开后就显示全部（每个项目各自记）
 	const [showAll, setShowAll] = useState<Record<string, boolean>>({});
@@ -158,9 +151,6 @@ export function Sidebar({
 						‹
 					</button>
 				) : null}
-				<button type="button" className="btn btn-new" onClick={() => newChat()} title="在当前工作区新建会话">
-					＋ 新建
-				</button>
 			</div>
 
 			<div className="sidebar-list">
@@ -351,6 +341,10 @@ export function Sidebar({
 					);
 				})}
 			</div>
+			<ArchivedSessions
+				items={archivedItems}
+				onRestore={(id) => patchSessionPrefs({ archived: sessionPrefs.archived.filter((item) => item !== id) })}
+			/>
 			{/* 分隔条：按住上下拖 = 改文件区高度 */}
 			{fileOpen ? (
 				<div

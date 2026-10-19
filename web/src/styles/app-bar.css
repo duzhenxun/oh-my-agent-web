@@ -1,0 +1,61 @@
+/* 顶部区域（appbar）：横跨三栏，右侧放模型/技能/设置 */
+.appbar {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 10px;
+	border-bottom: 1px solid var(--border);
+	background: var(--bg-elev);
+	min-width: 0;
+}
+
+.app-main {
+	flex: 1 1 auto;
+	min-height: 0;
+	min-width: 0;
+	display: flex;
+	gap: 8px;
+	padding: 8px;
+}
+
+/* appbar 里的三个入口：横排、带图标与文字 */
+.appbar-menu {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex: none;
+}
+
+.appbar-menu .side-foot-row {
+	display: flex;
+	gap: 6px;
+}
+
+.appbar-menu .side-foot-btn {
+	flex: none;
+	gap: 5px;
+	padding: 5px 12px;
+	font-size: 12.5px;
+}
+
+/* 顶栏的预留区（以后放全局搜索/命令面板）：占住中间，右侧入口贴右边 */
+.appbar-slot {
+	flex: 1 1 auto;
+	min-width: 0;
+	border-radius: 8px;
+	border: 1px dashed transparent;
+}
+
+/* 顶栏的「＋ 新建」 */
+.appbar-new {
+	flex: none;
+	cursor: pointer;
+	font-size: 12.5px;
+	padding: 5px 12px;
+}
+
+.appbar-new:hover {
+	border-color: var(--accent-dim);
+	color: var(--accent);
+}

@@ -2,6 +2,7 @@ import { useStickToBottom } from "./stick-to-bottom.ts";
 import { useEffect, useRef, useState } from "react";
 import { clampSidebarWidth, readStoredWidth, SIDEBAR_COLLAPSED_KEY, SIDEBAR_WIDTH_KEY } from "./sidebar-layout.ts";
 import { useAppState } from "./store.ts";
+import { newChat } from "./ws.ts";
 import { ApprovalDialog, NoticeBar } from "./components/ApprovalDialog.tsx";
 import { Composer } from "./components/Composer.tsx";
 import { MessageList } from "./components/MessageList.tsx";
@@ -79,7 +80,33 @@ export function App() {
 			<div className="appbar">
 				<span className="brand">agent-web</span>
 				<span className={`chip chip-${state.connection}`}>{CONNECTION_LABEL[state.connection]}</span>
-				<span className="topbar-spacer" />
+				{snapshot &&
+				(snapshot.running.status === "idle" || snapshot.running.conversationId === snapshot.active.conversationId) ? (
+					<span className={`chip chip-run-${snapshot.running.status}`}>{RUNNING_LABEL[snapshot.running.status]}</span>
+				) : null}
+				{/* 预留区：以后放全局搜索 / 命令面板 */}
+				<span className="appbar-slot" />
+				{snapshot?.sessionStats ? (
+					<span
+						className="chip chip-quiet mono"
+						title={[
+							`消息：用户 ${snapshot.sessionStats.userMessages} / 助手 ${snapshot.sessionStats.assistantMessages} / 工具 ${snapshot.sessionStats.toolCalls}`,
+							`Token：输入 ${snapshot.sessionStats.inputTokens} · 输出 ${snapshot.sessionStats.outputTokens} · 缓存读 ${snapshot.sessionStats.cacheRead}`,
+							`上下文占用：${snapshot.sessionStats.contextTokens}`,
+						].join("\n")}
+					>
+						↑ {formatTokens(snapshot.sessionStats.inputTokens)} ↓ {formatTokens(snapshot.sessionStats.outputTokens)} ·
+						上下文 {formatTokens(snapshot.sessionStats.contextTokens)}
+					</span>
+				) : null}
+				<button
+					type="button"
+					className="chip chip-quiet appbar-new"
+					onClick={() => newChat()}
+					title="在当前工作区新建会话"
+				>
+					＋ 新建
+				</button>
 				<SidebarMenu variant="full" placement="appbar" />
 			</div>
 			<div className="app-main">
@@ -147,32 +174,6 @@ export function App() {
 				)}
 
 				<div className="workspace">
-					<header className="topbar">
-						<span className="brand">agent-web</span>
-						<span className={`chip chip-${state.connection}`}>{CONNECTION_LABEL[state.connection]}</span>
-						{snapshot &&
-						(snapshot.running.status === "idle" ||
-							snapshot.running.conversationId === snapshot.active.conversationId) ? (
-							<span className={`chip chip-run-${snapshot.running.status}`}>
-								{RUNNING_LABEL[snapshot.running.status]}
-							</span>
-						) : null}
-						<span className="topbar-spacer" />
-						{snapshot?.sessionStats ? (
-							<span
-								className="chip chip-quiet mono"
-								title={[
-									`消息：用户 ${snapshot.sessionStats.userMessages} / 助手 ${snapshot.sessionStats.assistantMessages} / 工具 ${snapshot.sessionStats.toolCalls}`,
-									`Token：输入 ${snapshot.sessionStats.inputTokens} · 输出 ${snapshot.sessionStats.outputTokens} · 缓存读 ${snapshot.sessionStats.cacheRead}`,
-									`上下文占用：${snapshot.sessionStats.contextTokens}`,
-								].join("\n")}
-							>
-								↑ {formatTokens(snapshot.sessionStats.inputTokens)} ↓ {formatTokens(snapshot.sessionStats.outputTokens)}{" "}
-								· 上下文 {formatTokens(snapshot.sessionStats.contextTokens)}
-							</span>
-						) : null}
-					</header>
-
 					<main className="main" ref={scroll.ref}>
 						{snapshot ? (
 							<MessageList
