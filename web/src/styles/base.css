@@ -326,3 +326,35 @@ body {
 	border-color: color-mix(in srgb, var(--yellow, #d9a441) 60%, transparent);
 	color: var(--yellow, #d9a441);
 }
+
+/* ---- 滚动条：细一点，并且给滚动条留出固定空间（否则会压住右侧文字/状态）---- */
+* {
+	scrollbar-width: thin;
+	scrollbar-color: var(--border-strong) transparent;
+}
+
+::-webkit-scrollbar {
+	width: 8px;
+	height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+	background: var(--border-strong);
+	border-radius: 8px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: var(--text-faint);
+}
+
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+/* 消息区 / 大纲 / 预览：预留滚动条位置，内容不会被盖住 */
+.main,
+.outline-panel-list,
+.preview-body,
+.tool-output {
+	scrollbar-gutter: stable;
+}
