@@ -71,8 +71,13 @@ export function PreviewPanel({
 
 	if (collapsed) {
 		return (
-			<button type="button" className="preview-collapsed" onClick={() => setCollapsed(false)} title="展开预览">
-				‹
+			<button
+				type="button"
+				className="preview-arrow preview-collapsed"
+				onClick={() => setCollapsed(false)}
+				title="展开预览"
+			>
+				›
 			</button>
 		);
 	}
@@ -110,8 +115,8 @@ export function PreviewPanel({
 				>
 					{fullscreen ? "⤡" : "⛶"}
 				</button>
-				<button type="button" className="btn btn-tiny" onClick={() => setCollapsed(true)} title="收起预览">
-					›
+				<button type="button" className="preview-arrow" onClick={() => setCollapsed(true)} title="收起预览">
+					‹
 				</button>
 				<button type="button" className="btn btn-tiny" onClick={onCloseAll} title="关闭全部">
 					✕

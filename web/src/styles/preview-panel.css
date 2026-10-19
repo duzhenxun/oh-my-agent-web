@@ -108,23 +108,36 @@
 	gap: 6px;
 }
 
-/* 收起后的小竖条 */
-.preview-collapsed {
+/* 收起/展开：一个圆角浅底箭头（对齐你给的截图），展开在标签栏右侧、收起是独立的小块 */
+.preview-arrow {
 	flex: none;
-	width: 24px;
-	align-self: stretch;
-	border: 1px solid var(--border);
-	border-radius: var(--radius);
-	background: var(--bg-elev);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 30px;
+	height: 30px;
+	border: none;
+	border-radius: 9px;
+	background: var(--bg-elev-2);
 	color: var(--text-dim);
 	font: inherit;
-	font-size: 14px;
+	font-size: 16px;
+	line-height: 1;
 	cursor: pointer;
 }
 
-.preview-collapsed:hover {
-	color: var(--accent);
-	border-color: var(--accent-dim);
+.preview-arrow:hover {
+	background: var(--bg-elev);
+	color: var(--text);
+}
+
+/* 收起态：贴着右侧边缘的一条，箭头朝右（点它展开） */
+.preview-collapsed {
+	align-self: flex-start;
+	margin-top: 6px;
+	width: 34px;
+	height: 34px;
+	border-radius: var(--radius);
 }
 
 /* 每个标签一个槽位：非激活的只隐藏、不卸载（终端 PTY 靠这个活着） */
