@@ -55,11 +55,12 @@
 	position: relative;
 }
 
-/* 悬浮操作条：贴在气泡下方，默认隐藏 */
+/* 悬浮操作条：跟在时间后面（标题行内），默认隐藏 */
 .msg-actions {
 	display: flex;
+	align-items: center;
 	gap: 4px;
-	margin-top: 4px;
+	margin-left: 6px;
 	opacity: 0;
 	transition: opacity 0.12s ease;
 }
@@ -71,6 +72,12 @@
 
 .msg-user .msg-actions {
 	justify-content: flex-end;
+}
+
+/* 标题行里的操作按钮更小一点，不抢消息正文的注意力 */
+.msg-head .msg-action {
+	padding: 1px 6px;
+	font-size: 11px;
 }
 
 .msg-action {

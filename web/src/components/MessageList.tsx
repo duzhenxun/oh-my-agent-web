@@ -19,6 +19,27 @@ function MessageView({ message }: { message: UiMessage }) {
 			<header className="msg-head">
 				<span className="msg-role">{message.role === "user" ? "我" : "助手"}</span>
 				<span className="msg-time">{new Date(message.ts).toLocaleTimeString()}</span>
+				{/* 鼠标悬浮才出现的操作（用户消息还额外支持「从此处编辑」） */}
+				<div className="msg-actions">
+					<button
+						type="button"
+						className="msg-action"
+						onClick={() => void navigator.clipboard?.writeText(text)}
+						title="复制这条消息"
+					>
+						⧉ 复制
+					</button>
+					{message.role === "user" ? (
+						<button
+							type="button"
+							className="msg-action"
+							onClick={() => setDraft(text)}
+							title="把这条消息放回输入框，改完再发"
+						>
+							↳ 从此处编辑
+						</button>
+					) : null}
+				</div>
 			</header>
 			<div className="msg-body">
 				{message.blocks.map((block, index) => {
@@ -35,27 +56,6 @@ function MessageView({ message }: { message: UiMessage }) {
 						</div>
 					);
 				})}
-			</div>
-			{/* 鼠标悬浮才出现的操作（用户消息还额外支持「从此处编辑」） */}
-			<div className="msg-actions">
-				<button
-					type="button"
-					className="msg-action"
-					onClick={() => void navigator.clipboard?.writeText(text)}
-					title="复制这条消息"
-				>
-					⧉ 复制
-				</button>
-				{message.role === "user" ? (
-					<button
-						type="button"
-						className="msg-action"
-						onClick={() => setDraft(text)}
-						title="把这条消息放回输入框，改完再发"
-					>
-						↳ 从此处编辑
-					</button>
-				) : null}
 			</div>
 		</article>
 	);
