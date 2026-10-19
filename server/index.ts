@@ -26,7 +26,10 @@ import { createFileSettingsStore } from "./session/settings.js";
 import { createSender, type OutFrame } from "./snapshot/sender.js";
 import { createPiSessionsProvider, piAgentDir } from "./session/pi-sessions-provider.js";
 import { createUploadStore, uploadsDir } from "./uploads/upload-store.js";
+import { handleProviderRequest } from "./providers/provider-handlers.js";
+import { createProviderStore } from "./providers/provider-store.js";
 import { registerFileRoutes } from "./files/files-routes.js";
+import { registerHealthAndStatic } from "./http/health-and-static.js";
 import { registerUploadRoutes } from "./uploads/upload-routes.js";
 import { readConfig, validateConfig } from "./util/env.js";
 import { createLogger } from "./util/log.js";
@@ -98,6 +101,9 @@ if (resolved.fallbackFrom) {
 const engine: EnginePort = resolved.engine;
 
 /** 引擎在 runtime 建好之前就会创建，用一个 ref 把「通知」转发给界面 */
+/** provider 配置存储（ADR-0025）：复用 pi 自己的 models-store.json / auth.json */
+const providerStore = createProviderStore({ agentDir: piAgentDir(), now: Date.now });
+
 const runtimeRef: { current: { notify: (text: string, level?: "info" | "warn" | "error") => void } | null } = {
 	current: null,
 };
@@ -138,9 +144,13 @@ function broadcast(payload: string): void {
 	}
 }
 
-function reply(socket: WebSocket, id: string, result: { ok: true } | { ok: false; error: ProtocolError }): void {
+function reply(
+	socket: WebSocket,
+	id: string,
+	result: { ok: true; result?: unknown } | { ok: false; error: ProtocolError },
+): void {
 	const message: ServerReply = result.ok
-		? { type: "reply", id, ok: true }
+		? { type: "reply", id, ok: true, ...(result.result === undefined ? {} : { result: result.result }) }
 		: { type: "reply", id, ok: false, error: result.error };
 	socket.send(JSON.stringify(message));
 }
@@ -161,27 +171,16 @@ registerUploadRoutes(app, { uploadStore, logger });
 // 文件浏览（M4）：只读、跟着当前会话的工作区走
 registerFileRoutes(app, { workspaceOf: () => runtime.state().files?.root ?? config.workspace });
 
-app.get("/api/health", (_request, response) => {
-	response.json({
-		ok: true,
-		protocolVersion: PROTOCOL_VERSION,
-		workspace: config.workspace,
-		engine: config.engine,
-		// 会话事实源是 pi 的会话存储（ADR-0021 §2）→ 报它的数量，而不是「本地新建了几个」
+registerHealthAndStatic(app, {
+	workspace: config.workspace,
+	engine: config.engine,
+	webDist,
+	devWebPort: DEV_WEB_PORT,
+	counts: () => ({
 		sessions: runtime.state().piProjects.reduce((total, project) => total + project.sessions.length, 0),
 		conversations: runtime.state().conversations.length,
-	});
+	}),
 });
-
-if (webDist) {
-	app.use(express.static(webDist));
-} else {
-	app.get("/", (_request, response) => {
-		response
-			.type("text/plain")
-			.send(`agent-web 服务已启动\n\n前端开发态请用：npm run dev（vite 在 http://127.0.0.1:${DEV_WEB_PORT}）\n`);
-	});
-}
 
 const httpServer = createServer(app);
 
@@ -268,6 +267,16 @@ async function handleMessage(socket: WebSocket, raw: string): Promise<void> {
 			}
 			case "switch_conversation": {
 				reply(socket, request.id, await runtime.switchConversation(request.payload.conversationId));
+				return;
+			}
+			case "list_providers":
+			case "upsert_provider": {
+				const handled = await handleProviderRequest(request as never, {
+					store: providerStore,
+					notify: (text, level) => runtime.notify(text, level),
+					logInfo: (message, meta) => logger.info(message, meta),
+				});
+				if (handled) reply(socket, request.id, handled);
 				return;
 			}
 			case "set_approval_mode": {

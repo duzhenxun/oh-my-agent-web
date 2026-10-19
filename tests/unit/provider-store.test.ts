@@ -1,0 +1,103 @@
+/**
+ * provider 存储（ADR-0025 §1）：写的是 pi 自己的两个文件。
+ * 重点盯三件：**不存多余字段**、**不动别人的配置**、**权限 0600**。
+ */
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { AUTH_FILE, MODELS_STORE_FILE, createProviderStore } from "../../server/providers/provider-store.js";
+
+let agentDir = "";
+
+beforeEach(() => {
+	agentDir = mkdtempSync(join(tmpdir(), "agent-web-providers-"));
+	mkdirSync(agentDir, { recursive: true });
+});
+afterEach(() => {
+	rmSync(agentDir, { recursive: true, force: true });
+});
+
+const store = () => createProviderStore({ agentDir, now: () => 1700000000000 });
+
+describe("list", () => {
+	it("没有配置文件时返回空表（不抛）", async () => {
+		expect(await store().list()).toEqual([]);
+	});
+
+	it("读出 provider，且**不含明文 key**", async () => {
+		writeFileSync(
+			join(agentDir, MODELS_STORE_FILE),
+			JSON.stringify({
+				acme: { models: [{ id: "m1", name: "M1", api: "openai-completions", baseUrl: "https://a.example.com" }] },
+			}),
+		);
+		writeFileSync(join(agentDir, AUTH_FILE), JSON.stringify({ acme: { type: "api_key", key: "sk-secret-abcd1234" } }));
+		const [view] = await store().list();
+		expect(view?.provider).toBe("acme");
+		expect(view?.hasKey).toBe(true);
+		expect(view?.keyHint).toBe("…1234");
+		expect(JSON.stringify(view)).not.toContain("sk-secret");
+	});
+});
+
+describe("upsert", () => {
+	it("新增 provider：写模型表 + auth，权限 0600，其它 provider 不受影响", async () => {
+		writeFileSync(join(agentDir, MODELS_STORE_FILE), JSON.stringify({ other: { models: [{ id: "keep-me" }] } }));
+		const result = await store().upsert({
+			provider: "acme",
+			baseUrl: "https://a.example.com",
+			api: "openai-completions",
+			apiKey: "sk-1234567890",
+			models: [{ id: "m1" }],
+		});
+		expect(result.ok).toBe(true);
+
+		const models = JSON.parse(readFileSync(join(agentDir, MODELS_STORE_FILE), "utf8"));
+		expect(Object.keys(models).sort()).toEqual(["acme", "other"]);
+		expect(models.other.models[0].id).toBe("keep-me");
+		expect(models.acme.models[0]).toMatchObject({ id: "m1", provider: "acme", api: "openai-completions" });
+		expect(statSync(join(agentDir, MODELS_STORE_FILE)).mode & 0o777).toBe(0o600);
+		expect(statSync(join(agentDir, AUTH_FILE)).mode & 0o777).toBe(0o600);
+	});
+
+	it("不传 apiKey 时保留已有 key（留空 = 不修改）", async () => {
+		writeFileSync(join(agentDir, AUTH_FILE), JSON.stringify({ acme: { type: "api_key", key: "sk-existing-9999" } }));
+		await store().upsert({
+			provider: "acme",
+			baseUrl: "https://a.example.com",
+			api: "openai-completions",
+			models: [{ id: "m2" }],
+		});
+		const auth = JSON.parse(readFileSync(join(agentDir, AUTH_FILE), "utf8"));
+		expect(auth.acme.key).toBe("sk-existing-9999");
+	});
+
+	it("新增 provider 但一个 key 都没有 → 拒绝（否则模型调不通）", async () => {
+		const result = await store().upsert({
+			provider: "acme",
+			baseUrl: "https://a.example.com",
+			api: "openai-completions",
+			models: [{ id: "m1" }],
+		});
+		expect(result.ok).toBe(false);
+	});
+
+	it("只加一个模型时，原有模型不会被删掉", async () => {
+		writeFileSync(
+			join(agentDir, MODELS_STORE_FILE),
+			JSON.stringify({ acme: { models: [{ id: "old", cost: { input: 1 } }] } }),
+		);
+		writeFileSync(join(agentDir, AUTH_FILE), JSON.stringify({ acme: { type: "api_key", key: "sk-1234567890" } }));
+		await store().upsert({
+			provider: "acme",
+			baseUrl: "https://a.example.com",
+			api: "openai-completions",
+			models: [{ id: "new" }],
+		});
+		const models = JSON.parse(readFileSync(join(agentDir, MODELS_STORE_FILE), "utf8"));
+		expect(models.acme.models.map((model: { id: string }) => model.id).sort()).toEqual(["new", "old"]);
+		// 原有字段也保留（成本等不该被我们覆盖掉）
+		expect(models.acme.models.find((model: { id: string }) => model.id === "old").cost).toEqual({ input: 1 });
+	});
+});

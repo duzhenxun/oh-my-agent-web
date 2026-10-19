@@ -1,0 +1,135 @@
+/**
+ * provider / 模型配置的校验（ADR-0025 §3）——纯函数，全部可单测。
+ *
+ * 这一层的存在理由：这些值会被写进 `~/.pi/agent/models-store.json` 与 `auth.json`，
+ * 一旦写坏，下次 pi 启动可能整个模型表都读不出来。所以「用户能填什么」必须先收窄。
+ */
+
+/** 支持的上游 API 形态（与 pi 的 ModelDefinition.api 对齐） */
+export const API_KINDS = [
+	"openai-completions",
+	"openai-responses",
+	"openai-codex-responses",
+	"anthropic-messages",
+	"typesafe-system-one",
+];
+export const DEFAULT_API_KIND = "openai-completions";
+
+export const MAX_PROVIDER_ID_CHARS = 32;
+export const MAX_MODELS_PER_PROVIDER = 50;
+export const MAX_API_KEY_CHARS = 512;
+export const MIN_API_KEY_CHARS = 8;
+
+export type ProviderModelInput = { id: string; name?: string; contextWindow?: number };
+
+export type ProviderInput = {
+	provider: string;
+	baseUrl: string;
+	api: string;
+	/** 不传 = 不改动已有的 key（ADR-0025 §2：留空即不修改） */
+	apiKey?: string;
+	models: ProviderModelInput[];
+};
+
+export type ProviderValidation = { ok: true; value: ProviderInput } | { ok: false; errors: string[] };
+
+const PROVIDER_RE = /^[a-z0-9][a-z0-9-]{1,30}$/;
+const MODEL_ID_RE = /^[A-Za-z0-9._:/-]{1,120}$/;
+
+/** 纯函数：baseUrl 只允许 http(s)，且禁止 user:pass@ 这种把凭证塞进地址的形态 */
+export function validateBaseUrl(raw: unknown): { ok: true; value: string } | { ok: false; error: string } {
+	if (typeof raw !== "string") return { ok: false, error: "baseUrl 必须是字符串" };
+	const value = raw.trim();
+	if (value === "") return { ok: false, error: "baseUrl 不能为空" };
+	if (/^(file|javascript|data|vbscript):/i.test(value)) return { ok: false, error: "baseUrl 只允许 http(s)" };
+	let url: URL;
+	try {
+		url = new URL(value);
+	} catch {
+		return { ok: false, error: "baseUrl 不是合法 URL" };
+	}
+	if (url.protocol !== "http:" && url.protocol !== "https:") return { ok: false, error: "baseUrl 只允许 http(s)" };
+	if (url.username !== "" || url.password !== "") return { ok: false, error: "baseUrl 里不能带用户名密码" };
+	return { ok: true, value: value.replace(/\/+$/, "") };
+}
+
+/** 纯函数：api key 只做形态校验（长度 / 不许换行），不验真伪 */
+export function validateApiKey(raw: unknown): { ok: true; value: string | undefined } | { ok: false; error: string } {
+	if (raw === undefined || raw === null || raw === "") return { ok: true, value: undefined };
+	if (typeof raw !== "string") return { ok: false, error: "apiKey 必须是字符串" };
+	const value = raw.trim();
+	if (value === "") return { ok: true, value: undefined };
+	if (value.length < MIN_API_KEY_CHARS) return { ok: false, error: `apiKey 太短（至少 ${MIN_API_KEY_CHARS} 位）` };
+	if (value.length > MAX_API_KEY_CHARS) return { ok: false, error: `apiKey 太长（最多 ${MAX_API_KEY_CHARS} 位）` };
+	if (/[\r\n]/.test(value)) return { ok: false, error: "apiKey 不能包含换行" };
+	return { ok: true, value };
+}
+
+/** 纯函数：把 key 变成「尾 4 位」提示（前端只能看到这个） */
+export function maskKey(key: string | undefined): string | null {
+	if (!key) return null;
+	const tail = key.slice(-4);
+	return `…${tail}`;
+}
+
+/** 纯函数：整张表单的校验（一次收集所有错误，别让用户挤牙膏式试错） */
+export function validateProviderInput(input: unknown): ProviderValidation {
+	if (typeof input !== "object" || input === null) return { ok: false, errors: ["入参不是对象"] };
+	const record = input as Record<string, unknown>;
+	const errors: string[] = [];
+
+	const provider = typeof record.provider === "string" ? record.provider.trim().toLowerCase() : "";
+	if (!PROVIDER_RE.test(provider)) errors.push("provider 只能是小写字母/数字/短横线（2–32 位）");
+
+	const baseUrlResult = validateBaseUrl(record.baseUrl);
+	if (!baseUrlResult.ok) errors.push(baseUrlResult.error);
+
+	const api = typeof record.api === "string" && record.api.trim() !== "" ? record.api.trim() : DEFAULT_API_KIND;
+	if (!API_KINDS.includes(api)) errors.push(`api 必须是：${API_KINDS.join(" / ")}`);
+
+	const keyResult = validateApiKey(record.apiKey);
+	if (!keyResult.ok) errors.push(keyResult.error);
+
+	const models: ProviderModelInput[] = [];
+	const rawModels = Array.isArray(record.models) ? record.models : [];
+	const seen = new Set<string>();
+	for (const item of rawModels) {
+		const id =
+			typeof item === "string"
+				? item.trim()
+				: typeof item === "object" && item !== null
+					? String((item as { id?: unknown }).id ?? "").trim()
+					: "";
+		if (id === "") continue;
+		if (!MODEL_ID_RE.test(id)) {
+			errors.push(`模型 id 含非法字符：${id}`);
+			continue;
+		}
+		if (seen.has(id)) continue;
+		seen.add(id);
+		const name = typeof item === "object" && item !== null ? (item as { name?: unknown }).name : undefined;
+		const contextWindow =
+			typeof item === "object" && item !== null ? (item as { contextWindow?: unknown }).contextWindow : undefined;
+		models.push({
+			id,
+			...(typeof name === "string" && name.trim() !== "" ? { name: name.trim().slice(0, 80) } : {}),
+			...(typeof contextWindow === "number" && Number.isFinite(contextWindow) && contextWindow > 0
+				? { contextWindow: Math.floor(contextWindow) }
+				: {}),
+		});
+	}
+	if (models.length === 0) errors.push("至少填一个模型 id");
+	if (models.length > MAX_MODELS_PER_PROVIDER) errors.push(`最多 ${MAX_MODELS_PER_PROVIDER} 个模型`);
+
+	if (errors.length > 0) return { ok: false, errors };
+	return {
+		ok: true,
+		value: {
+			provider,
+			baseUrl: baseUrlResult.ok ? baseUrlResult.value : "",
+			api,
+			...(keyResult.ok && keyResult.value ? { apiKey: keyResult.value } : {}),
+			models,
+		},
+	};
+}

@@ -119,6 +119,24 @@ export function setModel(modelId: string): void {
 	send({ id: `req-${++seq}`, type: "set_model", payload: { modelId } });
 }
 
+/** 列出已配置的 provider（ADR-0025）：结果由服务端以提示形式回传 */
+export function requestProviders(): void {
+	send({ id: `req-${++seq}`, type: "list_providers" });
+}
+
+export type UpsertProviderPayload = {
+	provider: string;
+	baseUrl: string;
+	api?: string;
+	apiKey?: string;
+	models: { id: string; name?: string }[];
+};
+
+/** 保存 provider 配置：apiKey 留空表示不改动已有 key（结果走提示条） */
+export function upsertProvider(payload: UpsertProviderPayload): void {
+	send({ id: `req-${++seq}`, type: "upsert_provider", payload });
+}
+
 export function setSettings(payload: {
 	quickPhrases?: string[];
 	quickPhrasesEnabled?: boolean;

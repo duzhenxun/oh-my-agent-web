@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { groupModels } from "../model-groups.ts";
 import { useAppState } from "../store.ts";
+import { ProviderForm } from "./ProviderForm.tsx";
 import { SettingsPanel } from "./SettingsPanel.tsx";
 
 type Panel = "models" | "skills" | "settings" | null;
@@ -10,13 +11,14 @@ type Panel = "models" | "skills" | "settings" | null;
  *
  * 分期落地（用户明确："设置先放上，后面一步步开发"）：
  *   - 模型：现在就能看到「按厂家分组的可用模型 + 当前模型」；
- *     「添加模型」需要 provider 配置（api key / base url），标成下一步；
+ *     「添加模型」已可用：配 provider（base url / api key）+ 模型 id（ADR-0025 A 期）；
  *   - 技能：管理技能的入口先放上，能力待做（读 ~/.pi 下的技能目录 + 启停）；
  *   - 设置：直接复用已有的设置面板（快捷短语）。
  */
 export function SidebarMenu() {
 	const { snapshot } = useAppState();
 	const [panel, setPanel] = useState<Panel>(null);
+	const [adding, setAdding] = useState(false);
 	const models = snapshot?.models ?? [];
 	const groups = groupModels(models);
 
@@ -63,14 +65,13 @@ export function SidebarMenu() {
 							</div>
 						))}
 					</div>
-					<button
-						type="button"
-						className="btn btn-tiny"
-						disabled
-						title="需要配置 provider（api key / base url），下一步实现"
-					>
-						＋ 添加模型（下一步）
-					</button>
+					{adding ? (
+						<ProviderForm onClose={() => setAdding(false)} />
+					) : (
+						<button type="button" className="btn btn-tiny" onClick={() => setAdding(true)}>
+							＋ 添加模型
+						</button>
+					)}
 				</div>
 			) : null}
 
