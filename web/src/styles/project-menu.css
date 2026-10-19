@@ -245,16 +245,16 @@
 }
 
 /* 会话区与文件区之间的分隔条：上下拖动改文件区高度 */
+/* 分隔条：不画线（视觉上就是两段之间的空白），但仍然可以上下拖动改高度 */
 .side-split {
 	flex: none;
-	height: 7px;
-	margin: 2px 0;
+	height: 8px;
+	margin: 0;
 	cursor: row-resize;
-	border-radius: 4px;
-	background: linear-gradient(to bottom, transparent 40%, var(--border) 40%, var(--border) 60%, transparent 60%);
+	background: transparent;
 }
 
 .side-split:hover,
 .side-split:active {
-	background: color-mix(in srgb, var(--accent) 45%, transparent);
+	background: color-mix(in srgb, var(--accent) 25%, transparent);
 }

@@ -90,9 +90,6 @@ export function FileTree({ root, onOpenFile }: { root: string | null; onOpenFile
 
 	return (
 		<div className="filetree">
-			<div className="filetree-root" title={root}>
-				根目录 · {root.split("/").filter(Boolean).pop()}
-			</div>
 			{error ? <div className="filetree-error">{error}</div> : null}
 			{nodes.map((node, index) => (
 				<div className="filetree-item" key={node.entry.path || index}>
