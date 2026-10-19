@@ -85,6 +85,11 @@ export function send(requestMessage: ClientRequest): void {
 	socket.send(JSON.stringify(requestMessage));
 }
 
+/** 拉一次权威快照（服务端会顺带重扫 pi 会话列表） */
+export function requestState(): void {
+	send({ id: `req-${++seq}`, type: "get_state" });
+}
+
 /** 发一条用户消息（可带附件引用；图片本体早就通过 HTTP 上传了） */
 export function sendMessage(text: string, attachments?: AttachmentRef[], mode?: SendMode): void {
 	send({

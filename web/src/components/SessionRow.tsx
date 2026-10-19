@@ -32,6 +32,7 @@ export function SessionRow({
 	onPin,
 	onRename,
 	onArchive,
+	onDelete,
 	onCloseMenu,
 }: {
 	session: PiSessionSummary;
@@ -45,6 +46,7 @@ export function SessionRow({
 	onPin: () => void;
 	onRename: () => void;
 	onArchive: () => void;
+	onDelete: () => void;
 	onCloseMenu: () => void;
 }) {
 	const act = (fn: () => void) => () => {
@@ -104,8 +106,8 @@ export function SessionRow({
 					<button
 						type="button"
 						className="proj-menu-item proj-menu-danger"
-						disabled
-						title="会删除 pi 的会话文件，需要二次确认 + 可撤销（下一步）"
+						title="把会话文件改名到 .deleted-时间戳（可从磁盘恢复）"
+						onClick={act(onDelete)}
 					>
 						🗑 删除
 					</button>

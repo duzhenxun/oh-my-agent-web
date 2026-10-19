@@ -29,7 +29,6 @@ import { createUploadStore, uploadsDir } from "./uploads/upload-store.js";
 import { createProviderWiring } from "./providers/provider-handlers.js";
 import { probeProvider } from "./providers/probe.js";
 import { createProviderStore } from "./providers/provider-store.js";
-import { registerFileRoutes } from "./files/files-routes.js";
 import { registerAuxRoutes } from "./http/aux-routes.js";
 import { registerHealthAndStatic } from "./http/health-and-static.js";
 import { registerUploadRoutes } from "./uploads/upload-routes.js";
@@ -174,9 +173,10 @@ const workspaceOf = () => runtime.state().files?.root ?? config.workspace;
 registerAuxRoutes(app, {
 	providerStore,
 	workspaceOf,
+	projects: () => runtime.state().piProjects,
 	onChange: () => void runProviderRequest({ type: "list_providers" }, () => {}),
 });
-registerFileRoutes(app, { workspaceOf }); // 文件浏览（M4）
+
 registerHealthAndStatic(app, {
 	workspace: config.workspace,
 	engine: config.engine,

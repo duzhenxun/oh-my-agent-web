@@ -10,11 +10,20 @@ import { testModel } from "../providers/model-test.js";
 import { registerSkillRoutes } from "../skills/skill-routes.js";
 import { registerProjectActions, registerTerminalRoutes } from "../terminal/terminal-routes.js";
 import { registerDirRoutes } from "../files/dir-routes.js";
+import { registerFileRoutes } from "../files/files-routes.js";
+import { registerSessionRoutes } from "../sessions/session-routes.js";
 
 export function registerAuxRoutes(
 	app: Express,
-	options: { providerStore: ProviderStore; onChange: () => void; workspaceOf: () => string | null },
+	options: {
+		providerStore: ProviderStore;
+		onChange: () => void;
+		workspaceOf: () => string | null;
+		projects: () => import("../protocol.js").PiProject[];
+	},
 ): void {
+	registerSessionRoutes(app, { projects: options.projects });
+	registerFileRoutes(app, { workspaceOf: options.workspaceOf });
 	registerTerminalRoutes(app, { workspaceOf: options.workspaceOf });
 	registerProjectActions(app, { workspaceOf: options.workspaceOf });
 	registerDirRoutes(app, { workspaceOf: options.workspaceOf });

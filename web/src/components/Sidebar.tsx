@@ -7,6 +7,7 @@ import { newChat, setSettings, switchConversation } from "../ws.ts";
 import { NewProjectDialog } from "./NewProjectDialog.tsx";
 import { ArchivedSection } from "./ArchivedSection.tsx";
 import { groupArchived, isProjectOpen } from "../archived-groups.ts";
+import { deleteSession } from "../delete-session.ts";
 import { SessionRow } from "./SessionRow.tsx";
 import { SidebarFiles } from "./SidebarFiles.tsx";
 
@@ -97,7 +98,6 @@ export function Sidebar({
 		setSettings({ projectPrefs: { ...prefs, pinned: next } });
 	};
 
-	// 会话区与文件区之间的分隔条（拖动改高度，存 localStorage）
 	const split = useSplitHeight({ storageKey: "agent-web.side.filesHeight", initial: 260, min: 120 });
 
 	// 把「本地待归档」的会话按 workspace 归组；workspace 不在已知项目里的，单独成组（避免新建的会话消失）
@@ -323,6 +323,9 @@ export function Sidebar({
 											patchSessionPrefs({ titles: { ...sessionPrefs.titles, [session.id]: next.trim() } });
 										}}
 										onArchive={() => patchSessionPrefs({ archived: [...sessionPrefs.archived, session.id] })}
+										onDelete={() =>
+											deleteSession(session.id, sessionPrefs.titles[session.id] ?? session.title ?? session.id)
+										}
 										onCloseMenu={() => setSessionMenu(null)}
 									/>
 								))}
