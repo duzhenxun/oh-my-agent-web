@@ -66,3 +66,22 @@
 .proj-menu-danger {
 	color: var(--red);
 }
+
+/* 「还有 N 个…」现在是个按钮：文字左对齐、hover 有反馈 */
+.pi-row-more {
+	width: 100%;
+	background: none;
+	border: none;
+	color: var(--text-faint);
+	font: inherit;
+	font-size: 12px;
+	text-align: left;
+	cursor: pointer;
+	padding: 3px 8px;
+	border-radius: 6px;
+}
+
+.pi-row-more:hover {
+	color: var(--accent);
+	background: var(--bg-elev-2);
+}

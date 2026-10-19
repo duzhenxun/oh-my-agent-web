@@ -52,6 +52,8 @@ export function Sidebar({
 	// 受控展开：菜单里的「折叠其他项目 / 展开全部」需要它
 	const [openMap, setOpenMap] = useState<Record<string, boolean>>({});
 	const [menuFor, setMenuFor] = useState<string | null>(null);
+	// 「还有 N 个…」点开后就显示全部（每个项目各自记）
+	const [showAll, setShowAll] = useState<Record<string, boolean>>({});
 
 	const togglePin = (cwd: string) => {
 		setPinned((current) => {
@@ -117,7 +119,8 @@ export function Sidebar({
 			<div className="sidebar-list">
 				{groups.length === 0 ? <div className="sidebar-empty">还没有会话。发一条消息就会自动建一个。</div> : null}
 				{groups.map((project, index) => {
-					const shown = project.sessions.slice(0, SESSIONS_PER_PROJECT);
+					const expanded = showAll[project.cwd] === true;
+					const shown = expanded ? project.sessions : project.sessions.slice(0, SESSIONS_PER_PROJECT);
 					const rest = project.sessions.length - shown.length;
 					const hasActive = project.sessions.some((session) => session.id === activeId);
 					const name = project.name || "（未知项目）";
@@ -232,7 +235,24 @@ export function Sidebar({
 										)}
 									</button>
 								))}
-								{rest > 0 ? <div className="pi-row pi-row-more">还有 {rest} 个…</div> : null}
+								{rest > 0 ? (
+									<button
+										type="button"
+										className="pi-row pi-row-more"
+										title={expanded ? "收起，只显示前几个" : `展开，显示全部 ${project.sessions.length} 个会话`}
+										onClick={() => setShowAll((current) => ({ ...current, [project.cwd]: !expanded }))}
+									>
+										{expanded ? "收起" : `还有 ${rest} 个…`}
+									</button>
+								) : expanded && project.sessions.length > SESSIONS_PER_PROJECT ? (
+									<button
+										type="button"
+										className="pi-row pi-row-more"
+										onClick={() => setShowAll((current) => ({ ...current, [project.cwd]: false }))}
+									>
+										收起
+									</button>
+								) : null}
 							</div>
 						</details>
 					);
