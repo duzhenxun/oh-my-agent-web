@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { UiMessage } from "../types.ts";
 
 type Item = { id: string; index: number; question: string; answer: string };
@@ -35,6 +35,19 @@ function buildItems(messages: UiMessage[]): Item[] {
  */
 export function ConversationOutline({ messages }: { messages: UiMessage[] }) {
 	const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+	/**
+	 * 关闭有个短延迟：鼠标从窄条移到预览面板要跨过 6px 间隙，
+	 * 没延迟的话一离开窄条预览就消失，根本移不进去（更别说点里面的条目）。
+	 */
+	const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const keepOpen = () => {
+		if (closeTimer.current) clearTimeout(closeTimer.current);
+		closeTimer.current = null;
+	};
+	const scheduleClose = () => {
+		keepOpen();
+		closeTimer.current = setTimeout(() => setHoverIndex(null), 160);
+	};
 	const items = buildItems(messages);
 	if (items.length === 0) return null;
 
@@ -48,7 +61,7 @@ export function ConversationOutline({ messages }: { messages: UiMessage[] }) {
 
 	return (
 		<div className="outline" aria-label="对话大纲">
-			<div className="outline-rail" onMouseLeave={() => setHoverIndex(null)}>
+			<div className="outline-rail" onMouseLeave={scheduleClose} onMouseEnter={keepOpen}>
 				{items.map((item, index) => (
 					<button
 						type="button"
@@ -62,7 +75,7 @@ export function ConversationOutline({ messages }: { messages: UiMessage[] }) {
 				))}
 			</div>
 			{hoverIndex !== null ? (
-				<div className="outline-preview" onMouseLeave={() => setHoverIndex(null)}>
+				<div className="outline-preview" onMouseEnter={keepOpen} onMouseLeave={scheduleClose}>
 					{window.map((item) => {
 						const isCurrent = items[hoverIndex]?.id === item.id;
 						return (
