@@ -46,3 +46,23 @@
 	white-space: nowrap;
 	color: var(--text-dim);
 }
+
+/* 「插队 / 排队」待发条目：排在最后一轮后面，形状与用户消息一致 */
+.pending-sends {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.pending-item {
+	opacity: 0.85;
+	border-style: dashed;
+}
+
+.pending-item .msg-head {
+	margin-bottom: 2px;
+}
+
+.pending-queue {
+	opacity: 0.7;
+}
