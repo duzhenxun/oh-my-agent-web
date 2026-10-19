@@ -88,7 +88,7 @@ body {
 	min-width: 0;
 	border: 1px solid var(--border);
 	border-radius: var(--radius);
-	background: var(--bg-elev);
+	background: var(--bg); /* 对话区用白底 */
 	padding: var(--gap);
 }
 

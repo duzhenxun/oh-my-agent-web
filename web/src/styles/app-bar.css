@@ -122,3 +122,9 @@
 .workspace .composer-wrap {
 	padding-top: 6px;
 }
+
+/* 对话区（含 workspace 背景）整体用白底 */
+.workspace,
+.workspace .main {
+	background: var(--bg);
+}
