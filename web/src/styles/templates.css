@@ -227,3 +227,29 @@
 	max-width: 240px;
 	cursor: pointer;
 }
+
+/* 工具行：模板 → 模型（右侧留思考强度/工具范围的位置） */
+.tool-sep {
+	width: 1px;
+	height: 16px;
+	background: var(--border);
+	flex: none;
+}
+
+.tool-group {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	min-width: 0;
+}
+
+.tool-icon {
+	flex: none;
+	font-size: 12px;
+	opacity: 0.85;
+}
+
+.tool-static {
+	color: var(--text-faint);
+	cursor: default;
+}

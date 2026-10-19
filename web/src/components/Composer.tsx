@@ -154,36 +154,45 @@ export function Composer({ running, conversationId }: { running: boolean; conver
 							onClick={submit}
 							disabled={draft.trim().length === 0 && pending.length === 0}
 						>
-							发送
+							➤ 发送
 						</button>
 					)}
 				</div>
 			</div>
 
-			{/* 输入框下面一行：模板库 + 模型切换（ADR-0024 之后按引擎能力显隐） */}
+			{/* 输入框下面一行：模板 → 模型（对齐参考实现的排布；右侧留出思考强度/工具范围的位置） */}
 			<div className="composer-tools">
 				<button type="button" className="tool-chip" onClick={() => setGalleryOpen(true)} title="提示词模板库">
 					🧩 模板
 				</button>
-				{snapshot && snapshot.models.length > 0 && snapshot.engineCapabilities.modelSwitch ? (
-					<select
-						className="tool-chip tool-select mono"
-						value={snapshot.model ?? ""}
-						onChange={(event) => setModel(event.target.value)}
-						title="切换这个会话使用的模型"
-					>
-						{snapshot.model && !snapshot.models.some((model) => model.id === snapshot.model) ? (
-							<option value={snapshot.model}>{snapshot.model}</option>
-						) : null}
-						{snapshot.models.map((model) => (
-							<option key={model.id} value={model.id}>
-								{model.label}
-							</option>
-						))}
-					</select>
-				) : snapshot?.model ? (
-					<span className="tool-chip mono">{snapshot.model}</span>
+				<span className="tool-sep" aria-hidden="true" />
+				{snapshot?.model || snapshot?.models.length || conversationId ? (
+					<span className="tool-group" title="这个会话使用的模型">
+						<span className="tool-icon" aria-hidden="true">
+							🤖
+						</span>
+						{snapshot && snapshot.models.length > 0 && snapshot.engineCapabilities.modelSwitch ? (
+							<select
+								className="tool-chip tool-select mono"
+								value={snapshot.model ?? ""}
+								onChange={(event) => setModel(event.target.value)}
+							>
+								{snapshot.model && !snapshot.models.some((model) => model.id === snapshot.model) ? (
+									<option value={snapshot.model}>{snapshot.model}</option>
+								) : null}
+								{snapshot.models.map((model) => (
+									<option key={model.id} value={model.id}>
+										{model.label}
+									</option>
+								))}
+							</select>
+						) : (
+							<span className="tool-chip tool-static mono">{snapshot?.model ?? "模型未就绪"}</span>
+						)}
+					</span>
 				) : null}
+				{/* 右侧扩展位：思考强度 / 工具范围 / 压缩（P4 待做，先占位保持排布稳定） */}
+				<span className="topbar-spacer" />
 			</div>
 
 			{galleryOpen ? (
