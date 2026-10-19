@@ -70,6 +70,17 @@ export function SessionRow({
 					<span className="pi-row-time">{relativeTime(session.updatedAt)}</span>
 				)}
 			</button>
+			<button
+				type="button"
+				className="pi-archive"
+				title="归档（从列表隐藏，可在「已归档」里找回）"
+				onClick={(event) => {
+					event.stopPropagation();
+					onArchive();
+				}}
+			>
+				🗄
+			</button>
 			<button type="button" className="pi-more" title="更多操作" onClick={onToggleMenu}>
 				⋯
 			</button>
