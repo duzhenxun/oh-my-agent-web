@@ -21,6 +21,7 @@ const REQUEST_TYPES: ClientRequestType[] = [
 	"delete_provider",
 	"test_provider",
 	"set_thinking_level",
+	"update_model",
 ];
 const DECISIONS: ApprovalDecision[] = ["once", "always", "deny"];
 
@@ -106,6 +107,14 @@ export function parseClientRequest(raw: unknown): ClientRequest | null {
 				),
 			},
 		};
+	}
+
+	if (type === "update_model") {
+		if (!isRecord(payload)) return null;
+		const provider = typeof payload.provider === "string" ? payload.provider.trim() : "";
+		const model = isRecord(payload.model) ? payload.model : null;
+		if (provider === "" || model === null) return null;
+		return { id, type: "update_model", payload: { provider, model } };
 	}
 
 	if (type === "set_thinking_level") {

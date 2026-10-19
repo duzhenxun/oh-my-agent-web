@@ -5,7 +5,7 @@
  */
 import type { ProviderView, UpsertProviderRequest } from "../protocol.js";
 import type { BuiltinProvider, ProviderStore } from "./provider-store.js";
-import { validateProviderInput } from "./validate.js";
+import { validateModelSpec, validateProviderInput } from "./validate.js";
 
 export type ProviderHandlerDeps = {
 	store: ProviderStore;
@@ -54,6 +54,23 @@ export async function handleProviderRequest(
 			"info",
 		);
 		return { ok: true, result: { provider: result.view } };
+	}
+
+	if (request.type === "update_model") {
+		const payload = (request as unknown as { payload: { provider: string; model: unknown } }).payload;
+		const parsed = validateModelSpec(payload.model);
+		if (!parsed.ok) {
+			const message = parsed.errors.join("；");
+			deps.notify(`模型信息有问题：${message}`, "error");
+			return { ok: false, error: { code: "model.invalid", message } };
+		}
+		const result = await deps.store.updateModel(payload.provider, parsed.value);
+		if (!result.ok) {
+			deps.notify(`保存模型失败：${result.error}`, "error");
+			return { ok: false, error: { code: "model.update_failed", message: result.error } };
+		}
+		deps.notify(`模型「${parsed.value.name}」已保存（重启后生效）`, "info");
+		return { ok: true };
 	}
 
 	if (request.type === "delete_provider") {

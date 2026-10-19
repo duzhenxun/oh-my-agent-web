@@ -74,3 +74,55 @@ describe("validateProviderInput", () => {
 		expect(validateProviderInput({ ...good, api: "anthropic-messages" }).ok).toBe(true);
 	});
 });
+
+describe("validateModelSpec（ADR-0026 A 期）", () => {
+	const good = {
+		id: "deepseek-v4.1-flash",
+		name: "DeepSeek V4.1 Flash",
+		reasoning: true,
+		imageInput: true,
+		contextWindow: "1000000",
+		maxTokens: "384000",
+		cost: { input: "0.1", output: "0.2" },
+	};
+
+	it("规格与能力归一化，价格留空当 0", async () => {
+		const { validateModelSpec } = await import("../../server/providers/validate.js");
+		const result = validateModelSpec(good);
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.value).toMatchObject({
+			id: "deepseek-v4.1-flash",
+			reasoning: true,
+			imageInput: true,
+			contextWindow: 1000000,
+			maxTokens: 384000,
+		});
+		expect(result.value.cost).toEqual({ input: 0.1, output: 0.2, cacheRead: 0, cacheWrite: 0 });
+	});
+
+	it("价格全空 → cost = null（界面显示「未提供」而不是 0）", async () => {
+		const { validateModelSpec } = await import("../../server/providers/validate.js");
+		const result = validateModelSpec({ id: "m", name: "M", cost: {} });
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.value.cost).toBeNull();
+	});
+
+	it("上下文窗口 / 最大输出必须是正整数", async () => {
+		const { validateModelSpec } = await import("../../server/providers/validate.js");
+		expect(validateModelSpec({ ...good, contextWindow: "-5" }).ok).toBe(false);
+		expect(validateModelSpec({ ...good, maxTokens: "abc" }).ok).toBe(false);
+		expect(validateModelSpec({ ...good, contextWindow: "999999999999" }).ok).toBe(false);
+	});
+
+	it("价格为负 → 拒绝", async () => {
+		const { validateModelSpec } = await import("../../server/providers/validate.js");
+		expect(validateModelSpec({ ...good, cost: { input: "-1" } }).ok).toBe(false);
+	});
+
+	it("id 含非法字符 → 拒绝", async () => {
+		const { validateModelSpec } = await import("../../server/providers/validate.js");
+		expect(validateModelSpec({ ...good, id: "有 空格" }).ok).toBe(false);
+	});
+});

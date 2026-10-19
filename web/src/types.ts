@@ -42,6 +42,7 @@ export type {
 	SetSettingsRequest,
 	SetThinkingLevelRequest,
 	TestProviderRequest,
+	UpdateModelRequest,
 	SettingsView,
 	ServerEvent,
 	ServerMessage,

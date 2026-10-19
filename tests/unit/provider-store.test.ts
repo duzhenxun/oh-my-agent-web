@@ -145,3 +145,71 @@ describe("readKey（只给服务端内部用）", () => {
 		expect(await store().readKey("nobody")).toBeNull();
 	});
 });
+
+describe("updateModel（ADR-0026 A 期）", () => {
+	it("写回规格与能力，其它字段（compat/成本）按规则保留或覆盖", async () => {
+		writeFileSync(
+			join(agentDir, MODELS_STORE_FILE),
+			JSON.stringify({ acme: { models: [{ id: "m1", name: "M1", compat: { supportsStore: true } }] } }),
+		);
+		const result = await store().updateModel("acme", {
+			id: "m1",
+			name: "M1 改名",
+			reasoning: true,
+			imageInput: true,
+			contextWindow: 128000,
+			maxTokens: 8192,
+			cost: { input: 1, output: 2, cacheRead: 0.5, cacheWrite: 0 },
+		});
+		expect(result.ok).toBe(true);
+		const models = JSON.parse(readFileSync(join(agentDir, MODELS_STORE_FILE), "utf8"));
+		const model = models.acme.models[0];
+		expect(model).toMatchObject({ id: "m1", name: "M1 改名", reasoning: true, contextWindow: 128000, maxTokens: 8192 });
+		expect(model.input).toEqual(["text", "image"]);
+		expect(model.cost).toEqual({ input: 1, output: 2, cacheRead: 0.5, cacheWrite: 0 });
+		expect(model.compat).toEqual({ supportsStore: true }); // 别的字段不该被我们抹掉
+		expect(statSync(join(agentDir, MODELS_STORE_FILE)).mode & 0o777).toBe(0o600);
+	});
+
+	it("不勾能力时写回 text-only 且 reasoning=false", async () => {
+		writeFileSync(join(agentDir, MODELS_STORE_FILE), JSON.stringify({ acme: { models: [{ id: "m1" }] } }));
+		await store().updateModel("acme", {
+			id: "m1",
+			name: "m1",
+			reasoning: false,
+			imageInput: false,
+			contextWindow: null,
+			maxTokens: null,
+			cost: null,
+		});
+		const model = JSON.parse(readFileSync(join(agentDir, MODELS_STORE_FILE), "utf8")).acme.models[0];
+		expect(model.input).toEqual(["text"]);
+		expect(model.reasoning).toBe(false);
+		expect(model.contextWindow).toBeUndefined();
+		expect(model.cost).toBeUndefined();
+	});
+
+	it("provider 或模型不存在 → 明确报错", async () => {
+		writeFileSync(join(agentDir, MODELS_STORE_FILE), JSON.stringify({ acme: { models: [{ id: "m1" }] } }));
+		const noProvider = await store().updateModel("ghost", {
+			id: "m1",
+			name: "x",
+			reasoning: false,
+			imageInput: false,
+			contextWindow: null,
+			maxTokens: null,
+			cost: null,
+		});
+		expect(noProvider.ok).toBe(false);
+		const noModel = await store().updateModel("acme", {
+			id: "nope",
+			name: "x",
+			reasoning: false,
+			imageInput: false,
+			contextWindow: null,
+			maxTokens: null,
+			cost: null,
+		});
+		expect(noModel.ok).toBe(false);
+	});
+});

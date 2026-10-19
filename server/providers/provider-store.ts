@@ -11,7 +11,7 @@
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { ProviderView } from "../protocol.js";
-import { maskKey, type ProviderInput } from "./validate.js";
+import { maskKey, type ModelSpec, type ProviderInput } from "./validate.js";
 
 export const MODELS_STORE_FILE = "models-store.json";
 export const AUTH_FILE = "auth.json";
@@ -43,6 +43,11 @@ export type ProviderStore = {
 	remove: (provider: string) => Promise<{ ok: true; removed: boolean } | { ok: false; error: string }>;
 	/** 取单个 provider（编辑表单用；同样不含明文 key） */
 	get: (provider: string) => Promise<ProviderView | null>;
+	/**
+	 * 写回单个模型的规格（ADR-0026 A 期）：能力 / 上下文窗口 / 最大输出 / 价格。
+	 * 只覆盖这几个字段，其余（compat / headers 等）原样保留。
+	 */
+	updateModel: (provider: string, spec: ModelSpec) => Promise<{ ok: true } | { ok: false; error: string }>;
 	/**
 	 * 读明文 key —— **只给服务端内部用**（例如连通性测试发请求）。
 	 * 绝不能挂到任何返回给前端的路径上；协议里没有、也不会有对应字段。
@@ -121,6 +126,34 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 		async get(provider) {
 			const all = await this.list();
 			return all.find((view) => view.provider === provider) ?? null;
+		},
+
+		async updateModel(provider, spec) {
+			const models = await readJson<ModelsStore>(modelsPath, {});
+			const entry = models[provider];
+			if (!entry) return { ok: false, error: `没有这个 provider：${provider}` };
+			const list = Array.isArray(entry.models) ? entry.models : [];
+			const index = list.findIndex((model) => model.id === spec.id);
+			if (index < 0) return { ok: false, error: `这个 provider 下没有模型：${spec.id}` };
+			const current = list[index] ?? { id: spec.id };
+			const next: ModelDefinition = {
+				...current,
+				id: spec.id,
+				name: spec.name,
+				...(spec.reasoning ? { reasoning: true } : { reasoning: false }),
+				input: spec.imageInput ? ["text", "image"] : ["text"],
+				...(spec.contextWindow !== null ? { contextWindow: spec.contextWindow } : {}),
+				...(spec.maxTokens !== null ? { maxTokens: spec.maxTokens } : {}),
+				...(spec.cost ? { cost: spec.cost } : {}),
+			};
+			if (spec.contextWindow === null) delete next.contextWindow;
+			if (spec.maxTokens === null) delete next.maxTokens;
+			if (!spec.cost) delete next.cost;
+			const models2 = [...list];
+			models2[index] = next;
+			models[provider] = { ...entry, models: models2, lastModified: options.now() };
+			await writeJsonPrivate(modelsPath, models);
+			return { ok: true };
 		},
 
 		async remove(provider) {

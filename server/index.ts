@@ -168,8 +168,7 @@ function reply(
 const app = express();
 const webDist = pickExisting(webDistCandidates(HERE), existsSync);
 
-/** 附件上传存储（ADR-0020 §P3）：图片走 HTTP，不塞 WS */
-const uploadStore = createUploadStore({ dataDir: config.dataDir });
+const uploadStore = createUploadStore({ dataDir: config.dataDir }); // 附件上传（ADR-0020 §P3）：图片走 HTTP，不塞 WS
 
 registerUploadRoutes(app, { uploadStore, logger });
 
@@ -276,6 +275,7 @@ async function handleMessage(socket: WebSocket, raw: string): Promise<void> {
 			case "upsert_provider":
 			case "delete_provider":
 			case "test_provider":
+			case "update_model":
 				return void (await runProviderRequest(request, (result) => reply(socket, request.id, result)));
 			case "set_approval_mode": {
 				reply(socket, request.id, runtime.setApprovalMode(request.payload.mode));

@@ -137,6 +137,11 @@ export type UpsertProviderPayload = {
 	models: { id: string; name?: string }[];
 };
 
+/** 写回单个模型的规格（ADR-0026 A 期）：数值用字符串传，服务端做校验与归一化 */
+export function updateModel(provider: string, model: Record<string, unknown>): void {
+	send({ id: `req-${++seq}`, type: "update_model", payload: { provider, model } });
+}
+
 /** 删除 provider（B 期）：模型表与凭证一起删；界面负责二次确认 */
 export function deleteProvider(provider: string): void {
 	send({ id: `req-${++seq}`, type: "delete_provider", provider });

@@ -284,6 +284,13 @@ export type DeleteProviderRequest = { id: string; type: "delete_provider"; provi
 /** 连通性测试（ADR-0025 B 期）：只打一次 GET /models，不花钱也不改远端状态 */
 export type TestProviderRequest = { id: string; type: "test_provider"; provider: string };
 
+/** 写回单个模型的规格（ADR-0026 A 期）：能力 / 规格 / 价格 */
+export type UpdateModelRequest = {
+	id: string;
+	type: "update_model";
+	payload: { provider: string; model: Record<string, unknown> };
+};
+
 /** 设置思考强度（P4）：档位由引擎给（off/minimal/low/medium/high/xhigh/max） */
 export type SetThinkingLevelRequest = { id: string; type: "set_thinking_level"; payload: { level: string } };
 
@@ -303,6 +310,7 @@ export type ClientRequest =
 	| DeleteProviderRequest
 	| TestProviderRequest
 	| SetThinkingLevelRequest
+	| UpdateModelRequest
 	| NewChatRequest
 	| SwitchConversationRequest;
 

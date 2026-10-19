@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { groupModels } from "../model-groups.ts";
 import { useAppState } from "../store.ts";
 import type { ProviderView } from "../types.ts";
+import { ModelEditor } from "./ModelEditor.tsx";
 import { ProviderForm } from "./ProviderForm.tsx";
 import { deleteProvider, testProvider } from "../ws.ts";
 import { SettingsPanel } from "./SettingsPanel.tsx";
@@ -24,6 +25,7 @@ export function SidebarMenu() {
 	const [panel, setPanel] = useState<Panel>(null);
 	const [adding, setAdding] = useState(false);
 	const [editingProvider, setEditingProvider] = useState<string | null>(null);
+	const [editingModel, setEditingModel] = useState<{ provider: ProviderView; modelId: string } | null>(null);
 	const configured: ProviderView[] = snapshot?.providers ?? [];
 	const models = snapshot?.models ?? [];
 	const groups = groupModels(models);
@@ -126,6 +128,25 @@ export function SidebarMenu() {
 																	{provider.hasKey ? `key ${provider.keyHint ?? ""}` : "无 key"}
 																</span>
 															</div>
+															<div className="side-provider-models">
+																{provider.models.map((model) => (
+																	<div className="side-provider-model" key={model.id}>
+																		<span className="side-model-label" title={model.id}>
+																			{model.name}
+																		</span>
+																		{provider.source === "custom" ? (
+																			<button
+																				type="button"
+																				className="msg-action side-model-edit"
+																				title="编辑这个模型的规格与价格"
+																				onClick={() => setEditingModel({ provider, modelId: model.id })}
+																			>
+																				编辑
+																			</button>
+																		) : null}
+																	</div>
+																))}
+															</div>
 															{provider.source === "custom" ? (
 																<div className="side-provider-actions">
 																	<button
@@ -170,6 +191,14 @@ export function SidebarMenu() {
 											) : (
 												<div className="side-panel-hint">还没有自己配置的 provider</div>
 											)}
+											{editingModel ? (
+												<ModelEditor
+													provider={editingModel.provider}
+													modelId={editingModel.modelId}
+													onClose={() => setEditingModel(null)}
+												/>
+											) : null}
+
 											{adding || editingProvider ? (
 												<ProviderForm
 													initial={

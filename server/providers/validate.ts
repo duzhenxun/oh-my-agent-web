@@ -133,3 +133,89 @@ export function validateProviderInput(input: unknown): ProviderValidation {
 		},
 	};
 }
+
+/** 单个模型的规格（ADR-0026 A 期）：能力 + 上下文窗口 + 最大输出 + 每百万 tokens 价格 */
+export type ModelSpec = {
+	id: string;
+	name: string;
+	/** 推理 / 思考 */
+	reasoning: boolean;
+	/** 支持图片输入 */
+	imageInput: boolean;
+	contextWindow: number | null;
+	maxTokens: number | null;
+	cost: { input: number; output: number; cacheRead: number; cacheWrite: number } | null;
+};
+
+export const MAX_CONTEXT_WINDOW = 100_000_000;
+export const MAX_MAX_TOKENS = 10_000_000;
+
+/** 纯函数：正整数（可空）；空串/null/undefined 都算"未提供" */
+function positiveInteger(
+	raw: unknown,
+	limit: number,
+	label: string,
+): { ok: true; value: number | null } | { ok: false; error: string } {
+	if (raw === undefined || raw === null || raw === "") return { ok: true, value: null };
+	const value = typeof raw === "number" ? raw : Number(String(raw).trim());
+	if (!Number.isFinite(value) || value <= 0) return { ok: false, error: `${label} 必须是正整数` };
+	const rounded = Math.floor(value);
+	if (rounded > limit) return { ok: false, error: `${label} 不能超过 ${limit}` };
+	return { ok: true, value: rounded };
+}
+
+/** 纯函数：非负价格（可空） */
+function price(raw: unknown, label: string): { ok: true; value: number } | { ok: false; error: string } {
+	if (raw === undefined || raw === null || raw === "") return { ok: true, value: 0 };
+	const value = typeof raw === "number" ? raw : Number(String(raw).trim());
+	if (!Number.isFinite(value) || value < 0) return { ok: false, error: `${label} 必须是非负数` };
+	return { ok: true, value };
+}
+
+/** 纯函数：整张模型表单的校验（一次收集全部错误） */
+export function validateModelSpec(input: unknown): { ok: true; value: ModelSpec } | { ok: false; errors: string[] } {
+	if (typeof input !== "object" || input === null) return { ok: false, errors: ["入参不是对象"] };
+	const record = input as Record<string, unknown>;
+	const errors: string[] = [];
+
+	const id = typeof record.id === "string" ? record.id.trim() : "";
+	if (!MODEL_ID_RE.test(id)) errors.push("模型 id 只能包含字母数字与 . _ : / -（1–120 位）");
+
+	const contextWindow = positiveInteger(record.contextWindow, MAX_CONTEXT_WINDOW, "上下文窗口");
+	if (!contextWindow.ok) errors.push(contextWindow.error);
+	const maxTokens = positiveInteger(record.maxTokens, MAX_MAX_TOKENS, "最大输出 tokens");
+	if (!maxTokens.ok) errors.push(maxTokens.error);
+
+	const costInput = record.cost as Record<string, unknown> | undefined;
+	const cost = {
+		input: price(costInput?.input, "输入价格"),
+		output: price(costInput?.output, "输出价格"),
+		cacheRead: price(costInput?.cacheRead, "缓存读价格"),
+		cacheWrite: price(costInput?.cacheWrite, "缓存写价格"),
+	};
+	for (const item of Object.values(cost)) if (!item.ok) errors.push(item.error);
+	const costProvided =
+		costInput !== undefined &&
+		Object.values(costInput).some((value) => value !== "" && value !== null && value !== undefined);
+
+	if (errors.length > 0) return { ok: false, errors };
+	return {
+		ok: true,
+		value: {
+			id,
+			name: typeof record.name === "string" && record.name.trim() !== "" ? record.name.trim().slice(0, 80) : id,
+			reasoning: record.reasoning === true,
+			imageInput: record.imageInput === true,
+			contextWindow: contextWindow.ok ? contextWindow.value : null,
+			maxTokens: maxTokens.ok ? maxTokens.value : null,
+			cost: costProvided
+				? {
+						input: cost.input.ok ? cost.input.value : 0,
+						output: cost.output.ok ? cost.output.value : 0,
+						cacheRead: cost.cacheRead.ok ? cost.cacheRead.value : 0,
+						cacheWrite: cost.cacheWrite.ok ? cost.cacheWrite.value : 0,
+					}
+				: null,
+		},
+	};
+}
