@@ -7,7 +7,6 @@ import { Composer } from "./components/Composer.tsx";
 import { MessageList } from "./components/MessageList.tsx";
 import { FilePreview } from "./components/FilePreview.tsx";
 import { TerminalPanel } from "./components/TerminalPanel.tsx";
-import { FileTree } from "./components/FileTree.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
 import { SidebarMenu } from "./components/SidebarMenu.tsx";
 
@@ -29,7 +28,6 @@ function formatTokens(value: number): string {
 
 export function App() {
 	// 文件面板（M4）：跟着当前会话的工作区走
-	const [filePanelOpen, setFilePanelOpen] = useState(false);
 	const [terminalOpen, setTerminalOpen] = useState(false);
 	const [terminalCwd, setTerminalCwd] = useState<string | null>(null);
 	const [fileRoot, setFileRoot] = useState<string | null>(null);
@@ -94,15 +92,7 @@ export function App() {
 					<button type="button" className="activity-btn" onClick={() => setPendingPanel("settings")} title="设置">
 						⚙
 					</button>
-					<button
-						type="button"
-						className="activity-btn"
-						onClick={() => {
-							setFilePanelOpen((open) => !open);
-							setFileRoot(null);
-						}}
-						title="文件列表"
-					>
+					<button type="button" className="activity-btn" onClick={() => setCollapsed(false)} title="文件（在侧栏下方）">
 						📁
 					</button>
 					{pendingPanel ? <SidebarMenu key={pendingPanel} initialPanel={pendingPanel} variant="modal" /> : null}
@@ -121,9 +111,9 @@ export function App() {
 							setTerminalCwd(cwd);
 							setTerminalOpen(true);
 						}}
-						onOpenFiles={(cwd) => {
-							setFileRoot(cwd);
-							setFilePanelOpen(true);
+						onOpenFile={(path, root) => {
+							setFileRoot(root || null);
+							setPreviewPath(path);
 						}}
 					/>
 					{/* 拖拽条：右边边缘 6px，双击回到默认宽度 */}
@@ -194,19 +184,6 @@ export function App() {
 					conversationId={snapshot?.active.conversationId ?? null}
 				/>
 			</div>
-
-			{filePanelOpen ? (
-				<aside className="file-panel">
-					<div className="file-panel-head">
-						<span>文件列表</span>
-						<span className="topbar-spacer" />
-						<button type="button" className="btn btn-tiny" onClick={() => setFilePanelOpen(false)}>
-							收起
-						</button>
-					</div>
-					<FileTree root={fileRoot ?? snapshot?.files?.root ?? null} onOpenFile={setPreviewPath} />
-				</aside>
-			) : null}
 
 			{terminalOpen ? (
 				<TerminalPanel

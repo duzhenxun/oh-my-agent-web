@@ -3,6 +3,7 @@ import { useAppState } from "../store.ts";
 import type { ConversationMeta, PiProject, ProjectPrefs } from "../types.ts";
 import { sortProjects } from "../project-sort.ts";
 import { newChat, setSettings, switchConversation } from "../ws.ts";
+import { FileTree } from "./FileTree.tsx";
 import { NewProjectDialog } from "./NewProjectDialog.tsx";
 import { SidebarMenu } from "./SidebarMenu.tsx";
 
@@ -37,6 +38,7 @@ export function Sidebar({
 	runningConversationId = null,
 	onOpenTerminal,
 	onOpenFiles,
+	onOpenFile,
 }: {
 	conversations: ConversationMeta[];
 	activeId: string | null;
@@ -49,6 +51,8 @@ export function Sidebar({
 	onOpenTerminal?: (cwd: string) => void;
 	/** 在应用内的文件面板打开这个项目 */
 	onOpenFiles?: (cwd: string) => void;
+	/** 点文件 → 打开预览（root 是该文件所属项目根） */
+	onOpenFile?: (path: string, root: string) => void;
 }) {
 	const { snapshot } = useAppState();
 	// 项目偏好来自 settings.json（ADR-0028）：置顶 / 顺序 / 别名都是服务端事实源
@@ -58,6 +62,9 @@ export function Sidebar({
 	const [openMap, setOpenMap] = useState<Record<string, boolean>>({});
 	const [menuFor, setMenuFor] = useState<string | null>(null);
 	const [newProjectOpen, setNewProjectOpen] = useState(false);
+	// 文件树根：默认跟随当前会话工作区，可从下拉框切到任意项目
+	const [treeRoot, setTreeRoot] = useState<string | null>(null);
+	const currentRoot = snapshot?.files?.root ?? null;
 	// 「还有 N 个…」点开后就显示全部（每个项目各自记）
 	const [showAll, setShowAll] = useState<Record<string, boolean>>({});
 	// 项目显示名（别名）：只改展示，不动 pi 的会话目录（ADR-0028：身份是 cwd）
@@ -253,7 +260,7 @@ export function Sidebar({
 											setMenuFor(null);
 										}}
 									>
-										📁 在文件中打开
+										📁 在文件列表中定位
 									</button>
 									<button
 										type="button"
@@ -325,6 +332,32 @@ export function Sidebar({
 					);
 				})}
 			</div>
+			{/* 文件区（放在会话列表下面）：顶部下拉可切项目，下面是懒加载文件树 */}
+			<section className="side-files">
+				<div className="side-files-head">
+					<span className="side-files-title">文件</span>
+					<select
+						className="side-files-select"
+						value={treeRoot ?? currentRoot ?? ""}
+						onChange={(event) => setTreeRoot(event.target.value || null)}
+						title="切换项目"
+					>
+						<option value="">跟随当前会话</option>
+						{groups.map((project) => (
+							<option key={project.cwd} value={project.cwd}>
+								{aliases[project.cwd] || project.name || project.cwd}
+							</option>
+						))}
+					</select>
+				</div>
+				<div className="side-files-body">
+					<FileTree
+						root={treeRoot ?? currentRoot ?? null}
+						onOpenFile={(path) => onOpenFile?.(path, treeRoot ?? currentRoot ?? "")}
+					/>
+				</div>
+			</section>
+
 			{newProjectOpen ? <NewProjectDialog onClose={() => setNewProjectOpen(false)} /> : null}
 			<SidebarMenu />
 		</aside>
