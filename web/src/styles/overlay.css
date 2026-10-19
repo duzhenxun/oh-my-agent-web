@@ -62,9 +62,12 @@
 /* 粘底滚动：不粘底时出现的「回到底部」（见 web/src/stick-to-bottom.ts；样式放在此处（浮层控件分区）） */
 .jump-bottom {
 	position: sticky;
-	bottom: 10px;
-	align-self: center;
-	margin-top: -46px;
+	bottom: 12px;
+	/* 居中：.main 不是 flex 容器，align-self 无效 → 用 auto 外边距 + fit-content */
+	display: block;
+	width: fit-content;
+	margin: -44px auto 0;
+	z-index: 9;
 	border: 1px solid var(--border);
 	border-radius: 999px;
 	background: var(--bg-elev-2);
