@@ -1,0 +1,103 @@
+/* 已归档入口（在主列表底部） */
+.archived-entry {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	width: 100%;
+	border: none;
+	border-top: 1px solid var(--border);
+	background: none;
+	color: var(--text-faint);
+	font: inherit;
+	font-size: 12px;
+	text-align: left;
+	padding: 6px;
+	margin-top: 4px;
+	cursor: pointer;
+}
+
+.archived-entry:hover {
+	color: var(--text);
+	background: var(--bg-elev-2);
+}
+
+/* 归档视图：占满列表区，顶部一条返回栏 */
+.archived-view {
+	flex: 1 1 auto;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.archived-view-head {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex: none;
+	padding: 2px 0;
+}
+
+.archived-back {
+	width: 22px;
+	height: 22px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--bg-elev);
+	color: var(--text-dim);
+	font: inherit;
+	cursor: pointer;
+	padding: 0;
+}
+
+.archived-view-title {
+	font-size: 12.5px;
+	font-weight: 600;
+	color: var(--text);
+}
+
+.archived-view-list {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.archived-group-title {
+	color: var(--text-faint);
+	font-size: 11.5px;
+	font-weight: 600;
+	padding: 4px 6px 2px;
+}
+
+.archived-open {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	border: none;
+	background: none;
+	color: var(--text);
+	font: inherit;
+	font-size: 12.5px;
+	text-align: left;
+	padding: 4px 6px;
+	border-radius: 6px;
+	cursor: pointer;
+}
+
+.archived-open:hover {
+	background: var(--bg-elev-2);
+}
+
+.archived-time {
+	flex: none;
+	color: var(--text-faint);
+	font-size: 11px;
+}

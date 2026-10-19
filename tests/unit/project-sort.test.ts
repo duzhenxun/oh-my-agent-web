@@ -46,3 +46,22 @@ describe("moveProject", () => {
 		expect(moveProject([], projects, "/a", 99)).toEqual(["/b", "/c", "/a"]);
 	});
 });
+
+describe("groupArchived（归档分组）", () => {
+	it("只把归档的挑出来，按项目分组，标题优先用别名", async () => {
+		const { groupArchived } = await import("../../web/src/archived-groups.ts");
+		const projects = [
+			{ cwd: "/a", name: "A", sessions: [{ id: "s1", title: "旧会话", startedAt: 1, updatedAt: 1 }] },
+			{ cwd: "/b", name: "B", sessions: [{ id: "s2", title: "另一个", startedAt: 2, updatedAt: 2 }] },
+		] as never;
+		const groups = groupArchived(projects, { archived: ["s1", "s2"], pinned: [], titles: { s2: "改名了" } });
+		expect(groups).toHaveLength(2);
+		expect(groups[0]?.items[0]?.title).toBe("旧会话");
+		expect(groups[1]?.items[0]?.title).toBe("改名了");
+	});
+
+	it("没有归档时返回空数组", async () => {
+		const { groupArchived } = await import("../../web/src/archived-groups.ts");
+		expect(groupArchived([], { archived: [], pinned: [], titles: {} })).toEqual([]);
+	});
+});

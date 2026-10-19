@@ -6,6 +6,7 @@ import { sortProjects } from "../project-sort.ts";
 import { newChat, setSettings, switchConversation } from "../ws.ts";
 import { NewProjectDialog } from "./NewProjectDialog.tsx";
 import { ArchivedSessions } from "./ArchivedSessions.tsx";
+import { groupArchived } from "../archived-groups.ts";
 import { SessionRow } from "./SessionRow.tsx";
 import { SidebarFiles } from "./SidebarFiles.tsx";
 
@@ -53,17 +54,14 @@ export function Sidebar({
 	const [newProjectOpen, setNewProjectOpen] = useState(false);
 	// 文件区默认收起（只有标题栏一行），点箭头展开
 	const [fileOpen, setFileOpen] = useState(false);
+	const [archivedView, setArchivedView] = useState(false);
 	// 文件树根：默认跟随当前会话工作区，可从下拉框切到任意项目
 	const [treeRoot, setTreeRoot] = useState<string | null>(null);
 	const sessionPrefs = snapshot?.settings.sessionPrefs ?? { pinned: [], archived: [], titles: {} };
 	const [sessionMenu, setSessionMenu] = useState<string | null>(null);
 	const patchSessionPrefs = (patch: Partial<typeof sessionPrefs>) =>
 		setSettings({ sessionPrefs: { ...sessionPrefs, ...patch } });
-	// 用 props 里的 piProjects 查标题（groups 在下面才构建，早引用会触发 TDZ）
-	const archivedItems = sessionPrefs.archived.map((id) => {
-		const found = piProjects.flatMap((project) => project.sessions).find((session) => session.id === id);
-		return { id, title: sessionPrefs.titles[id] ?? found?.title ?? id };
-	});
+	const archivedGroups = groupArchived(piProjects, sessionPrefs);
 	const currentRoot = snapshot?.files?.root ?? null;
 	// 「还有 N 个…」点开后就显示全部（每个项目各自记）
 	const [showAll, setShowAll] = useState<Record<string, boolean>>({});
@@ -341,10 +339,22 @@ export function Sidebar({
 					);
 				})}
 			</div>
-			<ArchivedSessions
-				items={archivedItems}
-				onRestore={(id) => patchSessionPrefs({ archived: sessionPrefs.archived.filter((item) => item !== id) })}
-			/>
+			{archivedGroups.length > 0 ? (
+				<button type="button" className="archived-entry" onClick={() => setArchivedView(true)} title="查看已归档的会话">
+					🗄 已归档 · {archivedGroups.reduce((sum, group) => sum + group.items.length, 0)}
+				</button>
+			) : null}
+			{archivedView ? (
+				<ArchivedSessions
+					groups={archivedGroups}
+					onBack={() => setArchivedView(false)}
+					onOpen={(id) => {
+						void switchConversation(id);
+						setArchivedView(false);
+					}}
+					onRestore={(id) => patchSessionPrefs({ archived: sessionPrefs.archived.filter((item) => item !== id) })}
+				/>
+			) : null}
 			{/* 分隔条：按住上下拖 = 改文件区高度 */}
 			{fileOpen ? (
 				<div
