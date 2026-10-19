@@ -1,18 +1,19 @@
 /* ---- 变量（必须先定义后引用：未定义的 var() 会让整条声明失效）---- */
 :root {
-	--bg: #101418;
-	--bg-elev: #171d24;
-	--bg-elev-2: #1f272f;
-	--border: #2a3440;
-	--border-strong: #3a4756;
-	--text: #dfe6ee;
-	--text-dim: #93a1b1;
-	--text-faint: #6b7887;
-	--accent: #4c9aff;
-	--accent-dim: #2f6bb8;
-	--green: #3fb950;
-	--amber: #d29922;
-	--red: #f85149;
+	/* 浅色主题：背景白、文字深（对比度按 WCAG AA 取的值） */
+	--bg: #ffffff;
+	--bg-elev: #f7f8fa;
+	--bg-elev-2: #eef1f5;
+	--border: #e2e6ec;
+	--border-strong: #cfd6df;
+	--text: #1b2530;
+	--text-dim: #4a5a6a;
+	--text-faint: #7b8794;
+	--accent: #1f6feb;
+	--accent-dim: #9dc0f5;
+	--green: #1a7f37;
+	--amber: #b06a00;
+	--red: #c62828;
 	--mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 	--radius: 10px;
 	--gap: 12px;
@@ -283,10 +284,11 @@ body {
 }
 
 /* ---- 浅色主题 ---- */
+/* 默认就是浅色（用户要求白底）；系统偏好浅色时保持一致，避免两套配色打架 */
 @media (prefers-color-scheme: light) {
 	:root {
-		--bg: #f6f8fa;
-		--bg-elev: #ffffff;
+		--bg: #ffffff;
+		--bg-elev: #f7f8fa;
 		--bg-elev-2: #eef1f5;
 		--border: #d8dee4;
 		--border-strong: #c3ccd6;

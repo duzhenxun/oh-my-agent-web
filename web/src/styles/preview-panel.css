@@ -246,3 +246,9 @@
 	gap: 8px;
 	overflow: auto;
 }
+
+/* 右侧面板（预览 / 终端）用纯白底，与对话区一致（!important：确保盖住 --bg-elev） */
+.preview-panel,
+.preview-rail {
+	background: var(--bg) !important;
+}
