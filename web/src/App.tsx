@@ -8,6 +8,7 @@ import { MessageList } from "./components/MessageList.tsx";
 import { FilePreview } from "./components/FilePreview.tsx";
 import { FileTree } from "./components/FileTree.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
+import { SidebarMenu } from "./components/SidebarMenu.tsx";
 
 const CONNECTION_LABEL = { connecting: "连接中…", open: "已连接", closed: "已断开（自动重连）" } as const;
 
@@ -23,6 +24,7 @@ export function App() {
 	const [filePanelOpen, setFilePanelOpen] = useState(false);
 	// 侧栏：可收起 + 可拖宽（状态存 localStorage，刷新后保持）
 	const [collapsed, setCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1");
+	const [pendingPanel, setPendingPanel] = useState<"models" | "skills" | "settings" | null>(null);
 	const [sideWidth, setSideWidth] = useState(() => readStoredWidth(localStorage.getItem(SIDEBAR_WIDTH_KEY)));
 	const dragging = useRef(false);
 
@@ -72,9 +74,32 @@ export function App() {
 	return (
 		<div className="app">
 			{collapsed ? (
-				<button type="button" className="side-expand" onClick={() => setCollapsed(false)} title="展开侧栏">
-					›
-				</button>
+				<aside className="activity-bar">
+					<button type="button" className="activity-btn" onClick={() => setCollapsed(false)} title="展开侧栏">
+						›
+					</button>
+					<button type="button" className="activity-btn" onClick={() => setCollapsed(false)} title="会话">
+						💬
+					</button>
+					<button type="button" className="activity-btn" onClick={() => setPendingPanel("models")} title="模型">
+						🤖
+					</button>
+					<button type="button" className="activity-btn" onClick={() => setPendingPanel("skills")} title="技能">
+						🧰
+					</button>
+					<button type="button" className="activity-btn" onClick={() => setPendingPanel("settings")} title="设置">
+						⚙
+					</button>
+					<button
+						type="button"
+						className="activity-btn"
+						onClick={() => setFilePanelOpen((open) => !open)}
+						title="文件列表"
+					>
+						📁
+					</button>
+					{pendingPanel ? <SidebarMenu key={pendingPanel} initialPanel={pendingPanel} variant="modal" /> : null}
+				</aside>
 			) : (
 				<div className="side-host" style={{ width: sideWidth }}>
 					<Sidebar

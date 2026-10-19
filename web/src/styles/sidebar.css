@@ -328,3 +328,37 @@ details[open] > .proj-head .proj-chevron {
 	color: var(--accent);
 	border-color: var(--accent-dim);
 }
+
+/* ---- 收起态：活动栏（类 VS Code）---- */
+.activity-bar {
+	flex: none;
+	width: 44px;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 4px;
+	padding: 6px 0;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: var(--bg-elev);
+}
+
+.activity-btn {
+	width: 32px;
+	height: 32px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border: none;
+	border-radius: 8px;
+	background: none;
+	color: var(--text-dim);
+	font: inherit;
+	font-size: 15px;
+	cursor: pointer;
+}
+
+.activity-btn:hover {
+	background: var(--bg-elev-2);
+	color: var(--text);
+}

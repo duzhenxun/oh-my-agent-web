@@ -21,9 +21,17 @@ type Panel = "models" | "skills" | "settings" | null;
  *   - 技能：管理技能的入口先放上，能力待做（读 ~/.pi 下的技能目录 + 启停）；
  *   - 设置：直接复用已有的设置面板（快捷短语）。
  */
-export function SidebarMenu() {
+export function SidebarMenu({
+	initialPanel = null,
+	variant = "full",
+}: {
+	/** 收起态由活动栏按钮指定打开哪个面板 */
+	initialPanel?: Panel;
+	/** full = 底部三个入口 + 弹窗；modal = 只渲染弹窗（收起态用） */
+	variant?: "full" | "modal";
+} = {}) {
 	const { snapshot } = useAppState();
-	const [panel, setPanel] = useState<Panel>(null);
+	const [panel, setPanel] = useState<Panel>(initialPanel);
 	const [adding, setAdding] = useState(false);
 	const [editingProvider, setEditingProvider] = useState<string | null>(null);
 	const [editingModel, setEditingModel] = useState<{ provider: ProviderView; modelId: string } | null>(null);
@@ -60,11 +68,13 @@ export function SidebarMenu() {
 
 	return (
 		<div className="side-foot">
-			<div className="side-foot-row">
-				{item("models", "🤖", "模型")}
-				{item("skills", "🧰", "技能")}
-				{item("settings", "⚙", "设置")}
-			</div>
+			{variant === "full" ? (
+				<div className="side-foot-row">
+					{item("models", "🤖", "模型")}
+					{item("skills", "🧰", "技能")}
+					{item("settings", "⚙", "设置")}
+				</div>
+			) : null}
 
 			{panel
 				? createPortal(
