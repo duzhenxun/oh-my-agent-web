@@ -135,6 +135,7 @@ export function Composer({ running, conversationId }: { running: boolean; conver
 						</span>
 					)}
 					<ThinkingPicker level={snapshot?.thinkingLevel ?? null} levels={snapshot?.thinkingLevels ?? []} />
+					<span className="tool-sep" aria-hidden="true" />
 					{snapshot?.engineCapabilities.approvals === false ? (
 						<span className="tool-chip tool-static" title="该引擎自行决定授权，本工作台拦不住它的危险操作">
 							🔒 审批：引擎自理
@@ -152,6 +153,7 @@ export function Composer({ running, conversationId }: { running: boolean; conver
 					{/* 右侧扩展位：工具范围 / 压缩（P4 待做，先占位保持排布稳定） */}
 					<span className="topbar-spacer" />
 				</div>
+				<span className="tool-sep" aria-hidden="true" />
 
 				{quickPhrases.length > 0 ? (
 					<div className="quick-row">
