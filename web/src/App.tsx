@@ -25,6 +25,8 @@ export function App() {
 	// 侧栏：可收起 + 可拖宽（状态存 localStorage，刷新后保持）
 	const [collapsed, setCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1");
 	const [pendingPanel, setPendingPanel] = useState<"models" | "skills" | "settings" | null>(null);
+	// 右侧对话大纲（开关在顶栏）
+	const [outlineOpen, setOutlineOpen] = useState(true);
 	const [sideWidth, setSideWidth] = useState(() => readStoredWidth(localStorage.getItem(SIDEBAR_WIDTH_KEY)));
 	const dragging = useRef(false);
 
@@ -110,6 +112,14 @@ export function App() {
 						上下文 {formatTokens(snapshot.sessionStats.contextTokens)}
 					</span>
 				) : null}
+				<button
+					type="button"
+					className={`chip chip-quiet${outlineOpen ? " chip-on" : ""}`}
+					onClick={() => setOutlineOpen((open) => !open)}
+					title={outlineOpen ? "收起对话大纲" : "展开对话大纲"}
+				>
+					☰ 大纲
+				</button>
 				<SidebarMenu variant="full" placement="appbar" />
 			</div>
 			<div className="app-main">
@@ -196,7 +206,6 @@ export function App() {
 							</button>
 						)}
 					</main>
-					{panelItems.length === 0 ? <ConversationOutline messages={messages} /> : null}
 
 					{state.lastError ? <div className="error-bar">{state.lastError}</div> : null}
 					<NoticeBar notices={snapshot?.notices ?? []} />
@@ -208,6 +217,10 @@ export function App() {
 						conversationId={snapshot?.active.conversationId ?? null}
 					/>
 				</div>
+
+				{outlineOpen && panelItems.length === 0 ? (
+					<ConversationOutline messages={messages} hasMoreBefore={snapshot?.active.hasMoreBefore ?? false} />
+				) : null}
 
 				{panelItems.length > 0 ? (
 					<PreviewPanel
