@@ -1,3 +1,4 @@
+import { useRef, useState } from "react";
 import type { UiMessage } from "../types.ts";
 
 type Item = { id: string; index: number; question: string; answer: string };
@@ -18,22 +19,35 @@ function buildItems(messages: UiMessage[]): Item[] {
 		items.push({
 			id: message.id,
 			index: items.length + 1,
-			question: text(message) || "（空消息）",
-			answer: answer ? text(answer) : "",
+			question: text(message).slice(0, 120) || "（空消息）",
+			answer: answer ? text(answer).slice(0, 160) : "",
 		});
 	});
 	return items;
 }
 
 /**
- * 右侧「对话大纲」栏：每条提问一行（编号 + 问题 + 回答摘录），点哪条就滚到哪条。
+ * 对话大纲（右侧窄条）：每条用户提问一个空心方块。
+ * - 鼠标移到方块上 → 弹出这条问答的简版
+ * - 点击 → 滚到那条消息
  *
- * 之前是窄条上的一排小方块 —— 只能看出"有几轮"，看不出内容。
- * 现在换成常驻侧栏（可收起，开关在顶栏）：
- *   · 问题加粗、回答灰色截断两行；
- *   · 悬停整行高亮，不用额外浮层（浮层在窄列里反而挡视线）。
+ * 只依赖已有的消息数组，不额外拉数据。
  */
-export function ConversationOutline({ messages, hasMoreBefore }: { messages: UiMessage[]; hasMoreBefore: boolean }) {
+export function ConversationOutline({ messages }: { messages: UiMessage[] }) {
+	const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+	/**
+	 * 关闭有个短延迟：鼠标从窄条移到预览面板要跨过 6px 间隙，
+	 * 没延迟的话一离开窄条预览就消失，根本移不进去（更别说点里面的条目）。
+	 */
+	const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const keepOpen = () => {
+		if (closeTimer.current) clearTimeout(closeTimer.current);
+		closeTimer.current = null;
+	};
+	const scheduleClose = () => {
+		keepOpen();
+		closeTimer.current = setTimeout(() => setHoverIndex(null), 160);
+	};
 	const items = buildItems(messages);
 	if (items.length === 0) return null;
 
@@ -41,30 +55,53 @@ export function ConversationOutline({ messages, hasMoreBefore }: { messages: UiM
 		document.getElementById(`msg-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
 	};
 
+	// 悬停时不止显示这一条：上下各带两条，方便看清前后语境（对齐参考实现）
+	const window =
+		hoverIndex === null ? [] : items.slice(Math.max(0, hoverIndex - 2), Math.min(items.length, hoverIndex + 3));
+
 	return (
-		<aside className="outline-panel">
-			<div className="outline-panel-head">
-				<span>对话大纲</span>
-				<span className="outline-count">{items.length}</span>
-			</div>
-			<div className="outline-panel-list">
-				{hasMoreBefore ? <div className="outline-more">更早的轮次还没加载（分页未做）</div> : null}
-				{items.map((item) => (
+		<div className="outline" aria-label="对话大纲">
+			<div className="outline-rail" onMouseLeave={scheduleClose} onMouseEnter={keepOpen}>
+				{items.map((item, index) => (
 					<button
 						type="button"
-						className="outline-entry"
 						key={item.id}
+						className={`outline-dot${hoverIndex === index ? " outline-dot-on" : ""}`}
+						onMouseEnter={() => setHoverIndex(index)}
+						onFocus={() => setHoverIndex(index)}
 						onClick={() => jump(item.id)}
-						title="点击定位到这条消息"
-					>
-						<span className="outline-num mono">{item.index}</span>
-						<span className="outline-body">
-							<span className="outline-q">{item.question}</span>
-							{item.answer ? <span className="outline-a">{item.answer}</span> : null}
-						</span>
-					</button>
+						title={`第 ${item.index} 问`}
+					/>
 				))}
 			</div>
-		</aside>
+			{hoverIndex !== null ? (
+				<div className="outline-preview" onMouseEnter={keepOpen} onMouseLeave={scheduleClose}>
+					{window.map((item) => {
+						const isCurrent = items[hoverIndex]?.id === item.id;
+						return (
+							<button
+								type="button"
+								key={item.id}
+								className={`outline-entry${isCurrent ? " outline-entry-on" : ""}`}
+								onClick={() => jump(item.id)}
+								title="点击定位到这条消息"
+							>
+								<div className="outline-item">
+									<span className="outline-num mono">{String(item.index).padStart(2, "0")}</span>
+									<span className="outline-q">{item.question}</span>
+								</div>
+								{item.answer ? (
+									<div className="outline-item outline-item-answer">
+										<span className="outline-num mono">A</span>
+										<span className="outline-a">{item.answer}</span>
+									</div>
+								) : null}
+							</button>
+						);
+					})}
+					<div className="outline-hint">点击任意一条定位过去</div>
+				</div>
+			) : null}
+		</div>
 	);
 }

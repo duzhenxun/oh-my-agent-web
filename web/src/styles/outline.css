@@ -1,110 +1,133 @@
-/* ---- 右侧「对话大纲」栏（常驻，开关在顶栏）---- */
-.outline-panel {
-	flex: none;
-	width: 260px;
+/* ---- 对话大纲（右侧窄条）---- */
+.workspace {
+	position: relative;
+}
+
+.outline {
+	position: absolute;
+	top: 56px;
+	right: 6px;
+	bottom: 96px;
+	display: flex;
+	flex-direction: row-reverse; /* 预放在窄条左边，避免盖住方块导致点不动 */
+	align-items: flex-start;
+	gap: 6px;
+	z-index: 8;
+	pointer-events: none;
+}
+
+.outline-rail {
+	pointer-events: auto;
 	display: flex;
 	flex-direction: column;
-	min-height: 0;
-	border-left: 1px solid var(--border);
-	background: var(--bg);
+	gap: 7px;
+	padding: 6px 4px;
+	border-radius: 10px;
+	background: color-mix(in srgb, var(--bg-elev) 70%, transparent);
+	max-height: 100%;
+	overflow: auto;
 }
 
-.outline-panel-head {
-	flex: none;
+/* 空心方块：当前悬停的才填色 */
+.outline-dot {
+	width: 9px;
+	height: 9px;
+	padding: 0;
+	border: 1.5px solid var(--text-faint);
+	border-radius: 2px;
+	background: transparent;
+	cursor: pointer;
+}
+
+.outline-dot:hover,
+.outline-dot-on {
+	border-color: var(--accent);
+	background: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+.outline-preview {
+	pointer-events: auto;
+	width: min(420px, 42vw);
+	max-height: 60vh;
+	overflow: auto;
+	padding: 8px 10px;
+	border: 1px solid var(--border-strong, var(--border));
+	border-radius: 10px;
+	background: var(--bg-elev);
+	box-shadow: 0 12px 32px rgb(0 0 0 / 45%);
+}
+
+.outline-item {
 	display: flex;
-	align-items: center;
-	gap: 6px;
-	padding: 7px 12px;
-	border-bottom: 1px solid var(--border);
-	color: var(--text-dim);
-	font-size: 12px;
-	font-weight: 600;
+	gap: 8px;
+	padding: 3px 0;
+	font-size: 12.5px;
 }
 
-.outline-count {
+.outline-item-answer {
+	border-top: 1px solid var(--border);
+	margin-top: 4px;
+	padding-top: 6px;
+	color: var(--text-dim);
+}
+
+.outline-num {
+	flex: none;
+	width: 22px;
 	color: var(--text-faint);
-	font-weight: 400;
 	font-size: 11px;
 }
 
-.outline-panel-list {
-	flex: 1 1 auto;
-	min-height: 0;
-	overflow-y: auto;
-	padding: 4px 0 8px;
+.outline-q {
+	color: var(--text);
 }
 
-.outline-more {
-	padding: 8px 12px;
+.outline-a {
+	color: var(--text-dim);
+}
+
+.outline-hint {
+	margin-top: 6px;
 	color: var(--text-faint);
-	font-size: 11.5px;
-	border-bottom: 1px dashed var(--border);
+	font-size: 11px;
 }
 
-/* 一条问答：编号 + 问题（粗）+ 回答（灰、两行截断） */
+/* 文件区：默认收起时只有一行标题；展开后下拉单独一行 */
+.side-files-closed {
+	flex: none;
+	min-height: 0;
+}
+
+.side-files .side-files-select {
+	width: 100%;
+	flex: none;
+}
+
+/* 侧栏标题不要换行（「最近项目（13）」曾被挤成竖排） */
+.sidebar-title {
+	white-space: nowrap;
+}
+
+/* 大纲预览里的每一条问答（可点击定位）：当前悬停的那条加左侧竖条 */
 .outline-entry {
-	display: flex;
-	gap: 8px;
+	display: block;
 	width: 100%;
 	border: none;
-	border-bottom: 1px solid var(--border);
+	border-left: 2px solid transparent;
 	background: none;
 	color: inherit;
 	font: inherit;
 	text-align: left;
-	padding: 8px 12px;
+	padding: 4px 6px 4px 4px;
 	cursor: pointer;
-	min-width: 0;
+	border-radius: 4px;
 }
 
 .outline-entry:hover {
 	background: var(--bg-elev-2);
 }
 
-.outline-num {
-	flex: none;
-	width: 18px;
-	color: var(--text-faint);
-	font-size: 11px;
-	line-height: 1.6;
-}
-
-.outline-body {
-	flex: 1 1 auto;
-	min-width: 0;
-	display: flex;
-	flex-direction: column;
-	gap: 3px;
-}
-
-.outline-q {
-	color: var(--text);
-	font-size: 12.5px;
-	font-weight: 600;
-	line-height: 1.45;
-	display: -webkit-box;
-	-webkit-line-clamp: 2;
-	-webkit-box-orient: vertical;
-	overflow: hidden;
-}
-
-.outline-a {
-	color: var(--text-faint);
-	font-size: 11.5px;
-	line-height: 1.45;
-	display: -webkit-box;
-	-webkit-line-clamp: 2;
-	-webkit-box-orient: vertical;
-	overflow: hidden;
-}
-
-/* 手机上把大纲栏整屏（与其它弹窗一致） */
-@media (max-width: 900px) {
-	.outline-panel {
-		position: fixed;
-		inset: 0;
-		width: 100% !important;
-		z-index: 30;
-		border-left: none;
-	}
+.outline-entry-on {
+	border-left-color: var(--accent);
+	background: var(--bg-elev-2);
 }

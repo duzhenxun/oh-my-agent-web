@@ -113,6 +113,7 @@ export function App() {
 						上下文 {formatTokens(snapshot.sessionStats.contextTokens)}
 					</span>
 				) : null}
+				<SidebarMenu variant="full" placement="appbar" />
 				<button
 					type="button"
 					className={`chip chip-quiet${outlineOpen ? " chip-on" : ""}`}
@@ -121,16 +122,16 @@ export function App() {
 				>
 					☰ 大纲
 				</button>
-				<button
-					type="button"
-					className={`chip chip-quiet${previewVisible && panelItems.length > 0 ? " chip-on" : ""}`}
-					onClick={() => setPreviewVisible((visible) => !visible)}
-					disabled={panelItems.length === 0}
-					title={panelItems.length === 0 ? "还没有打开文件或终端" : previewVisible ? "收起右侧面板" : "展开右侧面板"}
-				>
-					▤ 面板
-				</button>
-				<SidebarMenu variant="full" placement="appbar" />
+				{panelItems.length > 0 ? (
+					<button
+						type="button"
+						className={`chip chip-quiet${previewVisible ? " chip-on" : ""}`}
+						onClick={() => setPreviewVisible((visible) => !visible)}
+						title={previewVisible ? "收起右侧面板" : "展开右侧面板"}
+					>
+						▤ 面板
+					</button>
+				) : null}
 			</div>
 			<div className="app-main">
 				{collapsed ? (
@@ -216,6 +217,7 @@ export function App() {
 							</button>
 						)}
 					</main>
+					{outlineOpen ? <ConversationOutline messages={messages} /> : null}
 
 					{state.lastError ? <div className="error-bar">{state.lastError}</div> : null}
 					<NoticeBar notices={snapshot?.notices ?? []} />
@@ -227,10 +229,6 @@ export function App() {
 						conversationId={snapshot?.active.conversationId ?? null}
 					/>
 				</div>
-
-				{outlineOpen && panelItems.length === 0 ? (
-					<ConversationOutline messages={messages} hasMoreBefore={snapshot?.active.hasMoreBefore ?? false} />
-				) : null}
 
 				{panelItems.length > 0 && previewVisible ? (
 					<PreviewPanel
