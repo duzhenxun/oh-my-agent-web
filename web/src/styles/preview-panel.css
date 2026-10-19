@@ -1,0 +1,128 @@
+/* ---- 右侧预览面板（第 2 步：多标签 / 收起 / 拖宽 / 全屏）---- */
+.preview-panel {
+	position: relative;
+	flex: none;
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: var(--bg-elev);
+	padding: 6px;
+	gap: 6px;
+}
+
+.preview-panel-full {
+	position: fixed;
+	inset: 10px;
+	width: calc(100vw - 20px) !important;
+	height: calc(100vh - 20px);
+	z-index: 30;
+	box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+}
+
+/* 左边缘的拖拽条（面板在右侧，所以热区在左边） */
+.preview-resizer {
+	position: absolute;
+	top: 0;
+	left: -3px;
+	width: 7px;
+	height: 100%;
+	cursor: col-resize;
+	z-index: 5;
+}
+
+.preview-resizer:hover,
+.preview-resizer:active {
+	background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.preview-tabs {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex: none;
+	overflow-x: auto;
+	min-width: 0;
+}
+
+.preview-tab {
+	display: inline-flex;
+	align-items: center;
+	border: 1px solid var(--border);
+	border-radius: 7px;
+	background: var(--bg);
+	max-width: 180px;
+	min-width: 0;
+}
+
+.preview-tab-on {
+	border-color: var(--accent-dim);
+	background: var(--bg-elev-2);
+}
+
+.preview-tab-name {
+	border: none;
+	background: none;
+	color: var(--text-dim);
+	font: inherit;
+	font-size: 11.5px;
+	padding: 2px 6px;
+	cursor: pointer;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	min-width: 0;
+}
+
+.preview-tab-on .preview-tab-name {
+	color: var(--text);
+}
+
+.preview-tab-x {
+	border: none;
+	background: none;
+	color: var(--text-faint);
+	font: inherit;
+	font-size: 12px;
+	padding: 0 5px;
+	cursor: pointer;
+}
+
+.preview-tab-x:hover {
+	color: var(--red);
+}
+
+.preview-body {
+	flex: 1 1 auto;
+	min-height: 0;
+	display: flex;
+}
+
+.file-viewer {
+	flex: 1 1 auto;
+	min-height: 0;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+/* 收起后的小竖条 */
+.preview-collapsed {
+	flex: none;
+	width: 24px;
+	align-self: stretch;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: var(--bg-elev);
+	color: var(--text-dim);
+	font: inherit;
+	font-size: 14px;
+	cursor: pointer;
+}
+
+.preview-collapsed:hover {
+	color: var(--accent);
+	border-color: var(--accent-dim);
+}

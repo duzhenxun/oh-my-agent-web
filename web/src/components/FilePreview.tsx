@@ -12,6 +12,7 @@ import sql from "highlight.js/lib/languages/sql";
 import typescript from "highlight.js/lib/languages/typescript";
 import xml from "highlight.js/lib/languages/xml";
 import yaml from "highlight.js/lib/languages/yaml";
+import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import {
 	describeRange,
@@ -45,7 +46,12 @@ hljs.registerLanguage("sql", sql);
  *   - **点行号选中、Shift+点行号选范围** → 「添加到对话」写进输入框的是 `@path:10-20` 这种**引用**，
  *     不注入文件内容（ADR-0002 的原则：只给路径引用，模型自己去 read 那几行）。
  */
-export function FilePreview({ path, root, onClose }: { path: string; root?: string | null; onClose: () => void }) {
+/**
+ * 文件内容视图（从原来的 FilePreview 弹窗里抽出来）：
+ * 只管「读文件 + 显示 + 行选中 + 添加到对话」，不再管外壳（弹窗 or 右侧面板）。
+ * `toolbar` 由外壳决定放什么按钮（关闭 / 全屏 / 标签…）。
+ */
+export function FileViewer({ path, root, toolbar }: { path: string; root?: string | null; toolbar?: ReactNode }) {
 	const [state, setState] = useState<{
 		text: string;
 		bytes: number;
@@ -56,26 +62,6 @@ export function FilePreview({ path, root, onClose }: { path: string; root?: stri
 	// md 默认看预览，可切到源码；其它文件只有源码
 	const isMarkdown = /\.(md|markdown)$/i.test(path);
 	const [mode, setMode] = useState<"preview" | "source">(isMarkdown ? "preview" : "source");
-	// 弹窗尺寸：手动拖动改的大小记在 localStorage，下次打开沿用
-	const [size, setSize] = useState<{ w: number; h: number } | null>(() => {
-		try {
-			const raw = JSON.parse(localStorage.getItem("agent-web.preview.size") ?? "null") as {
-				w?: number;
-				h?: number;
-			} | null;
-			return raw && typeof raw.w === "number" && typeof raw.h === "number" ? { w: raw.w, h: raw.h } : null;
-		} catch {
-			return null;
-		}
-	});
-	const [fullscreen, setFullscreen] = useState(false);
-	const saveSize = (element: HTMLElement) => {
-		const rect = element.getBoundingClientRect();
-		const next = { w: Math.round(rect.width), h: Math.round(rect.height) };
-		localStorage.setItem("agent-web.preview.size", JSON.stringify(next));
-		setSize(next);
-	};
-
 	const [anchor, setAnchor] = useState<number | null>(null);
 	const [focus, setFocus] = useState<number | null>(null);
 
@@ -136,131 +122,113 @@ export function FilePreview({ path, root, onClose }: { path: string; root?: stri
 
 	const addToConversation = () => {
 		setDraft(`${referenceFor(path, range)} `);
-		onClose();
+		setAnchor(null);
+		setFocus(null);
 	};
 
 	return (
-		<div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="文件预览">
-			<div
-				className={`modal file-preview${fullscreen ? " file-preview-full" : ""}`}
-				style={fullscreen || !size ? undefined : { width: `${size.w}px`, height: `${size.h}px` }}
-				onMouseUp={(event) => {
-					// 手动拖右下角改尺寸后落盘（resize: both 由 CSS 提供）
-					if (!fullscreen) saveSize(event.currentTarget as HTMLElement);
-				}}
-			>
-				<div className="file-preview-head">
-					<span className="file-preview-path mono">{path}</span>
-					<span className="file-preview-meta">
-						{state ? `${state.bytes} 字节` : "读取中…"}
-						{state?.truncated ? "（已截断）" : ""}
-						{language ? ` · ${language}` : ""}
+		<div className="file-viewer">
+			<div className="file-preview-head">
+				<span className="file-preview-path mono">{path}</span>
+				<span className="file-preview-meta">
+					{state ? `${state.bytes} 字节` : "读取中…"}
+					{state?.truncated ? "（已截断）" : ""}
+					{language ? ` · ${language}` : ""}
+				</span>
+				<span className="topbar-spacer" />
+				{isMarkdown ? (
+					<span className="preview-mode">
+						<button
+							type="button"
+							className={mode === "source" ? "preview-mode-on" : ""}
+							onClick={() => setMode("source")}
+						>
+							源码
+						</button>
+						<button
+							type="button"
+							className={mode === "preview" ? "preview-mode-on" : ""}
+							onClick={() => setMode("preview")}
+						>
+							预览
+						</button>
 					</span>
-					<span className="topbar-spacer" />
-					{isMarkdown ? (
-						<span className="preview-mode">
-							<button
-								type="button"
-								className={mode === "source" ? "preview-mode-on" : ""}
-								onClick={() => setMode("source")}
-							>
-								源码
-							</button>
-							<button
-								type="button"
-								className={mode === "preview" ? "preview-mode-on" : ""}
-								onClick={() => setMode("preview")}
-							>
-								预览
-							</button>
-						</span>
-					) : null}
-					<button
-						type="button"
-						className="btn btn-tiny"
-						onClick={() => setFullscreen((value) => !value)}
-						title={fullscreen ? "退出全屏" : "全屏"}
-					>
-						{fullscreen ? "⤡" : "⛶"}
-					</button>
-					<span className="file-preview-selection">{describeRange(range)}</span>
-					<button
-						type="button"
-						className="btn btn-tiny"
-						onClick={addToConversation}
-						title="把这段引用插到输入框（不注入内容）"
-					>
-						添加到对话
-					</button>
-					<button
-						type="button"
-						className="btn btn-tiny"
-						onClick={() => {
-							setAnchor(null);
-							setFocus(null);
-						}}
-						disabled={range === null}
-					>
-						清除
-					</button>
-					<button type="button" className="btn btn-tiny" onClick={onClose}>
-						关闭
-					</button>
-				</div>
-				{state?.error ? <div className="file-preview-error">{state.error}</div> : null}
-				{state?.binary ? <div className="file-preview-error">这是二进制文件，不能预览</div> : null}
-				{state && !state.binary && !state.error && isMarkdown && mode === "preview" ? (
-					<div className="file-preview-md">
-						<Markdown text={state.text} />
-					</div>
 				) : null}
-				{state && !state.binary && !state.error && !(isMarkdown && mode === "preview") ? (
-					<pre className="file-preview-body mono">
-						{lines.map((line, index) => {
-							const selected = range !== null && index + 1 >= range.start && index + 1 <= range.end;
-							const html = highlighted[index];
-							return (
-								<div
-									className={`file-preview-line file-preview-line-clickable${selected ? " file-preview-line-on" : ""}`}
-									key={index}
-									title="点选中这一行（Shift+点选范围，双击直接加到对话）"
-									onClick={() => {
-										// 用户正在选文字时不抢选择（否则复制粘贴会失效）
-										if (!window.getSelection()?.isCollapsed) return;
+				<span className="file-preview-selection">{describeRange(range)}</span>
+				<button
+					type="button"
+					className="btn btn-tiny"
+					onClick={addToConversation}
+					title="把这段引用插到输入框（不注入内容）"
+				>
+					添加到对话
+				</button>
+				<button
+					type="button"
+					className="btn btn-tiny"
+					onClick={() => {
+						setAnchor(null);
+						setFocus(null);
+					}}
+					disabled={range === null}
+				>
+					清除
+				</button>
+				{toolbar}
+			</div>
+			{state?.error ? <div className="file-preview-error">{state.error}</div> : null}
+			{state?.binary ? <div className="file-preview-error">这是二进制文件，不能预览</div> : null}
+			{state && !state.binary && !state.error && isMarkdown && mode === "preview" ? (
+				<div className="file-preview-md">
+					<Markdown text={state.text} />
+				</div>
+			) : null}
+			{state && !state.binary && !state.error && !(isMarkdown && mode === "preview") ? (
+				<pre className="file-preview-body mono">
+					{lines.map((line, index) => {
+						const selected = range !== null && index + 1 >= range.start && index + 1 <= range.end;
+						const html = highlighted[index];
+						return (
+							<div
+								className={`file-preview-line file-preview-line-clickable${selected ? " file-preview-line-on" : ""}`}
+								key={index}
+								title="点选中这一行（Shift+点选范围，双击直接加到对话）"
+								onClick={() => {
+									// 用户正在选文字时不抢选择（否则复制粘贴会失效）
+									if (!window.getSelection()?.isCollapsed) return;
+									setAnchor(index);
+									setFocus(index);
+								}}
+								onDoubleClick={() => setDraft(`${referenceFor(path, { start: index + 1, end: index + 1 })} `)}
+							>
+								<button
+									type="button"
+									className="file-preview-no"
+									title="点选这一行（Shift+点选范围）"
+									onClick={(event) => {
+										if (event.shiftKey && anchor !== null) {
+											setFocus(index);
+											return;
+										}
 										setAnchor(index);
 										setFocus(index);
 									}}
-									onDoubleClick={() => setDraft(`${referenceFor(path, { start: index + 1, end: index + 1 })} `)}
 								>
-									<button
-										type="button"
-										className="file-preview-no"
-										title="点选这一行（Shift+点选范围）"
-										onClick={(event) => {
-											if (event.shiftKey && anchor !== null) {
-												setFocus(index);
-												return;
-											}
-											setAnchor(index);
-											setFocus(index);
-										}}
-									>
-										{index + 1}
-									</button>
-									{html !== undefined ? (
-										<span className="file-preview-text" dangerouslySetInnerHTML={{ __html: html || " " }} />
-									) : (
-										<span className="file-preview-text">{line || " "}</span>
-									)}
-								</div>
-							);
-						})}
-					</pre>
-				) : null}
-				{lines.length > MAX_HIGHLIGHT_LINES && language !== "" ? (
-					<div className="file-preview-hint">文件较大（{lines.length} 行），已关闭语法高亮以保证流畅</div>
-				) : null}
-			</div>
+									{index + 1}
+								</button>
+								{html !== undefined ? (
+									<span className="file-preview-text" dangerouslySetInnerHTML={{ __html: html || " " }} />
+								) : (
+									<span className="file-preview-text">{line || " "}</span>
+								)}
+							</div>
+						);
+					})}
+				</pre>
+			) : null}
+			{lines.length > MAX_HIGHLIGHT_LINES && language !== "" ? (
+				<div className="file-preview-hint">文件较大（{lines.length} 行），已关闭语法高亮以保证流畅</div>
+			) : null}
 		</div>
 	);
 }

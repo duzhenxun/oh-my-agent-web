@@ -5,7 +5,7 @@ import { useAppState } from "./store.ts";
 import { ApprovalDialog, NoticeBar } from "./components/ApprovalDialog.tsx";
 import { Composer } from "./components/Composer.tsx";
 import { MessageList } from "./components/MessageList.tsx";
-import { FilePreview } from "./components/FilePreview.tsx";
+import { PreviewPanel, type OpenFile } from "./components/PreviewPanel.tsx";
 import { TerminalPanel } from "./components/TerminalPanel.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
 import { SidebarMenu } from "./components/SidebarMenu.tsx";
@@ -30,7 +30,6 @@ export function App() {
 	// 文件面板（M4）：跟着当前会话的工作区走
 	const [terminalOpen, setTerminalOpen] = useState(false);
 	const [terminalCwd, setTerminalCwd] = useState<string | null>(null);
-	const [fileRoot, setFileRoot] = useState<string | null>(null);
 	// 侧栏：可收起 + 可拖宽（状态存 localStorage，刷新后保持）
 	const [collapsed, setCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1");
 	const [pendingPanel, setPendingPanel] = useState<"models" | "skills" | "settings" | null>(null);
@@ -62,7 +61,8 @@ export function App() {
 		document.addEventListener("pointermove", onMove);
 		document.addEventListener("pointerup", onUp);
 	};
-	const [previewPath, setPreviewPath] = useState<string | null>(null);
+	const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
+	const [activeFile, setActiveFile] = useState<string | null>(null);
 	const state = useAppState();
 	const snapshot = state.snapshot;
 	const messages = snapshot?.active.messages ?? [];
@@ -112,8 +112,12 @@ export function App() {
 							setTerminalOpen(true);
 						}}
 						onOpenFile={(path, root) => {
-							setFileRoot(root || null);
-							setPreviewPath(path);
+							setOpenFiles((current) =>
+								current.some((file) => file.path === path && file.root === root)
+									? current
+									: [...current, { path, root }],
+							);
+							setActiveFile(path);
 						}}
 					/>
 					{/* 拖拽条：右边边缘 6px，双击回到默认宽度 */}
@@ -195,11 +199,19 @@ export function App() {
 				/>
 			) : null}
 
-			{previewPath ? (
-				<FilePreview
-					path={previewPath}
-					root={fileRoot ?? snapshot?.files?.root ?? null}
-					onClose={() => setPreviewPath(null)}
+			{openFiles.length > 0 ? (
+				<PreviewPanel
+					files={openFiles}
+					activePath={activeFile ?? openFiles[0].path}
+					onActivate={setActiveFile}
+					onCloseFile={(path) => {
+						setOpenFiles((current) => current.filter((file) => file.path !== path));
+						if (activeFile === path) setActiveFile(null);
+					}}
+					onCloseAll={() => {
+						setOpenFiles([]);
+						setActiveFile(null);
+					}}
 				/>
 			) : null}
 
