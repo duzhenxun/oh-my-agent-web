@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FileViewer } from "./FilePreview.tsx";
+import { TerminalPanel } from "./TerminalPanel.tsx";
 
-export type OpenFile = { path: string; root: string };
+/** 右侧面板里的一个标签：文件或终端（终端也复用这块地方，标签上写明） */
+export type PanelItem =
+	{ id: string; kind: "file"; path: string; root: string } | { id: string; kind: "terminal"; cwd: string | null };
 
 const WIDTH_KEY = "agent-web.preview.width";
 const MIN_WIDTH = 360;
@@ -19,16 +22,16 @@ function readWidth(): number {
  * 改代码时对照着看更自然。行选中/添加到对话的能力沿用 FileViewer。
  */
 export function PreviewPanel({
-	files,
-	activePath,
+	items,
+	activeId,
 	onActivate,
-	onCloseFile,
+	onCloseItem,
 	onCloseAll,
 }: {
-	files: OpenFile[];
-	activePath: string;
-	onActivate: (path: string) => void;
-	onCloseFile: (path: string) => void;
+	items: PanelItem[];
+	activeId: string;
+	onActivate: (id: string) => void;
+	onCloseItem: (id: string) => void;
 	onCloseAll: () => void;
 }) {
 	const [width, setWidth] = useState(readWidth);
@@ -64,7 +67,7 @@ export function PreviewPanel({
 		localStorage.setItem(WIDTH_KEY, String(width));
 	}, [width]);
 
-	const active = files.find((file) => file.path === activePath) ?? files[0];
+	const active = items.find((item) => item.id === activeId) ?? items[0];
 
 	if (collapsed) {
 		return (
@@ -81,22 +84,18 @@ export function PreviewPanel({
 		>
 			{fullscreen ? null : <div className="preview-resizer" onPointerDown={startResize} title="拖动调整宽度" />}
 			<div className="preview-tabs">
-				{files.map((file) => {
-					const label = file.path.split("/").filter(Boolean).pop() ?? file.path;
+				{items.map((item) => {
+					const label =
+						item.kind === "terminal"
+							? `⌨ 终端${item.cwd ? ` · ${item.cwd.split("/").filter(Boolean).pop()}` : ""}`
+							: (item.path.split("/").filter(Boolean).pop() ?? item.path);
+					const title = item.kind === "terminal" ? (item.cwd ?? "终端") : item.path;
 					return (
-						<span
-							className={`preview-tab${file.path === active?.path ? " preview-tab-on" : ""}`}
-							key={`${file.root}:${file.path}`}
-						>
-							<button
-								type="button"
-								className="preview-tab-name"
-								onClick={() => onActivate(file.path)}
-								title={file.path}
-							>
+						<span className={`preview-tab${item.id === active?.id ? " preview-tab-on" : ""}`} key={item.id}>
+							<button type="button" className="preview-tab-name" onClick={() => onActivate(item.id)} title={title}>
 								{label}
 							</button>
-							<button type="button" className="preview-tab-x" onClick={() => onCloseFile(file.path)} title="关闭">
+							<button type="button" className="preview-tab-x" onClick={() => onCloseItem(item.id)} title="关闭">
 								×
 							</button>
 						</span>
@@ -119,7 +118,10 @@ export function PreviewPanel({
 				</button>
 			</div>
 			<div className="preview-body">
-				{active ? <FileViewer key={`${active.root}:${active.path}`} path={active.path} root={active.root} /> : null}
+				{active?.kind === "file" ? <FileViewer key={active.id} path={active.path} root={active.root} /> : null}
+				{active?.kind === "terminal" ? (
+					<TerminalPanel key={active.id} cwd={active.cwd} embedded onClose={() => onCloseItem(active.id)} />
+				) : null}
 			</div>
 		</aside>
 	);

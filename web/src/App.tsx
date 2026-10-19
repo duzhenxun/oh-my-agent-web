@@ -5,7 +5,7 @@ import { useAppState } from "./store.ts";
 import { ApprovalDialog, NoticeBar } from "./components/ApprovalDialog.tsx";
 import { Composer } from "./components/Composer.tsx";
 import { MessageList } from "./components/MessageList.tsx";
-import { PreviewPanel, type OpenFile } from "./components/PreviewPanel.tsx";
+import { PreviewPanel, type PanelItem } from "./components/PreviewPanel.tsx";
 import { TerminalPanel } from "./components/TerminalPanel.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
 import { SidebarMenu } from "./components/SidebarMenu.tsx";
@@ -61,8 +61,10 @@ export function App() {
 		document.addEventListener("pointermove", onMove);
 		document.addEventListener("pointerup", onUp);
 	};
-	const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
-	const [activeFile, setActiveFile] = useState<string | null>(null);
+	// 右侧面板的标签：文件与终端共用（终端也在右侧，标签上标出来）
+	const [panelItems, setPanelItems] = useState<PanelItem[]>([]);
+	const [activeItem, setActiveItem] = useState<string | null>(null);
+	const [termSeq, setTermSeq] = useState(0);
 	const state = useAppState();
 	const snapshot = state.snapshot;
 	const messages = snapshot?.active.messages ?? [];
@@ -108,16 +110,17 @@ export function App() {
 							snapshot?.running.status === "idle" ? null : (snapshot?.running.conversationId ?? null)
 						}
 						onOpenTerminal={(cwd) => {
-							setTerminalCwd(cwd);
-							setTerminalOpen(true);
+							const id = `term:${termSeq}:${cwd}`;
+							setTermSeq((value) => value + 1);
+							setPanelItems((current) => [...current, { id, kind: "terminal", cwd }]);
+							setActiveItem(id);
 						}}
 						onOpenFile={(path, root) => {
-							setOpenFiles((current) =>
-								current.some((file) => file.path === path && file.root === root)
-									? current
-									: [...current, { path, root }],
+							const id = `file:${root}:${path}`;
+							setPanelItems((current) =>
+								current.some((item) => item.id === id) ? current : [...current, { id, kind: "file", path, root }],
 							);
-							setActiveFile(path);
+							setActiveItem(id);
 						}}
 					/>
 					{/* 拖拽条：右边边缘 6px，双击回到默认宽度 */}
@@ -199,18 +202,18 @@ export function App() {
 				/>
 			) : null}
 
-			{openFiles.length > 0 ? (
+			{panelItems.length > 0 ? (
 				<PreviewPanel
-					files={openFiles}
-					activePath={activeFile ?? openFiles[0].path}
-					onActivate={setActiveFile}
-					onCloseFile={(path) => {
-						setOpenFiles((current) => current.filter((file) => file.path !== path));
-						if (activeFile === path) setActiveFile(null);
+					items={panelItems}
+					activeId={activeItem ?? panelItems[0]?.id ?? ""}
+					onActivate={setActiveItem}
+					onCloseItem={(id) => {
+						setPanelItems((current) => current.filter((item) => item.id !== id));
+						if (activeItem === id) setActiveItem(null);
 					}}
 					onCloseAll={() => {
-						setOpenFiles([]);
-						setActiveFile(null);
+						setPanelItems([]);
+						setActiveItem(null);
 					}}
 				/>
 			) : null}

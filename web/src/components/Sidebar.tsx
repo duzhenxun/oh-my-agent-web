@@ -336,6 +336,17 @@ export function Sidebar({
 			<section className="side-files">
 				<div className="side-files-head">
 					<span className="side-files-title">文件</span>
+					<button
+						type="button"
+						className="side-files-term"
+						title="在右侧打开当前项目的终端"
+						onClick={() => {
+							const target = treeRoot ?? currentRoot;
+							if (target) onOpenTerminal?.(target);
+						}}
+					>
+						&gt;_
+					</button>
 					<select
 						className="side-files-select"
 						value={treeRoot ?? currentRoot ?? ""}

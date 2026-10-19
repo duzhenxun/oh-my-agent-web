@@ -11,7 +11,15 @@ import "@xterm/xterm/css/xterm.css";
  *   2. SSE 读输出、键盘输入 POST 回去、尺寸变化报给服务端（否则 vim 显示会错位）；
  *   3. 关闭时 POST /api/terminal/stop，**不留孤儿 shell**。
  */
-export function TerminalPanel({ cwd, onClose }: { cwd?: string | null; onClose: () => void }) {
+export function TerminalPanel({
+	cwd,
+	embedded,
+	onClose,
+}: {
+	cwd?: string | null;
+	embedded?: boolean;
+	onClose: () => void;
+}) {
 	const hostRef = useRef<HTMLDivElement>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [ready, setReady] = useState(false);
@@ -88,7 +96,7 @@ export function TerminalPanel({ cwd, onClose }: { cwd?: string | null; onClose: 
 	}, [cwd]);
 
 	return (
-		<aside className="terminal-panel">
+		<aside className={`terminal-panel${embedded ? " terminal-panel-embedded" : ""}`}>
 			<div className="terminal-head">
 				<span>⌨ 终端{cwd ? ` · ${cwd.split("/").filter(Boolean).pop()}` : ""}</span>
 				{ready ? (
