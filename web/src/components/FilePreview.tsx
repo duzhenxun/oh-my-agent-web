@@ -129,7 +129,9 @@ export function FileViewer({ path, root, toolbar }: { path: string; root?: strin
 	return (
 		<div className="file-viewer">
 			<div className="file-preview-head">
-				<span className="file-preview-path mono">{path}</span>
+				<span className="file-preview-path mono" title={path}>
+					{path.split("/").filter(Boolean).pop() ?? path}
+				</span>
 				<span className="file-preview-meta">
 					{state ? `${state.bytes} 字节` : "读取中…"}
 					{state?.truncated ? "（已截断）" : ""}

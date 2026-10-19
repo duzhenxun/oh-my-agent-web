@@ -288,3 +288,17 @@
 .file-preview-line-clickable:hover {
 	background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
+
+/* 头部只显示文件名（完整路径放 title），并让「源码/预览」不被挤成两行 */
+.file-preview-path {
+	flex: 0 1 auto;
+	min-width: 0;
+	max-width: 42%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.preview-mode button {
+	white-space: nowrap;
+}
