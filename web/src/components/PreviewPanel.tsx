@@ -90,14 +90,29 @@ export function PreviewPanel({
 			{fullscreen ? null : <div className="preview-resizer" onPointerDown={startResize} title="拖动调整宽度" />}
 			<div className="preview-tabs">
 				{items.map((item) => {
+					const icon =
+						item.kind === "terminal"
+							? ">_"
+							: /\.[jt]sx?$/i.test(item.path)
+								? "TS"
+								: /\.json$/i.test(item.path)
+									? "{}"
+									: /\.md$/i.test(item.path)
+										? "M↓"
+										: /\.(png|jpe?g|gif|webp|avif|svg)$/i.test(item.path)
+											? "IMG"
+											: "▤";
 					const label =
 						item.kind === "terminal"
-							? `⌨ 终端${item.cwd ? ` · ${item.cwd.split("/").filter(Boolean).pop()}` : ""}`
+							? item.cwd
+								? (item.cwd.split("/").filter(Boolean).pop() ?? "终端")
+								: "终端"
 							: (item.path.split("/").filter(Boolean).pop() ?? item.path);
 					const title = item.kind === "terminal" ? (item.cwd ?? "终端") : item.path;
 					return (
 						<span className={`preview-tab${item.id === active?.id ? " preview-tab-on" : ""}`} key={item.id}>
 							<button type="button" className="preview-tab-name" onClick={() => onActivate(item.id)} title={title}>
+								<span className="preview-tab-icon">{icon}</span>
 								{label}
 							</button>
 							<button type="button" className="preview-tab-x" onClick={() => onCloseItem(item.id)} title="关闭">

@@ -61,6 +61,11 @@ export function FileViewer({ path, root, toolbar }: { path: string; root?: strin
 	} | null>(null);
 	// md 默认看预览，可切到源码；其它文件只有源码
 	const isMarkdown = /\.(md|markdown)$/i.test(path);
+	// 图片走 /api/files/raw 直接显示（原来一律当"二进制不能预览"，图片也没法看）
+	const isImage = /\.(png|jpe?g|gif|webp|avif|svg|bmp|ico)$/i.test(path);
+	const imageSrc = isImage
+		? `/api/files/raw?path=${encodeURIComponent(path)}${root ? `&root=${encodeURIComponent(root)}` : ""}`
+		: null;
 	const [mode, setMode] = useState<"preview" | "source">(isMarkdown ? "preview" : "source");
 	const [anchor, setAnchor] = useState<number | null>(null);
 	const [focus, setFocus] = useState<number | null>(null);
@@ -101,7 +106,7 @@ export function FileViewer({ path, root, toolbar }: { path: string; root?: strin
 		return () => {
 			cancelled = true;
 		};
-	}, [path, root]);
+	}, [path, root, imageSrc]);
 
 	const language = languageOf(path);
 	const lines = state && !state.binary && !state.error ? state.text.split("\n") : [];
@@ -179,7 +184,12 @@ export function FileViewer({ path, root, toolbar }: { path: string; root?: strin
 				{toolbar}
 			</div>
 			{state?.error ? <div className="file-preview-error">{state.error}</div> : null}
-			{state?.binary ? <div className="file-preview-error">这是二进制文件，不能预览</div> : null}
+			{imageSrc ? (
+				<div className="file-image-wrap">
+					<img className="file-image" src={imageSrc} alt={path} />
+				</div>
+			) : null}
+			{state?.binary && imageSrc === null ? <div className="file-preview-error">这是二进制文件，不能预览</div> : null}
 			{state && !state.binary && !state.error && isMarkdown && mode === "preview" ? (
 				<div className="file-preview-md">
 					<Markdown text={state.text} />
