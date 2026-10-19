@@ -25,6 +25,12 @@ export function Composer({ running, conversationId }: { running: boolean; conver
 	const [pending, setPending] = useState<AttachmentRef[]>([]);
 	const [uploading, setUploading] = useState(false);
 	const [uploadError, setUploadError] = useState<string | null>(null);
+	/**
+	 * 刚通过「引导 / 排队」发出去的消息（本地记录，仅用于界面上"已排队"那一条）。
+	 * 服务端的队列不逐个下发（只有 queuedCount），所以这里记的是**用户发过什么**，
+	 * 而不是服务端队列的权威镜像 —— 点「移回输入框」只是把文字拿回来。
+	 */
+	const [sent, setSent] = useState<{ id: number; mode: "steer" | "queue"; text: string }[]>([]);
 	const inputRef = useRef<HTMLTextAreaElement>(null);
 
 	const quickPhrases = snapshot?.settings.quickPhrasesEnabled ? (snapshot?.settings.quickPhrases ?? []) : [];
@@ -70,6 +76,7 @@ export function Composer({ running, conversationId }: { running: boolean; conver
 		if (running && mode === "now") return;
 		// 图片引用写进正文（刷新后仍显示）；附件本体走 references
 		sendMessage(value + imagesMarkdown(pending), pending.length > 0 ? pending : undefined, mode);
+		if (mode !== "now") setSent((current) => [...current, { id: Date.now() + Math.random(), mode, text: value }]);
 		setDraft("");
 		if (inputRef.current) inputRef.current.style.height = "auto";
 		setPending([]);
@@ -78,6 +85,33 @@ export function Composer({ running, conversationId }: { running: boolean; conver
 
 	return (
 		<div className="composer-wrap">
+			{sent.length > 0 ? (
+				<div className="sent-queue">
+					<div className="sent-queue-head">
+						<span>已排队 · {sent.length}</span>
+						<span className="topbar-spacer" />
+						<button
+							type="button"
+							className="btn btn-tiny"
+							title="把这些文字放回输入框"
+							onClick={() => {
+								setDraft(sent.map((item) => item.text).join("\n"));
+								setSent([]);
+								inputRef.current?.focus();
+							}}
+						>
+							↩ 移回输入框
+						</button>
+					</div>
+					{sent.map((item) => (
+						<div className="sent-item" key={item.id}>
+							<span className={`sent-tag sent-tag-${item.mode}`}>{item.mode === "steer" ? "steer" : "follow-up"}</span>
+							<span className="sent-text">{item.text}</span>
+						</div>
+					))}
+				</div>
+			) : null}
+
 			{quickPhrases.length > 0 ? (
 				<div className="quick-row">
 					{quickPhrases.map((phrase) => (
