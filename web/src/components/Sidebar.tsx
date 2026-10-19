@@ -5,7 +5,7 @@ import type { ConversationMeta, PiProject, ProjectPrefs } from "../types.ts";
 import { sortProjects } from "../project-sort.ts";
 import { newChat, setSettings, switchConversation } from "../ws.ts";
 import { NewProjectDialog } from "./NewProjectDialog.tsx";
-import { ArchivedSessions } from "./ArchivedSessions.tsx";
+import { ArchivedSection } from "./ArchivedSection.tsx";
 import { groupArchived, isProjectOpen } from "../archived-groups.ts";
 import { SessionRow } from "./SessionRow.tsx";
 import { SidebarFiles } from "./SidebarFiles.tsx";
@@ -161,7 +161,7 @@ export function Sidebar({
 				) : null}
 			</div>
 
-			<div className="sidebar-list">
+			<div className={`sidebar-list${archivedView ? " sidebar-list-hidden" : ""}`}>
 				{groups.length === 0 ? <div className="sidebar-empty">还没有会话。发一条消息就会自动建一个。</div> : null}
 				{groups.map((project, index) => {
 					const expanded = showAll[project.cwd] === true;
@@ -349,24 +349,19 @@ export function Sidebar({
 					);
 				})}
 			</div>
-			{!archivedView && archivedGroups.length > 0 ? (
-				<button type="button" className="archived-entry" onClick={() => setArchivedView(true)} title="查看已归档的会话">
-					🗄 已归档 · {archivedGroups.reduce((sum, group) => sum + group.items.length, 0)}
-				</button>
-			) : null}
-			{archivedView ? (
-				<ArchivedSessions
-					groups={archivedGroups}
-					onBack={() => setArchivedView(false)}
-					onOpen={(id) => {
-						void switchConversation(id);
-						setArchivedView(false);
-					}}
-					onRestore={(id) => patchSessionPrefs({ archived: sessionPrefs.archived.filter((item) => item !== id) })}
-				/>
-			) : null}
+			<ArchivedSection
+				groups={archivedGroups}
+				view={archivedView}
+				onEnter={() => setArchivedView(true)}
+				onBack={() => setArchivedView(false)}
+				onOpen={(id) => {
+					void switchConversation(id);
+					setArchivedView(false);
+				}}
+				onRestore={(id) => patchSessionPrefs({ archived: sessionPrefs.archived.filter((item) => item !== id) })}
+			/>
 			{/* 分隔条：按住上下拖 = 改文件区高度 */}
-			{fileOpen ? (
+			{fileOpen && !archivedView ? (
 				<div
 					className="side-split"
 					role="separator"
@@ -376,22 +371,24 @@ export function Sidebar({
 					onDoubleClick={split.reset}
 				/>
 			) : null}
-			<SidebarFiles
-				open={fileOpen}
-				onToggle={() => setFileOpen((open) => !open)}
-				height={split.height}
-				root={treeRoot ?? currentRoot ?? null}
-				onRootChange={setTreeRoot}
-				options={groups.map((project) => ({
-					cwd: project.cwd,
-					label: aliases[project.cwd] || project.name || project.cwd,
-				}))}
-				onOpenFile={(path) => onOpenFile?.(path, treeRoot ?? currentRoot ?? "")}
-				onOpenTerminal={() => {
-					const target = treeRoot ?? currentRoot;
-					if (target) onOpenTerminal?.(target);
-				}}
-			/>
+			{archivedView ? null : (
+				<SidebarFiles
+					open={fileOpen}
+					onToggle={() => setFileOpen((open) => !open)}
+					height={split.height}
+					root={treeRoot ?? currentRoot ?? null}
+					onRootChange={setTreeRoot}
+					options={groups.map((project) => ({
+						cwd: project.cwd,
+						label: aliases[project.cwd] || project.name || project.cwd,
+					}))}
+					onOpenFile={(path) => onOpenFile?.(path, treeRoot ?? currentRoot ?? "")}
+					onOpenTerminal={() => {
+						const target = treeRoot ?? currentRoot;
+						if (target) onOpenTerminal?.(target);
+					}}
+				/>
+			)}
 
 			{newProjectOpen ? <NewProjectDialog onClose={() => setNewProjectOpen(false)} /> : null}
 		</aside>
