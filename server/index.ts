@@ -30,7 +30,7 @@ import { createProviderWiring } from "./providers/provider-handlers.js";
 import { probeProvider } from "./providers/probe.js";
 import { createProviderStore } from "./providers/provider-store.js";
 import { registerFileRoutes } from "./files/files-routes.js";
-import { registerSkillRoutes } from "./skills/skill-routes.js";
+import { registerAuxRoutes } from "./http/aux-routes.js";
 import { registerHealthAndStatic } from "./http/health-and-static.js";
 import { registerUploadRoutes } from "./uploads/upload-routes.js";
 import { readConfig, validateConfig } from "./util/env.js";
@@ -138,7 +138,6 @@ const runtime = createRuntime({
 	emit: {
 		snapshot: (snapshot) => sender.pushSnapshot(snapshot),
 		event: (event) => {
-			// 事件与应答绝不丢（ADR-0004 §4）
 			broadcast(JSON.stringify(event));
 		},
 	},
@@ -172,9 +171,10 @@ const uploadStore = createUploadStore({ dataDir: config.dataDir }); // 附件上
 
 registerUploadRoutes(app, { uploadStore, logger });
 
-registerSkillRoutes(app); // 技能目录（P8）：不是会话状态，走 HTTP 不进快照
-
-// 文件浏览（M4）：只读，跟着当前会话的工作区走
+registerAuxRoutes(app, {
+	providerStore,
+	onChange: () => void runProviderRequest({ type: "list_providers" }, () => {}),
+});
 registerFileRoutes(app, { workspaceOf: () => runtime.state().files?.root ?? config.workspace });
 
 registerHealthAndStatic(app, {

@@ -315,3 +315,53 @@
 	min-width: 0;
 	padding: 1px 0;
 }
+
+/* 导入模型（ADR-0026 B 期） */
+.import-models {
+	gap: 8px;
+}
+
+.import-list {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	overflow: auto;
+	min-height: 0;
+	flex: 1 1 auto;
+	max-height: 46vh;
+}
+
+.import-row {
+	display: flex;
+	align-items: center;
+	gap: 7px;
+	font-size: 12px;
+	color: var(--text-dim);
+	padding: 2px 4px;
+	border-radius: 6px;
+	cursor: pointer;
+}
+
+.import-row:hover {
+	background: var(--bg-elev-2);
+}
+
+.import-row-done {
+	opacity: 0.5;
+	cursor: default;
+}
+
+.import-id {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.import-foot {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex: none;
+}

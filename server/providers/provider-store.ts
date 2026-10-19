@@ -49,6 +49,14 @@ export type ProviderStore = {
 	 */
 	updateModel: (provider: string, spec: ModelSpec) => Promise<{ ok: true } | { ok: false; error: string }>;
 	/**
+	 * 批量导入模型（ADR-0026 B 期）：只追加**不存在**的 id，已有的跳过（不覆盖用户填过的规格）。
+	 * api / baseUrl 沿用该 provider 现有条目；一个都没有时要求调用方先做一次 provider 级保存。
+	 */
+	addModels: (
+		provider: string,
+		ids: string[],
+	) => Promise<{ ok: true; added: string[]; skipped: string[] } | { ok: false; error: string }>;
+	/**
 	 * 读明文 key —— **只给服务端内部用**（例如连通性测试发请求）。
 	 * 绝不能挂到任何返回给前端的路径上；协议里没有、也不会有对应字段。
 	 */
@@ -154,6 +162,33 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 			models[provider] = { ...entry, models: models2, lastModified: options.now() };
 			await writeJsonPrivate(modelsPath, models);
 			return { ok: true };
+		},
+
+		async addModels(provider, ids) {
+			const models = await readJson<ModelsStore>(modelsPath, {});
+			const entry = models[provider];
+			if (!entry) return { ok: false, error: `没有这个 provider：${provider}` };
+			const list = Array.isArray(entry.models) ? entry.models : [];
+			const template = list.find((model) => typeof model.api === "string" && typeof model.baseUrl === "string");
+			if (!template)
+				return { ok: false, error: "这个 provider 还没有可参考的 api / baseUrl（先保存一次 provider 配置）" };
+			const existing = new Set(list.map((model) => model.id));
+			const added: string[] = [];
+			const skipped: string[] = [];
+			const nextList = [...list];
+			for (const id of ids) {
+				if (existing.has(id)) {
+					skipped.push(id);
+					continue;
+				}
+				existing.add(id);
+				added.push(id);
+				nextList.push({ id, name: id, api: template.api, baseUrl: template.baseUrl, provider });
+			}
+			if (added.length === 0) return { ok: true, added, skipped };
+			models[provider] = { ...entry, models: nextList, lastModified: options.now() };
+			await writeJsonPrivate(modelsPath, models);
+			return { ok: true, added, skipped };
 		},
 
 		async remove(provider) {

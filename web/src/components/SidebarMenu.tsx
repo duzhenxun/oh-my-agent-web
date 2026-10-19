@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { groupModels } from "../model-groups.ts";
 import { useAppState } from "../store.ts";
 import type { ProviderView } from "../types.ts";
+import { ImportModels } from "./ImportModels.tsx";
 import { ModelEditor } from "./ModelEditor.tsx";
 import { ProviderForm } from "./ProviderForm.tsx";
 import { deleteProvider, testProvider } from "../ws.ts";
@@ -26,6 +27,7 @@ export function SidebarMenu() {
 	const [adding, setAdding] = useState(false);
 	const [editingProvider, setEditingProvider] = useState<string | null>(null);
 	const [editingModel, setEditingModel] = useState<{ provider: ProviderView; modelId: string } | null>(null);
+	const [importing, setImporting] = useState<ProviderView | null>(null);
 	const configured: ProviderView[] = snapshot?.providers ?? [];
 	const models = snapshot?.models ?? [];
 	const groups = groupModels(models);
@@ -191,6 +193,14 @@ export function SidebarMenu() {
 											) : (
 												<div className="side-panel-hint">还没有自己配置的 provider</div>
 											)}
+											{importing ? (
+												<ImportModels
+													provider={importing}
+													onClose={() => setImporting(null)}
+													onImported={() => setImporting(null)}
+												/>
+											) : null}
+
 											{editingModel ? (
 												<ModelEditor
 													provider={editingModel.provider}
