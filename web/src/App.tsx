@@ -26,8 +26,6 @@ export function App() {
 	const [collapsed, setCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1");
 	const [pendingPanel, setPendingPanel] = useState<"models" | "skills" | "settings" | null>(null);
 	const [previewVisible, setPreviewVisible] = useState(true);
-	// 右侧对话大纲（开关在顶栏）
-	const [outlineOpen, setOutlineOpen] = useState(true);
 	const [sideWidth, setSideWidth] = useState(() => readStoredWidth(localStorage.getItem(SIDEBAR_WIDTH_KEY)));
 	const dragging = useRef(false);
 
@@ -114,14 +112,6 @@ export function App() {
 					</span>
 				) : null}
 				<SidebarMenu variant="full" placement="appbar" />
-				<button
-					type="button"
-					className={`chip chip-quiet${outlineOpen ? " chip-on" : ""}`}
-					onClick={() => setOutlineOpen((open) => !open)}
-					title={outlineOpen ? "收起对话大纲" : "展开对话大纲"}
-				>
-					☰ 大纲
-				</button>
 				{panelItems.length > 0 ? (
 					<button
 						type="button"
@@ -217,7 +207,7 @@ export function App() {
 							</button>
 						)}
 					</main>
-					{outlineOpen ? <ConversationOutline messages={messages} /> : null}
+					<ConversationOutline messages={messages} />
 
 					{state.lastError ? <div className="error-bar">{state.lastError}</div> : null}
 					<NoticeBar notices={snapshot?.notices ?? []} />
