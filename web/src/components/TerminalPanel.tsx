@@ -131,18 +131,16 @@ export function TerminalPanel({
 
 	return (
 		<aside className={`terminal-panel${embedded ? " terminal-panel-embedded" : ""}`}>
-			<div className="terminal-head">
-				<span>⌨ 终端{cwd ? ` · ${cwd.split("/").filter(Boolean).pop()}` : ""}</span>
-				{ready ? (
-					<span className="side-panel-count">PTY 已启动</span>
-				) : (
-					<span className="side-panel-count">启动中…</span>
-				)}
-				<span className="topbar-spacer" />
-				<button type="button" className="btn btn-tiny" onClick={onClose}>
-					关闭
-				</button>
-			</div>
+			{embedded ? null : (
+				<div className="terminal-head">
+					<span>⌨ 终端{cwd ? ` · ${cwd.split("/").filter(Boolean).pop()}` : ""}</span>
+					<span className="side-panel-count">{ready ? "PTY 已启动" : "启动中…"}</span>
+					<span className="topbar-spacer" />
+					<button type="button" className="btn btn-tiny" onClick={onClose}>
+						关闭
+					</button>
+				</div>
+			)}
 			{error ? <div className="file-preview-error">{error}</div> : null}
 			<div className="terminal-host" ref={hostRef} />
 		</aside>
