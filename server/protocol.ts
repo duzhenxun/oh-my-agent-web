@@ -192,6 +192,8 @@ export type Snapshot = {
 	approvalMode: ApprovalMode;
 	/** 当前引擎的能力（ADR-0024）：不支持的功能界面直接不显示，而不是点了报错 */
 	engineCapabilities: EngineCapabilities;
+	/** 已配置的 provider（ADR-0025 B 期）：**不含明文 key**，只给 hasKey/尾 4 位 */
+	providers: ProviderView[];
 	/** pi 已有项目与会话（只读；ADR-0021 §1） */
 	piProjects: PiProject[];
 	/** 客户端设置（快捷短语等） */
@@ -266,6 +268,12 @@ export type UpsertProviderRequest = {
 	};
 };
 
+/** 删除 provider（ADR-0025 B 期）：模型表与凭证一起删，界面应二次确认 */
+export type DeleteProviderRequest = { id: string; type: "delete_provider"; provider: string };
+
+/** 连通性测试（ADR-0025 B 期）：只打一次 GET /models，不花钱也不改远端状态 */
+export type TestProviderRequest = { id: string; type: "test_provider"; provider: string };
+
 /** 切换当前会话的模型（ADR-0020 §P2）：写进会话文件，续聊时不变 */
 export type SetModelRequest = { id: string; type: "set_model"; payload: { modelId: string } };
 
@@ -279,6 +287,8 @@ export type ClientRequest =
 	| SetApprovalModeRequest
 	| ListProvidersRequest
 	| UpsertProviderRequest
+	| DeleteProviderRequest
+	| TestProviderRequest
 	| NewChatRequest
 	| SwitchConversationRequest;
 

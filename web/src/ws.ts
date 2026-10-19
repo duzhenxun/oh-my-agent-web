@@ -132,6 +132,16 @@ export type UpsertProviderPayload = {
 	models: { id: string; name?: string }[];
 };
 
+/** 删除 provider（B 期）：模型表与凭证一起删；界面负责二次确认 */
+export function deleteProvider(provider: string): void {
+	send({ id: `req-${++seq}`, type: "delete_provider", provider });
+}
+
+/** 连通性测试（B 期）：只打一次 GET /models，不花钱 */
+export function testProvider(provider: string): void {
+	send({ id: `req-${++seq}`, type: "test_provider", provider });
+}
+
 /** 保存 provider 配置：apiKey 留空表示不改动已有 key（结果走提示条） */
 export function upsertProvider(payload: UpsertProviderPayload): void {
 	send({ id: `req-${++seq}`, type: "upsert_provider", payload });

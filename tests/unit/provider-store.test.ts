@@ -101,3 +101,47 @@ describe("upsert", () => {
 		expect(models.acme.models.find((model: { id: string }) => model.id === "old").cost).toEqual({ input: 1 });
 	});
 });
+
+describe("remove（B 期）", () => {
+	it("删 provider 时模型表与凭证一起删，其它 provider 不受影响", async () => {
+		writeFileSync(
+			join(agentDir, MODELS_STORE_FILE),
+			JSON.stringify({ acme: { models: [{ id: "m1" }] }, keep: { models: [{ id: "m2" }] } }),
+		);
+		writeFileSync(
+			join(agentDir, AUTH_FILE),
+			JSON.stringify({
+				acme: { type: "api_key", key: "sk-1234567890" },
+				keep: { type: "api_key", key: "sk-0987654321" },
+			}),
+		);
+		const result = await store().remove("acme");
+		expect(result).toEqual({ ok: true, removed: true });
+		const models = JSON.parse(readFileSync(join(agentDir, MODELS_STORE_FILE), "utf8"));
+		const auth = JSON.parse(readFileSync(join(agentDir, AUTH_FILE), "utf8"));
+		expect(Object.keys(models)).toEqual(["keep"]);
+		expect(Object.keys(auth)).toEqual(["keep"]);
+	});
+
+	it("不存在的 provider：removed=false，不报错", async () => {
+		expect(await store().remove("ghost")).toEqual({ ok: true, removed: false });
+	});
+
+	it("名字不合法的直接拒（防手滑写坏别人的配置）", async () => {
+		expect((await store().remove("../etc")).ok).toBe(false);
+	});
+});
+
+describe("readKey（只给服务端内部用）", () => {
+	it("能读到明文 key；list 里没有它", async () => {
+		writeFileSync(join(agentDir, MODELS_STORE_FILE), JSON.stringify({ acme: { models: [{ id: "m1" }] } }));
+		writeFileSync(join(agentDir, AUTH_FILE), JSON.stringify({ acme: { type: "api_key", key: "sk-abcdefgh" } }));
+		expect(await store().readKey("acme")).toBe("sk-abcdefgh");
+		const [view] = await store().list();
+		expect(JSON.stringify(view)).not.toContain("sk-abcdefgh");
+	});
+
+	it("没有 key 时返回 null", async () => {
+		expect(await store().readKey("nobody")).toBeNull();
+	});
+});

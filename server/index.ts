@@ -26,7 +26,8 @@ import { createFileSettingsStore } from "./session/settings.js";
 import { createSender, type OutFrame } from "./snapshot/sender.js";
 import { createPiSessionsProvider, piAgentDir } from "./session/pi-sessions-provider.js";
 import { createUploadStore, uploadsDir } from "./uploads/upload-store.js";
-import { handleProviderRequest } from "./providers/provider-handlers.js";
+import { createProviderRunner } from "./providers/provider-handlers.js";
+import { probeProvider } from "./providers/probe.js";
 import { createProviderStore } from "./providers/provider-store.js";
 import { registerFileRoutes } from "./files/files-routes.js";
 import { registerHealthAndStatic } from "./http/health-and-static.js";
@@ -103,6 +104,17 @@ const engine: EnginePort = resolved.engine;
 /** 引擎在 runtime 建好之前就会创建，用一个 ref 把「通知」转发给界面 */
 /** provider 配置存储（ADR-0025）：复用 pi 自己的 models-store.json / auth.json */
 const providerStore = createProviderStore({ agentDir: piAgentDir(), now: Date.now });
+const runProviderRequest = createProviderRunner({
+	store: providerStore,
+	notify: (text, level) => runtime.notify(text, level),
+	logger,
+	probe: probeProvider,
+	refresh: async () => {
+		runtime.state().providers = await providerStore.list();
+		runtime.notify("", "info");
+	},
+});
+void runProviderRequest({ type: "list_providers" }, () => {}); // 启动先填一次，否则面板首次打开是空的
 
 const runtimeRef: { current: { notify: (text: string, level?: "info" | "warn" | "error") => void } | null } = {
 	current: null,
@@ -155,9 +167,7 @@ function reply(
 	socket.send(JSON.stringify(message));
 }
 
-// ---------------------------------------------------------------------------
-// HTTP
-// ---------------------------------------------------------------------------
+// ------------------------------ HTTP ------------------------------
 
 const app = express();
 // 开发态（tsx 跑源码）与生产态（node 跑 dist/）的层数不同，两个候选都试（见 util/paths.ts）
@@ -253,32 +263,23 @@ async function handleMessage(socket: WebSocket, raw: string): Promise<void> {
 				reply(socket, request.id, await runtime.sendMessage(request.payload.text, request.payload.attachments));
 				return;
 			}
-			case "interrupt": {
+			case "interrupt":
 				reply(socket, request.id, await runtime.interrupt());
 				return;
-			}
-			case "approve": {
+			case "approve":
 				reply(socket, request.id, runtime.approve(request.payload.requestId, request.payload.decision));
 				return;
-			}
-			case "new_chat": {
+			case "new_chat":
 				reply(socket, request.id, await runtime.newConversation(request.payload?.workspace));
 				return;
-			}
-			case "switch_conversation": {
+			case "switch_conversation":
 				reply(socket, request.id, await runtime.switchConversation(request.payload.conversationId));
 				return;
-			}
 			case "list_providers":
-			case "upsert_provider": {
-				const handled = await handleProviderRequest(request as never, {
-					store: providerStore,
-					notify: (text, level) => runtime.notify(text, level),
-					logInfo: (message, meta) => logger.info(message, meta),
-				});
-				if (handled) reply(socket, request.id, handled);
-				return;
-			}
+			case "upsert_provider":
+			case "delete_provider":
+			case "test_provider":
+				return void (await runProviderRequest(request, (result) => reply(socket, request.id, result)));
 			case "set_approval_mode": {
 				reply(socket, request.id, runtime.setApprovalMode(request.payload.mode));
 				return;

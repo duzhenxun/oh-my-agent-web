@@ -33,6 +33,15 @@ export type ProviderStore = {
 	list: () => Promise<ProviderView[]>;
 	/** 新增或覆盖一个 provider 的模型表（apiKey 缺省 = 不动已有 key） */
 	upsert: (input: ProviderInput) => Promise<{ ok: true; view: ProviderView } | { ok: false; error: string }>;
+	/** 删掉一个 provider（模型表 + 凭证一起删，B 期；调用方必须先二次确认） */
+	remove: (provider: string) => Promise<{ ok: true; removed: boolean } | { ok: false; error: string }>;
+	/** 取单个 provider（编辑表单用；同样不含明文 key） */
+	get: (provider: string) => Promise<ProviderView | null>;
+	/**
+	 * 读明文 key —— **只给服务端内部用**（例如连通性测试发请求）。
+	 * 绝不能挂到任何返回给前端的路径上；协议里没有、也不会有对应字段。
+	 */
+	readKey: (provider: string) => Promise<string | null>;
 };
 
 async function readJson<T>(path: string, fallback: T): Promise<T> {
@@ -77,6 +86,30 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 					models: list.map((model) => ({ id: model.id, name: model.name ?? model.id })),
 				};
 			});
+		},
+
+		async readKey(provider) {
+			const auth = await readJson<AuthStore>(authPath, {});
+			const key = auth[provider]?.key;
+			return typeof key === "string" && key !== "" ? key : null;
+		},
+
+		async get(provider) {
+			const all = await this.list();
+			return all.find((view) => view.provider === provider) ?? null;
+		},
+
+		async remove(provider) {
+			if (!/^[a-z0-9][a-z0-9-]{1,30}$/.test(provider)) return { ok: false, error: "provider 名字不合法" };
+			const models = await readJson<ModelsStore>(modelsPath, {});
+			const auth = await readJson<AuthStore>(authPath, {});
+			const existed = provider in models || provider in auth;
+			if (!existed) return { ok: true, removed: false };
+			delete models[provider];
+			delete auth[provider];
+			await writeJsonPrivate(modelsPath, models);
+			await writeJsonPrivate(authPath, auth);
+			return { ok: true, removed: true };
 		},
 
 		async upsert(input) {

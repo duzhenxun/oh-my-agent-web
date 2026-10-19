@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { ProviderView } from "../types.ts";
 import { upsertProvider } from "../ws.ts";
 
 /**
@@ -6,12 +7,12 @@ import { upsertProvider } from "../ws.ts";
  *   - api key 是**只能填、不能读**的字段：留空表示不修改已有 key；
  *   - 服务端保存后回一份不含明文 key 的视图（只有 hasKey + 尾 4 位）。
  */
-export function ProviderForm({ onClose }: { onClose: () => void }) {
-	const [provider, setProvider] = useState("");
-	const [baseUrl, setBaseUrl] = useState("");
-	const [api, setApi] = useState("openai-completions");
+export function ProviderForm({ initial, onClose }: { initial?: ProviderView | null; onClose: () => void }) {
+	const [provider, setProvider] = useState(initial?.provider ?? "");
+	const [baseUrl, setBaseUrl] = useState(initial?.baseUrl ?? "");
+	const [api, setApi] = useState(initial?.api || "openai-completions");
 	const [apiKey, setApiKey] = useState("");
-	const [modelsText, setModelsText] = useState("");
+	const [modelsText, setModelsText] = useState((initial?.models ?? []).map((model) => model.id).join(" "));
 	const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
 
 	const submit = () => {
@@ -35,7 +36,7 @@ export function ProviderForm({ onClose }: { onClose: () => void }) {
 	return (
 		<div className="side-panel">
 			<div className="side-panel-head">
-				<strong>添加模型</strong>
+				<strong>{initial ? "编辑 provider" : "添加模型"}</strong>
 				<button type="button" className="btn btn-tiny" onClick={onClose}>
 					关闭
 				</button>
@@ -61,7 +62,9 @@ export function ProviderForm({ onClose }: { onClose: () => void }) {
 				</select>
 			</label>
 			<label className="side-field">
-				<span>api key（留空 = 不修改已有 key）</span>
+				<span>
+					api key（{initial?.hasKey ? `已有 ${initial.keyHint ?? ""}，留空即不修改` : "留空 = 不修改已有 key"}）
+				</span>
 				<input
 					type="password"
 					value={apiKey}

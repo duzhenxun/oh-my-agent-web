@@ -75,6 +75,14 @@ export function parseClientRequest(raw: unknown): ClientRequest | null {
 	}
 	if (type === "list_providers") return { id, type: "list_providers" };
 
+	if (type === "delete_provider" || type === "test_provider") {
+		const provider = typeof payload?.provider === "string" ? payload.provider.trim() : "";
+		if (provider === "") return null;
+		return type === "delete_provider"
+			? { id, type: "delete_provider", provider }
+			: { id, type: "test_provider", provider };
+	}
+
 	if (type === "upsert_provider") {
 		// 细节校验在 providers/validate.ts（这里只做形状校验，避免协议层重复实现业务规则）
 		if (!isRecord(payload)) return null;
