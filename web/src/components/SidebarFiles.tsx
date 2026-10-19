@@ -29,11 +29,11 @@ export function SidebarFiles({
 			<div className="side-files-head">
 				<button
 					type="button"
-					className="side-files-toggle"
+					className="project-collapse-all side-files-toggle"
 					onClick={onToggle}
 					title={open ? "收起文件管理" : "展开文件管理"}
 				>
-					<span className={`proj-chevron${open ? " proj-chevron-open" : ""}`} aria-hidden="true" />
+					{open ? "⌄" : "›"}
 				</button>
 				<span className="side-files-title">文件管理</span>
 				<button type="button" className="side-files-term" title="在右侧打开当前项目的终端" onClick={onOpenTerminal}>

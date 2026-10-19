@@ -276,11 +276,6 @@
 	background: var(--accent-dim);
 }
 
-/* 文件管理区的箭头：和项目行同一套（CSS 三角，展开时旋转 90°） */
-.side-files-toggle .proj-chevron {
-	margin-right: 0;
-}
-
 .proj-chevron-open {
 	transform: rotate(45deg) !important;
 }
