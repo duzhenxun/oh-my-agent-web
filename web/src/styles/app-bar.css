@@ -190,18 +190,27 @@
 	background: var(--amber);
 }
 
-/* 顶栏主操作（蓝色）：＋ 新会话 */
+/* 顶栏主操作：浅蓝底 + 蓝字胶囊（对齐参考样式，不抢视线） */
 .appbar-new-primary {
-	background: var(--accent);
-	border: 1px solid var(--accent);
-	color: #fff;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	background: color-mix(in srgb, var(--accent) 12%, transparent);
+	border: 1px solid transparent;
+	border-radius: 999px;
+	color: var(--accent);
 	font-weight: 600;
+	padding: 5px 14px;
 }
 
 .appbar-new-primary:hover {
-	background: color-mix(in srgb, var(--accent) 85%, black);
-	border-color: color-mix(in srgb, var(--accent) 85%, black);
-	color: #fff;
+	background: color-mix(in srgb, var(--accent) 20%, transparent);
+	color: var(--accent);
+}
+
+.appbar-new-icon {
+	font-size: 13px;
+	line-height: 1;
 }
 
 /* 滚动条要贴着面板右边缘：workspace 右侧不留内边距，把留白挪到内容自己身上 */

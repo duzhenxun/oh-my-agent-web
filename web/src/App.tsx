@@ -97,7 +97,10 @@ export function App() {
 					Agent Web
 				</span>
 				<button type="button" className="appbar-new appbar-new-primary" onClick={() => newChat()} title="新建会话">
-					＋ 新会话
+					<span className="appbar-new-icon" aria-hidden="true">
+						💬
+					</span>
+					新会话
 				</button>
 				{/* 预留区：以后放全局搜索 / 命令面板 */}
 				<span className="appbar-slot" />
