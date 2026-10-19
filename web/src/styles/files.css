@@ -227,3 +227,55 @@
 	border-color: var(--accent-dim);
 	background: var(--bg-elev);
 }
+
+/* 预览弹窗：可拖右下角缩放 + 全屏 + md 预览/源码切换 */
+.file-preview {
+	resize: both;
+	overflow: hidden;
+	min-width: 520px;
+	min-height: 320px;
+}
+
+/* 全屏：直接铺满视口（用 fixed + inset，避免被 .modal 的 max-height 限制住） */
+.modal.file-preview-full {
+	position: fixed;
+	inset: 10px;
+	width: calc(100vw - 20px) !important;
+	height: calc(100vh - 20px) !important;
+	max-width: none;
+	max-height: none;
+	resize: none;
+}
+
+.file-preview-md {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: auto;
+	padding: 4px 8px 12px;
+	background: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+}
+
+.preview-mode {
+	display: inline-flex;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	overflow: hidden;
+}
+
+.preview-mode button {
+	border: none;
+	background: none;
+	color: var(--text-dim);
+	font: inherit;
+	font-size: 12px;
+	padding: 3px 10px;
+	cursor: pointer;
+}
+
+.preview-mode-on {
+	background: var(--bg-elev-2);
+	color: var(--text);
+	font-weight: 600;
+}

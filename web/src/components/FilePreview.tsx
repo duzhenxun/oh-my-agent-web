@@ -22,6 +22,7 @@ import {
 	type LineRange,
 } from "../file-preview.ts";
 import { setDraft } from "../store.ts";
+import { Markdown } from "./Markdown.tsx";
 
 // 只注册用得到的语言（全量包 ~1MB，这里按需注册约 80KB）
 hljs.registerLanguage("typescript", typescript);
@@ -52,6 +53,29 @@ export function FilePreview({ path, root, onClose }: { path: string; root?: stri
 		binary: boolean;
 		error?: string;
 	} | null>(null);
+	// md 默认看预览，可切到源码；其它文件只有源码
+	const isMarkdown = /\.(md|markdown)$/i.test(path);
+	const [mode, setMode] = useState<"preview" | "source">(isMarkdown ? "preview" : "source");
+	// 弹窗尺寸：手动拖动改的大小记在 localStorage，下次打开沿用
+	const [size, setSize] = useState<{ w: number; h: number } | null>(() => {
+		try {
+			const raw = JSON.parse(localStorage.getItem("agent-web.preview.size") ?? "null") as {
+				w?: number;
+				h?: number;
+			} | null;
+			return raw && typeof raw.w === "number" && typeof raw.h === "number" ? { w: raw.w, h: raw.h } : null;
+		} catch {
+			return null;
+		}
+	});
+	const [fullscreen, setFullscreen] = useState(false);
+	const saveSize = (element: HTMLElement) => {
+		const rect = element.getBoundingClientRect();
+		const next = { w: Math.round(rect.width), h: Math.round(rect.height) };
+		localStorage.setItem("agent-web.preview.size", JSON.stringify(next));
+		setSize(next);
+	};
+
 	const [anchor, setAnchor] = useState<number | null>(null);
 	const [focus, setFocus] = useState<number | null>(null);
 
@@ -117,7 +141,14 @@ export function FilePreview({ path, root, onClose }: { path: string; root?: stri
 
 	return (
 		<div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="文件预览">
-			<div className="modal file-preview">
+			<div
+				className={`modal file-preview${fullscreen ? " file-preview-full" : ""}`}
+				style={fullscreen || !size ? undefined : { width: `${size.w}px`, height: `${size.h}px` }}
+				onMouseUp={(event) => {
+					// 手动拖右下角改尺寸后落盘（resize: both 由 CSS 提供）
+					if (!fullscreen) saveSize(event.currentTarget as HTMLElement);
+				}}
+			>
 				<div className="file-preview-head">
 					<span className="file-preview-path mono">{path}</span>
 					<span className="file-preview-meta">
@@ -126,6 +157,32 @@ export function FilePreview({ path, root, onClose }: { path: string; root?: stri
 						{language ? ` · ${language}` : ""}
 					</span>
 					<span className="topbar-spacer" />
+					{isMarkdown ? (
+						<span className="preview-mode">
+							<button
+								type="button"
+								className={mode === "source" ? "preview-mode-on" : ""}
+								onClick={() => setMode("source")}
+							>
+								源码
+							</button>
+							<button
+								type="button"
+								className={mode === "preview" ? "preview-mode-on" : ""}
+								onClick={() => setMode("preview")}
+							>
+								预览
+							</button>
+						</span>
+					) : null}
+					<button
+						type="button"
+						className="btn btn-tiny"
+						onClick={() => setFullscreen((value) => !value)}
+						title={fullscreen ? "退出全屏" : "全屏"}
+					>
+						{fullscreen ? "⤡" : "⛶"}
+					</button>
 					<span className="file-preview-selection">{describeRange(range)}</span>
 					<button
 						type="button"
@@ -152,7 +209,12 @@ export function FilePreview({ path, root, onClose }: { path: string; root?: stri
 				</div>
 				{state?.error ? <div className="file-preview-error">{state.error}</div> : null}
 				{state?.binary ? <div className="file-preview-error">这是二进制文件，不能预览</div> : null}
-				{state && !state.binary && !state.error ? (
+				{state && !state.binary && !state.error && isMarkdown && mode === "preview" ? (
+					<div className="file-preview-md">
+						<Markdown text={state.text} />
+					</div>
+				) : null}
+				{state && !state.binary && !state.error && !(isMarkdown && mode === "preview") ? (
 					<pre className="file-preview-body mono">
 						{lines.map((line, index) => {
 							const selected = range !== null && index + 1 >= range.start && index + 1 <= range.end;
