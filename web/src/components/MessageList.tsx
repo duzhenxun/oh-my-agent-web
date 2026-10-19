@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { setDraft } from "../store.ts";
 import type { ActionItem, EngineName, UiMessage } from "../types.ts";
 import type { PendingSend } from "../pending-sends.ts";
@@ -15,6 +16,9 @@ export function textOfMessage(message: UiMessage): string {
 
 function MessageView({ message }: { message: UiMessage }) {
 	const text = textOfMessage(message);
+	// 工具调用默认折叠：只把"最终处理好的回答"露出来，想看过程再展开
+	const toolBlocks = message.blocks.filter((block) => block.kind === "tool");
+	const [showTools, setShowTools] = useState(false);
 	return (
 		<article className={`msg msg-${message.role}`} id={`msg-${message.id}`}>
 			<header className="msg-head">
@@ -43,12 +47,18 @@ function MessageView({ message }: { message: UiMessage }) {
 				</div>
 			</header>
 			<div className="msg-body">
+				{toolBlocks.length > 0 ? (
+					<button type="button" className="msg-tools-toggle" onClick={() => setShowTools((value) => !value)}>
+						<span className={`msg-tools-caret${showTools ? " msg-tools-caret-open" : ""}`} aria-hidden="true" />
+						{toolBlocks.length} 次工具调用{showTools ? "（点击收起）" : "（点击查看过程）"}
+					</button>
+				) : null}
 				{message.blocks.map((block, index) => {
 					if (block.kind === "text") {
 						return block.text.trim() ? <Markdown key={index} text={block.text} /> : null;
 					}
 					if (block.kind === "tool") {
-						return <ToolCard key={block.toolCallId} block={block} />;
+						return showTools ? <ToolCard key={block.toolCallId} block={block} /> : null;
 					}
 					return (
 						<div key={index} className="block-error">
