@@ -112,30 +112,72 @@ export function Composer({ running, conversationId }: { running: boolean; conver
 				</div>
 			) : null}
 
-			{quickPhrases.length > 0 ? (
-				<div className="quick-row">
-					{quickPhrases.map((phrase) => (
+			<div className="composer-topbar">
+				{/* 输入框上方一行：模板 / 模型 / 强度 / 审批 + 快捷短语（同一行） */}
+				<div className="composer-tools">
+					<button type="button" className="tool-chip" onClick={() => setGalleryOpen(true)} title="提示词模板库">
+						🧩 模板
+					</button>
+					<span className="tool-sep" aria-hidden="true" />
+					{/* 模型槽位**永远在**：列表没到 / 引擎暂时取不到时显示占位，
+				    免得用户以为功能坏了（"怎么又不见了" 就是清空列表造成的） */}
+					{snapshot && snapshot.models.length > 0 && snapshot.engineCapabilities.modelSwitch ? (
+						<ModelPicker models={snapshot.models} current={snapshot.model} />
+					) : (
+						<span
+							className="tool-group"
+							title={snapshot?.model ? "这个会话使用的模型" : "还没打开会话，模型列表要等会话就绪"}
+						>
+							<span className="tool-icon" aria-hidden="true">
+								🤖
+							</span>
+							<span className="tool-chip tool-static mono">{snapshot?.model ?? "模型未就绪"}</span>
+						</span>
+					)}
+					<ThinkingPicker level={snapshot?.thinkingLevel ?? null} levels={snapshot?.thinkingLevels ?? []} />
+					{snapshot?.engineCapabilities.approvals === false ? (
+						<span className="tool-chip tool-static" title="该引擎自行决定授权，本工作台拦不住它的危险操作">
+							🔒 审批：引擎自理
+						</span>
+					) : (
 						<button
 							type="button"
-							key={phrase}
-							className="quick-chip"
-							disabled={running}
-							title={`${phrase}（点击直接发送 · Shift+点击只填入）`}
-							onClick={(event) => {
-								if (event.shiftKey) {
-									setDraft(phrase);
-									inputRef.current?.focus();
-									return;
-								}
-								if (running) return;
-								sendMessage(phrase);
-							}}
+							className={`tool-chip${snapshot?.approvalMode === "allow" ? " tool-chip-warn" : ""}`}
+							onClick={() => setApprovalMode(snapshot?.approvalMode === "allow" ? "ask" : "allow")}
+							title="审批模式（只在本会话生效，重启恢复询问）"
 						>
-							{phrase}
+							{snapshot?.approvalMode === "allow" ? "🔓 审批：全部放行" : "🔒 审批：询问"}
 						</button>
-					))}
+					)}
+					{/* 右侧扩展位：工具范围 / 压缩（P4 待做，先占位保持排布稳定） */}
+					<span className="topbar-spacer" />
 				</div>
-			) : null}
+
+				{quickPhrases.length > 0 ? (
+					<div className="quick-row">
+						{quickPhrases.map((phrase) => (
+							<button
+								type="button"
+								key={phrase}
+								className="quick-chip"
+								disabled={running}
+								title={`${phrase}（点击直接发送 · Shift+点击只填入）`}
+								onClick={(event) => {
+									if (event.shiftKey) {
+										setDraft(phrase);
+										inputRef.current?.focus();
+										return;
+									}
+									if (running) return;
+									sendMessage(phrase);
+								}}
+							>
+								{phrase}
+							</button>
+						))}
+					</div>
+				) : null}
+			</div>
 
 			{pending.length > 0 || uploading || uploadError ? (
 				<div className="attach-row">
@@ -229,46 +271,6 @@ export function Composer({ running, conversationId }: { running: boolean; conver
 						</button>
 					)}
 				</div>
-			</div>
-
-			{/* 输入框下面一行：模板 → 模型（对齐参考实现的排布；右侧留出思考强度/工具范围的位置） */}
-			<div className="composer-tools">
-				<button type="button" className="tool-chip" onClick={() => setGalleryOpen(true)} title="提示词模板库">
-					🧩 模板
-				</button>
-				<span className="tool-sep" aria-hidden="true" />
-				{/* 模型槽位**永远在**：列表没到 / 引擎暂时取不到时显示占位，
-				    免得用户以为功能坏了（"怎么又不见了" 就是清空列表造成的） */}
-				{snapshot && snapshot.models.length > 0 && snapshot.engineCapabilities.modelSwitch ? (
-					<ModelPicker models={snapshot.models} current={snapshot.model} />
-				) : (
-					<span
-						className="tool-group"
-						title={snapshot?.model ? "这个会话使用的模型" : "还没打开会话，模型列表要等会话就绪"}
-					>
-						<span className="tool-icon" aria-hidden="true">
-							🤖
-						</span>
-						<span className="tool-chip tool-static mono">{snapshot?.model ?? "模型未就绪"}</span>
-					</span>
-				)}
-				<ThinkingPicker level={snapshot?.thinkingLevel ?? null} levels={snapshot?.thinkingLevels ?? []} />
-				{snapshot?.engineCapabilities.approvals === false ? (
-					<span className="tool-chip tool-static" title="该引擎自行决定授权，本工作台拦不住它的危险操作">
-						🔒 审批：引擎自理
-					</span>
-				) : (
-					<button
-						type="button"
-						className={`tool-chip${snapshot?.approvalMode === "allow" ? " tool-chip-warn" : ""}`}
-						onClick={() => setApprovalMode(snapshot?.approvalMode === "allow" ? "ask" : "allow")}
-						title="审批模式（只在本会话生效，重启恢复询问）"
-					>
-						{snapshot?.approvalMode === "allow" ? "🔓 审批：全部放行" : "🔒 审批：询问"}
-					</button>
-				)}
-				{/* 右侧扩展位：工具范围 / 压缩（P4 待做，先占位保持排布稳定） */}
-				<span className="topbar-spacer" />
 			</div>
 
 			{galleryOpen ? (

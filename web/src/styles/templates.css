@@ -369,3 +369,16 @@
 	border-color: color-mix(in srgb, var(--yellow, #d9a441) 60%, transparent);
 	color: var(--yellow, #d9a441);
 }
+
+/* 输入框上方一行：工具（模板/模型/强度/审批）+ 快捷短语并排 */
+.composer-topbar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+	min-width: 0;
+}
+
+.composer-topbar .quick-row {
+	flex-wrap: wrap;
+}
