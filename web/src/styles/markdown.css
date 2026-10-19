@@ -47,3 +47,78 @@
 	color: var(--text-faint);
 	font-size: 12px;
 }
+
+/* mermaid 图（ADR-0029）：右上有 SVG / 源代码 切换，失败时显示报错而不是空白 */
+.mermaid-block {
+	margin: 10px 0;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--bg);
+	overflow: hidden;
+}
+
+.mermaid-head {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 4px 8px;
+	border-bottom: 1px solid var(--border);
+	background: var(--bg-elev);
+}
+
+.mermaid-lang {
+	color: var(--text-faint);
+	font-size: 11px;
+	letter-spacing: 0.04em;
+}
+
+.mermaid-btn {
+	border: 1px solid transparent;
+	border-radius: 6px;
+	background: none;
+	color: var(--text-dim);
+	font: inherit;
+	font-size: 11.5px;
+	padding: 2px 8px;
+	cursor: pointer;
+}
+
+.mermaid-btn-on {
+	background: var(--bg-elev-2);
+	border-color: var(--border);
+	color: var(--text);
+}
+
+.mermaid-btn:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+
+.mermaid-svg {
+	display: flex;
+	justify-content: center;
+	padding: 10px;
+	overflow: auto;
+}
+
+/* mermaid 输出的 svg 宽度要自适应，否则大图会被裁掉 */
+.mermaid-svg svg {
+	max-width: 100%;
+	height: auto;
+}
+
+.mermaid-source {
+	margin: 0;
+	padding: 8px 10px;
+	font-size: 12px;
+	line-height: 1.55;
+	color: var(--text-dim);
+	overflow: auto;
+}
+
+.mermaid-error {
+	padding: 6px 10px;
+	border-top: 1px solid var(--border);
+	color: var(--red);
+	font-size: 11.5px;
+}

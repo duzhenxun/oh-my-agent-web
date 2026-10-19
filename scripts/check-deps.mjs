@@ -1,15 +1,15 @@
 /**
  * 守卫 1：生产依赖预算（ADR-0008）。
  *
- * `dependencies`（生产依赖）条目数硬上限 12；`devDependencies` 不计入。
+ * `dependencies`（生产依赖）条目数硬上限 14（ADR-0029）；`devDependencies` 不计入。
  * 超限说明有人忘了「每新增一个生产依赖都要在 CONTEXT.md 记一行理由」这条规则，
  * 正确做法是先看 ADR-0008 的初始清单里有没有空位，再决定要不要改 ADR。
  */
 import { readRepoFile, isMain, runGuard } from "./lib/guard-kit.mjs";
 
 export const id = "deps-budget";
-export const describe = `生产依赖不超过 ${12} 个（ADR-0008）`;
-export const LIMIT = 12;
+export const describe = `生产依赖不超过 ${14} 个（ADR-0008 / ADR-0029 放宽到 14）`;
+export const LIMIT = 14;
 
 export function inspect({ dependencies = {} } = {}) {
 	const names = Object.keys(dependencies ?? {});

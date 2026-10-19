@@ -121,6 +121,7 @@
 | [ADR-0026](docs/adr/0026-model-import-and-spec.md) | 模型导入与规格：拉远端列表勾选导入、逐模型能力/规格/价格、models.dev 建议值 | accepted | 2026-10-19 |
 | [ADR-0027](docs/adr/0027-terminal.md) | 终端：node-pty + xterm，单实例、cwd 限工作区、模型不可驱动 | accepted | 2026-10-19 |
 | [ADR-0028](docs/adr/0028-project-ordering.md) | 项目排序：显式顺序 + 置顶 + 新建落位（存 settings.json） | accepted | 2026-10-19 |
+| [ADR-0029](docs/adr/0029-dependency-budget-mermaid.md) | 依赖预算 12→14，为 mermaid 放宽（必须懒加载） | accepted | 2026-10-19 |
 | [ADR-0005](docs/adr/0005-persistence-and-concurrency.md) | ~~自建 JSONL + 索引~~ → **被 ADR-0021 §2 取代**（事实源 = pi 会话存储） | superseded | 2026-10-16 |
 | [ADR-0015](docs/adr/0015-transcript-write-timing.md) | ~~用户消息即时写/助手回合结束写~~ → **被 ADR-0021 §2 取代**（SDK 负责落盘） | superseded | 2026-10-16 |
 | [ADR-0020](docs/adr/0020-composer-upgrade.md) | 输入区升级四期；推翻「不做附件/模型 UI/工具开关」三条排除 | accepted | 2026-10-16 |

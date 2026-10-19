@@ -3,6 +3,7 @@ import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import { imageSrcOf, languageLabelOf } from "../markdown-media.ts";
+import { MermaidDiagram } from "./MermaidDiagram.tsx";
 
 /**
  * markdown 渲染（ADR-0008 §Markdown 安全渲染）。
@@ -39,6 +40,8 @@ const components: Components = {
 	},
 	code: ({ className, children, ...rest }) => {
 		const language = languageLabelOf(className);
+		// mermaid 走专门组件（懒加载 + 失败回落），不当普通代码块
+		if (language === "mermaid") return <MermaidDiagram code={String(children).replace(/\n$/, "")} />;
 		const isBlock = language !== "" || (typeof children === "string" && children.includes("\n"));
 		if (!isBlock)
 			return (
