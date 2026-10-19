@@ -25,6 +25,7 @@ import { createFileSettingsStore } from "./session/settings.js";
 import { createSender, type OutFrame } from "./snapshot/sender.js";
 import { createPiSessionsProvider, piAgentDir } from "./session/pi-sessions-provider.js";
 import { createUploadStore, uploadsDir } from "./uploads/upload-store.js";
+import { registerFileRoutes } from "./files/files-routes.js";
 import { registerUploadRoutes } from "./uploads/upload-routes.js";
 import { readConfig, validateConfig } from "./util/env.js";
 import { createLogger } from "./util/log.js";
@@ -136,6 +137,9 @@ const webDist = pickExisting(webDistCandidates(HERE), existsSync);
 const uploadStore = createUploadStore({ dataDir: config.dataDir });
 
 registerUploadRoutes(app, { uploadStore, logger });
+
+// 文件浏览（M4）：只读、跟着当前会话的工作区走
+registerFileRoutes(app, { workspaceOf: () => runtime.state().files?.root ?? config.workspace });
 
 app.get("/api/health", (_request, response) => {
 	response.json({

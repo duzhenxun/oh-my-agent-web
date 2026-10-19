@@ -1,0 +1,155 @@
+/* ---- 文件面板（M4）与预览 ---- */
+.file-panel {
+	flex: none;
+	width: 260px;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	min-width: 0;
+	min-height: 0;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: var(--bg-elev);
+	padding: 8px;
+}
+
+.file-panel-head {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-weight: 600;
+	flex: none;
+}
+
+.chip-on {
+	border-color: var(--accent-dim);
+	color: var(--accent);
+}
+
+.filetree {
+	flex: 1 1 auto;
+	overflow: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	min-height: 0;
+	min-width: 0;
+}
+
+.filetree-root {
+	color: var(--text-faint);
+	font-size: 11.5px;
+	padding: 2px 4px 6px;
+	overflow-wrap: anywhere;
+}
+
+.filetree-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	width: 100%;
+	background: none;
+	border: none;
+	color: var(--text-dim);
+	font: inherit;
+	font-size: 12.5px;
+	text-align: left;
+	padding: 3px 6px;
+	border-radius: 6px;
+	cursor: pointer;
+	min-width: 0;
+}
+
+.filetree-row:hover {
+	background: var(--bg-elev-2);
+	color: var(--text);
+}
+
+.filetree-icon {
+	flex: none;
+	width: 10px;
+	color: var(--text-faint);
+}
+
+.filetree-name {
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.filetree-hint,
+.filetree-empty {
+	color: var(--text-faint);
+	font-size: 12px;
+}
+
+.filetree-error,
+.file-preview-error {
+	color: var(--red);
+	font-size: 12px;
+	overflow-wrap: anywhere;
+}
+
+.file-preview {
+	width: min(920px, 94vw);
+	max-height: 86vh;
+	display: flex;
+	flex-direction: column;
+}
+
+.file-preview-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 8px;
+	min-width: 0;
+}
+
+.file-preview-path {
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 12.5px;
+}
+
+.file-preview-meta {
+	flex: none;
+	color: var(--text-faint);
+	font-size: 11.5px;
+}
+
+.file-preview-body {
+	margin: 0;
+	overflow: auto;
+	background: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	padding: 8px 10px;
+	font-size: 12.5px;
+	line-height: 1.55;
+	min-height: 0;
+}
+
+.file-preview-line {
+	display: flex;
+	gap: 10px;
+	white-space: pre;
+}
+
+.file-preview-no {
+	flex: none;
+	width: 3.2em;
+	text-align: right;
+	color: var(--text-faint);
+	user-select: none;
+}
+
+.file-preview-text {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}

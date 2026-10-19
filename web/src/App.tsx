@@ -1,9 +1,11 @@
 import { useEffect, useRef } from "react";
+import { useState } from "react";
 import { useAppState } from "./store.ts";
 import { setModel } from "./ws.ts";
 import { ApprovalDialog, NoticeBar } from "./components/ApprovalDialog.tsx";
 import { Composer } from "./components/Composer.tsx";
 import { MessageList } from "./components/MessageList.tsx";
+import { FilePreview, FileTree } from "./components/FileTree.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
 
 const CONNECTION_LABEL = { connecting: "连接中…", open: "已连接", closed: "已断开（自动重连）" } as const;
@@ -16,6 +18,9 @@ const RUNNING_LABEL = {
 } as const;
 
 export function App() {
+	// 文件面板（M4）：跟着当前会话的工作区走
+	const [filePanelOpen, setFilePanelOpen] = useState(false);
+	const [previewPath, setPreviewPath] = useState<string | null>(null);
 	const state = useAppState();
 	const snapshot = state.snapshot;
 	const messages = snapshot?.active.messages ?? [];
@@ -70,6 +75,14 @@ export function App() {
 					) : snapshot?.model ? (
 						<span className="chip chip-quiet mono">{snapshot.model}</span>
 					) : null}
+					<button
+						type="button"
+						className={`chip chip-quiet${filePanelOpen ? " chip-on" : ""}`}
+						onClick={() => setFilePanelOpen((open) => !open)}
+						title="文件列表（当前项目）"
+					>
+						📁 文件
+					</button>
 					<span className="chip chip-quiet">协议 v{snapshot?.protocolVersion ?? "?"}</span>
 				</header>
 
@@ -91,6 +104,21 @@ export function App() {
 				<NoticeBar notices={snapshot?.notices ?? []} />
 				<Composer running={running} conversationId={snapshot?.active.conversationId ?? null} />
 			</div>
+
+			{filePanelOpen ? (
+				<aside className="file-panel">
+					<div className="file-panel-head">
+						<span>文件列表</span>
+						<span className="topbar-spacer" />
+						<button type="button" className="btn btn-tiny" onClick={() => setFilePanelOpen(false)}>
+							收起
+						</button>
+					</div>
+					<FileTree root={snapshot?.files?.root ?? null} onOpenFile={setPreviewPath} />
+				</aside>
+			) : null}
+
+			{previewPath ? <FilePreview path={previewPath} onClose={() => setPreviewPath(null)} /> : null}
 
 			{snapshot?.pendingApproval ? <ApprovalDialog approval={snapshot.pendingApproval} /> : null}
 		</div>
