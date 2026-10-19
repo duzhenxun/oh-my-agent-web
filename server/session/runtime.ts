@@ -23,7 +23,6 @@ import { applyEngineEvent, type TurnEventContext } from "./turn-events.js";
 import { makeIdFactory } from "../util/ids.js";
 import type {
 	AttachmentRef, // 附件引用（ADR-0020 §P3）
-	ApprovalDecision,
 	PiProject,
 } from "../protocol.js";
 import type { EnginePort } from "../engine/port.js";
