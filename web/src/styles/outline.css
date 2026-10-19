@@ -131,3 +131,14 @@
 	border-left-color: var(--accent);
 	background: var(--bg-elev-2);
 }
+
+/* 大纲窄条浮在消息区右侧：正文再留一点空间，别被方块压住 */
+.workspace .messages {
+	padding-right: 26px;
+}
+
+@media (max-width: 900px) {
+	.workspace .messages {
+		padding-right: 8px;
+	}
+}
