@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { cacheHitRate, formatPercent, formatSpan } from "../session-metrics.ts";
 import type { Snapshot } from "../types.ts";
 
 function formatTokens(value: number): string {
@@ -19,9 +20,9 @@ export function SessionInfo({ snapshot }: { snapshot: Snapshot | null }) {
 	const [open, setOpen] = useState(false);
 	const stats = snapshot?.sessionStats;
 	const activeId = snapshot?.active.conversationId ?? null;
-	const sessionPath =
-		snapshot?.piProjects.flatMap((project) => project.sessions).find((session) => session.id === activeId)
-			?.sessionPath ?? null;
+	const activeSession =
+		snapshot?.piProjects.flatMap((project) => project.sessions).find((session) => session.id === activeId) ?? null;
+	const sessionPath = activeSession?.sessionPath ?? null;
 	const value = stats ?? {
 		userMessages: 0,
 		assistantMessages: 0,
@@ -35,10 +36,14 @@ export function SessionInfo({ snapshot }: { snapshot: Snapshot | null }) {
 		totalTokens: 0,
 		contextTokens: 0,
 	};
+	const hitRate = formatPercent(cacheHitRate(value.inputTokens, value.cacheRead));
+	// 活跃时长 = 会话创建到最后一次更新的跨度（wall clock，含空闲）
+	const span = activeSession ? formatSpan(activeSession.updatedAt - activeSession.startedAt) : "—";
 
 	const rows: Array<[string, string]> = [
 		["会话文件", sessionPath ?? "（本地新建，尚未落盘）"],
 		["ID", activeId ?? "—"],
+		["活跃时长", span],
 		["项目目录", snapshot?.files?.root ?? "—"],
 	];
 
@@ -87,6 +92,7 @@ export function SessionInfo({ snapshot }: { snapshot: Snapshot | null }) {
 							["缓存写入", formatNumber(value.cacheWrite)],
 							["总计", formatNumber(value.totalTokens)],
 							["上下文占用", formatNumber(value.contextTokens)],
+							["缓存命中率", hitRate],
 						].map(([label, value]) => (
 							<div className="session-info-row" key={label}>
 								<span className="session-info-label">{label}</span>

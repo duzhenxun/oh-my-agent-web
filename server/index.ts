@@ -19,7 +19,7 @@ import { createEngineRegistry, FAKE_CAPABILITIES, PI_CAPABILITIES } from "./engi
 import type { EnginePort } from "./engine/port.js";
 import { createFileRuleStore } from "./approval/rules.js";
 import { existsSync } from "node:fs";
-import { PROTOCOL_VERSION, parseClientRequest, type ProtocolError, type ServerReply } from "./protocol.js";
+import { PROTOCOL_VERSION, type ProtocolError, type ServerReply } from "./protocol.js";
 import { acquireLock, describeHolder, releaseLock } from "./session/lock.js";
 import { createRuntime } from "./session/runtime.js";
 import { createFileSettingsStore } from "./session/settings.js";
@@ -30,6 +30,7 @@ import { createProviderWiring } from "./providers/provider-handlers.js";
 import { probeProvider } from "./providers/probe.js";
 import { createProviderStore } from "./providers/provider-store.js";
 import { registerAuxRoutes } from "./http/aux-routes.js";
+import { handleMessage } from "./ws/handle-message.js";
 import { registerHealthAndStatic } from "./http/health-and-static.js";
 import { registerUploadRoutes } from "./uploads/upload-routes.js";
 import { readConfig, validateConfig } from "./util/env.js";
@@ -217,7 +218,13 @@ wss.on("connection", (socket: WebSocket) => {
 	sender.flush(Date.now());
 
 	socket.on("message", (raw) => {
-		void handleMessage(socket, raw.toString());
+		void handleMessage(socket, raw.toString(), {
+			runtime,
+			reply,
+			sender,
+			logger,
+			runProviderRequest: (request, respond) => runProviderRequest(request, (result) => respond(result)),
+		});
 	});
 
 	socket.on("close", () => {
@@ -231,82 +238,7 @@ wss.on("connection", (socket: WebSocket) => {
 	});
 });
 
-async function handleMessage(socket: WebSocket, raw: string): Promise<void> {
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(raw);
-	} catch {
-		logger.warn("收到非法 JSON，已忽略");
-		return;
-	}
-
-	const request = parseClientRequest(parsed);
-	if (!request) {
-		const id = typeof (parsed as { id?: unknown })?.id === "string" ? (parsed as { id: string }).id : "unknown";
-		const type = (parsed as { type?: unknown })?.type;
-		const error: ProtocolError =
-			typeof type === "string"
-				? { code: "protocol.bad_payload", message: `请求 ${type} 的载荷不合法` }
-				: { code: "protocol.unknown_type", message: "无法识别的请求" };
-		logger.warn("拒绝非法请求", { id, type, code: error.code });
-		reply(socket, id, { ok: false, error });
-		return;
-	}
-
-	try {
-		switch (request.type) {
-			case "send_message": {
-				reply(socket, request.id, await runtime.sendMessage(request.payload.text, request.payload.attachments));
-				return;
-			}
-			case "interrupt":
-				reply(socket, request.id, await runtime.interrupt());
-				return;
-			case "approve":
-				reply(socket, request.id, runtime.approve(request.payload.requestId, request.payload.decision));
-				return;
-			case "new_chat":
-				reply(socket, request.id, await runtime.newConversation(request.payload?.workspace));
-				return;
-			case "switch_conversation":
-				reply(socket, request.id, await runtime.switchConversation(request.payload.conversationId));
-				return;
-			case "list_providers":
-			case "upsert_provider":
-			case "delete_provider":
-			case "test_provider":
-			case "update_model":
-				return void (await runProviderRequest(request, (result) => reply(socket, request.id, result)));
-			case "set_approval_mode": {
-				reply(socket, request.id, runtime.setApprovalMode(request.payload.mode));
-				return;
-			}
-			case "set_thinking_level":
-				reply(socket, request.id, await runtime.setThinkingLevel(request.payload.level));
-				return;
-			case "set_model": {
-				reply(socket, request.id, await runtime.setModel(request.payload.modelId));
-				return;
-			}
-			case "set_settings": {
-				reply(socket, request.id, await runtime.applySettings(request.payload));
-				return;
-			}
-			case "get_state": {
-				// 重连/刷新后的第一件事：拉一份权威快照（ADR-0004 §3）；顺便刷一次 pi 会话列表（带 10s 下限）
-				await runtime.refreshPiSessions();
-				sender.pushSnapshot(runtime.snapshot());
-				sender.flush(Date.now());
-				reply(socket, request.id, { ok: true });
-				return;
-			}
-		}
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		logger.error("处理请求失败", { type: request.type, message });
-		reply(socket, request.id, { ok: false, error: { code: "protocol.handler_failed", message } });
-	}
-}
+// 客户端请求分发在 ws/handle-message.ts（index 只负责装配）
 
 // ---------------------------------------------------------------------------
 // 启动
