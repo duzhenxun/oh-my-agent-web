@@ -45,3 +45,35 @@ describe("groupModels", () => {
 		expect(groupModels(models, "   ").length).toBe(groupModels(models).length);
 	});
 });
+
+describe("模型列表的稳定性（回归）", () => {
+	it("取模型失败时保留旧列表，不清空", async () => {
+		const { createModelController } = await import("../../server/session/model-controller.js");
+		const state = { model: "a/x" as string | null, models: [{ id: "a/x", label: "A X" }] };
+		const controller = createModelController({
+			engine: {
+				listModels: async () => {
+					throw new Error("boom");
+				},
+			} as never,
+			state,
+			notice: () => {},
+			onChanged: () => {},
+		});
+		await controller.refresh("");
+		expect(state.models).toEqual([{ id: "a/x", label: "A X" }]);
+	});
+
+	it("返回空数组时也保留旧列表（切会话瞬间的正常现象）", async () => {
+		const { createModelController } = await import("../../server/session/model-controller.js");
+		const state = { model: "a/x" as string | null, models: [{ id: "a/x", label: "A X" }] };
+		const controller = createModelController({
+			engine: { listModels: async () => [] } as never,
+			state,
+			notice: () => {},
+			onChanged: () => {},
+		});
+		await controller.refresh("");
+		expect(state.models).toHaveLength(1);
+	});
+});

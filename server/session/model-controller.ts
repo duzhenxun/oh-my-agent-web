@@ -26,11 +26,16 @@ export function createModelController(options: {
 }): ModelController {
 	return {
 		async refresh(conversationId) {
+			// 取不到就**保留旧列表**，绝不清空。
+			// 原因：切会话 / 引擎刚启动的那一瞬间 listModels 会返回空或抛错，
+			// 一旦清空，输入区的模型选择器与侧栏「模型」面板里的内置 provider 会一起消失
+			// （用户看到的就是「刚才还有，怎么又不见了」）。
 			try {
 				const list = (await options.engine.listModels?.(conversationId)) ?? [];
+				if (list.length === 0 && options.state.models.length > 0) return;
 				options.state.models = list.map((model) => ({ id: model.id, label: model.label }));
 			} catch {
-				options.state.models = [];
+				// 保留旧值：下次刷新成功自然会更新
 			}
 		},
 
