@@ -67,6 +67,7 @@ describe("mergeSettings", () => {
 				quickPhrasesEnabled: false,
 				templates: [],
 				projectPrefs: { order: [], pinned: [], aliases: {} },
+				sessionPrefs: { pinned: [], archived: [], titles: {} },
 			}).quickPhrasesEnabled,
 		).toBe(false);
 		expect(
@@ -74,6 +75,7 @@ describe("mergeSettings", () => {
 				quickPhrasesEnabled: false,
 				templates: [],
 				projectPrefs: { order: [], pinned: [], aliases: {} },
+				sessionPrefs: { pinned: [], archived: [], titles: {} },
 			}).quickPhrases,
 		).toEqual(current.quickPhrases);
 	});
@@ -104,6 +106,7 @@ describe("parseSettings", () => {
 				quickPhrasesEnabled: false,
 				templates: [],
 				projectPrefs: { order: [], pinned: [], aliases: {} },
+				sessionPrefs: { pinned: [], archived: [], titles: {} },
 			}),
 		);
 		expect(parsed).toEqual({
@@ -111,6 +114,7 @@ describe("parseSettings", () => {
 			quickPhrasesEnabled: false,
 			templates: [],
 			projectPrefs: { order: [], pinned: [], aliases: {} },
+			sessionPrefs: { pinned: [], archived: [], titles: {} },
 		});
 	});
 });
@@ -123,6 +127,7 @@ describe("文件存储", () => {
 			quickPhrasesEnabled: false,
 			templates: [],
 			projectPrefs: { order: [], pinned: [], aliases: {} },
+			sessionPrefs: { pinned: [], archived: [], titles: {} },
 		});
 		expect(existsSync(settingsPath(dir))).toBe(true);
 		expect(existsSync(`${settingsPath(dir)}.tmp`)).toBe(false);
@@ -131,6 +136,7 @@ describe("文件存储", () => {
 			quickPhrasesEnabled: false,
 			templates: [],
 			projectPrefs: { order: [], pinned: [], aliases: {} },
+			sessionPrefs: { pinned: [], archived: [], titles: {} },
 		});
 	});
 
@@ -149,6 +155,7 @@ describe("文件存储", () => {
 			quickPhrasesEnabled: true,
 			templates: [],
 			projectPrefs: { order: [], pinned: [], aliases: {} },
+			sessionPrefs: { pinned: [], archived: [], titles: {} },
 		});
 		const parsed = JSON.parse(readFileSync(settingsPath(dir), "utf8"));
 		expect(parsed.v).toBe(1);
@@ -168,18 +175,21 @@ describe("内存存储", () => {
 			quickPhrasesEnabled: false,
 			templates: [],
 			projectPrefs: { order: [], pinned: [], aliases: {} },
+			sessionPrefs: { pinned: [], archived: [], titles: {} },
 		});
 		expect(await store.load()).toEqual({
 			quickPhrases: ["a"],
 			quickPhrasesEnabled: false,
 			templates: [],
 			projectPrefs: { order: [], pinned: [], aliases: {} },
+			sessionPrefs: { pinned: [], archived: [], titles: {} },
 		});
 		await store.save({
 			quickPhrases: ["b"],
 			quickPhrasesEnabled: true,
 			templates: [],
 			projectPrefs: { order: [], pinned: [], aliases: {} },
+			sessionPrefs: { pinned: [], archived: [], titles: {} },
 		});
 		expect((await store.load()).quickPhrases).toEqual(["b"]);
 	});

@@ -21,6 +21,7 @@ function makeSnapshot(tag: number): Snapshot {
 			quickPhrasesEnabled: true,
 			templates: [],
 			projectPrefs: { order: [], pinned: [], aliases: {} },
+			sessionPrefs: { pinned: [], archived: [], titles: {} },
 		},
 		conversations: [],
 		active: { conversationId: null, messages: [], hasMoreBefore: false },

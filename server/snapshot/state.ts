@@ -72,6 +72,7 @@ export function createServerState(workspace: string, engine: EngineName = "pi"):
 			quickPhrasesEnabled: true,
 			templates: [],
 			projectPrefs: { order: [], pinned: [], aliases: {} },
+			sessionPrefs: { pinned: [], archived: [], titles: {} },
 		},
 		actions: [],
 		conversations: [],
@@ -128,6 +129,11 @@ export function buildSnapshot(state: ServerState, limit = SNAPSHOT_MESSAGE_LIMIT
 				order: [...state.settings.projectPrefs.order],
 				pinned: [...state.settings.projectPrefs.pinned],
 				aliases: { ...state.settings.projectPrefs.aliases },
+			},
+			sessionPrefs: {
+				pinned: [...state.settings.sessionPrefs.pinned],
+				archived: [...state.settings.sessionPrefs.archived],
+				titles: { ...state.settings.sessionPrefs.titles },
 			},
 		},
 		piProjects: state.piProjects.map((project) => ({

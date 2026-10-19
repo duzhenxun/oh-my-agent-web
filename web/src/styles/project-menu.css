@@ -274,3 +274,60 @@
 	height: 4px;
 	background: var(--accent-dim);
 }
+
+/* ---- 会话行：右侧「⋯」菜单 ---- */
+.pi-row-wrap {
+	position: relative;
+	display: flex;
+	align-items: center;
+	min-width: 0;
+}
+
+.pi-row-wrap > .pi-row {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.pi-more {
+	flex: none;
+	display: none;
+	width: 20px;
+	height: 20px;
+	align-items: center;
+	justify-content: center;
+	border: none;
+	border-radius: 5px;
+	background: none;
+	color: var(--text-faint);
+	font: inherit;
+	font-size: 13px;
+	line-height: 1;
+	cursor: pointer;
+	padding: 0;
+	margin-right: 4px;
+}
+
+.pi-row-wrap:hover .pi-more {
+	display: inline-flex;
+}
+
+.pi-more:hover {
+	background: var(--bg-elev-2);
+	color: var(--text);
+}
+
+.pi-menu {
+	position: absolute;
+	top: 100%;
+	right: 4px;
+	z-index: 20;
+	width: 210px;
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	padding: 4px;
+	border: 1px solid var(--border-strong, var(--border));
+	border-radius: 8px;
+	background: var(--bg-elev-2);
+	box-shadow: 0 12px 32px rgb(0 0 0 / 45%);
+}

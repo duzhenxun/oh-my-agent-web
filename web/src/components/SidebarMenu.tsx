@@ -24,11 +24,14 @@ type Panel = "models" | "skills" | "settings" | null;
 export function SidebarMenu({
 	initialPanel = null,
 	variant = "full",
+	placement = "footer",
 }: {
 	/** 收起态由活动栏按钮指定打开哪个面板 */
 	initialPanel?: Panel;
-	/** full = 底部三个入口 + 弹窗；modal = 只渲染弹窗（收起态用） */
+	/** full = 三个入口 + 弹窗；modal = 只渲染弹窗（收起态用） */
 	variant?: "full" | "modal";
+	/** footer = 侧栏底部；appbar = 顶部那一排 */
+	placement?: "footer" | "appbar";
 } = {}) {
 	const { snapshot } = useAppState();
 	const [panel, setPanel] = useState<Panel>(initialPanel);
@@ -67,7 +70,7 @@ export function SidebarMenu({
 	);
 
 	return (
-		<div className="side-foot">
+		<div className={placement === "appbar" ? "appbar-menu" : "side-foot"}>
 			{variant === "full" ? (
 				<div className="side-foot-row">
 					{item("models", "🤖", "模型")}

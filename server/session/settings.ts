@@ -7,7 +7,7 @@
  */
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import type { ProjectPrefs, PromptTemplate } from "../protocol.js";
+import type { ProjectPrefs, PromptTemplate, SessionPrefs } from "../protocol.js";
 
 export const SETTINGS_FILE = "settings.json";
 export const SETTINGS_VERSION = 1;
@@ -127,6 +127,8 @@ export type ClientSettings = {
 	templates: PromptTemplate[];
 	/** 项目偏好（ADR-0028）：显式顺序 / 置顶 / 别名 */
 	projectPrefs: ProjectPrefs;
+	/** 会话级偏好：置顶 / 重命名 / 归档 */
+	sessionPrefs: SessionPrefs;
 };
 
 export const MAX_PROJECT_PREFS = 500;
@@ -162,12 +164,36 @@ export function normalizeProjectPrefs(input: unknown): ProjectPrefs {
 	return { order: paths(record.order), pinned: paths(record.pinned), aliases };
 }
 
+/** 纯函数：会话偏好的归一化（只保留非空字符串，上限 2000 条） */
+export function normalizeSessionPrefs(input: unknown): SessionPrefs {
+	const empty: SessionPrefs = { pinned: [], archived: [], titles: {} };
+	if (typeof input !== "object" || input === null) return empty;
+	const record = input as Record<string, unknown>;
+	const ids = (value: unknown): string[] =>
+		Array.isArray(value)
+			? [...new Set(value.filter((item): item is string => typeof item === "string" && item.trim() !== ""))].slice(
+					0,
+					2000,
+				)
+			: [];
+	const titles: Record<string, string> = {};
+	if (typeof record.titles === "object" && record.titles !== null) {
+		for (const [key, value] of Object.entries(record.titles as Record<string, unknown>)) {
+			if (typeof value !== "string") continue;
+			const title = value.trim().slice(0, 80);
+			if (key !== "" && title !== "") titles[key] = title;
+		}
+	}
+	return { pinned: ids(record.pinned), archived: ids(record.archived), titles };
+}
+
 export function defaultSettings(): ClientSettings {
 	return {
 		quickPhrases: [...DEFAULT_QUICK_PHRASES],
 		quickPhrasesEnabled: true,
 		templates: DEFAULT_TEMPLATES.map((template) => ({ ...template })),
 		projectPrefs: { order: [], pinned: [], aliases: {} },
+		sessionPrefs: { pinned: [], archived: [], titles: {} },
 	};
 }
 
@@ -239,6 +265,7 @@ export function mergeSettings(current: ClientSettings, patch: unknown): ClientSe
 	if (record.templates === null) next.templates = DEFAULT_TEMPLATES.map((template) => ({ ...template }));
 	else if ("templates" in record) next.templates = normalizeTemplates(record.templates);
 	if ("projectPrefs" in record) next.projectPrefs = normalizeProjectPrefs(record.projectPrefs);
+	if ("sessionPrefs" in record) next.sessionPrefs = normalizeSessionPrefs(record.sessionPrefs);
 	return next;
 }
 

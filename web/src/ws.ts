@@ -17,6 +17,7 @@ import type {
 	ProjectPrefs,
 	PromptTemplate,
 	ServerMessage,
+	SessionPrefs,
 	Snapshot,
 } from "./types.ts";
 import { appendTextToMessage } from "./lib/delta.ts";
@@ -189,6 +190,8 @@ export function setSettings(payload: {
 	templates?: PromptTemplate[] | null;
 	/** 项目排序 / 置顶 / 别名（ADR-0028） */
 	projectPrefs?: ProjectPrefs;
+	/** 会话级偏好：置顶 / 重命名 / 归档 */
+	sessionPrefs?: SessionPrefs;
 }): void {
 	send({ id: `req-${++seq}`, type: "set_settings", payload });
 }

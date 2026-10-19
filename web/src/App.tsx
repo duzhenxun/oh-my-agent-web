@@ -6,9 +6,9 @@ import { ApprovalDialog, NoticeBar } from "./components/ApprovalDialog.tsx";
 import { Composer } from "./components/Composer.tsx";
 import { MessageList } from "./components/MessageList.tsx";
 import { ConversationOutline } from "./components/ConversationOutline.tsx";
+import { SidebarMenu } from "./components/SidebarMenu.tsx";
 import { PreviewPanel, type PanelItem } from "./components/PreviewPanel.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
-import { SidebarMenu } from "./components/SidebarMenu.tsx";
 
 const CONNECTION_LABEL = { connecting: "连接中…", open: "已连接", closed: "已断开（自动重连）" } as const;
 
@@ -75,139 +75,156 @@ export function App() {
 
 	return (
 		<div className="app">
-			{collapsed ? (
-				<aside className="activity-bar">
-					<button type="button" className="activity-btn" onClick={() => setCollapsed(false)} title="展开侧栏">
-						›
-					</button>
-					<button type="button" className="activity-btn" onClick={() => setCollapsed(false)} title="会话">
-						💬
-					</button>
-					<button type="button" className="activity-btn" onClick={() => setPendingPanel("models")} title="模型">
-						🤖
-					</button>
-					<button type="button" className="activity-btn" onClick={() => setPendingPanel("skills")} title="技能">
-						🧰
-					</button>
-					<button type="button" className="activity-btn" onClick={() => setPendingPanel("settings")} title="设置">
-						⚙
-					</button>
-					<button type="button" className="activity-btn" onClick={() => setCollapsed(false)} title="文件（在侧栏下方）">
-						📁
-					</button>
-					{pendingPanel ? <SidebarMenu key={pendingPanel} initialPanel={pendingPanel} variant="modal" /> : null}
-				</aside>
-			) : (
-				<div className="side-host" style={{ width: sideWidth }}>
-					<Sidebar
-						conversations={snapshot?.conversations ?? []}
-						activeId={snapshot?.active.conversationId ?? null}
-						piProjects={snapshot?.piProjects ?? []}
-						onCollapse={() => setCollapsed(true)}
-						runningConversationId={
-							snapshot?.running.status === "idle" ? null : (snapshot?.running.conversationId ?? null)
+			{/* 顶部区域：横跨整个宽度，三栏都在它下面 */}
+			<div className="appbar">
+				<span className="brand">agent-web</span>
+				<span className={`chip chip-${state.connection}`}>{CONNECTION_LABEL[state.connection]}</span>
+				<span className="topbar-spacer" />
+				<SidebarMenu variant="full" placement="appbar" />
+			</div>
+			<div className="app-main">
+				{collapsed ? (
+					<aside className="activity-bar">
+						<button type="button" className="activity-btn" onClick={() => setCollapsed(false)} title="展开侧栏">
+							›
+						</button>
+						<button type="button" className="activity-btn" onClick={() => setCollapsed(false)} title="会话">
+							💬
+						</button>
+						<button type="button" className="activity-btn" onClick={() => setPendingPanel("models")} title="模型">
+							🤖
+						</button>
+						<button type="button" className="activity-btn" onClick={() => setPendingPanel("skills")} title="技能">
+							🧰
+						</button>
+						<button type="button" className="activity-btn" onClick={() => setPendingPanel("settings")} title="设置">
+							⚙
+						</button>
+						<button
+							type="button"
+							className="activity-btn"
+							onClick={() => setCollapsed(false)}
+							title="文件（在侧栏下方）"
+						>
+							📁
+						</button>
+						{pendingPanel ? <SidebarMenu key={pendingPanel} initialPanel={pendingPanel} variant="modal" /> : null}
+					</aside>
+				) : (
+					<div className="side-host" style={{ width: sideWidth }}>
+						<Sidebar
+							conversations={snapshot?.conversations ?? []}
+							activeId={snapshot?.active.conversationId ?? null}
+							piProjects={snapshot?.piProjects ?? []}
+							onCollapse={() => setCollapsed(true)}
+							runningConversationId={
+								snapshot?.running.status === "idle" ? null : (snapshot?.running.conversationId ?? null)
+							}
+							onOpenTerminal={(cwd) => {
+								const id = `term:${termSeq}:${cwd}`;
+								setTermSeq((value) => value + 1);
+								setPanelItems((current) => [...current, { id, kind: "terminal", cwd }]);
+								setActiveItem(id);
+							}}
+							onOpenFile={(path, root) => {
+								const id = `file:${root}:${path}`;
+								setPanelItems((current) =>
+									current.some((item) => item.id === id) ? current : [...current, { id, kind: "file", path, root }],
+								);
+								setActiveItem(id);
+							}}
+						/>
+						{/* 拖拽条：右边边缘 6px，双击回到默认宽度 */}
+						<div
+							className="side-resizer"
+							role="separator"
+							aria-orientation="vertical"
+							title="拖动调整宽度（双击复位）"
+							onPointerDown={startResize}
+							onDoubleClick={() => setSideWidth(readStoredWidth(null))}
+						/>
+					</div>
+				)}
+
+				<div className="workspace">
+					<header className="topbar">
+						<span className="brand">agent-web</span>
+						<span className={`chip chip-${state.connection}`}>{CONNECTION_LABEL[state.connection]}</span>
+						{snapshot &&
+						(snapshot.running.status === "idle" ||
+							snapshot.running.conversationId === snapshot.active.conversationId) ? (
+							<span className={`chip chip-run-${snapshot.running.status}`}>
+								{RUNNING_LABEL[snapshot.running.status]}
+							</span>
+						) : null}
+						<span className="topbar-spacer" />
+						{snapshot?.sessionStats ? (
+							<span
+								className="chip chip-quiet mono"
+								title={[
+									`消息：用户 ${snapshot.sessionStats.userMessages} / 助手 ${snapshot.sessionStats.assistantMessages} / 工具 ${snapshot.sessionStats.toolCalls}`,
+									`Token：输入 ${snapshot.sessionStats.inputTokens} · 输出 ${snapshot.sessionStats.outputTokens} · 缓存读 ${snapshot.sessionStats.cacheRead}`,
+									`上下文占用：${snapshot.sessionStats.contextTokens}`,
+								].join("\n")}
+							>
+								↑ {formatTokens(snapshot.sessionStats.inputTokens)} ↓ {formatTokens(snapshot.sessionStats.outputTokens)}{" "}
+								· 上下文 {formatTokens(snapshot.sessionStats.contextTokens)}
+							</span>
+						) : null}
+					</header>
+
+					<main className="main" ref={scroll.ref}>
+						{snapshot ? (
+							<MessageList
+								messages={messages}
+								hasMoreBefore={snapshot.active.hasMoreBefore}
+								engine={snapshot.engine}
+								actions={snapshot.actions}
+								running={
+									snapshot?.running.status !== "idle" &&
+									snapshot?.running.conversationId === snapshot?.active.conversationId
+								}
+							/>
+						) : (
+							<div className="empty">等待服务端快照…（后端没起来的话看终端日志）</div>
+						)}
+						{scroll.stuck ? null : (
+							<button type="button" className="jump-bottom" onClick={scroll.toBottom} title="回到最新">
+								↓ 回到底部
+							</button>
+						)}
+					</main>
+					{panelItems.length === 0 ? <ConversationOutline messages={messages} /> : null}
+
+					{state.lastError ? <div className="error-bar">{state.lastError}</div> : null}
+					<NoticeBar notices={snapshot?.notices ?? []} />
+					<Composer
+						running={
+							snapshot?.running.status !== "idle" &&
+							snapshot?.running.conversationId === (snapshot?.active.conversationId ?? null)
 						}
-						onOpenTerminal={(cwd) => {
-							const id = `term:${termSeq}:${cwd}`;
-							setTermSeq((value) => value + 1);
-							setPanelItems((current) => [...current, { id, kind: "terminal", cwd }]);
-							setActiveItem(id);
-						}}
-						onOpenFile={(path, root) => {
-							const id = `file:${root}:${path}`;
-							setPanelItems((current) =>
-								current.some((item) => item.id === id) ? current : [...current, { id, kind: "file", path, root }],
-							);
-							setActiveItem(id);
-						}}
-					/>
-					{/* 拖拽条：右边边缘 6px，双击回到默认宽度 */}
-					<div
-						className="side-resizer"
-						role="separator"
-						aria-orientation="vertical"
-						title="拖动调整宽度（双击复位）"
-						onPointerDown={startResize}
-						onDoubleClick={() => setSideWidth(readStoredWidth(null))}
+						conversationId={snapshot?.active.conversationId ?? null}
 					/>
 				</div>
-			)}
 
-			<div className="workspace">
-				<header className="topbar">
-					<span className="brand">agent-web</span>
-					<span className={`chip chip-${state.connection}`}>{CONNECTION_LABEL[state.connection]}</span>
-					{snapshot &&
-					(snapshot.running.status === "idle" || snapshot.running.conversationId === snapshot.active.conversationId) ? (
-						<span className={`chip chip-run-${snapshot.running.status}`}>{RUNNING_LABEL[snapshot.running.status]}</span>
-					) : null}
-					<span className="topbar-spacer" />
-					{snapshot?.sessionStats ? (
-						<span
-							className="chip chip-quiet mono"
-							title={[
-								`消息：用户 ${snapshot.sessionStats.userMessages} / 助手 ${snapshot.sessionStats.assistantMessages} / 工具 ${snapshot.sessionStats.toolCalls}`,
-								`Token：输入 ${snapshot.sessionStats.inputTokens} · 输出 ${snapshot.sessionStats.outputTokens} · 缓存读 ${snapshot.sessionStats.cacheRead}`,
-								`上下文占用：${snapshot.sessionStats.contextTokens}`,
-							].join("\n")}
-						>
-							↑ {formatTokens(snapshot.sessionStats.inputTokens)} ↓ {formatTokens(snapshot.sessionStats.outputTokens)} ·
-							上下文 {formatTokens(snapshot.sessionStats.contextTokens)}
-						</span>
-					) : null}
-				</header>
+				{panelItems.length > 0 ? (
+					<PreviewPanel
+						items={panelItems}
+						activeId={activeItem ?? panelItems[0]?.id ?? ""}
+						onActivate={setActiveItem}
+						onCloseItem={(id) => {
+							setPanelItems((current) => current.filter((item) => item.id !== id));
+							if (activeItem === id) setActiveItem(null);
+						}}
+						onCloseAll={() => {
+							setPanelItems([]);
+							setActiveItem(null);
+						}}
+					/>
+				) : null}
 
-				<main className="main" ref={scroll.ref}>
-					{snapshot ? (
-						<MessageList
-							messages={messages}
-							hasMoreBefore={snapshot.active.hasMoreBefore}
-							engine={snapshot.engine}
-							actions={snapshot.actions}
-							running={
-								snapshot?.running.status !== "idle" &&
-								snapshot?.running.conversationId === snapshot?.active.conversationId
-							}
-						/>
-					) : (
-						<div className="empty">等待服务端快照…（后端没起来的话看终端日志）</div>
-					)}
-					{scroll.stuck ? null : (
-						<button type="button" className="jump-bottom" onClick={scroll.toBottom} title="回到最新">
-							↓ 回到底部
-						</button>
-					)}
-				</main>
-				{panelItems.length === 0 ? <ConversationOutline messages={messages} /> : null}
-
-				{state.lastError ? <div className="error-bar">{state.lastError}</div> : null}
-				<NoticeBar notices={snapshot?.notices ?? []} />
-				<Composer
-					running={
-						snapshot?.running.status !== "idle" &&
-						snapshot?.running.conversationId === (snapshot?.active.conversationId ?? null)
-					}
-					conversationId={snapshot?.active.conversationId ?? null}
-				/>
+				{snapshot?.pendingApproval ? <ApprovalDialog approval={snapshot.pendingApproval} /> : null}
 			</div>
-
-			{panelItems.length > 0 ? (
-				<PreviewPanel
-					items={panelItems}
-					activeId={activeItem ?? panelItems[0]?.id ?? ""}
-					onActivate={setActiveItem}
-					onCloseItem={(id) => {
-						setPanelItems((current) => current.filter((item) => item.id !== id));
-						if (activeItem === id) setActiveItem(null);
-					}}
-					onCloseAll={() => {
-						setPanelItems([]);
-						setActiveItem(null);
-					}}
-				/>
-			) : null}
-
-			{snapshot?.pendingApproval ? <ApprovalDialog approval={snapshot.pendingApproval} /> : null}
 		</div>
 	);
 }

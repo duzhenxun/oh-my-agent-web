@@ -5,8 +5,8 @@ import type { ConversationMeta, PiProject, ProjectPrefs } from "../types.ts";
 import { sortProjects } from "../project-sort.ts";
 import { newChat, setSettings, switchConversation } from "../ws.ts";
 import { NewProjectDialog } from "./NewProjectDialog.tsx";
+import { SessionRow } from "./SessionRow.tsx";
 import { SidebarFiles } from "./SidebarFiles.tsx";
-import { SidebarMenu } from "./SidebarMenu.tsx";
 
 /** 相对时间（参考实现的风格：刚刚 / 5分 / 3小时 / 2天 / 1个月） */
 function relativeTime(ts: number, now = Date.now()): string {
@@ -67,6 +67,10 @@ export function Sidebar({
 	const [fileOpen, setFileOpen] = useState(false);
 	// 文件树根：默认跟随当前会话工作区，可从下拉框切到任意项目
 	const [treeRoot, setTreeRoot] = useState<string | null>(null);
+	const sessionPrefs = snapshot?.settings.sessionPrefs ?? { pinned: [], archived: [], titles: {} };
+	const [sessionMenu, setSessionMenu] = useState<string | null>(null);
+	const patchSessionPrefs = (patch: Partial<typeof sessionPrefs>) =>
+		setSettings({ sessionPrefs: { ...sessionPrefs, ...patch } });
 	const currentRoot = snapshot?.files?.root ?? null;
 	// 「还有 N 个…」点开后就显示全部（每个项目各自记）
 	const [showAll, setShowAll] = useState<Record<string, boolean>>({});
@@ -163,8 +167,12 @@ export function Sidebar({
 				{groups.length === 0 ? <div className="sidebar-empty">还没有会话。发一条消息就会自动建一个。</div> : null}
 				{groups.map((project, index) => {
 					const expanded = showAll[project.cwd] === true;
-					const shown = expanded ? project.sessions : project.sessions.slice(0, SESSIONS_PER_PROJECT);
-					const rest = project.sessions.length - shown.length;
+					// 归档的会话从列表隐藏；置顶的排在该项目最前
+					const visibleSessions = project.sessions
+						.filter((session) => !sessionPrefs.archived.includes(session.id))
+						.sort((a, b) => Number(sessionPrefs.pinned.includes(b.id)) - Number(sessionPrefs.pinned.includes(a.id)));
+					const shown = expanded ? visibleSessions : visibleSessions.slice(0, SESSIONS_PER_PROJECT);
+					const rest = visibleSessions.length - shown.length;
 					const hasActive = project.sessions.some((session) => session.id === activeId);
 					const name = aliases[project.cwd] || project.name || "（未知项目）";
 					void knownWorkspaces;
@@ -294,23 +302,31 @@ export function Sidebar({
 							) : null}
 							<div className="proj-body">
 								{shown.map((session) => (
-									<button
-										type="button"
+									<SessionRow
 										key={session.id}
-										className={`pi-row${session.id === activeId ? " pi-row-active" : ""}`}
-										onClick={() => switchConversation(session.id)}
-										title={`${session.cwd}\n${session.id}`}
-									>
-										<span className="pi-row-title">{session.title || "（无标题）"}</span>
-										{session.id === runningConversationId ? (
-											<span className="pi-running" title="这个会话正在运行">
-												<span className="pi-ring" aria-hidden="true" />
-												运行中
-											</span>
-										) : (
-											<span className="pi-row-time">{relativeTime(session.updatedAt)}</span>
-										)}
-									</button>
+										session={session}
+										active={session.id === activeId}
+										running={session.id === runningConversationId}
+										title={sessionPrefs.titles[session.id] ?? (session.title || "（无标题）")}
+										pinned={sessionPrefs.pinned.includes(session.id)}
+										menuOpen={sessionMenu === session.id}
+										onToggleMenu={() => setSessionMenu(sessionMenu === session.id ? null : session.id)}
+										onSwitch={() => switchConversation(session.id)}
+										onPin={() =>
+											patchSessionPrefs({
+												pinned: sessionPrefs.pinned.includes(session.id)
+													? sessionPrefs.pinned.filter((id) => id !== session.id)
+													: [...sessionPrefs.pinned, session.id],
+											})
+										}
+										onRename={() => {
+											const next = window.prompt("会话显示名", sessionPrefs.titles[session.id] ?? session.title ?? "");
+											if (next === null) return;
+											patchSessionPrefs({ titles: { ...sessionPrefs.titles, [session.id]: next.trim() } });
+										}}
+										onArchive={() => patchSessionPrefs({ archived: [...sessionPrefs.archived, session.id] })}
+										onCloseMenu={() => setSessionMenu(null)}
+									/>
 								))}
 								{rest > 0 ? (
 									<button
@@ -364,7 +380,6 @@ export function Sidebar({
 			/>
 
 			{newProjectOpen ? <NewProjectDialog onClose={() => setNewProjectOpen(false)} /> : null}
-			<SidebarMenu />
 		</aside>
 	);
 }

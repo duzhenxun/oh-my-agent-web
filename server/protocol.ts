@@ -168,6 +168,13 @@ export type SessionStats = {
 	contextTokens: number;
 };
 
+/** 会话级偏好：置顶（排在该项目最前）/ 重命名（只改显示名）/ 归档（从列表隐藏） */
+export type SessionPrefs = {
+	pinned: string[];
+	archived: string[];
+	titles: Record<string, string>;
+};
+
 /** 项目偏好（ADR-0028）：显式顺序 + 置顶 + 显示名别名（身份仍是 cwd） */
 export type ProjectPrefs = {
 	order: string[];
@@ -193,6 +200,8 @@ export type SettingsView = {
 	templates: PromptTemplate[];
 	/** 项目排序 / 置顶 / 别名（ADR-0028） */
 	projectPrefs: ProjectPrefs;
+	/** 会话级偏好：置顶 / 重命名 / 归档（本轮新增） */
+	sessionPrefs: SessionPrefs;
 };
 
 export type PiProject = {
