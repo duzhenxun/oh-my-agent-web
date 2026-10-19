@@ -258,3 +258,97 @@
 .side-split:active {
 	background: color-mix(in srgb, var(--accent) 25%, transparent);
 }
+
+/* ---- 对话大纲（右侧窄条）---- */
+.workspace {
+	position: relative;
+}
+
+.outline {
+	position: absolute;
+	top: 56px;
+	right: 6px;
+	bottom: 96px;
+	display: flex;
+	flex-direction: row-reverse; /* 预放在窄条左边，避免盖住方块导致点不动 */
+	align-items: flex-start;
+	gap: 6px;
+	z-index: 8;
+	pointer-events: none;
+}
+
+.outline-rail {
+	pointer-events: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 7px;
+	padding: 6px 4px;
+	border-radius: 10px;
+	background: color-mix(in srgb, var(--bg-elev) 70%, transparent);
+	max-height: 100%;
+	overflow: auto;
+}
+
+/* 空心方块：当前悬停的才填色 */
+.outline-dot {
+	width: 9px;
+	height: 9px;
+	padding: 0;
+	border: 1.5px solid var(--text-faint);
+	border-radius: 2px;
+	background: transparent;
+	cursor: pointer;
+}
+
+.outline-dot:hover,
+.outline-dot-on {
+	border-color: var(--accent);
+	background: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+.outline-preview {
+	pointer-events: auto;
+	width: min(420px, 42vw);
+	max-height: 60vh;
+	overflow: auto;
+	padding: 8px 10px;
+	border: 1px solid var(--border-strong, var(--border));
+	border-radius: 10px;
+	background: var(--bg-elev);
+	box-shadow: 0 12px 32px rgb(0 0 0 / 45%);
+}
+
+.outline-item {
+	display: flex;
+	gap: 8px;
+	padding: 3px 0;
+	font-size: 12.5px;
+}
+
+.outline-item-answer {
+	border-top: 1px solid var(--border);
+	margin-top: 4px;
+	padding-top: 6px;
+	color: var(--text-dim);
+}
+
+.outline-num {
+	flex: none;
+	width: 22px;
+	color: var(--text-faint);
+	font-size: 11px;
+}
+
+.outline-q {
+	color: var(--text);
+}
+
+.outline-a {
+	color: var(--text-dim);
+}
+
+.outline-hint {
+	margin-top: 6px;
+	color: var(--text-faint);
+	font-size: 11px;
+}

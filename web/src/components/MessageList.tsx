@@ -15,7 +15,7 @@ export function textOfMessage(message: UiMessage): string {
 function MessageView({ message }: { message: UiMessage }) {
 	const text = textOfMessage(message);
 	return (
-		<article className={`msg msg-${message.role}`}>
+		<article className={`msg msg-${message.role}`} id={`msg-${message.id}`}>
 			<header className="msg-head">
 				<span className="msg-role">{message.role === "user" ? "我" : "助手"}</span>
 				<span className="msg-time">{new Date(message.ts).toLocaleTimeString()}</span>

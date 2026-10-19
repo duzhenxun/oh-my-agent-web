@@ -5,6 +5,7 @@ import { useAppState } from "./store.ts";
 import { ApprovalDialog, NoticeBar } from "./components/ApprovalDialog.tsx";
 import { Composer } from "./components/Composer.tsx";
 import { MessageList } from "./components/MessageList.tsx";
+import { ConversationOutline } from "./components/ConversationOutline.tsx";
 import { PreviewPanel, type PanelItem } from "./components/PreviewPanel.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
 import { SidebarMenu } from "./components/SidebarMenu.tsx";
@@ -177,6 +178,7 @@ export function App() {
 						</button>
 					)}
 				</main>
+				<ConversationOutline messages={messages} />
 
 				{state.lastError ? <div className="error-bar">{state.lastError}</div> : null}
 				<NoticeBar notices={snapshot?.notices ?? []} />
