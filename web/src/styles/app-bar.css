@@ -112,7 +112,7 @@
 
 /* 贴边布局下正文与输入区需要一点内边距，否则文字/按钮顶到边缘被裁 */
 .workspace {
-	padding: 0 12px 10px;
+	padding: 0 16px 10px 20px; /* 左侧多一点：消息与工具卡的左边距太小会显得贴边 */
 }
 
 .workspace .main {
