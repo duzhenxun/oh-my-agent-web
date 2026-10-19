@@ -7,6 +7,7 @@ function makeSnapshot(tag: number): Snapshot {
 		protocolVersion: PROTOCOL_VERSION,
 		engine: "fake",
 		model: "test/model",
+		approvalMode: "ask",
 		models: [],
 		piProjects: [],
 		actions: [],

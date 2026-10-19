@@ -275,3 +275,9 @@ body {
 .chip-select:hover {
 	border-color: var(--accent-dim);
 }
+
+/* 审批模式芯片（P4）：放行状态用暖色提醒，别让人忘了自己关掉了审批 */
+.chip-warn {
+	border-color: color-mix(in srgb, var(--yellow, #d9a441) 60%, transparent);
+	color: var(--yellow, #d9a441);
+}

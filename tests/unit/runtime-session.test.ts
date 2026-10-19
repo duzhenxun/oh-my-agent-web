@@ -31,11 +31,12 @@ describe("M3：审批规则跨重启（ADR-0006 的「总是允许这类」）",
 		expect(messageTextForTest(second.runtime.snapshot())).toContain("审批结果：always");
 	});
 
-	it("init 装载规则并提示「这些操作不会再询问」", async () => {
+	it("init 装载规则但不往对话流里塞提示（启动信息只进日志）", async () => {
 		const rules = createMemoryRuleStore([{ scopeKey: "bash|npm", scopeHint: "命令 npm", createdAt: 1 }]);
 		const { runtime } = harness(rules);
 		await runtime.init();
-		expect(runtime.snapshot().notices.some((notice) => notice.text.includes("审批规则"))).toBe(true);
+		expect(await rules.load()).toHaveLength(1);
+		expect(runtime.snapshot().notices.some((notice) => notice.text.includes("审批规则"))).toBe(false);
 	});
 
 	it("「允许一次」不写规则（这正是三态的意义）", async () => {

@@ -11,7 +11,7 @@
  *   - 回合结束时若还悬着一个审批 → 按「拒绝」收尾，不留下一个永远等不到答复的 Promise。
  */
 import { hasRule, withRule, type ApprovalRule, type RuleStore } from "../approval/rules.js";
-import type { ApprovalDecision, PendingApproval, ProtocolError } from "../protocol.js";
+import type { ApprovalDecision, ApprovalMode, PendingApproval, ProtocolError } from "../protocol.js";
 import type { ApprovalRequest } from "../engine/port.js";
 
 export type ApprovalResult = { ok: true } | { ok: false; error: ProtocolError };
@@ -36,12 +36,20 @@ export type ApprovalBridge = {
 	rulesCount: () => number;
 	/** 回合结束时调用：把悬着的审批按「拒绝」收尾 */
 	cancelPending: () => void;
+	/** 审批模式（P4）：「全部放行」时 handler 直接返回 once，不再弹窗 */
+	setMode: (mode: ApprovalMode) => void;
+	mode: () => ApprovalMode;
 };
 
 export function createApprovalBridge(options: ApprovalBridgeOptions): ApprovalBridge {
 	let rules: ApprovalRule[] = [];
 	/** 本次运行内记住的（即使写盘失败也生效） */
 	const sessionRules = new Set<string>();
+	/**
+	 * 审批模式：只在内存里（不落盘）。切到 allow 时，**下一次**需要审批的操作起就直接放行；
+	 * 已经悬着的那个弹窗不会凭空消失（用户仍能选），避免"点了放行却看到一个闪现消失的弹窗"。
+	 */
+	let approvalMode: ApprovalMode = "ask";
 	let pending: {
 		requestId: string;
 		scopeKey: string;
@@ -51,6 +59,8 @@ export function createApprovalBridge(options: ApprovalBridgeOptions): ApprovalBr
 
 	const bridge: ApprovalBridge = {
 		async handler(request) {
+			// 本会话全部放行：不问，直接 once（不记忆、不写盘，重启即恢复询问）
+			if (approvalMode === "allow") return "once";
 			if (sessionRules.has(request.scopeKey) || hasRule(rules, request.scopeKey)) return "always";
 
 			const requestId = options.nextId("appr");
@@ -101,6 +111,14 @@ export function createApprovalBridge(options: ApprovalBridgeOptions): ApprovalBr
 
 		rulesCount() {
 			return rules.length;
+		},
+
+		setMode(next) {
+			approvalMode = next;
+		},
+
+		mode() {
+			return approvalMode;
 		},
 
 		cancelPending() {

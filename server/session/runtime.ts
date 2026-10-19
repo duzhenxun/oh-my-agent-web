@@ -24,40 +24,16 @@ import { makeIdFactory } from "../util/ids.js";
 import type {
 	AttachmentRef, // 附件引用（ADR-0020 §P3）
 	ApprovalDecision,
-	Notice,
 	PiProject,
-	ProtocolError,
-	ServerEvent,
-	Snapshot,
 } from "../protocol.js";
 import type { EnginePort } from "../engine/port.js";
 import { appendText, createMessage } from "../snapshot/messages.js";
-import { buildSnapshot, createServerState, emptyRunning, type ServerState } from "../snapshot/state.js";
-export type RuntimeEmit = {
-	snapshot(snapshot: Snapshot): void;
-	event(event: ServerEvent): void;
-};
-export type Result = { ok: true } | { ok: false; error: ProtocolError };
-export type Runtime = {
-	init(): Promise<void>;
-	snapshot(): Snapshot;
-	state(): ServerState;
-	sendMessage(text: string, attachments?: AttachmentRef[]): Promise<Result>;
-	interrupt(): Promise<Result>;
-	approve(requestId: string, decision: ApprovalDecision): Result;
-	newConversation(workspace?: string): Promise<Result>;
-	/** 改客户端设置（ADR-0020 §P1）：归一化 → 落盘 → 推快照 */
-	applySettings(patch: unknown): Promise<Result>;
-	/** 切换当前会话的模型（ADR-0020 §P2） */
-	setModel(modelId: string): Promise<Result>;
-	switchConversation(conversationId: string): Promise<Result>;
-	/** 重新扫 pi 已有的项目/会话（ADR-0021 §1）；带最小间隔，避免每次刷新都扫盘 */
-	refreshPiSessions(force?: boolean): Promise<void>;
-	/** 给宿主其他部分（引擎、启动流程）推一条界面提示 */
-	notify(text: string, level?: Notice["level"]): void;
-	isBusy(): boolean;
-};
+import { buildSnapshot, createServerState, emptyRunning } from "../snapshot/state.js";
+export type { Result, Runtime, RuntimeEmit } from "./runtime-types.js";
+import type { Runtime, RuntimeEmit } from "./runtime-types.js";
 export type RuntimeOptions = {
+	/** 启动信息（只进日志，不进对话流） */
+	onStartupInfo?: (text: string) => void;
 	engine: EnginePort;
 	/** 审批规则落盘（ADR-0006）：「总是允许这类」跨重启生效 */
 	rules: RuleStore;
@@ -229,10 +205,9 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 
 	return {
 		async init() {
+			// 装载的「总是允许」规则只写日志：启动信息不该占用对话流（用户明确要求过）
 			const ruleCount = await approval.loadRules();
-			if (ruleCount > 0) {
-				notice(`已装载 ${ruleCount} 条审批规则（这些操作不会再询问）`, "info");
-			}
+			if (ruleCount > 0) options.onStartupInfo?.(`已装载 ${ruleCount} 条审批规则（这些操作不会再询问）`);
 			state.settings = settings ? await settings.load() : defaultSettings();
 			await piRefresher.refresh(true);
 			pushSnapshot();
@@ -354,6 +329,17 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		},
 
 		setModel: (modelId) => models.switchTo(state.activeId, modelId),
+
+		setApprovalMode(mode) {
+			approval.setMode(mode);
+			state.approvalMode = mode;
+			pushSnapshot();
+			notice(
+				mode === "allow" ? "审批模式：本会话全部放行（重启即恢复询问）" : "审批模式：照旧询问",
+				mode === "allow" ? "warn" : "info",
+			);
+			return { ok: true };
+		},
 
 		async newConversation(workspace?: string) {
 			try {

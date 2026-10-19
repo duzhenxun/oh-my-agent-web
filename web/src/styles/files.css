@@ -183,3 +183,47 @@
 	color: var(--text-faint);
 	font-size: 12px;
 }
+
+/* 文件行：hover 出「@ 提及」按钮（对齐参考实现的交互） */
+.filetree-item {
+	position: relative;
+	display: flex;
+	align-items: center;
+	min-width: 0;
+}
+
+.filetree-item > .filetree-row {
+	flex: 1 1 auto;
+	min-width: 0;
+	/* 给右侧按钮留出位置，避免长文件名把按钮挤掉 */
+	padding-right: 54px;
+}
+
+.filetree-mention {
+	position: absolute;
+	right: 2px;
+	top: 50%;
+	transform: translateY(-50%);
+	display: none;
+	align-items: center;
+	gap: 3px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--bg-elev-2);
+	color: var(--accent);
+	font: inherit;
+	font-size: 11.5px;
+	padding: 1px 6px;
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.filetree-item:hover .filetree-mention,
+.filetree-mention:focus-visible {
+	display: inline-flex;
+}
+
+.filetree-mention:hover {
+	border-color: var(--accent-dim);
+	background: var(--bg-elev);
+}

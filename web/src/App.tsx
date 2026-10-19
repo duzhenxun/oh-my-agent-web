@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useState } from "react";
 import { useAppState } from "./store.ts";
-import { setModel } from "./ws.ts";
+import { setApprovalMode, setModel } from "./ws.ts";
 import { ApprovalDialog, NoticeBar } from "./components/ApprovalDialog.tsx";
 import { Composer } from "./components/Composer.tsx";
 import { MessageList } from "./components/MessageList.tsx";
@@ -83,6 +83,14 @@ export function App() {
 						title="文件列表（当前项目）"
 					>
 						📁 文件
+					</button>
+					<button
+						type="button"
+						className={`chip ${snapshot?.approvalMode === "allow" ? "chip-warn" : "chip-quiet"}`}
+						onClick={() => setApprovalMode(snapshot?.approvalMode === "allow" ? "ask" : "allow")}
+						title="审批模式（只在本会话生效，重启恢复询问）"
+					>
+						{snapshot?.approvalMode === "allow" ? "审批：全部放行" : "审批：询问"}
 					</button>
 					<span className="chip chip-quiet">协议 v{snapshot?.protocolVersion ?? "?"}</span>
 				</header>

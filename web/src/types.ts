@@ -8,6 +8,7 @@
 export type {
 	ActionItem,
 	ApprovalDecision,
+	ApprovalMode,
 	AttachmentRef,
 	ApproveRequest,
 	ClientRequest,
@@ -30,6 +31,7 @@ export type {
 	ProtocolError,
 	RunningState,
 	SendMessageRequest,
+	SetApprovalModeRequest,
 	SetModelRequest,
 	SetSettingsRequest,
 	SettingsView,

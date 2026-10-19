@@ -70,3 +70,22 @@ describe("new_chat 可以指定项目（ADR-0021 §2）", () => {
 		});
 	});
 });
+
+describe("set_approval_mode（P4 审批模式）", () => {
+	it("接受 ask / allow", () => {
+		expect(parseClientRequest({ id: "r1", type: "set_approval_mode", payload: { mode: "allow" } })).toEqual({
+			id: "r1",
+			type: "set_approval_mode",
+			payload: { mode: "allow" },
+		});
+		expect(parseClientRequest({ id: "r2", type: "set_approval_mode", payload: { mode: "ask" } })?.type).toBe(
+			"set_approval_mode",
+		);
+	});
+
+	it("拒绝其它取值与缺字段", () => {
+		expect(parseClientRequest({ id: "r3", type: "set_approval_mode", payload: { mode: "yolo" } })).toBeNull();
+		expect(parseClientRequest({ id: "r4", type: "set_approval_mode", payload: {} })).toBeNull();
+		expect(parseClientRequest({ id: "r5", type: "set_approval_mode" })).toBeNull();
+	});
+});

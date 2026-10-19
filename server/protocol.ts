@@ -146,6 +146,8 @@ export type Snapshot = {
 	models: ModelOption[];
 	/** 当前模型（`provider/model`；取不到为 null）——M3 起界面要能看见自己在跟谁说话 */
 	model: string | null;
+	/** 审批模式（P4）：本会话是「照旧询问」还是「全部放行」 */
+	approvalMode: ApprovalMode;
 	/** pi 已有项目与会话（只读；ADR-0021 §1） */
 	piProjects: PiProject[];
 	/** 客户端设置（快捷短语等） */
@@ -187,6 +189,16 @@ export type GetStateRequest = { id: string; type: "get_state" };
 /** 改客户端设置（ADR-0020 §P1）：只带要改的字段，服务端归一化后落盘 */
 export type SetSettingsRequest = { id: string; type: "set_settings"; payload: Partial<SettingsView> };
 
+/**
+ * 审批模式（P4 第一件）：
+ *   - `ask`（默认）：危险操作照旧弹窗；
+ *   - `allow`：**本会话**放行所有需要审批的操作（不弹窗）。
+ * 刻意**只存在内存**、不落盘：重启即回到 `ask`，避免"某天永久静默放行"这种事故。
+ */
+export type ApprovalMode = "ask" | "allow";
+
+export type SetApprovalModeRequest = { id: string; type: "set_approval_mode"; payload: { mode: ApprovalMode } };
+
 /** 切换当前会话的模型（ADR-0020 §P2）：写进会话文件，续聊时不变 */
 export type SetModelRequest = { id: string; type: "set_model"; payload: { modelId: string } };
 
@@ -197,6 +209,7 @@ export type ClientRequest =
 	| GetStateRequest
 	| SetSettingsRequest
 	| SetModelRequest
+	| SetApprovalModeRequest
 	| NewChatRequest
 	| SwitchConversationRequest;
 
@@ -250,6 +263,7 @@ const REQUEST_TYPES: ClientRequestType[] = [
 	"switch_conversation",
 	"set_settings",
 	"set_model",
+	"set_approval_mode",
 ];
 const DECISIONS: ApprovalDecision[] = ["once", "always", "deny"];
 
@@ -305,6 +319,11 @@ export function parseClientRequest(raw: unknown): ClientRequest | null {
 			payload: { text: String(payload.text ?? ""), ...(attachments?.length ? { attachments } : {}) },
 		};
 	}
+	if (type === "set_approval_mode") {
+		const mode = payload.mode;
+		return mode === "ask" || mode === "allow" ? { id, type: "set_approval_mode", payload: { mode } } : null;
+	}
+
 	if (type === "set_model") {
 		return nonEmptyString(payload.modelId) ? { id, type: "set_model", payload: { modelId: payload.modelId } } : null;
 	}

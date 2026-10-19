@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { referenceFor } from "../file-preview.ts";
+import { setDraft } from "../store.ts";
 
 type FileEntry = { name: string; path: string; isDir: boolean };
 
@@ -91,7 +93,7 @@ export function FileTree({ root, onOpenFile }: { root: string | null; onOpenFile
 			</div>
 			{error ? <div className="filetree-error">{error}</div> : null}
 			{nodes.map((node, index) => (
-				<div key={node.entry.path || index}>
+				<div className="filetree-item" key={node.entry.path || index}>
 					<button
 						type="button"
 						className={`filetree-row filetree-${node.entry.isDir ? "dir" : "file"}`}
@@ -105,6 +107,17 @@ export function FileTree({ root, onOpenFile }: { root: string | null; onOpenFile
 						<span className="filetree-name">{node.entry.name}</span>
 						{node.loading ? <span className="filetree-hint">…</span> : null}
 					</button>
+					{/* 悬浮出现「@ 提及」：把 @path 引用直接塞进输入框（不打开预览，一步到位） */}
+					{node.entry.isDir ? null : (
+						<button
+							type="button"
+							className="filetree-mention"
+							title={`把 @${node.entry.path} 加到对话`}
+							onClick={() => setDraft(`${referenceFor(node.entry.path, null)} `)}
+						>
+							@ 提及
+						</button>
+					)}
 					{node.error ? <div className="filetree-error">{node.error}</div> : null}
 				</div>
 			))}

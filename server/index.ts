@@ -88,6 +88,8 @@ const runtimeRef: { current: { notify: (text: string, level?: "info" | "warn" | 
 const runtime = createRuntime({
 	engine,
 	rules: createFileRuleStore(config.dataDir),
+	// 启动信息只进日志，不进对话流
+	onStartupInfo: (text) => logger.info(text),
 	workspace: config.workspace,
 	engineName: config.engine,
 	turnTimeoutMs: config.turnTimeoutMs,
@@ -248,6 +250,10 @@ async function handleMessage(socket: WebSocket, raw: string): Promise<void> {
 			}
 			case "switch_conversation": {
 				reply(socket, request.id, await runtime.switchConversation(request.payload.conversationId));
+				return;
+			}
+			case "set_approval_mode": {
+				reply(socket, request.id, runtime.setApprovalMode(request.payload.mode));
 				return;
 			}
 			case "set_model": {
