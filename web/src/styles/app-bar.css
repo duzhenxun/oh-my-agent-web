@@ -203,3 +203,21 @@
 	border-color: color-mix(in srgb, var(--accent) 85%, black);
 	color: #fff;
 }
+
+/* 滚动条要贴着面板右边缘：workspace 右侧不留内边距，把留白挪到内容自己身上 */
+.workspace {
+	padding: 0 0 10px 20px;
+}
+
+.workspace .main {
+	padding-right: 0;
+}
+
+/* 正文与输入区仍然离滚动条一点距离（否则文字会顶到滚动条上） */
+.workspace .messages,
+.workspace .composer-wrap,
+.workspace .sent-queue,
+.workspace .notices,
+.workspace .statusbar {
+	margin-right: 14px;
+}
