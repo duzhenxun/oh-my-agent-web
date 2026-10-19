@@ -12,7 +12,7 @@ function makeSnapshot(tag: number): Snapshot {
 		models: [],
 		piProjects: [],
 		actions: [],
-		settings: { quickPhrases: [], quickPhrasesEnabled: true },
+		settings: { quickPhrases: [], quickPhrasesEnabled: true, templates: [] },
 		conversations: [],
 		active: { conversationId: null, messages: [], hasMoreBefore: false },
 		running: { status: "idle", turnStartedAt: null, streamingText: `tag-${tag}`, activeTool: null },

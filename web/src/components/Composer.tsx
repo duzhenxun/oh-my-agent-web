@@ -1,8 +1,9 @@
 import { useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import { imagesMarkdown, pickUploadableFiles, uploadFile } from "../attachments.ts";
+import { TemplateEditor, TemplateGallery } from "./TemplateModals.tsx";
 import { setDraft, useAppState } from "../store.ts";
-import type { AttachmentRef } from "../types.ts";
-import { interrupt, sendMessage } from "../ws.ts";
+import type { AttachmentRef, PromptTemplate } from "../types.ts";
+import { interrupt, sendMessage, setModel } from "../ws.ts";
 
 function formatBytes(bytes: number): string {
 	if (bytes < 1024) return `${bytes}B`;
@@ -25,6 +26,10 @@ export function Composer({ running, conversationId }: { running: boolean; conver
 	const inputRef = useRef<HTMLTextAreaElement>(null);
 
 	const quickPhrases = snapshot?.settings.quickPhrasesEnabled ? (snapshot?.settings.quickPhrases ?? []) : [];
+	const templates = snapshot?.settings.templates ?? [];
+	// 模板库 / 模板编辑两个弹窗（P5）
+	const [galleryOpen, setGalleryOpen] = useState(false);
+	const [editing, setEditing] = useState<{ template: PromptTemplate | null } | null>(null);
 
 	const addFiles = async (files: File[]) => {
 		if (files.length === 0) return;
@@ -154,6 +159,44 @@ export function Composer({ running, conversationId }: { running: boolean; conver
 					)}
 				</div>
 			</div>
+
+			{/* 输入框下面一行：模板库 + 模型切换（ADR-0024 之后按引擎能力显隐） */}
+			<div className="composer-tools">
+				<button type="button" className="tool-chip" onClick={() => setGalleryOpen(true)} title="提示词模板库">
+					🧩 模板
+				</button>
+				{snapshot && snapshot.models.length > 0 && snapshot.engineCapabilities.modelSwitch ? (
+					<select
+						className="tool-chip tool-select mono"
+						value={snapshot.model ?? ""}
+						onChange={(event) => setModel(event.target.value)}
+						title="切换这个会话使用的模型"
+					>
+						{snapshot.model && !snapshot.models.some((model) => model.id === snapshot.model) ? (
+							<option value={snapshot.model}>{snapshot.model}</option>
+						) : null}
+						{snapshot.models.map((model) => (
+							<option key={model.id} value={model.id}>
+								{model.label}
+							</option>
+						))}
+					</select>
+				) : snapshot?.model ? (
+					<span className="tool-chip mono">{snapshot.model}</span>
+				) : null}
+			</div>
+
+			{galleryOpen ? (
+				<TemplateGallery
+					templates={templates}
+					onEdit={(template) => setEditing({ template })}
+					onCreate={() => setEditing({ template: null })}
+					onClose={() => setGalleryOpen(false)}
+				/>
+			) : null}
+			{editing ? (
+				<TemplateEditor template={editing.template} library={templates} onClose={() => setEditing(null)} />
+			) : null}
 		</div>
 	);
 }

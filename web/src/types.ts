@@ -29,6 +29,7 @@ export type {
 	PendingApproval,
 	PiProject,
 	PiSessionSummary,
+	PromptTemplate,
 	ProtocolError,
 	RunningState,
 	SendMessageRequest,

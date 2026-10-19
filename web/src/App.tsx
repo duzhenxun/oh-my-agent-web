@@ -1,7 +1,7 @@
 import { useStickToBottom } from "./stick-to-bottom.ts";
 import { useState } from "react";
 import { useAppState } from "./store.ts";
-import { setApprovalMode, setModel } from "./ws.ts";
+import { setApprovalMode } from "./ws.ts";
 import { ApprovalDialog, NoticeBar } from "./components/ApprovalDialog.tsx";
 import { Composer } from "./components/Composer.tsx";
 import { MessageList } from "./components/MessageList.tsx";
@@ -58,25 +58,6 @@ export function App() {
 					{activeConversation ? <span className="chip chip-quiet">{activeConversation.title}</span> : null}
 					{snapshot?.files ? <span className="chip chip-quiet mono">{snapshot.files.root}</span> : null}
 					{snapshot ? <span className="chip chip-quiet">引擎 {snapshot.engine}</span> : null}
-					{snapshot && snapshot.models.length > 0 && snapshot.engineCapabilities.modelSwitch ? (
-						<select
-							className="chip chip-select mono"
-							value={snapshot.model ?? ""}
-							onChange={(event) => setModel(event.target.value)}
-							title="切换这个会话使用的模型"
-						>
-							{snapshot.model && !snapshot.models.some((model) => model.id === snapshot.model) ? (
-								<option value={snapshot.model}>{snapshot.model}</option>
-							) : null}
-							{snapshot.models.map((model) => (
-								<option key={model.id} value={model.id}>
-									{model.label}
-								</option>
-							))}
-						</select>
-					) : snapshot?.model ? (
-						<span className="chip chip-quiet mono">{snapshot.model}</span>
-					) : null}
 					<button
 						type="button"
 						className={`chip chip-quiet${filePanelOpen ? " chip-on" : ""}`}

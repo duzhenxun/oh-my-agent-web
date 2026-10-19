@@ -132,9 +132,14 @@ export type ActionItem = {
 };
 
 /** 客户端设置（ADR-0020 §P1）：界面直接读快照里的这一份 */
+/** 提示词模板（P5）：一个模板 = 名字 + 一句说明 + 图标 + 正文 */
+export type PromptTemplate = { id: string; name: string; description: string; icon: string; text: string };
+
 export type SettingsView = {
 	quickPhrases: string[];
 	quickPhrasesEnabled: boolean;
+	/** 提示词模板库（P5）：点卡片直接填进输入框；可增删改、可恢复默认 */
+	templates: PromptTemplate[];
 };
 
 export type PiProject = {
