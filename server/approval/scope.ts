@@ -10,6 +10,7 @@
  *   - `riskNote`：给人看的一句话（为什么问）
  */
 import { isAbsolute, join, resolve } from "node:path";
+import { isReadOnlyCommand } from "./read-only.js";
 
 export type ApprovalScope = {
 	dangerous: boolean;
@@ -131,6 +132,17 @@ export function classifyScope(input: ScopeInput): ApprovalScope {
 	if (toolName === "bash" || toolName === "powershell") {
 		const command = pickString(args, ["command", "cmd", "script"]) ?? "";
 		const executable = commandExecutable(command);
+		// 纯读命令（sed -n / grep / cat …）不问：把"闭眼允许"的口子关掉
+		if (isReadOnlyCommand(command)) {
+			return {
+				dangerous: false,
+				toolName,
+				scopeKey: `${toolName}|${executable}`,
+				scopeHint: `命令 ${executable}`,
+				riskNote: "",
+				argsSummary: truncate(command),
+			};
+		}
 		return {
 			dangerous,
 			toolName,
