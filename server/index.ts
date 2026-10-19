@@ -15,6 +15,7 @@ import express from "express";
 import { WebSocketServer, type WebSocket } from "ws";
 import { createFakeEngine } from "./engine/fake.js";
 import { createPiSdkEngine } from "./engine/pi-sdk.js";
+import { createEngineRegistry, FAKE_CAPABILITIES, PI_CAPABILITIES } from "./engine/registry.js";
 import type { EnginePort } from "./engine/port.js";
 import { createFileRuleStore } from "./approval/rules.js";
 import { existsSync } from "node:fs";
@@ -68,17 +69,33 @@ const sender = createSender({
 	},
 });
 
-/** 引擎选择（ADR-0016）：默认真实 pi SDK；`AGENT_WEB_ENGINE=fake` 切到假引擎 */
-const engine: EnginePort =
-	config.engine === "fake"
-		? createFakeEngine()
-		: createPiSdkEngine({
+/** 引擎注册表（ADR-0024）：加引擎 = 写适配文件 + 在这里注册一行 */
+const engineRegistry = createEngineRegistry([
+	{
+		name: "pi",
+		label: "pi",
+		capabilities: PI_CAPABILITIES,
+		create: () =>
+			createPiSdkEngine({
 				onNotice: (text, level) => {
 					logger.warn(text, { engine: "pi" });
 					// 引擎层的异常也要让用户看见（否则只在日志里，界面上像是卡住了）
 					runtimeRef.current?.notify(text, level);
 				},
-			});
+			}),
+	},
+	{ name: "fake", label: "假引擎", capabilities: FAKE_CAPABILITIES, create: () => createFakeEngine() },
+]);
+
+/** 引擎选择（ADR-0016 + ADR-0024）：默认 pi；未知名字回落到 pi 并告警 */
+const resolved = engineRegistry.resolve(config.engine);
+if (resolved.fallbackFrom) {
+	logger.warn("AGENT_WEB_ENGINE 未注册，回落到 pi", {
+		requested: resolved.fallbackFrom,
+		known: engineRegistry.names(),
+	});
+}
+const engine: EnginePort = resolved.engine;
 
 /** 引擎在 runtime 建好之前就会创建，用一个 ref 把「通知」转发给界面 */
 const runtimeRef: { current: { notify: (text: string, level?: "info" | "warn" | "error") => void } | null } = {
@@ -91,7 +108,8 @@ const runtime = createRuntime({
 	// 启动信息只进日志，不进对话流
 	onStartupInfo: (text) => logger.info(text),
 	workspace: config.workspace,
-	engineName: config.engine,
+	engineName: resolved.descriptor.name,
+	engineCapabilities: resolved.descriptor.capabilities,
 	turnTimeoutMs: config.turnTimeoutMs,
 	settings: createFileSettingsStore(config.dataDir),
 	uploadStore: {

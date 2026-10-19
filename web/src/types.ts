@@ -14,6 +14,7 @@ export type {
 	ClientRequest,
 	ClientRequestType,
 	ConversationMeta,
+	EngineCapabilities,
 	EngineName,
 	ErrorBlock,
 	FilesMeta,

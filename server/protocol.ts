@@ -144,7 +144,17 @@ export type PiProject = {
 };
 
 /** 当前引擎（ADR-0016）：界面靠它决定提示语与后续能力展示 */
-export type EngineName = "pi" | "fake";
+/** 引擎注册名（ADR-0024）：`pi` / `fake` 是内置的，新增引擎只是注册一个新名字 */
+export type EngineName = string;
+
+/** 引擎能力（ADR-0024 §2）：界面按它决定显示哪些控件 */
+export type EngineCapabilities = {
+	approvals: boolean;
+	tools: boolean;
+	modelSwitch: boolean;
+	thinkingLevel: boolean;
+	resume: boolean;
+};
 
 export type Snapshot = {
 	protocolVersion: number;
@@ -155,6 +165,8 @@ export type Snapshot = {
 	model: string | null;
 	/** 审批模式（P4）：本会话是「照旧询问」还是「全部放行」 */
 	approvalMode: ApprovalMode;
+	/** 当前引擎的能力（ADR-0024）：不支持的功能界面直接不显示，而不是点了报错 */
+	engineCapabilities: EngineCapabilities;
 	/** pi 已有项目与会话（只读；ADR-0021 §1） */
 	piProjects: PiProject[];
 	/** 客户端设置（快捷短语等） */

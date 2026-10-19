@@ -8,6 +8,7 @@ import {
 	SNAPSHOT_MESSAGE_LIMIT,
 	PROTOCOL_VERSION,
 	type ApprovalMode,
+	type EngineCapabilities,
 	type ConversationMeta,
 	type EngineName,
 	type ModelOption,
@@ -28,6 +29,7 @@ export type ServerState = {
 	engine: EngineName;
 	model: string | null;
 	approvalMode: ApprovalMode;
+	engineCapabilities: EngineCapabilities;
 	models: ModelOption[];
 	piProjects: PiProject[];
 	settings: SettingsView;
@@ -52,6 +54,7 @@ export function createServerState(workspace: string, engine: EngineName = "pi"):
 		engine,
 		model: null,
 		approvalMode: "ask",
+		engineCapabilities: { approvals: true, tools: true, modelSwitch: true, thinkingLevel: true, resume: true },
 		models: [],
 		piProjects: [],
 		settings: { quickPhrases: [], quickPhrasesEnabled: true },
@@ -92,6 +95,7 @@ export function buildSnapshot(state: ServerState, limit = SNAPSHOT_MESSAGE_LIMIT
 		engine: state.engine,
 		model: state.model,
 		approvalMode: state.approvalMode,
+		engineCapabilities: { ...state.engineCapabilities },
 		models: state.models.map((model) => ({ ...model })),
 		actions: state.actions.map((action) => ({ ...action })),
 		settings: {

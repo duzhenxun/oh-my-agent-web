@@ -51,7 +51,9 @@ export type RuntimeOptions = {
 	piSessionsMinIntervalMs?: number;
 	workspace: string;
 	/** 当前引擎名（ADR-0016）：会进快照，供界面决定提示语 */
-	engineName?: "pi" | "fake";
+	engineName?: string;
+	/** 引擎能力（ADR-0024 §2）；不给就当作全能（单测用） */
+	engineCapabilities?: import("../protocol.js").EngineCapabilities;
 	emit: RuntimeEmit;
 	now?: () => number;
 	/** 测试注入可预测的 id；默认 `<前缀>-<序号>` */
@@ -67,6 +69,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 	const titleChars = options.titleChars ?? 24;
 
 	const state = createServerState(options.workspace, options.engineName ?? "pi");
+	if (options.engineCapabilities) state.engineCapabilities = { ...options.engineCapabilities };
 	// 工作区根是已知事实（ADR-0012 的 files 元数据；文件树内容在 M4）
 	state.files = { root: options.workspace, treeVersion: 0 };
 
