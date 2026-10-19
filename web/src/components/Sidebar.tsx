@@ -2,6 +2,7 @@ import type { ConversationMeta, PiProject } from "../types.ts";
 import { setAppState, useAppState } from "../store.ts";
 import { newChat, switchConversation } from "../ws.ts";
 import { SettingsPanel } from "./SettingsPanel.tsx";
+import { SidebarMenu } from "./SidebarMenu.tsx";
 
 /** 相对时间（参考实现的风格：刚刚 / 5分 / 3小时 / 2天 / 1个月） */
 function relativeTime(ts: number, now = Date.now()): string {
@@ -135,6 +136,7 @@ export function Sidebar({
 					);
 				})}
 			</div>
+			<SidebarMenu />
 		</aside>
 	);
 }

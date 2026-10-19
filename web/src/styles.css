@@ -7,6 +7,7 @@
  */
 @import "./styles/base.css";
 @import "./styles/sidebar.css";
+@import "./styles/side-panels.css";
 @import "./styles/chat.css";
 @import "./styles/messages.css";
 @import "./styles/files.css";
