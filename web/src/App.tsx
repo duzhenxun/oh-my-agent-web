@@ -198,6 +198,7 @@ export function App() {
 
 					{state.lastError ? <div className="error-bar">{state.lastError}</div> : null}
 					<NoticeBar notices={snapshot?.notices ?? []} />
+					<StatusBar connection={state.connection} snapshot={snapshot} />
 					<Composer
 						running={
 							snapshot?.running.status !== "idle" &&
@@ -223,8 +224,6 @@ export function App() {
 					/>
 				) : null}
 			</div>
-
-			<StatusBar connection={state.connection} snapshot={snapshot} />
 
 			{snapshot?.pendingApproval ? <ApprovalDialog approval={snapshot.pendingApproval} /> : null}
 		</div>
