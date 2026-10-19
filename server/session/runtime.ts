@@ -284,7 +284,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 				}
 
 				state.messages[conversationId] = [...(state.messages[conversationId] ?? []), userMessage, assistantMessage];
-				state.running = { status: "streaming", turnStartedAt: ts, streamingText: "", activeTool: null };
+				state.running = { status: "streaming", conversationId, turnStartedAt: ts, streamingText: "", activeTool: null };
 				state.actions = []; // 新一轮开始：上一轮的建议作废（ADR-0022）
 				markerFilter = createMarkerStreamFilter();
 				rawTurnText = "";

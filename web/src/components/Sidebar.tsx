@@ -30,15 +30,15 @@ export function Sidebar({
 	activeId,
 	piProjects,
 	onCollapse,
-	running = false,
+	runningConversationId = null,
 }: {
 	conversations: ConversationMeta[];
 	activeId: string | null;
 	piProjects: PiProject[];
 	/** 提供时在标题栏显示「收起」按钮（‹） */
 	onCollapse?: () => void;
-	/** 有回合在飞：给**当前会话**那一行加转圈动画（一眼看出哪个在跑） */
-	running?: boolean;
+	/** 正在跑的是哪个会话（不是当前选中）—— 那一行显示转圈 + 「运行中」 */
+	runningConversationId?: string | null;
 }) {
 	// 把「本地待归档」的会话按 workspace 归组；workspace 不在已知项目里的，单独成组（避免新建的会话消失）
 	const knownWorkspaces = new Set(piProjects.map((project) => project.cwd));
@@ -124,9 +124,10 @@ export function Sidebar({
 										title={`${session.cwd}\n${session.id}`}
 									>
 										<span className="pi-row-title">{session.title || "（无标题）"}</span>
-										{session.id === activeId && running ? (
-											<span className="pi-spinner" aria-label="正在运行" title="这个会话正在运行">
-												◌
+										{session.id === runningConversationId ? (
+											<span className="pi-running" title="这个会话正在运行">
+												<span className="pi-ring" aria-hidden="true" />
+												运行中
 											</span>
 										) : (
 											<span className="pi-row-time">{relativeTime(session.updatedAt)}</span>

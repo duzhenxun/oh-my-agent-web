@@ -363,13 +363,24 @@ details[open] > .proj-head .proj-chevron {
 	color: var(--text);
 }
 
-/* 运行中的会话：转圈（用 CSS 动画，不引图标库） */
-.pi-spinner {
+/* 运行中的会话：转圈 + 「运行中」标签（比一个光转的圆点明显得多） */
+.pi-running {
 	flex: none;
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
 	color: var(--accent);
-	font-size: 12px;
-	line-height: 1;
-	animation: pi-spin 1s linear infinite;
+	font-size: 10.5px;
+	white-space: nowrap;
+}
+
+.pi-ring {
+	width: 9px;
+	height: 9px;
+	border-radius: 50%;
+	border: 1.5px solid color-mix(in srgb, var(--accent) 30%, transparent);
+	border-top-color: var(--accent);
+	animation: pi-spin 0.8s linear infinite;
 }
 
 @keyframes pi-spin {
@@ -379,7 +390,8 @@ details[open] > .proj-head .proj-chevron {
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.pi-spinner {
+	.pi-ring {
 		animation: none;
+		border-top-color: var(--accent);
 	}
 }

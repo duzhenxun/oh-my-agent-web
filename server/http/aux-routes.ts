@@ -8,8 +8,13 @@ import { registerCatalogRoutes, registerImportRoutes } from "../providers/import
 import { createCatalogLookup } from "../providers/catalog.js";
 import { testModel } from "../providers/model-test.js";
 import { registerSkillRoutes } from "../skills/skill-routes.js";
+import { registerTerminalRoutes } from "../terminal/terminal-routes.js";
 
-export function registerAuxRoutes(app: Express, options: { providerStore: ProviderStore; onChange: () => void }): void {
+export function registerAuxRoutes(
+	app: Express,
+	options: { providerStore: ProviderStore; onChange: () => void; workspaceOf: () => string | null },
+): void {
+	registerTerminalRoutes(app, { workspaceOf: options.workspaceOf });
 	registerSkillRoutes(app);
 	registerImportRoutes(app, { store: options.providerStore, onChange: options.onChange });
 	registerCatalogRoutes(app, {

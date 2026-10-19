@@ -49,7 +49,7 @@ export type ServerState = {
 };
 
 export function emptyRunning(): RunningState {
-	return { status: "idle", turnStartedAt: null, streamingText: "", activeTool: null };
+	return { status: "idle", conversationId: null, turnStartedAt: null, streamingText: "", activeTool: null };
 }
 
 export function createServerState(workspace: string, engine: EngineName = "pi"): ServerState {

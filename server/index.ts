@@ -165,18 +165,18 @@ function reply(
 // ------------------------------ HTTP ------------------------------
 
 const app = express();
+app.use(express.json()); // 终端/技能/导入要读 body
 const webDist = pickExisting(webDistCandidates(HERE), existsSync);
+const uploadStore = createUploadStore({ dataDir: config.dataDir });
+registerUploadRoutes(app, { uploadStore, logger }); // 附件（ADR-0020 §P3）
 
-const uploadStore = createUploadStore({ dataDir: config.dataDir }); // 附件上传（ADR-0020 §P3）：图片走 HTTP，不塞 WS
-
-registerUploadRoutes(app, { uploadStore, logger });
-
+const workspaceOf = () => runtime.state().files?.root ?? config.workspace;
 registerAuxRoutes(app, {
 	providerStore,
+	workspaceOf,
 	onChange: () => void runProviderRequest({ type: "list_providers" }, () => {}),
 });
-registerFileRoutes(app, { workspaceOf: () => runtime.state().files?.root ?? config.workspace });
-
+registerFileRoutes(app, { workspaceOf }); // 文件浏览（M4）
 registerHealthAndStatic(app, {
 	workspace: config.workspace,
 	engine: config.engine,

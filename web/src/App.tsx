@@ -6,6 +6,7 @@ import { ApprovalDialog, NoticeBar } from "./components/ApprovalDialog.tsx";
 import { Composer } from "./components/Composer.tsx";
 import { MessageList } from "./components/MessageList.tsx";
 import { FilePreview } from "./components/FilePreview.tsx";
+import { TerminalPanel } from "./components/TerminalPanel.tsx";
 import { FileTree } from "./components/FileTree.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
 import { SidebarMenu } from "./components/SidebarMenu.tsx";
@@ -22,6 +23,7 @@ const RUNNING_LABEL = {
 export function App() {
 	// 文件面板（M4）：跟着当前会话的工作区走
 	const [filePanelOpen, setFilePanelOpen] = useState(false);
+	const [terminalOpen, setTerminalOpen] = useState(false);
 	// 侧栏：可收起 + 可拖宽（状态存 localStorage，刷新后保持）
 	const [collapsed, setCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1");
 	const [pendingPanel, setPendingPanel] = useState<"models" | "skills" | "settings" | null>(null);
@@ -101,7 +103,9 @@ export function App() {
 						activeId={snapshot?.active.conversationId ?? null}
 						piProjects={snapshot?.piProjects ?? []}
 						onCollapse={() => setCollapsed(true)}
-						running={snapshot?.running.status === "streaming" || snapshot?.running.status === "awaiting_approval"}
+						runningConversationId={
+							snapshot?.running.status === "idle" ? null : (snapshot?.running.conversationId ?? null)
+						}
 					/>
 					{/* 拖拽条：右边边缘 6px，双击回到默认宽度 */}
 					<div
@@ -130,6 +134,14 @@ export function App() {
 						title="文件列表（当前项目）"
 					>
 						📁 文件
+					</button>
+					<button
+						type="button"
+						className={`chip chip-quiet${terminalOpen ? " chip-on" : ""}`}
+						onClick={() => setTerminalOpen((open) => !open)}
+						title="终端（在项目目录里跑命令）"
+					>
+						⌨ 终端
 					</button>
 				</header>
 
@@ -169,6 +181,8 @@ export function App() {
 					<FileTree root={snapshot?.files?.root ?? null} onOpenFile={setPreviewPath} />
 				</aside>
 			) : null}
+
+			{terminalOpen ? <TerminalPanel onClose={() => setTerminalOpen(false)} /> : null}
 
 			{previewPath ? <FilePreview path={previewPath} onClose={() => setPreviewPath(null)} /> : null}
 

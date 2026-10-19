@@ -73,6 +73,8 @@ export type ConversationMeta = {
 
 export type RunningState = {
 	status: "idle" | "streaming" | "awaiting_approval" | "error";
+	/** 正在跑的是**哪个会话**（不是"当前选中的那个"）—— 侧栏据此给对应行加转圈 */
+	conversationId: string | null;
 	turnStartedAt: number | null;
 	/** 当前助手文本（增量另走 message_delta 事件，避免每字全量重推） */
 	streamingText: string;
