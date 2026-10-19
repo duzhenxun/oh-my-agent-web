@@ -26,7 +26,26 @@ export function MermaidDiagram({ code }: { code: string }) {
 			try {
 				const { default: mermaid } = await import("mermaid");
 				if (!initialized) {
-					mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "dark" });
+					mermaid.initialize({
+						startOnLoad: false,
+						securityLevel: "strict",
+						// base 主题 + 自定义色板：dark 主题下所有节点都是灰的，很难看
+						theme: "base",
+						themeVariables: {
+							darkMode: true,
+							background: "#0d1117",
+							primaryColor: "#1f6feb33",
+							primaryTextColor: "#e6edf3",
+							primaryBorderColor: "#4c8eff",
+							secondaryColor: "#8957e533",
+							secondaryBorderColor: "#a371f7",
+							tertiaryColor: "#23863633",
+							tertiaryBorderColor: "#3fb950",
+							lineColor: "#8b949e",
+							textColor: "#c9d1d9",
+							fontSize: "13px",
+						},
+					});
 					initialized = true;
 				}
 				const id = `mmd-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;

@@ -220,7 +220,18 @@ export function FilePreview({ path, root, onClose }: { path: string; root?: stri
 							const selected = range !== null && index + 1 >= range.start && index + 1 <= range.end;
 							const html = highlighted[index];
 							return (
-								<div className={`file-preview-line${selected ? " file-preview-line-on" : ""}`} key={index}>
+								<div
+									className={`file-preview-line file-preview-line-clickable${selected ? " file-preview-line-on" : ""}`}
+									key={index}
+									title="点选中这一行（Shift+点选范围，双击直接加到对话）"
+									onClick={() => {
+										// 用户正在选文字时不抢选择（否则复制粘贴会失效）
+										if (!window.getSelection()?.isCollapsed) return;
+										setAnchor(index);
+										setFocus(index);
+									}}
+									onDoubleClick={() => setDraft(`${referenceFor(path, { start: index + 1, end: index + 1 })} `)}
+								>
 									<button
 										type="button"
 										className="file-preview-no"

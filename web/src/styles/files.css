@@ -279,3 +279,12 @@
 	color: var(--text);
 	font-weight: 600;
 }
+
+/* 正文行可点选（原来只有行号能点，用户根本发现不了） */
+.file-preview-line-clickable {
+	cursor: pointer;
+}
+
+.file-preview-line-clickable:hover {
+	background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
