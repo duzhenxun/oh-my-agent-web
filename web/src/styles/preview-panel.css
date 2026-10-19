@@ -126,3 +126,26 @@
 	color: var(--accent);
 	border-color: var(--accent-dim);
 }
+
+/* 每个标签一个槽位：非激活的只隐藏、不卸载（终端 PTY 靠这个活着） */
+.preview-slot {
+	flex: 1 1 auto;
+	min-height: 0;
+	min-width: 0;
+	display: flex;
+}
+
+.preview-slot-hidden {
+	display: none;
+}
+
+/* 终端在面板里要铺满（和文件预览一样自动宽度），不能再是固定 560px */
+.terminal-panel-embedded {
+	width: 100%;
+	flex: 1 1 auto;
+	min-width: 0;
+	min-height: 0;
+	border: none;
+	padding: 0;
+	background: none;
+}

@@ -6,7 +6,6 @@ import { ApprovalDialog, NoticeBar } from "./components/ApprovalDialog.tsx";
 import { Composer } from "./components/Composer.tsx";
 import { MessageList } from "./components/MessageList.tsx";
 import { PreviewPanel, type PanelItem } from "./components/PreviewPanel.tsx";
-import { TerminalPanel } from "./components/TerminalPanel.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
 import { SidebarMenu } from "./components/SidebarMenu.tsx";
 
@@ -28,8 +27,6 @@ function formatTokens(value: number): string {
 
 export function App() {
 	// 文件面板（M4）：跟着当前会话的工作区走
-	const [terminalOpen, setTerminalOpen] = useState(false);
-	const [terminalCwd, setTerminalCwd] = useState<string | null>(null);
 	// 侧栏：可收起 + 可拖宽（状态存 localStorage，刷新后保持）
 	const [collapsed, setCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1");
 	const [pendingPanel, setPendingPanel] = useState<"models" | "skills" | "settings" | null>(null);
@@ -191,16 +188,6 @@ export function App() {
 					conversationId={snapshot?.active.conversationId ?? null}
 				/>
 			</div>
-
-			{terminalOpen ? (
-				<TerminalPanel
-					cwd={terminalCwd}
-					onClose={() => {
-						setTerminalOpen(false);
-						setTerminalCwd(null);
-					}}
-				/>
-			) : null}
 
 			{panelItems.length > 0 ? (
 				<PreviewPanel

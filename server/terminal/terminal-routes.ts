@@ -17,11 +17,18 @@ import type { Express } from "express";
 import { startTerminal, type TerminalSession } from "./terminal-session.js";
 
 export function registerTerminalRoutes(app: Express, options: { workspaceOf: () => string | null }): void {
-	let session: TerminalSession | null = null;
-	const listeners = new Set<(chunk: string) => void>();
+	/**
+	 * 多终端注册表（ADR-0027 增补）：每个终端一个 id，互不影响。
+	 * 之前是「全局单例」，所以开第二个终端会把第一个杀掉（用户反馈的"切换终端就退出"）。
+	 */
+	const terminals = new Map<string, { session: TerminalSession; listeners: Set<(chunk: string) => void> }>();
+	/** 被重启/关闭过的 id：迟到的 onExit 一律忽略（否则会污染新终端） */
+	const discarded = new Set<string>();
 
-	const broadcast = (chunk: string) => {
-		for (const listener of listeners) listener(chunk);
+	const broadcastFor = (id: string, chunk: string) => {
+		const entry = terminals.get(id);
+		if (!entry) return;
+		for (const listener of entry.listeners) listener(chunk);
 	};
 
 	app.post("/api/terminal/start", async (request, response) => {
@@ -32,11 +39,14 @@ export function registerTerminalRoutes(app: Express, options: { workspaceOf: () 
 				.json({ error: { code: "terminal.no_workspace", message: "还没有打开会话（不知道在哪个目录起终端）" } });
 			return;
 		}
-		if (session) {
-			session.kill();
-			session = null;
-		}
-		const body = request.body as { cols?: number; rows?: number; cwd?: string } | undefined;
+		const body = request.body as { id?: string; cols?: number; rows?: number; cwd?: string } | undefined;
+		const id = typeof body?.id === "string" && body.id !== "" ? body.id : `term-${Date.now().toString(36)}`;
+		// 同一个 id 重复 start = 重启（例如刷新页面），先收掉旧的
+		terminals.get(id)?.session.kill();
+		terminals.delete(id);
+		// 旧 PTY 的 onExit 是异步的：它可能在新终端注册之后才到达。
+		// 用「已废弃的 id 集合」把这类迟到的退出事件丢掉，否则新终端里会冒出「进程已退出」。
+		discarded.add(id);
 		// 指定了 cwd（从项目菜单「在终端中打开」进来）：必须存在且是目录，且以它自身为根
 		let root = workspace;
 		let cwd = workspace;
@@ -57,10 +67,11 @@ export function registerTerminalRoutes(app: Express, options: { workspaceOf: () 
 			cols: body?.cols,
 			rows: body?.rows,
 			handlers: {
-				onData: broadcast,
+				onData: (chunk) => broadcastFor(id, chunk),
 				onExit: (exitCode) => {
-					broadcast(`\r\n[进程已退出，code=${exitCode}]\r\n`);
-					session = null;
+					if (discarded.delete(id)) return; // 这条退出属于被替换掉的旧会话
+					broadcastFor(id, `\r\n[进程已退出，code=${exitCode}]\r\n`);
+					terminals.delete(id);
 				},
 			},
 		});
@@ -68,8 +79,8 @@ export function registerTerminalRoutes(app: Express, options: { workspaceOf: () 
 			response.status(503).json({ error: { code: "terminal.start_failed", message: result.error } });
 			return;
 		}
-		session = result.terminal;
-		response.json({ ok: true, cols: session.cols(), rows: session.rows() });
+		terminals.set(id, { session: result.terminal, listeners: new Set() });
+		response.json({ ok: true, id, cols: result.terminal.cols(), rows: result.terminal.rows() });
 	});
 
 	app.get("/api/terminal/stream", (request, response) => {
@@ -79,35 +90,52 @@ export function registerTerminalRoutes(app: Express, options: { workspaceOf: () 
 			connection: "keep-alive",
 		});
 		response.write(": connected\n\n");
+		const id = typeof request.query.id === "string" ? request.query.id : ([...terminals.keys()].at(-1) ?? "");
+		const entry = terminals.get(id);
+		if (!entry) {
+			response
+				.writeHead(404, { "content-type": "application/json" })
+				.end(JSON.stringify({ error: { code: "terminal.not_found", message: "没有这个终端" } }));
+			return;
+		}
 		const listener = (chunk: string) => {
 			// SSE 帧里的换行必须转义，否则浏览器会把一帧拆成两条
 			response.write(`data: ${JSON.stringify(chunk)}\n\n`);
 		};
-		listeners.add(listener);
-		request.on("close", () => listeners.delete(listener));
+		entry.listeners.add(listener);
+		request.on("close", () => entry.listeners.delete(listener));
 	});
 
 	app.post("/api/terminal/input", (request, response) => {
-		const body = request.body as { data?: unknown } | undefined;
-		if (typeof body?.data === "string" && session) session.write(body.data);
+		const body = request.body as { id?: string; data?: unknown } | undefined;
+		const entry = terminals.get(typeof body?.id === "string" ? body.id : "");
+		if (typeof body?.data === "string" && entry) entry.session.write(body.data);
 		response.json({ ok: true });
 	});
 
 	app.post("/api/terminal/resize", (request, response) => {
-		const body = request.body as { cols?: number; rows?: number } | undefined;
-		if (session && typeof body?.cols === "number" && typeof body?.rows === "number")
-			session.resize(body.cols, body.rows);
+		const body = request.body as { id?: string; cols?: number; rows?: number } | undefined;
+		const entry = terminals.get(typeof body?.id === "string" ? body.id : "");
+		if (entry && typeof body?.cols === "number" && typeof body?.rows === "number")
+			entry.session.resize(body.cols, body.rows);
 		response.json({ ok: true });
 	});
 
-	app.post("/api/terminal/stop", (_request, response) => {
-		session?.kill();
-		session = null;
+	app.post("/api/terminal/stop", (request, response) => {
+		const body = request.body as { id?: string } | undefined;
+		const id = typeof body?.id === "string" ? body.id : "";
+		if (id !== "") {
+			terminals.get(id)?.session.kill();
+			terminals.delete(id);
+			discarded.add(id);
+		}
 		response.json({ ok: true });
 	});
 
 	// 进程退出时统一收拾（不留孤儿 shell）
-	process.on("exit", () => session?.kill());
+	process.on("exit", () => {
+		for (const entry of terminals.values()) entry.session.kill();
+	});
 }
 
 /**

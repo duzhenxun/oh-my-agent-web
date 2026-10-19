@@ -12,10 +12,13 @@ import "@xterm/xterm/css/xterm.css";
  *   3. 关闭时 POST /api/terminal/stop，**不留孤儿 shell**。
  */
 export function TerminalPanel({
+	termId,
 	cwd,
 	embedded,
 	onClose,
 }: {
+	/** 终端 id：多终端互不干扰，切换标签不重建 */
+	termId: string;
 	cwd?: string | null;
 	embedded?: boolean;
 	onClose: () => void;
@@ -46,7 +49,7 @@ export function TerminalPanel({
 			const response = await fetch("/api/terminal/start", {
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ cols: term.cols, rows: term.rows, ...(cwd ? { cwd } : {}) }),
+				body: JSON.stringify({ id: termId, cols: term.cols, rows: term.rows, ...(cwd ? { cwd } : {}) }),
 			});
 			const body = (await response.json()) as { error?: { message?: string } };
 			if (disposed) return;
@@ -56,7 +59,7 @@ export function TerminalPanel({
 			}
 			setReady(true);
 			// SSE 收输出
-			source = new EventSource("/api/terminal/stream");
+			source = new EventSource(`/api/terminal/stream?id=${encodeURIComponent(termId)}`);
 			source.onmessage = (event) => {
 				try {
 					term.write(JSON.parse(event.data) as string);
@@ -93,7 +96,7 @@ export function TerminalPanel({
 			void fetch("/api/terminal/stop", { method: "POST" });
 			term.dispose();
 		};
-	}, [cwd]);
+	}, [cwd, termId]);
 
 	return (
 		<aside className={`terminal-panel${embedded ? " terminal-panel-embedded" : ""}`}>

@@ -118,10 +118,17 @@ export function PreviewPanel({
 				</button>
 			</div>
 			<div className="preview-body">
-				{active?.kind === "file" ? <FileViewer key={active.id} path={active.path} root={active.root} /> : null}
-				{active?.kind === "terminal" ? (
-					<TerminalPanel key={active.id} cwd={active.cwd} embedded onClose={() => onCloseItem(active.id)} />
-				) : null}
+				{/* 全部渲染、只隐藏非激活的：切标签时组件不卸载，终端的 PTY 与滚动历史都保住
+				    （之前只渲染激活项，一切换就触发 stop → "进程已退出"） */}
+				{items.map((item) => (
+					<div className={`preview-slot${item.id === active?.id ? "" : " preview-slot-hidden"}`} key={item.id}>
+						{item.kind === "file" ? (
+							<FileViewer path={item.path} root={item.root} />
+						) : (
+							<TerminalPanel termId={item.id} cwd={item.cwd} embedded onClose={() => onCloseItem(item.id)} />
+						)}
+					</div>
+				))}
 			</div>
 		</aside>
 	);
