@@ -12,41 +12,6 @@
 	text-align: center;
 }
 
-.msg {
-	border: 1px solid var(--border);
-	border-radius: var(--radius);
-	padding: 10px 12px;
-	min-width: 0;
-	background: var(--bg);
-}
-
-.msg-user {
-	border-color: var(--border-strong);
-	background: var(--bg-elev-2);
-}
-
-.msg-head {
-	display: flex;
-	gap: 8px;
-	align-items: baseline;
-	color: var(--text-faint);
-	font-size: 12px;
-	margin-bottom: 6px;
-}
-
-.msg-role {
-	color: var(--text-dim);
-	font-weight: 600;
-}
-
-.msg-body {
-	min-width: 0;
-	display: flex;
-	flex-direction: column;
-	gap: 8px;
-}
-
-/* ---- markdown 正文：长文本防溢出一律 min-width:0 + overflow-wrap ---- */
 .md {
 	min-width: 0;
 	overflow-wrap: anywhere;

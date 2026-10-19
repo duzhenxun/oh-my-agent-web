@@ -1,0 +1,91 @@
+/* ---- 消息气泡（P6）：用户靠右、悬浮操作条 ---- */
+
+.msg {
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: 10px 12px;
+	min-width: 0;
+	background: var(--bg);
+}
+
+.msg-user {
+	border-color: var(--border-strong);
+	background: var(--bg-elev-2);
+}
+
+.msg-head {
+	display: flex;
+	gap: 8px;
+	align-items: baseline;
+	color: var(--text-faint);
+	font-size: 12px;
+	margin-bottom: 6px;
+}
+
+.msg-role {
+	color: var(--text-dim);
+	font-weight: 600;
+}
+
+.msg-body {
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+/* ---- markdown 正文：长文本防溢出一律 min-width:0 + overflow-wrap ---- */
+
+/* 用户消息：靠右的气泡（不再占满整行） */
+.msg-user {
+	align-self: flex-end;
+	max-width: min(78%, 720px);
+	border-radius: 14px;
+}
+
+/* 助手消息：整行，但不用边框（更接近参考实现的观感） */
+.msg-assistant {
+	border-color: transparent;
+	background: none;
+	padding-left: 0;
+	padding-right: 0;
+}
+
+.msg {
+	position: relative;
+}
+
+/* 悬浮操作条：贴在气泡下方，默认隐藏 */
+.msg-actions {
+	display: flex;
+	gap: 4px;
+	margin-top: 4px;
+	opacity: 0;
+	transition: opacity 0.12s ease;
+}
+
+.msg:hover .msg-actions,
+.msg-actions:focus-within {
+	opacity: 1;
+}
+
+.msg-user .msg-actions {
+	justify-content: flex-end;
+}
+
+.msg-action {
+	border: 1px solid var(--border);
+	border-radius: 7px;
+	background: var(--bg-elev);
+	color: var(--text-faint);
+	font: inherit;
+	font-size: 11.5px;
+	padding: 2px 8px;
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.msg-action:hover {
+	color: var(--text);
+	border-color: var(--accent-dim);
+}

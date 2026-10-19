@@ -1,9 +1,19 @@
+import { setDraft } from "../store.ts";
 import type { ActionItem, EngineName, UiMessage } from "../types.ts";
 import { ActionSuggestions } from "./ActionSuggestions.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { ToolCard } from "./ToolCard.tsx";
 
+/** 消息里的纯文本（复制 / 从此处编辑都用它） */
+export function textOfMessage(message: UiMessage): string {
+	return message.blocks
+		.map((block) => (block.kind === "text" ? block.text : ""))
+		.filter((text) => text.trim() !== "")
+		.join("\n\n");
+}
+
 function MessageView({ message }: { message: UiMessage }) {
+	const text = textOfMessage(message);
 	return (
 		<article className={`msg msg-${message.role}`}>
 			<header className="msg-head">
@@ -25,6 +35,27 @@ function MessageView({ message }: { message: UiMessage }) {
 						</div>
 					);
 				})}
+			</div>
+			{/* 鼠标悬浮才出现的操作（用户消息还额外支持「从此处编辑」） */}
+			<div className="msg-actions">
+				<button
+					type="button"
+					className="msg-action"
+					onClick={() => void navigator.clipboard?.writeText(text)}
+					title="复制这条消息"
+				>
+					⧉ 复制
+				</button>
+				{message.role === "user" ? (
+					<button
+						type="button"
+						className="msg-action"
+						onClick={() => setDraft(text)}
+						title="把这条消息放回输入框，改完再发"
+					>
+						↳ 从此处编辑
+					</button>
+				) : null}
 			</div>
 		</article>
 	);
