@@ -59,3 +59,53 @@
 	border-color: var(--accent-dim);
 	color: var(--accent);
 }
+
+/* 无缝隙布局：顶栏与三栏、三栏彼此都贴在一起，只用 1px 边框分隔 */
+.app {
+	gap: 0;
+	padding: 0;
+}
+
+.app-main {
+	gap: 0;
+	padding: 0;
+}
+
+/* 左右两栏：去掉外圆角与外边框，改成彼此之间的分隔线 */
+.sidebar,
+.workspace,
+.preview-panel,
+.preview-rail {
+	border-radius: 0;
+	border-top: none;
+	border-bottom: none;
+}
+
+.sidebar {
+	border-left: none;
+}
+
+.sidebar + .workspace {
+	border-left: 1px solid var(--border);
+}
+
+.workspace {
+	border-right: 1px solid var(--border);
+}
+
+.preview-panel,
+.preview-rail {
+	border-right: none;
+}
+
+/* 中间的对话区不需要外框（贴边） */
+.workspace {
+	padding: 0;
+}
+
+.workspace .topbar,
+.workspace .main {
+	border-radius: 0;
+	border-left: none;
+	border-right: none;
+}
