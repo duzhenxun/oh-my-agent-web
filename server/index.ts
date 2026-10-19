@@ -26,10 +26,11 @@ import { createFileSettingsStore } from "./session/settings.js";
 import { createSender, type OutFrame } from "./snapshot/sender.js";
 import { createPiSessionsProvider, piAgentDir } from "./session/pi-sessions-provider.js";
 import { createUploadStore, uploadsDir } from "./uploads/upload-store.js";
-import { builtinProviderGroups, createProviderRunner } from "./providers/provider-handlers.js";
+import { createProviderWiring } from "./providers/provider-handlers.js";
 import { probeProvider } from "./providers/probe.js";
 import { createProviderStore } from "./providers/provider-store.js";
 import { registerFileRoutes } from "./files/files-routes.js";
+import { registerSkillRoutes } from "./skills/skill-routes.js";
 import { registerHealthAndStatic } from "./http/health-and-static.js";
 import { registerUploadRoutes } from "./uploads/upload-routes.js";
 import { readConfig, validateConfig } from "./util/env.js";
@@ -72,7 +73,7 @@ const sender = createSender({
 	},
 });
 
-/** 引擎注册表（ADR-0024）：加引擎 = 写适配文件 + 在这里注册一行 */
+/** 引擎注册表（ADR-0024）：加引擎 = 写适配文件 + 注册一行 */
 const engineRegistry = createEngineRegistry([
 	{
 		name: "pi",
@@ -104,16 +105,11 @@ const engine: EnginePort = resolved.engine;
 /** provider 配置存储（ADR-0025）：复用 pi 自己的 models-store.json / auth.json */
 const providerStore = createProviderStore({ agentDir: piAgentDir(), now: Date.now });
 
-const runProviderRequest = createProviderRunner({
+const runProviderRequest = createProviderWiring({
 	store: providerStore,
-	notify: (text, level) => runtime.notify(text, level),
 	logger,
 	probe: probeProvider,
-	builtinProviders: () => builtinProviderGroups(runtime.state().models),
-	refresh: async () => {
-		runtime.state().providers = await providerStore.list();
-		runtime.notify("", "info");
-	},
+	getRuntime: () => runtime,
 });
 
 const runtimeRef: { current: { notify: (text: string, level?: "info" | "warn" | "error") => void } | null } = {
@@ -142,7 +138,7 @@ const runtime = createRuntime({
 	emit: {
 		snapshot: (snapshot) => sender.pushSnapshot(snapshot),
 		event: (event) => {
-			// 事件与应答绝不丢（ADR-0004 §4）：不经过节流窗口，直接下发
+			// 事件与应答绝不丢（ADR-0004 §4）
 			broadcast(JSON.stringify(event));
 		},
 	},
@@ -170,7 +166,6 @@ function reply(
 // ------------------------------ HTTP ------------------------------
 
 const app = express();
-// 开发态（tsx 跑源码）与生产态（node 跑 dist/）的层数不同，两个候选都试（见 util/paths.ts）
 const webDist = pickExisting(webDistCandidates(HERE), existsSync);
 
 /** 附件上传存储（ADR-0020 §P3）：图片走 HTTP，不塞 WS */
@@ -178,7 +173,9 @@ const uploadStore = createUploadStore({ dataDir: config.dataDir });
 
 registerUploadRoutes(app, { uploadStore, logger });
 
-// 文件浏览（M4）：只读、跟着当前会话的工作区走
+registerSkillRoutes(app); // 技能目录（P8）：不是会话状态，走 HTTP 不进快照
+
+// 文件浏览（M4）：只读，跟着当前会话的工作区走
 registerFileRoutes(app, { workspaceOf: () => runtime.state().files?.root ?? config.workspace });
 
 registerHealthAndStatic(app, {

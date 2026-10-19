@@ -6,6 +6,7 @@ import type { ProviderView } from "../types.ts";
 import { ProviderForm } from "./ProviderForm.tsx";
 import { deleteProvider, testProvider } from "../ws.ts";
 import { SettingsPanel } from "./SettingsPanel.tsx";
+import { SkillsPanel } from "./SkillsPanel.tsx";
 
 type Panel = "models" | "skills" | "settings" | null;
 
@@ -189,27 +190,7 @@ export function SidebarMenu() {
 										</div>
 									) : null}
 
-									{panel === "skills" ? (
-										<div className="side-panel">
-											<div className="side-panel-head">
-												<strong>技能</strong>
-											</div>
-											<div className="side-panel-hint">
-												技能管理还没做：计划是读技能目录、显示已装载的技能、支持启停与打开说明。
-											</div>
-										</div>
-									) : null}
-
-									{panel === "skills" ? (
-										<div className="side-panel">
-											<div className="side-panel-head">
-												<strong>技能</strong>
-											</div>
-											<div className="side-panel-hint">
-												技能管理还没做：计划是读技能目录、显示已装载的技能、支持启停与打开说明。
-											</div>
-										</div>
-									) : null}
+									{panel === "skills" ? <SkillsPanel /> : null}
 									{panel === "settings" ? <SettingsPanel /> : null}
 								</div>
 							</div>

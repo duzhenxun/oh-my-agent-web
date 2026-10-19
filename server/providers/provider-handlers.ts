@@ -3,7 +3,7 @@
  *
  * 保持极简：校验 → 写盘 → 用提示条回传结果（前端没有 request/response 配对机制）。
  */
-import type { UpsertProviderRequest } from "../protocol.js";
+import type { ProviderView, UpsertProviderRequest } from "../protocol.js";
 import type { BuiltinProvider, ProviderStore } from "./provider-store.js";
 import { validateProviderInput } from "./validate.js";
 
@@ -145,4 +145,31 @@ export function builtinProviderGroups(models: { id: string; label: string }[]): 
 		groups.set(provider, [...(groups.get(provider) ?? []), { id: model.id.slice(slash + 1), name: model.label }]);
 	}
 	return [...groups].map(([provider, list]) => ({ provider, models: list }));
+}
+
+/**
+ * 把 provider 的「请求处理 + 快照刷新」接线整体封装（放在这里是为了 index.ts 的 400 行护栏）。
+ * `getRuntime` 用 getter 传进来：runtime 在 index 里晚于本模块构造，只有调用时才需要它。
+ */
+export function createProviderWiring(options: {
+	store: ProviderStore;
+	logger: { info: (message: string, meta?: Record<string, unknown>) => void };
+	probe: ProviderHandlerDeps["probe"];
+	getRuntime: () => {
+		notify: (text: string, level?: "info" | "warn" | "error") => void;
+		state: () => { providers: ProviderView[]; models: { id: string; label: string }[] };
+	};
+}): (request: { type: string } & Record<string, unknown>, reply: (result: ProviderReply) => void) => Promise<void> {
+	const runtime = () => options.getRuntime();
+	return createProviderRunner({
+		store: options.store,
+		logger: options.logger,
+		probe: options.probe,
+		notify: (text, level) => runtime().notify(text, level),
+		builtinProviders: () => builtinProviderGroups(runtime().state().models),
+		refresh: async () => {
+			runtime().state().providers = await options.store.list(builtinProviderGroups(runtime().state().models));
+			runtime().notify("", "info");
+		},
+	});
 }

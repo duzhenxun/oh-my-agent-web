@@ -1,0 +1,149 @@
+/* 技能面板（P8） */
+.skills {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	flex: 1 1 auto;
+	min-height: 0;
+}
+
+.skills-bar {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+.skills-body {
+	flex: 1 1 auto;
+	min-height: 0;
+	display: flex;
+	gap: 10px;
+}
+
+.skills-list {
+	flex: 1 1 46%;
+	min-width: 0;
+	overflow: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.skill-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 4px 6px;
+	border-radius: 7px;
+	min-width: 0;
+}
+
+.skill-row:hover {
+	background: var(--bg-elev-2);
+}
+
+.skill-row-off {
+	opacity: 0.55;
+}
+
+.skill-main {
+	flex: 1 1 auto;
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	background: none;
+	border: none;
+	color: var(--text);
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+	min-width: 0;
+	padding: 0;
+}
+
+.skill-name {
+	font-size: 12.5px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.skill-desc {
+	color: var(--text-faint);
+	font-size: 11px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.skill-state {
+	flex: none;
+	font-size: 10.5px;
+	color: var(--text-faint);
+}
+
+.skill-state-on {
+	color: var(--accent);
+}
+
+.skill-detail {
+	flex: 1 1 54%;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	min-height: 0;
+	border-left: 1px solid var(--border);
+	padding-left: 10px;
+}
+
+.skill-detail-head {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	min-width: 0;
+}
+
+.skill-files {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	max-height: 120px;
+	overflow: auto;
+	flex: none;
+}
+
+.skill-file {
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--bg);
+	color: var(--text-dim);
+	font: inherit;
+	font-size: 11px;
+	padding: 1px 6px;
+	cursor: pointer;
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.skill-file-on {
+	color: var(--accent);
+	border-color: var(--accent-dim);
+}
+
+.skill-preview {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: auto;
+	margin: 0;
+	padding: 8px 10px;
+	background: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	font-size: 12px;
+	line-height: 1.6;
+	white-space: pre-wrap;
+}
