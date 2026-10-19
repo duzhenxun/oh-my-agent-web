@@ -31,10 +31,13 @@ export function Sidebar({
 	conversations,
 	activeId,
 	piProjects,
+	onCollapse,
 }: {
 	conversations: ConversationMeta[];
 	activeId: string | null;
 	piProjects: PiProject[];
+	/** 提供时在标题栏显示「收起」按钮（‹） */
+	onCollapse?: () => void;
 }) {
 	const { settingsOpen } = useAppState();
 
@@ -76,6 +79,11 @@ export function Sidebar({
 			<div className="sidebar-head">
 				<span className="sidebar-title">会话</span>
 				<span className="topbar-spacer" />
+				{onCollapse ? (
+					<button type="button" className="btn btn-new" onClick={onCollapse} title="收起侧栏">
+						‹
+					</button>
+				) : null}
 				<button type="button" className="btn btn-new" onClick={() => newChat()} title="在当前工作区新建会话">
 					＋ 新建
 				</button>

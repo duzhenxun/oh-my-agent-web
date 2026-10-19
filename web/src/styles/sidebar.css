@@ -277,3 +277,54 @@ details[open] > .proj-head .proj-chevron {
 .pi-row-active .pi-row-title {
 	color: var(--text);
 }
+
+/* ---- 侧栏容器：可收起 + 可拖宽（状态见 web/src/sidebar-layout.ts）---- */
+.side-host {
+	position: relative;
+	flex: none;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.side-host > .sidebar {
+	flex: 1 1 auto;
+	min-height: 0;
+	width: 100%;
+}
+
+/* 拖拽条：压在主区边缘上，只有 6px 宽，不挡内容 */
+.side-resizer {
+	position: absolute;
+	top: 0;
+	right: -3px;
+	width: 7px;
+	height: 100%;
+	cursor: col-resize;
+	z-index: 5;
+	background: transparent;
+}
+
+.side-resizer:hover,
+.side-resizer:active {
+	background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* 收起后的小竖条按钮 */
+.side-expand {
+	flex: none;
+	width: 26px;
+	align-self: stretch;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: var(--bg-elev);
+	color: var(--text-dim);
+	font: inherit;
+	font-size: 15px;
+	cursor: pointer;
+}
+
+.side-expand:hover {
+	color: var(--accent);
+	border-color: var(--accent-dim);
+}

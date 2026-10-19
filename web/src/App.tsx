@@ -1,5 +1,6 @@
 import { useStickToBottom } from "./stick-to-bottom.ts";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { clampSidebarWidth, readStoredWidth, SIDEBAR_COLLAPSED_KEY, SIDEBAR_WIDTH_KEY } from "./sidebar-layout.ts";
 import { useAppState } from "./store.ts";
 import { ApprovalDialog, NoticeBar } from "./components/ApprovalDialog.tsx";
 import { Composer } from "./components/Composer.tsx";
@@ -20,6 +21,36 @@ const RUNNING_LABEL = {
 export function App() {
 	// 文件面板（M4）：跟着当前会话的工作区走
 	const [filePanelOpen, setFilePanelOpen] = useState(false);
+	// 侧栏：可收起 + 可拖宽（状态存 localStorage，刷新后保持）
+	const [collapsed, setCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1");
+	const [sideWidth, setSideWidth] = useState(() => readStoredWidth(localStorage.getItem(SIDEBAR_WIDTH_KEY)));
+	const dragging = useRef(false);
+
+	useEffect(() => {
+		localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? "1" : "0");
+	}, [collapsed]);
+	useEffect(() => {
+		localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sideWidth));
+	}, [sideWidth]);
+
+	// 拖拽：pointer 事件挂在 document 上，鼠标移出侧栏边缘也不会中断
+	const startResize = (event: React.PointerEvent<HTMLDivElement>) => {
+		event.preventDefault();
+		dragging.current = true;
+		const startX = event.clientX;
+		const startWidth = sideWidth;
+		const onMove = (moveEvent: PointerEvent) => {
+			if (!dragging.current) return;
+			setSideWidth(clampSidebarWidth(startWidth + (moveEvent.clientX - startX)));
+		};
+		const onUp = () => {
+			dragging.current = false;
+			document.removeEventListener("pointermove", onMove);
+			document.removeEventListener("pointerup", onUp);
+		};
+		document.addEventListener("pointermove", onMove);
+		document.addEventListener("pointerup", onUp);
+	};
 	const [previewPath, setPreviewPath] = useState<string | null>(null);
 	const state = useAppState();
 	const snapshot = state.snapshot;
@@ -40,11 +71,29 @@ export function App() {
 
 	return (
 		<div className="app">
-			<Sidebar
-				conversations={snapshot?.conversations ?? []}
-				activeId={snapshot?.active.conversationId ?? null}
-				piProjects={snapshot?.piProjects ?? []}
-			/>
+			{collapsed ? (
+				<button type="button" className="side-expand" onClick={() => setCollapsed(false)} title="展开侧栏">
+					›
+				</button>
+			) : (
+				<div className="side-host" style={{ width: sideWidth }}>
+					<Sidebar
+						conversations={snapshot?.conversations ?? []}
+						activeId={snapshot?.active.conversationId ?? null}
+						piProjects={snapshot?.piProjects ?? []}
+						onCollapse={() => setCollapsed(true)}
+					/>
+					{/* 拖拽条：右边边缘 6px，双击回到默认宽度 */}
+					<div
+						className="side-resizer"
+						role="separator"
+						aria-orientation="vertical"
+						title="拖动调整宽度（双击复位）"
+						onPointerDown={startResize}
+						onDoubleClick={() => setSideWidth(readStoredWidth(null))}
+					/>
+				</div>
+			)}
 
 			<div className="workspace">
 				<header className="topbar">
