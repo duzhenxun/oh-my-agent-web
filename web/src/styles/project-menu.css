@@ -352,3 +352,42 @@
 	color: var(--text-faint);
 	font-size: 11px;
 }
+
+/* 文件区：默认收起时只有一行标题；展开后下拉单独一行 */
+.side-files-closed {
+	flex: none;
+	min-height: 0;
+}
+
+.side-files-toggle {
+	flex: none;
+	width: 18px;
+	height: 18px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border: none;
+	border-radius: 5px;
+	background: none;
+	color: var(--text-dim);
+	font: inherit;
+	font-size: 13px;
+	line-height: 1;
+	cursor: pointer;
+	padding: 0;
+}
+
+.side-files-toggle:hover {
+	background: var(--bg-elev-2);
+	color: var(--text);
+}
+
+.side-files .side-files-select {
+	width: 100%;
+	flex: none;
+}
+
+/* 侧栏标题不要换行（「最近项目（13）」曾被挤成竖排） */
+.sidebar-title {
+	white-space: nowrap;
+}

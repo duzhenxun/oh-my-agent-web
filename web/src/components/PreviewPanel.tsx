@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { FileViewer } from "./FilePreview.tsx";
 import { TerminalPanel } from "./TerminalPanel.tsx";
 
@@ -27,12 +27,15 @@ export function PreviewPanel({
 	onActivate,
 	onCloseItem,
 	onCloseAll,
+	outline,
 }: {
 	items: PanelItem[];
 	activeId: string;
 	onActivate: (id: string) => void;
 	onCloseItem: (id: string) => void;
 	onCloseAll: () => void;
+	/** 对话大纲：收起时和箭头放在同一竖列里（对齐参考实现） */
+	outline?: ReactNode;
 }) {
 	const [width, setWidth] = useState(readWidth);
 	const [collapsed, setCollapsed] = useState(false);
@@ -71,14 +74,12 @@ export function PreviewPanel({
 
 	if (collapsed) {
 		return (
-			<button
-				type="button"
-				className="preview-arrow preview-collapsed"
-				onClick={() => setCollapsed(false)}
-				title="展开预览"
-			>
-				›
-			</button>
+			<div className="preview-rail">
+				<button type="button" className="preview-arrow" onClick={() => setCollapsed(false)} title="展开预览">
+					›
+				</button>
+				{outline}
+			</div>
 		);
 	}
 

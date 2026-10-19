@@ -4,8 +4,8 @@ import { useAppState } from "../store.ts";
 import type { ConversationMeta, PiProject, ProjectPrefs } from "../types.ts";
 import { sortProjects } from "../project-sort.ts";
 import { newChat, setSettings, switchConversation } from "../ws.ts";
-import { FileTree } from "./FileTree.tsx";
 import { NewProjectDialog } from "./NewProjectDialog.tsx";
+import { SidebarFiles } from "./SidebarFiles.tsx";
 import { SidebarMenu } from "./SidebarMenu.tsx";
 
 /** 相对时间（参考实现的风格：刚刚 / 5分 / 3小时 / 2天 / 1个月） */
@@ -63,6 +63,8 @@ export function Sidebar({
 	const [openMap, setOpenMap] = useState<Record<string, boolean>>({});
 	const [menuFor, setMenuFor] = useState<string | null>(null);
 	const [newProjectOpen, setNewProjectOpen] = useState(false);
+	// 文件区默认收起（只有标题栏一行），点箭头展开
+	const [fileOpen, setFileOpen] = useState(false);
 	// 文件树根：默认跟随当前会话工作区，可从下拉框切到任意项目
 	const [treeRoot, setTreeRoot] = useState<string | null>(null);
 	const currentRoot = snapshot?.files?.root ?? null;
@@ -137,7 +139,7 @@ export function Sidebar({
 	return (
 		<aside className="sidebar">
 			<div className="sidebar-head">
-				<span className="sidebar-title">最近项目（{groups.length}）</span>
+				<span className="sidebar-title">项目（{groups.length}）</span>
 				<span className="topbar-spacer" />
 				<button
 					type="button"
@@ -342,41 +344,22 @@ export function Sidebar({
 				onPointerDown={split.start}
 				onDoubleClick={split.reset}
 			/>
-			<section className="side-files" style={{ height: split.height }}>
-				<div className="side-files-head">
-					<span className="side-files-title">文件</span>
-					<button
-						type="button"
-						className="side-files-term"
-						title="在右侧打开当前项目的终端"
-						onClick={() => {
-							const target = treeRoot ?? currentRoot;
-							if (target) onOpenTerminal?.(target);
-						}}
-					>
-						&gt;_
-					</button>
-					<select
-						className="side-files-select"
-						value={treeRoot ?? currentRoot ?? ""}
-						onChange={(event) => setTreeRoot(event.target.value || null)}
-						title="切换项目"
-					>
-						<option value="">跟随当前会话</option>
-						{groups.map((project) => (
-							<option key={project.cwd} value={project.cwd}>
-								{aliases[project.cwd] || project.name || project.cwd}
-							</option>
-						))}
-					</select>
-				</div>
-				<div className="side-files-body">
-					<FileTree
-						root={treeRoot ?? currentRoot ?? null}
-						onOpenFile={(path) => onOpenFile?.(path, treeRoot ?? currentRoot ?? "")}
-					/>
-				</div>
-			</section>
+			<SidebarFiles
+				open={fileOpen}
+				onToggle={() => setFileOpen((open) => !open)}
+				height={split.height}
+				root={treeRoot ?? currentRoot ?? null}
+				onRootChange={setTreeRoot}
+				options={groups.map((project) => ({
+					cwd: project.cwd,
+					label: aliases[project.cwd] || project.name || project.cwd,
+				}))}
+				onOpenFile={(path) => onOpenFile?.(path, treeRoot ?? currentRoot ?? "")}
+				onOpenTerminal={() => {
+					const target = treeRoot ?? currentRoot;
+					if (target) onOpenTerminal?.(target);
+				}}
+			/>
 
 			{newProjectOpen ? <NewProjectDialog onClose={() => setNewProjectOpen(false)} /> : null}
 			<SidebarMenu />

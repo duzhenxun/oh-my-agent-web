@@ -178,7 +178,6 @@ export function App() {
 						</button>
 					)}
 				</main>
-				<ConversationOutline messages={messages} />
 
 				{state.lastError ? <div className="error-bar">{state.lastError}</div> : null}
 				<NoticeBar notices={snapshot?.notices ?? []} />
@@ -204,6 +203,7 @@ export function App() {
 						setPanelItems([]);
 						setActiveItem(null);
 					}}
+					outline={<ConversationOutline messages={messages} />}
 				/>
 			) : null}
 

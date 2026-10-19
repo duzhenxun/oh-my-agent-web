@@ -213,3 +213,36 @@
 	object-fit: contain;
 	border-radius: 4px;
 }
+
+/* 右侧竖列：收起箭头 + 对话大纲（对齐参考实现，两者在同一列） */
+.preview-rail {
+	flex: none;
+	width: 34px;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 8px;
+	padding-top: 6px;
+	min-height: 0;
+	/* 让大纲的竖条可以撑满剩余高度并自己滚动 */
+	align-self: stretch;
+}
+
+.preview-rail .outline {
+	position: static;
+	flex: 1 1 auto;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	pointer-events: auto;
+}
+
+/* 竖列里的大纲：只有方块，不要背景与内边距 */
+.preview-rail .outline-rail {
+	background: none;
+	padding: 0;
+	border-radius: 0;
+	gap: 8px;
+	overflow: auto;
+}
