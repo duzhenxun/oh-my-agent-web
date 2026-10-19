@@ -267,10 +267,13 @@ export type Snapshot = {
 
 export type ApprovalDecision = "once" | "always" | "deny";
 
+/** 发送方式：now=立刻发；queue=回合结束后发（排队）；steer=尝试插进当前回合（引导） */
+export type SendMode = "now" | "queue" | "steer";
+
 export type SendMessageRequest = {
 	id: string;
 	type: "send_message";
-	payload: { text: string; attachments?: AttachmentRef[] };
+	payload: { text: string; attachments?: AttachmentRef[]; mode?: SendMode };
 };
 export type InterruptRequest = { id: string; type: "interrupt"; payload: { conversationId: string } };
 export type ApproveRequest = {

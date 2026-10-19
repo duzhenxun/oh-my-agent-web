@@ -2,8 +2,8 @@
  * 会话运行时（宿主侧）：把引擎事件翻译成 UI 状态 / 协议事件，并把转录落盘（M2）。
  *
  * 遵守的规则（都已由 ADR 定死）：
- *   - 全局同时只允许 **1 路在飞回合**（ADR-0005）：再发就拒绝 + 提示，不排队；
- *   - 切换会话**不中断**在跑的回合（ADR-0005）：引擎在服务端继续干活，切回来靠快照看结果；
+ *   - 回合进行中再发消息：默认**引导**（插进当前轮）、可选**排队**（这轮结束自动发）；
+ *   - 切换会话**不中断**在跑的回合（ADR-0005）；
  *   - 危险操作走审批三态（ADR-0006）：允许一次 / 总是允许这类 / 拒绝；
  *   - 快照只在**结构性变化**时推：正文靠 message_delta 增量（ADR-0004 §3）；
  *   - 转录**追加写**：用户消息发出时落盘；助手消息**在回合结束时**落盘（整条，不留半条）。
@@ -12,6 +12,7 @@
 import { createMarkerStreamFilter } from "../markers/actions.js";
 import { createRuntimeServices } from "./runtime-services.js";
 import { createStatsRefresher } from "./stats-refresher.js";
+import { createBusyHandler, createTurnQueue } from "./turn-queue.js";
 import { createConversationFactory } from "./conversation-create.js";
 import { resolveAttachments } from "./attachment-resolve.js";
 import { createModelController } from "./model-controller.js";
@@ -23,6 +24,7 @@ import { applyEngineEvent, type TurnEventContext } from "./turn-events.js";
 import { makeIdFactory } from "../util/ids.js";
 import type {
 	AttachmentRef, // 附件引用（ADR-0020 §P3）
+	SendMode,
 } from "../protocol.js";
 import { appendText, createMessage } from "../snapshot/messages.js";
 import { buildSnapshot, createServerState, emptyRunning } from "../snapshot/state.js";
@@ -50,6 +52,23 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 
 	// 回合看门狗（ADR-0023）：卡住的回合要能自己收场 —— 全局只有 1 路在飞，卡一路等于堵死整个应用
 	let currentTurn: { conversationId: string; messageId: string } | null = null;
+	const turnQueue = createTurnQueue();
+	const busy = createBusyHandler({
+		activeId: () => state.activeId,
+		steer: (id, prompt) => options.engine.sendMessage(id, prompt, () => undefined, { streamingBehavior: "steer" }),
+		queue: (id, message) => turnQueue.push(id, message),
+		appendUser: (id, value) =>
+			void (state.messages[id] = [
+				...(state.messages[id] ?? []),
+				appendText(createMessage(nextId("msg"), "user", now()), value),
+			]),
+		notice: (text, level) => notice(text, level),
+		pushSnapshot: () => pushSnapshot(),
+	});
+	/** sendMessage 自引用：队列排空时要能再次调用自己（对象字面量还没构建完成 → 用 ref） */
+	let apiRef: {
+		sendMessage: (text: string, attachments?: AttachmentRef[], mode?: SendMode) => Promise<unknown>;
+	} | null = null;
 	/** 回合结束时的落盘任务：sendMessage 必须在返回前等它完成（否则「应答已回、转录还没写」） */
 	let finishPromise: Promise<void> | null = null;
 
@@ -165,6 +184,8 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		const keepError = reason === "error" || state.running.status === "error";
 		state.running = { ...emptyRunning(), status: keepError ? "error" : "idle" };
 		void refreshStats();
+		const next = turnQueue.shift(conversationId); // 排空：这一轮结束后自动发下一条
+		if (next) setTimeout(() => void apiRef?.sendMessage(next.text, next.attachments, "now"), 0);
 		state.pendingApproval = null;
 		approval.cancelPending();
 
@@ -188,7 +209,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		pushSnapshot();
 	}
 
-	return {
+	const api: Runtime = {
 		async init() {
 			// 装载的「总是允许」规则只写日志：启动信息不该占用对话流（用户明确要求过）
 			const ruleCount = await approval.loadRules();
@@ -227,22 +248,21 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			notice(text, level);
 		},
 
-		async sendMessage(text: string, attachments?: AttachmentRef[]) {
-			// 附件解析（ADR-0020 §P3）：图片 → base64 视觉注入；非图片 → 只给路径引用
+		async sendMessage(text: string, attachments?: AttachmentRef[], mode: SendMode = "steer") {
+			// 附件解析（ADR-0020 §P3）
 			const resolved = await resolveAttachments(text, attachments, options.uploadStore);
 			for (const name of resolved.missing) notice(`附件已失效（可能过期被清理）：${name}`, "warn");
 			if (resolved.images.length > 0) notice(`已附加 ${resolved.images.length} 张图片（走视觉注入）`, "info");
 
 			if (inFlight) {
-				notice("另一个回合正在跑，先等它结束或点「停止」", "warn");
-				return { ok: false, error: { code: "session.busy", message: "已有回合在跑（ADR-0005：全局 1 路）" } };
+				// 回合进行中：引导 / 排队 / 拒绝，判定与副作用都在 turn-queue.ts（runtime 有 400 行护栏）
+				const handled = await busy(mode, text, resolved.promptText, resolved.images, attachments);
+				if (handled) return handled;
 			}
-
 			inFlight = true;
 			try {
 				// 没有活动会话才新建（否则复用当前会话 —— 这里曾经写成「每轮都新建」）
 				const conversationId = state.activeId ?? (await conversations.create(text));
-				// 消息来自扫描/打开（ADR-0021 §2）：新会话此时是空的，无需再读盘
 				if (!piOpener.isOpen(conversationId)) {
 					const opened = await piOpener.open(conversationId, (force) => piRefresher.refresh(force));
 					if (opened === null) throw new Error(`会话打不开：${conversationId}`);
@@ -254,7 +274,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 				const userMessage = appendText(createMessage(nextId("msg"), "user", ts), text);
 				const assistantMessage = createMessage(nextId("msg"), "assistant", ts);
 
-				// 首条用户消息决定标题（本地先显示；扫描回来后以会话里的首条消息为准）
+				// 首条用户消息决定标题
 				const isFirstMessage = (state.messages[conversationId] ?? []).length === 0;
 				if (isFirstMessage) {
 					touchConversation(conversationId, { title: text.replace(/\s+/g, " ").trim().slice(0, titleChars) });
@@ -371,4 +391,6 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			return { ok: true };
 		},
 	};
+	apiRef = api; // 队列排空时要能再调 sendMessage
+	return api;
 }

@@ -68,14 +68,18 @@ describe("会话运行时（M1：内存态）", () => {
 		expect(snapshot.notices.some((notice) => notice.level === "error")).toBe(true);
 	});
 
-	it("并发保护：已有回合在跑时再发直接被拒（ADR-0005）", async () => {
+	it("回合在跑时：默认引导可插入；显式 now 才被拒（ADR-0005 已被 ADR-0030 部分放宽）", async () => {
 		const { runtime } = harness();
 		const first = runtime.sendMessage("slow please");
-		// 等它真的跑起来
 		await waitFor(() => runtime.isBusy());
-		const second = await runtime.sendMessage("again");
-		expect(second.ok).toBe(false);
-		if (!second.ok) expect(second.error.code).toBe("session.busy");
+
+		// 引导：接受（交给 pi 的 streamingBehavior=steer）
+		const steer = await runtime.sendMessage("改个方向", undefined, "steer");
+		expect(steer.ok).toBe(true);
+		// 显式 now：仍然拒绝，避免同会话并发写坏转录
+		const now = await runtime.sendMessage("again", undefined, "now");
+		expect(now.ok).toBe(false);
+		if (!now.ok) expect(now.error.code).toBe("session.busy");
 
 		await first;
 		expect(runtime.isBusy()).toBe(false);

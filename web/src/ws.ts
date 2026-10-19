@@ -16,6 +16,7 @@ import type {
 	ClientRequestType,
 	ProjectPrefs,
 	PromptTemplate,
+	SendMode,
 	ServerMessage,
 	SessionPrefs,
 	Snapshot,
@@ -85,11 +86,15 @@ export function send(requestMessage: ClientRequest): void {
 }
 
 /** 发一条用户消息（可带附件引用；图片本体早就通过 HTTP 上传了） */
-export function sendMessage(text: string, attachments?: AttachmentRef[]): void {
+export function sendMessage(text: string, attachments?: AttachmentRef[], mode?: SendMode): void {
 	send({
 		id: `req-${++seq}`,
 		type: "send_message",
-		payload: attachments && attachments.length > 0 ? { text, attachments } : { text },
+		payload: {
+			text,
+			...(attachments && attachments.length > 0 ? { attachments } : {}),
+			...(mode && mode !== "now" ? { mode } : {}),
+		},
 	});
 }
 

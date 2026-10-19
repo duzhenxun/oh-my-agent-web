@@ -64,11 +64,12 @@ export function Composer({ running, conversationId }: { running: boolean; conver
 		void addFiles(files);
 	};
 
-	const submit = () => {
+	const submit = (mode: "now" | "queue" | "steer" = "now") => {
 		const value = draft.trim();
-		if ((!value && pending.length === 0) || running) return;
+		if (!value && pending.length === 0) return;
+		if (running && mode === "now") return;
 		// 图片引用写进正文（刷新后仍显示）；附件本体走 references
-		sendMessage(value + imagesMarkdown(pending), pending.length > 0 ? pending : undefined);
+		sendMessage(value + imagesMarkdown(pending), pending.length > 0 ? pending : undefined, mode);
 		setDraft("");
 		if (inputRef.current) inputRef.current.style.height = "auto";
 		setPending([]);
@@ -152,7 +153,33 @@ export function Composer({ running, conversationId }: { running: boolean; conver
 					rows={1}
 				/>
 				<div className="composer-actions">
-					{running ? (
+					{running && draft.trim() !== "" ? (
+						<>
+							<button
+								type="button"
+								className="btn btn-send"
+								title="插进当前这一轮（打断它，按新指示继续）"
+								onClick={() => submit("steer")}
+							>
+								引导
+							</button>
+							<button
+								type="button"
+								className="btn btn-queue"
+								title="等这一轮结束后再发"
+								onClick={() => submit("queue")}
+							>
+								排队
+							</button>
+							<button
+								type="button"
+								className="btn btn-stop"
+								onClick={() => conversationId && interrupt(conversationId)}
+							>
+								停止
+							</button>
+						</>
+					) : running ? (
 						<button type="button" className="btn btn-stop" onClick={() => conversationId && interrupt(conversationId)}>
 							停止
 						</button>
@@ -160,7 +187,7 @@ export function Composer({ running, conversationId }: { running: boolean; conver
 						<button
 							type="button"
 							className="btn btn-send"
-							onClick={submit}
+							onClick={() => submit("now")}
 							disabled={draft.trim().length === 0 && pending.length === 0}
 						>
 							➤ 发送

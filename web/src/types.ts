@@ -42,6 +42,7 @@ export type {
 	SetModelRequest,
 	SetSettingsRequest,
 	SessionPrefs,
+	SendMode,
 	SessionStats,
 	SetThinkingLevelRequest,
 	TestProviderRequest,

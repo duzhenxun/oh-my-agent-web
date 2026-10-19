@@ -359,3 +359,19 @@
 	font-size: 12px;
 	overflow-wrap: anywhere;
 }
+
+/* 运行中：引导 / 排队 两个按钮（引导是主操作） */
+.btn-queue {
+	border-radius: 8px;
+	padding: 6px 10px;
+	font-size: 12.5px;
+	background: var(--bg-elev-2);
+	border: 1px solid var(--border);
+	color: var(--text-dim);
+	cursor: pointer;
+}
+
+.btn-queue:hover {
+	color: var(--text);
+	border-color: var(--accent-dim);
+}

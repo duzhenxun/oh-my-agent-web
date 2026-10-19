@@ -74,7 +74,11 @@ export function parseClientRequest(raw: unknown): ClientRequest | null {
 		return {
 			id,
 			type: "send_message",
-			payload: { text: String(payload.text ?? ""), ...(attachments?.length ? { attachments } : {}) },
+			payload: {
+				text: String(payload.text ?? ""),
+				...(payload.mode === "queue" || payload.mode === "steer" ? { mode: payload.mode } : {}),
+				...(attachments?.length ? { attachments } : {}),
+			},
 		};
 	}
 	if (type === "list_providers") return { id, type: "list_providers" };

@@ -189,7 +189,10 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 			sessionId: string,
 			text: string,
 			onEvent: (event: EngineEvent) => void,
-			messageOptions?: { images?: Array<{ data: string; mimeType: string }> },
+			messageOptions?: {
+				images?: Array<{ data: string; mimeType: string }>;
+				streamingBehavior?: "steer" | "followUp";
+			},
 		) {
 			const handle = sessions.get(sessionId);
 			if (!handle) {
@@ -227,13 +230,13 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 					data: image.data,
 					mimeType: image.mimeType,
 				}));
-				if (images && images.length > 0) {
-					await (
-						handle.session as unknown as { prompt: (text: string, options: { images: unknown[] }) => Promise<void> }
-					).prompt(text, { images });
-				} else {
-					await handle.session.prompt(text);
-				}
+				// streamingBehavior 交给 pi 自己排队：steer = 打断当前轮插入，followUp = 等这轮结束
+				const promptOptions: { images?: unknown[]; streamingBehavior?: "steer" | "followUp" } = {};
+				if (images && images.length > 0) promptOptions.images = images;
+				if (messageOptions?.streamingBehavior) promptOptions.streamingBehavior = messageOptions.streamingBehavior;
+				await (
+					handle.session as unknown as { prompt: (text: string, options: typeof promptOptions) => Promise<void> }
+				).prompt(text, promptOptions);
 				// 等 settle：prompt() 返回后仍可能有收尾事件
 				await Promise.race([settled, new Promise((resolve) => setTimeout(resolve, 50))]);
 			} catch (error) {

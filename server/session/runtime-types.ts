@@ -9,6 +9,7 @@ import type {
 	PiProject,
 	Notice,
 	ProtocolError,
+	SendMode,
 	ServerEvent,
 	Snapshot,
 } from "../protocol.js";
@@ -26,7 +27,7 @@ export type Runtime = {
 	init(): Promise<void>;
 	snapshot(): Snapshot;
 	state(): ServerState;
-	sendMessage(text: string, attachments?: AttachmentRef[]): Promise<Result>;
+	sendMessage(text: string, attachments?: AttachmentRef[], mode?: SendMode): Promise<Result>;
 	interrupt(): Promise<Result>;
 	approve(requestId: string, decision: ApprovalDecision): Result;
 	newConversation(workspace?: string): Promise<Result>;

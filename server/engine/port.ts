@@ -65,7 +65,11 @@ export type EnginePort = {
 		text: string,
 		onEvent: (event: EngineEvent) => void,
 		/** 图片附件（ADR-0020 §P3）：base64 + mime，交给模型做视觉注入 */
-		options?: { images?: Array<{ data: string; mimeType: string }> },
+		options?: {
+			images?: Array<{ data: string; mimeType: string }>;
+			/** 回合进行中怎么处理这条新消息（pi 的 streamingBehavior）：steer=打断当前轮插入，followUp=等这轮结束 */
+			streamingBehavior?: "steer" | "followUp";
+		},
 	): Promise<void>;
 	interrupt(sessionId: string): Promise<void>;
 	/** 关掉一个引擎会话（LRU 回收：同时打开太多会带来多次资源扫描） */
