@@ -5,7 +5,8 @@ import { setModel } from "./ws.ts";
 import { ApprovalDialog, NoticeBar } from "./components/ApprovalDialog.tsx";
 import { Composer } from "./components/Composer.tsx";
 import { MessageList } from "./components/MessageList.tsx";
-import { FilePreview, FileTree } from "./components/FileTree.tsx";
+import { FilePreview } from "./components/FilePreview.tsx";
+import { FileTree } from "./components/FileTree.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
 
 const CONNECTION_LABEL = { connecting: "连接中…", open: "已连接", closed: "已断开（自动重连）" } as const;

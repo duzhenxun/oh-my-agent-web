@@ -153,3 +153,33 @@
 	min-width: 0;
 	overflow-wrap: anywhere;
 }
+
+/* 选中行（选中多行添加到对话） */
+.file-preview-line-on {
+	background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.file-preview-no {
+	background: none;
+	border: none;
+	cursor: pointer;
+	color: var(--text-faint);
+	font: inherit;
+	padding: 0 4px 0 0;
+}
+
+.file-preview-no:hover {
+	color: var(--accent);
+}
+
+.file-preview-selection {
+	flex: none;
+	color: var(--text-faint);
+	font-size: 12px;
+}
+
+.file-preview-hint {
+	margin-top: 6px;
+	color: var(--text-faint);
+	font-size: 12px;
+}

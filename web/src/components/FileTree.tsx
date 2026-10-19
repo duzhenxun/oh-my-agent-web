@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { setDraft } from "../store.ts";
 
 type FileEntry = { name: string; path: string; isDir: boolean };
 
@@ -109,91 +108,6 @@ export function FileTree({ root, onOpenFile }: { root: string | null; onOpenFile
 					{node.error ? <div className="filetree-error">{node.error}</div> : null}
 				</div>
 			))}
-		</div>
-	);
-}
-
-/** 只读预览弹窗（M4）：行号 + 等宽正文 + 「插入到输入框」。 */
-export function FilePreview({ path, onClose }: { path: string; onClose: () => void }) {
-	const [state, setState] = useState<{
-		text: string;
-		bytes: number;
-		truncated: boolean;
-		binary: boolean;
-		error?: string;
-	} | null>(null);
-
-	useEffect(() => {
-		let cancelled = false;
-		void (async () => {
-			const response = await fetch(`/api/files/read?path=${encodeURIComponent(path)}`);
-			const body = (await response.json()) as {
-				text?: string;
-				bytes?: number;
-				truncated?: boolean;
-				binary?: boolean;
-				error?: { message?: string };
-			};
-			if (cancelled) return;
-			if (!response.ok) {
-				setState({
-					text: "",
-					bytes: 0,
-					truncated: false,
-					binary: false,
-					error: body.error?.message ?? `HTTP ${response.status}`,
-				});
-				return;
-			}
-			setState({
-				text: body.text ?? "",
-				bytes: body.bytes ?? 0,
-				truncated: body.truncated === true,
-				binary: body.binary === true,
-			});
-		})();
-		return () => {
-			cancelled = true;
-		};
-	}, [path]);
-
-	const lines = state && !state.binary ? state.text.split("\n") : [];
-
-	return (
-		<div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="文件预览">
-			<div className="modal file-preview">
-				<div className="file-preview-head">
-					<span className="file-preview-path mono">{path}</span>
-					<span className="file-preview-meta">
-						{state ? `${state.bytes} 字节` : "读取中…"}
-						{state?.truncated ? "（已截断）" : ""}
-					</span>
-					<span className="topbar-spacer" />
-					<button
-						type="button"
-						className="btn btn-tiny"
-						onClick={() => setDraft(`${path} `)}
-						title="插到输入框（当作对话引用）"
-					>
-						插入到对话
-					</button>
-					<button type="button" className="btn btn-tiny" onClick={onClose}>
-						关闭
-					</button>
-				</div>
-				{state?.error ? <div className="file-preview-error">{state.error}</div> : null}
-				{state?.binary ? <div className="file-preview-error">这是二进制文件，不能预览</div> : null}
-				{state && !state.binary && !state.error ? (
-					<pre className="file-preview-body mono">
-						{lines.map((line, index) => (
-							<div className="file-preview-line" key={index}>
-								<span className="file-preview-no">{index + 1}</span>
-								<span className="file-preview-text">{line}</span>
-							</div>
-						))}
-					</pre>
-				) : null}
-			</div>
 		</div>
 	);
 }
