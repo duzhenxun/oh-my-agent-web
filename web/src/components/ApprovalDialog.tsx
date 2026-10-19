@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { Notice, PendingApproval } from "../types.ts";
 import { approve } from "../ws.ts";
 
@@ -35,14 +36,28 @@ export function ApprovalDialog({ approval }: { approval: PendingApproval }) {
 	);
 }
 
+/**
+ * 提示条：每条带一个关闭按钮（点掉就不占对话高度了）。
+ * 关闭状态只在前端记（按 notice.id 记），刷新页面会重新出现 —— 这些提示本来就是"临时状态"。
+ */
 export function NoticeBar({ notices }: { notices: Notice[] }) {
-	const recent = notices.slice(-3);
-	if (recent.length === 0) return null;
+	const [dismissed, setDismissed] = useState<Set<string>>(() => new Set());
+	const visible = notices.filter((notice) => !dismissed.has(notice.id)).slice(-3);
+	if (visible.length === 0) return null;
+	const dismiss = (id: string) =>
+		setDismissed((current) => {
+			const next = new Set(current);
+			next.add(id);
+			return next;
+		});
 	return (
 		<div className="notices">
-			{recent.map((notice) => (
+			{visible.map((notice) => (
 				<div key={notice.id} className={`notice notice-${notice.level}`}>
-					{notice.text}
+					<span className="notice-text">{notice.text}</span>
+					<button type="button" className="notice-close" onClick={() => dismiss(notice.id)} title="关闭这条提示">
+						×
+					</button>
 				</div>
 			))}
 		</div>

@@ -89,3 +89,39 @@
 	color: var(--text);
 	border-color: var(--accent-dim);
 }
+
+/* 提示条：文字可换行，右侧一个关闭按钮（点掉节省对话高度） */
+.notice {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+}
+
+.notice-text {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.notice-close {
+	flex: none;
+	width: 18px;
+	height: 18px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border: none;
+	border-radius: 4px;
+	background: none;
+	color: var(--text-faint);
+	font: inherit;
+	font-size: 13px;
+	line-height: 1;
+	cursor: pointer;
+	padding: 0;
+}
+
+.notice-close:hover {
+	background: var(--bg-elev-2);
+	color: var(--text);
+}
