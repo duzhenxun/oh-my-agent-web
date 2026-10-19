@@ -207,3 +207,73 @@
 	background: var(--bg-elev-2);
 	border-color: var(--accent-dim);
 }
+
+/* 项目行上的「+」：在这个项目下新建会话（ADR-0021 §2） */
+.proj-new {
+	flex: none;
+	background: transparent;
+	border: 1px solid var(--border);
+	color: var(--text-dim);
+	border-radius: 6px;
+	cursor: pointer;
+	font-size: 12px;
+	line-height: 1;
+	padding: 1px 6px;
+}
+
+.proj-new:hover {
+	border-color: var(--accent-dim);
+	color: var(--accent);
+}
+
+/* ---- 项目分组（对齐参考实现的观感）---- */
+.proj-chevron {
+	flex: none;
+	width: 8px;
+	height: 8px;
+	border-right: 1.6px solid var(--text-faint);
+	border-bottom: 1.6px solid var(--text-faint);
+	transform: rotate(-45deg);
+	margin-right: 6px;
+	transition: transform 0.12s ease;
+}
+
+details[open] > .proj-head .proj-chevron {
+	transform: rotate(45deg);
+}
+
+.proj-head {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.proj-name {
+	font-weight: 600;
+	color: var(--text);
+}
+
+.proj-new {
+	opacity: 0;
+}
+
+.proj-head:hover .proj-new {
+	opacity: 1;
+}
+
+/* 当前会话：左侧竖条 + 高亮底（与参考实现一致） */
+.pi-row {
+	position: relative;
+	padding-left: 10px;
+	border-left: 2px solid transparent;
+	border-radius: 0 6px 6px 0;
+}
+
+.pi-row-active {
+	border-left-color: var(--accent);
+	background: var(--bg-elev-2);
+}
+
+.pi-row-active .pi-row-title {
+	color: var(--text);
+}

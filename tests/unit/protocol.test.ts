@@ -49,3 +49,24 @@ describe("协议常量", () => {
 		expect(TOOL_EXCERPT_CHARS).toBe(2000);
 	});
 });
+
+describe("new_chat 可以指定项目（ADR-0021 §2）", () => {
+	it("不传 payload = 继承当前会话的工作区", () => {
+		expect(parseClientRequest({ id: "1", type: "new_chat" })).toEqual({ id: "1", type: "new_chat" });
+	});
+
+	it("传了 workspace 就带上（项目行上的「+」）", () => {
+		expect(parseClientRequest({ id: "2", type: "new_chat", payload: { workspace: "/repo/other" } })).toEqual({
+			id: "2",
+			type: "new_chat",
+			payload: { workspace: "/repo/other" },
+		});
+	});
+
+	it("空 workspace 视为没传（回落到继承）", () => {
+		expect(parseClientRequest({ id: "3", type: "new_chat", payload: { workspace: "" } })).toEqual({
+			id: "3",
+			type: "new_chat",
+		});
+	});
+});

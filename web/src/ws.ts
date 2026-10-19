@@ -87,8 +87,13 @@ export function interrupt(conversationId: string): void {
 	send({ id: `req-${++seq}`, type: "interrupt", payload: { conversationId } });
 }
 
-export function newChat(): void {
-	send({ id: `req-${++seq}`, type: "new_chat" });
+/** 新建会话；传 workspace = 在这个项目下新建（项目行上的「+」） */
+export function newChat(workspace?: string): void {
+	send(
+		workspace
+			? { id: `req-${++seq}`, type: "new_chat", payload: { workspace } }
+			: { id: `req-${++seq}`, type: "new_chat" },
+	);
 }
 
 export function switchConversation(conversationId: string): void {

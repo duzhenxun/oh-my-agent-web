@@ -239,7 +239,7 @@ async function handleMessage(socket: WebSocket, raw: string): Promise<void> {
 				return;
 			}
 			case "new_chat": {
-				reply(socket, request.id, await runtime.newConversation());
+				reply(socket, request.id, await runtime.newConversation(request.payload?.workspace));
 				return;
 			}
 			case "switch_conversation": {

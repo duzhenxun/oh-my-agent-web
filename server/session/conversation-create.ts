@@ -11,7 +11,8 @@ import type { ConversationMeta, UiMessage } from "../protocol.js";
 import type { PiSessionOpener } from "./pi-opener.js";
 
 export type ConversationFactory = {
-	create: (seedText: string) => Promise<string>;
+	/** workspace = 在哪个项目下新建（不传则继承当前会话/当前工作区） */
+	create: (seedText: string, workspaceOverride?: string) => Promise<string>;
 };
 
 export function createConversationFactory(options: {
@@ -31,14 +32,15 @@ export function createConversationFactory(options: {
 	onReady?: (conversationId: string) => Promise<void> | void;
 }): ConversationFactory {
 	return {
-		async create(seedText: string) {
+		async create(seedText: string, workspaceOverride?: string) {
 			const { state } = options;
 			const id = options.nextId("conv");
 			// 新会话沿用「当前会话/当前工作区」的目录（多项目：不把新会话丢回默认根）
 			const previousWorkspace = state.activeId
 				? state.conversations.find((item) => item.id === state.activeId)?.workspace
 				: undefined;
-			const workspace = previousWorkspace ?? state.files?.root ?? state.workspace;
+			// 优先级：显式指定（项目行上的「+」）> 当前会话的目录 > 当前工作区
+			const workspace = workspaceOverride ?? previousWorkspace ?? state.files?.root ?? state.workspace;
 			const title = seedText.replace(/\s+/g, " ").trim().slice(0, options.titleChars) || "新对话";
 
 			const { sessionPath } = await options.engine.createSession({ sessionId: id, workspace });

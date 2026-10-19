@@ -201,7 +201,8 @@ export type ClientRequest =
 	| SwitchConversationRequest;
 
 /** 新建会话（M2）：服务端建好并推快照，active 指向它 */
-export type NewChatRequest = { id: string; type: "new_chat" };
+/** 新建会话（ADR-0021 §2 起可指定项目：不传 = 继承当前会话的工作区） */
+export type NewChatRequest = { id: string; type: "new_chat"; payload?: { workspace?: string } };
 
 /** 切换会话（M2） */
 export type SwitchConversationRequest = {
@@ -282,7 +283,12 @@ export function parseClientRequest(raw: unknown): ClientRequest | null {
 	if (!nonEmptyString(id) || !nonEmptyString(type)) return null;
 	if (!REQUEST_TYPES.includes(type as ClientRequestType)) return null;
 
-	if (type === "get_state" || type === "new_chat") return { id, type };
+	if (type === "get_state") return { id, type: "get_state" };
+	if (type === "new_chat") {
+		const workspace =
+			isRecord(raw.payload) && nonEmptyString(raw.payload.workspace) ? raw.payload.workspace : undefined;
+		return workspace ? { id, type: "new_chat", payload: { workspace } } : { id, type: "new_chat" };
+	}
 
 	const payload = raw.payload;
 	if (!isRecord(payload)) return null;

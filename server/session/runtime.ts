@@ -45,7 +45,7 @@ export type Runtime = {
 	sendMessage(text: string, attachments?: AttachmentRef[]): Promise<Result>;
 	interrupt(): Promise<Result>;
 	approve(requestId: string, decision: ApprovalDecision): Result;
-	newConversation(): Promise<Result>;
+	newConversation(workspace?: string): Promise<Result>;
 	/** 改客户端设置（ADR-0020 §P1）：归一化 → 落盘 → 推快照 */
 	applySettings(patch: unknown): Promise<Result>;
 	/** 切换当前会话的模型（ADR-0020 §P2） */
@@ -355,9 +355,9 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 
 		setModel: (modelId) => models.switchTo(state.activeId, modelId),
 
-		async newConversation() {
+		async newConversation(workspace?: string) {
 			try {
-				await conversations.create("新对话");
+				await conversations.create("新对话", workspace);
 				pushSnapshot(); // ← 少了这一句，侧栏不会更新（冒烟抓到的）
 				return { ok: true };
 			} catch (error) {
