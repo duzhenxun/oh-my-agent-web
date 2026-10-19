@@ -12,15 +12,6 @@ import { PreviewPanel, type PanelItem } from "./components/PreviewPanel.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
 import { StatusBar } from "./components/StatusBar.tsx";
 
-const CONNECTION_LABEL = { connecting: "连接中…", open: "已连接", closed: "已断开（自动重连）" } as const;
-
-const RUNNING_LABEL = {
-	idle: "空闲",
-	streaming: "正在回复",
-	awaiting_approval: "等待审批",
-	error: "上一回合出错",
-} as const;
-
 /** 148242 → 148k（顶栏空间有限，只保留一位小数） */
 function formatTokens(value: number): string {
 	if (value < 1000) return String(value);
@@ -80,11 +71,9 @@ export function App() {
 			{/* 顶部区域：横跨整个宽度，三栏都在它下面 */}
 			<div className="appbar">
 				<span className="brand">agent-web</span>
-				<span className={`chip chip-${state.connection}`}>{CONNECTION_LABEL[state.connection]}</span>
-				{snapshot &&
-				(snapshot.running.status === "idle" || snapshot.running.conversationId === snapshot.active.conversationId) ? (
-					<span className={`chip chip-run-${snapshot.running.status}`}>{RUNNING_LABEL[snapshot.running.status]}</span>
-				) : null}
+				<button type="button" className="appbar-new appbar-new-primary" onClick={() => newChat()} title="新建会话">
+					＋ 新会话
+				</button>
 				{/* 预留区：以后放全局搜索 / 命令面板 */}
 				<span className="appbar-slot" />
 				{snapshot?.sessionStats ? (
@@ -100,14 +89,6 @@ export function App() {
 						上下文 {formatTokens(snapshot.sessionStats.contextTokens)}
 					</span>
 				) : null}
-				<button
-					type="button"
-					className="chip chip-quiet appbar-new"
-					onClick={() => newChat()}
-					title="在当前工作区新建会话"
-				>
-					＋ 新建
-				</button>
 				<SidebarMenu variant="full" placement="appbar" />
 			</div>
 			<div className="app-main">
