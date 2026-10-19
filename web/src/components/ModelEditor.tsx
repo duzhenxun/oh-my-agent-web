@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { testModel } from "../ws.ts";
 import type { ProviderView } from "../types.ts";
 import { updateModel } from "../ws.ts";
 
@@ -51,8 +52,53 @@ export function ModelEditor({
 }) {
 	const [form, setForm] = useState<ModelSpecForm>(() => initialForm(provider, modelId));
 	const [sent, setSent] = useState(false);
+	const [catalog, setCatalog] = useState<string | null>(null);
+	const [testing, setTesting] = useState<string | null>(null);
 	const set = <K extends keyof ModelSpecForm>(key: K, value: ModelSpecForm[K]) =>
 		setForm((current) => ({ ...current, [key]: value }));
+
+	/** 从 models.dev 预填（查不到就明确说"没查到"，不猜） */
+	const fillFromCatalog = async () => {
+		setCatalog(null);
+		const response = await fetch(
+			`/api/providers/${encodeURIComponent(provider.provider)}/catalog?model=${encodeURIComponent(form.id)}`,
+		);
+		const body = (await response.json()) as {
+			spec?: {
+				name: string;
+				contextWindow: number | null;
+				maxTokens: number | null;
+				reasoning: boolean;
+				imageInput: boolean;
+				cost: Record<string, number> | null;
+			};
+			error?: { message?: string };
+		};
+		if (!response.ok || !body.spec) {
+			setCatalog("没查到");
+			return;
+		}
+		const spec = body.spec;
+		setForm((current) => ({
+			...current,
+			name: spec.name || current.name,
+			reasoning: spec.reasoning,
+			imageInput: spec.imageInput,
+			contextWindow: spec.contextWindow === null ? "" : String(spec.contextWindow),
+			maxTokens: spec.maxTokens === null ? "" : String(spec.maxTokens),
+			input: spec.cost ? String(spec.cost.input ?? "") : "",
+			output: spec.cost ? String(spec.cost.output ?? "") : "",
+			cacheRead: spec.cost ? String(spec.cost.cacheRead ?? "") : "",
+			cacheWrite: spec.cost ? String(spec.cost.cacheWrite ?? "") : "",
+		}));
+		setCatalog("已填入");
+	};
+
+	const runTest = async () => {
+		setTesting("测试中…");
+		const result = await testModel(provider.provider, form.id);
+		setTesting(result.ok ? `✅ 通了（HTTP ${result.status}，${result.latencyMs}ms）` : `❌ 没通：${result.message}`);
+	};
 
 	const save = () => {
 		updateModel(provider.provider, {
@@ -179,6 +225,28 @@ export function ModelEditor({
 				</div>
 			</div>
 
+			<div className="import-foot">
+				<button
+					type="button"
+					className="btn btn-tiny"
+					title="从 models.dev 查这个模型的公开规格（只作建议值，会覆盖当前已填的规格）"
+					onClick={() => void fillFromCatalog()}
+				>
+					填入模型信息
+				</button>
+				<button
+					type="button"
+					className="btn btn-tiny"
+					title="发送一次最小 chat 请求（max_tokens=1）—— 会消耗一次请求"
+					onClick={() => void runTest()}
+				>
+					🔌 测试（会消耗一次请求）
+				</button>
+			</div>
+			{catalog ? <div className="side-panel-hint">来源：models.dev（建议值，按需修改）</div> : null}
+			{testing ? (
+				<div className={testing.startsWith("✅") ? "side-ok" : "side-panel-hint side-error"}>{testing}</div>
+			) : null}
 			{sent ? <div className="side-ok">已提交，结果会以提示形式出现（pi 的模型表是进程内缓存，重启后生效）</div> : null}
 			<button type="button" className="btn btn-tiny" onClick={save}>
 				保存模型信息

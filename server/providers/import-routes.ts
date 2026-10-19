@@ -57,3 +57,44 @@ export function registerImportRoutes(app: Express, options: { store: ProviderSto
 		response.json(result);
 	});
 }
+
+/** 「填入模型信息」与逐模型测试（ADR-0026 C 期）：两条都很轻，和导入放在一起注册 */
+export function registerCatalogRoutes(
+	app: Express,
+	options: {
+		store: ProviderStore;
+		catalog: (modelId: string) => Promise<unknown>;
+		testModel: (input: { baseUrl: string; apiKey: string; modelId: string }) => Promise<unknown>;
+	},
+): void {
+	app.get("/api/providers/:provider/catalog", async (request, response) => {
+		const modelId = typeof request.query.model === "string" ? request.query.model : "";
+		if (modelId === "") {
+			response.status(400).json({ error: { code: "catalog.no_model", message: "缺少 model 参数" } });
+			return;
+		}
+		const spec = await options.catalog(modelId);
+		if (!spec) {
+			response
+				.status(404)
+				.json({ error: { code: "catalog.not_found", message: "models.dev 里没有这个模型，请手动填写" } });
+			return;
+		}
+		response.json({ source: "models.dev", spec });
+	});
+
+	app.post("/api/providers/:provider/models/:modelId/test", async (request, response) => {
+		const view = await options.store.get(request.params.provider);
+		if (!view) {
+			response.status(404).json({ error: { code: "provider.not_found", message: "没有这个 provider" } });
+			return;
+		}
+		const apiKey = await options.store.readKey(request.params.provider);
+		if (!apiKey) {
+			response.status(400).json({ error: { code: "provider.no_key", message: "这个 provider 还没有 api key" } });
+			return;
+		}
+		const result = await options.testModel({ baseUrl: view.baseUrl, apiKey, modelId: request.params.modelId });
+		response.json(result);
+	});
+}

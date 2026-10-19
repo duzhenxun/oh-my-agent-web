@@ -4,10 +4,17 @@
  */
 import type { Express } from "express";
 import type { ProviderStore } from "../providers/provider-store.js";
-import { registerImportRoutes } from "../providers/import-routes.js";
+import { registerCatalogRoutes, registerImportRoutes } from "../providers/import-routes.js";
+import { createCatalogLookup } from "../providers/catalog.js";
+import { testModel } from "../providers/model-test.js";
 import { registerSkillRoutes } from "../skills/skill-routes.js";
 
 export function registerAuxRoutes(app: Express, options: { providerStore: ProviderStore; onChange: () => void }): void {
 	registerSkillRoutes(app);
 	registerImportRoutes(app, { store: options.providerStore, onChange: options.onChange });
+	registerCatalogRoutes(app, {
+		store: options.providerStore,
+		catalog: createCatalogLookup(),
+		testModel: (input) => testModel(input),
+	});
 }

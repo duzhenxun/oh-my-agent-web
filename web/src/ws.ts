@@ -137,6 +137,30 @@ export type UpsertProviderPayload = {
 	models: { id: string; name?: string }[];
 };
 
+/** 逐模型测试（ADR-0026 C 期）：会发一次真实请求，所以用 HTTP 拿结构化结果 */
+export async function testModel(
+	provider: string,
+	modelId: string,
+): Promise<{ ok: boolean; status?: number; latencyMs?: number; message?: string }> {
+	try {
+		const response = await fetch(
+			`/api/providers/${encodeURIComponent(provider)}/models/${encodeURIComponent(modelId)}/test`,
+			{ method: "POST" },
+		);
+		const body = (await response.json()) as {
+			ok?: boolean;
+			status?: number;
+			latencyMs?: number;
+			message?: string;
+			error?: { message?: string };
+		};
+		if (!response.ok) return { ok: false, message: body.error?.message ?? `HTTP ${response.status}` };
+		return { ok: body.ok === true, status: body.status, latencyMs: body.latencyMs, message: body.message };
+	} catch (cause) {
+		return { ok: false, message: cause instanceof Error ? cause.message : String(cause) };
+	}
+}
+
 /** 写回单个模型的规格（ADR-0026 A 期）：数值用字符串传，服务端做校验与归一化 */
 export function updateModel(provider: string, model: Record<string, unknown>): void {
 	send({ id: `req-${++seq}`, type: "update_model", payload: { provider, model } });
