@@ -247,7 +247,7 @@ export function ModelEditor({
 			{testing ? (
 				<div className={testing.startsWith("✅") ? "side-ok" : "side-panel-hint side-error"}>{testing}</div>
 			) : null}
-			{sent ? <div className="side-ok">已提交，结果会以提示形式出现（pi 的模型表是进程内缓存，重启后生效）</div> : null}
+			{sent ? <div className="side-ok">已提交，模型表会自动热重载</div> : null}
 			<button type="button" className="btn btn-tiny" onClick={save}>
 				保存模型信息
 			</button>

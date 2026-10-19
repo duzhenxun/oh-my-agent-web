@@ -87,3 +87,43 @@ describe("模型列表的稳定性（回归）", () => {
 		expect(state.models).toHaveLength(1);
 	});
 });
+
+describe("热重载（ADR-0025 §4）", () => {
+	it("reload 会先让引擎重载目录，再刷新列表与档位", async () => {
+		const { createModelController } = await import("../../server/session/model-controller.js");
+		const calls: string[] = [];
+		const state = {
+			model: "a/x" as string | null,
+			models: [{ id: "a/x", label: "A X" }],
+			thinkingLevel: null,
+			thinkingLevels: [],
+		};
+		let available = [{ id: "a/x", label: "A X" }];
+		const controller = createModelController({
+			engine: {
+				reloadModels: async () => {
+					calls.push("reload");
+					// 重载后目录里多了一个模型（模拟刚导入的）
+					available = [...available, { id: "a/y", label: "A Y" }];
+				},
+				listModels: async () => {
+					calls.push("list");
+					return available;
+				},
+				listThinkingLevels: async () => {
+					calls.push("levels");
+					return ["low", "high"];
+				},
+				getThinkingLevel: async () => "high",
+			} as never,
+			state,
+			notice: () => {},
+			onChanged: () => calls.push("changed"),
+		});
+		await controller.reload(null);
+		expect(calls.slice(0, 2)).toEqual(["reload", "list"]); // 顺序很关键：先重载才能读到新模型
+		expect(state.models.map((model) => model.id)).toEqual(["a/x", "a/y"]);
+		expect(state.thinkingLevels).toEqual(["low", "high"]);
+		expect(calls).toContain("changed");
+	});
+});

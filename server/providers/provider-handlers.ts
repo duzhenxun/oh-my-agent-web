@@ -50,7 +50,7 @@ export async function handleProviderRequest(
 			models: result.view.models.length,
 		});
 		deps.notify(
-			`provider「${result.view.provider}」已保存：${result.view.models.length} 个模型${result.view.hasKey ? `，key ${result.view.keyHint}` : ""}（重启后新模型才会出现在选择器里）`,
+			`provider「${result.view.provider}」已保存：${result.view.models.length} 个模型${result.view.hasKey ? `，key ${result.view.keyHint}` : ""}（已热重载，选择器里可直接看到）`,
 			"info",
 		);
 		return { ok: true, result: { provider: result.view } };
@@ -69,7 +69,7 @@ export async function handleProviderRequest(
 			deps.notify(`保存模型失败：${result.error}`, "error");
 			return { ok: false, error: { code: "model.update_failed", message: result.error } };
 		}
-		deps.notify(`模型「${parsed.value.name}」已保存（重启后生效）`, "info");
+		deps.notify(`模型「${parsed.value.name}」已保存，模型表已热重载`, "info");
 		return { ok: true };
 	}
 
@@ -176,6 +176,7 @@ export function createProviderWiring(options: {
 		notify: (text: string, level?: "info" | "warn" | "error") => void;
 		/** 直接推一帧快照（不制造一条空提示） */
 		pushSnapshot: () => void;
+		reloadModels: () => Promise<void>;
 		state: () => { providers: ProviderView[]; models: { id: string; label: string }[] };
 	};
 }): (request: { type: string } & Record<string, unknown>, reply: (result: ProviderReply) => void) => Promise<void> {
@@ -188,6 +189,7 @@ export function createProviderWiring(options: {
 		builtinProviders: () => builtinProviderGroups(runtime().state().models),
 		refresh: async () => {
 			runtime().state().providers = await options.store.list(builtinProviderGroups(runtime().state().models));
+			await runtime().reloadModels();
 			runtime().pushSnapshot();
 		},
 	});

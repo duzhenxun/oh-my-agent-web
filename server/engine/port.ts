@@ -83,6 +83,8 @@ export type EnginePort = {
 	listThinkingLevels?(sessionId?: string): Promise<string[]>;
 	/** 当前思考强度；不支持时为 null */
 	getThinkingLevel?(sessionId?: string): Promise<string | null>;
+	/** 重新加载模型表（ADR-0025 §4）：改完 provider / 模型配置后调用，免得重启 */
+	reloadModels?(): Promise<void>;
 	/** 设置思考强度；返回 false = 这个档位该模型不支持 */
 	setThinkingLevel?(sessionId: string, level: string): Promise<boolean>;
 	/** 当前模型（用于界面显示；取不到返回 null） */

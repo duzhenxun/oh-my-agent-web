@@ -34,6 +34,8 @@ export type Runtime = {
 	setThinkingLevel(level: string): Promise<Result>;
 	/** 只推一帧快照（不制造提示条） */
 	pushSnapshot(): void;
+	/** 热重载模型表（改完 provider / 模型配置后调用，免重启） */
+	reloadModels(): Promise<void>;
 	/** 审批模式（P4）：只在本会话内存里生效，重启回到 ask */
 	setApprovalMode(mode: ApprovalMode): Result;
 	switchConversation(conversationId: string): Promise<Result>;

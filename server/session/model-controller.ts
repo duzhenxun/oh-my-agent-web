@@ -13,11 +13,13 @@ export type Result = { ok: true } | { ok: false; error: ProtocolError };
 
 export type ModelController = {
 	/** 会话就绪后拉一次（best-effort） */
-	refresh: (conversationId: string) => Promise<void>;
+	refresh: (conversationId: string | null) => Promise<void>;
 	/** 切换当前会话的模型 */
 	switchTo: (conversationId: string | null, modelId: string) => Promise<Result>;
 	/** 刷新可选档位与当前值（模型不支持推理时两者都为空/null） */
 	refreshThinking: (conversationId: string | null) => Promise<void>;
+	/** 热重载模型表（ADR-0025 §4）：改完配置后不必重启 */
+	reload: (conversationId: string | null) => Promise<void>;
 	/** 设置思考强度；档位不被支持时返回错误（不静默吞掉） */
 	setThinking: (conversationId: string | null, level: string) => Promise<Result>;
 };
@@ -29,13 +31,13 @@ export function createModelController(options: {
 	onChanged: () => void;
 }): ModelController {
 	return {
-		async refresh(conversationId) {
+		async refresh(conversationId?: string | null) {
 			// 取不到就**保留旧列表**，绝不清空。
 			// 原因：切会话 / 引擎刚启动的那一瞬间 listModels 会返回空或抛错，
 			// 一旦清空，输入区的模型选择器与侧栏「模型」面板里的内置 provider 会一起消失
 			// （用户看到的就是「刚才还有，怎么又不见了」）。
 			try {
-				const list = (await options.engine.listModels?.(conversationId)) ?? [];
+				const list = (await options.engine.listModels?.(conversationId ?? undefined)) ?? [];
 				if (list.length === 0 && options.state.models.length > 0) return;
 				options.state.models = list.map((model) => ({ id: model.id, label: model.label }));
 			} catch {
@@ -43,7 +45,14 @@ export function createModelController(options: {
 			}
 		},
 
-		async refreshThinking(conversationId) {
+		async reload(conversationId: string | null) {
+			await options.engine.reloadModels?.().catch(() => undefined);
+			await this.refresh(conversationId);
+			await this.refreshThinking(conversationId ?? null);
+			options.onChanged();
+		},
+
+		async refreshThinking(conversationId: string | null) {
 			// 与模型列表同一套纪律：取不到就保留旧值，别让控件闪没
 			try {
 				const levels = (await options.engine.listThinkingLevels?.(conversationId ?? undefined)) ?? [];

@@ -340,6 +340,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		setModel: (modelId) => models.switchTo(state.activeId, modelId),
 
 		setThinkingLevel: (level) => models.setThinking(state.activeId, level),
+		reloadModels: () => models.reload(state.activeId),
 
 		pushSnapshot, // 供 provider 等模块「只推帧、不造提示」
 
