@@ -160,7 +160,10 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 	const turnContext: TurnEventContext = {
 		state,
 		now,
-		onTextDelta: (chunk) => {
+		onTextDelta: (chunk, conversationId) => {
+			// 流式缓冲暂时还是全局的（③ turns Map 会把它挪进按会话的状态里）；
+			// 这里先按会话判断，避免并行时两个会话的字串到一起
+			if (conversationId !== state.activeId) return "";
 			rawTurnText += chunk;
 			return markerFilter.push(chunk);
 		},

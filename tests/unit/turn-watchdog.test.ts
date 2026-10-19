@@ -86,7 +86,7 @@ describe("createTurnWatchdog", () => {
 		expect(fired).toEqual([]);
 	});
 
-	it("新回合 start 会重置计时（上一回合的定时器被清掉）", () => {
+	it("并按会话：两个会话各自计时（ADR-0030 ①）", () => {
 		const timers = fakeTimers();
 		const watchdog = createTurnWatchdog({
 			timeoutMs: 500,
@@ -96,6 +96,14 @@ describe("createTurnWatchdog", () => {
 			clearTimer: timers.clearTimer,
 		});
 		watchdog.start("conv-1");
+		watchdog.start("conv-2");
+		expect(timers.count()).toBe(2);
+		expect(watchdog.count()).toBe(2);
+		// 停一个不影响另一个
+		watchdog.stop("conv-1");
+		expect(watchdog.armed("conv-1")).toBe(false);
+		expect(watchdog.armed("conv-2")).toBe(true);
+		// 同会话重复 start 仍然只有一个定时器
 		watchdog.start("conv-2");
 		expect(timers.count()).toBe(1);
 	});
@@ -126,5 +134,24 @@ describe("formatDuration", () => {
 		expect(formatDuration(10_000)).toBe("10 秒");
 		expect(formatDuration(20 * 60 * 1000)).toBe("20 分钟");
 		expect(formatDuration(0)).toBe("1 秒");
+	});
+});
+
+describe("按会话隔离（ADR-0030 ① 的前置）", () => {
+	it("A 卡住超时只中断 A，不影响 B 的计时", () => {
+		const timers = fakeTimers();
+		const interrupted: string[] = [];
+		const watchdog = createTurnWatchdog({
+			timeoutMs: 500,
+			onTimeout: (id) => interrupted.push(id),
+			isWaitingForUser: () => false,
+			setTimer: timers.setTimer,
+			clearTimer: timers.clearTimer,
+		});
+		watchdog.start("A");
+		watchdog.start("B");
+		watchdog.stop("B"); // B 正常结束
+		timers.fire();
+		expect(interrupted).toEqual(["A"]);
 	});
 });

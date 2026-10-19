@@ -1,7 +1,7 @@
 /**
  * 回合看门狗（ADR-0023）。
  *
- * 为什么必须有：本项目**全局只允许 1 个回合在飞**（ADR-0005）。于是「某个命令卡住」
+ * 为什么必须有：回合卡住时，界面看起来像死了（ADR-0005 时期是全局 1 路，影响整个应用）。于是「某个命令卡住」
  * 不是「那一轮慢」，而是**整个应用不能再用** —— 新消息全被 `session.busy` 拒掉。
  * （真事：模型自己去跑了一条会挂住的 bash，回合卡了 7 分钟，界面看起来像死了。）
  *
@@ -32,51 +32,54 @@ export type TurnWatchdogOptions = {
 
 export type TurnWatchdog = {
 	start: (conversationId: string) => void;
-	/** 回合结束（任何路径）都要调 */
-	stop: () => void;
+	/** 回合结束（任何路径）都要调；带 id 只停那一个会话的计时（ADR-0030 并行回合的前置） */
+	stop: (conversationId?: string) => void;
 	/** 当前是否在计时（诊断/测试用） */
-	armed: () => boolean;
+	armed: (conversationId?: string) => boolean;
+	/** 正在计时的会话数（并行回合上线后用于诊断） */
+	count: () => number;
 };
 
+/**
+ * 每个会话一个定时器（ADR-0030 ①）：并行回合上线后，A 卡住不能连带把 B 的超时也清掉。
+ * 现在虽然还只允许一个回合并行，但结构先准备好 —— 行为完全不变。
+ */
 export function createTurnWatchdog(options: TurnWatchdogOptions): TurnWatchdog {
 	const timeoutMs = options.timeoutMs ?? DEFAULT_TURN_TIMEOUT_MS;
 	const setTimer = options.setTimer ?? ((callback, ms) => setTimeout(callback, ms));
 	const clearTimer = options.clearTimer ?? ((handle) => clearTimeout(handle as ReturnType<typeof setTimeout>));
-	let handle: TimerHandle | null = null;
-	let conversationId: string | null = null;
+	const timers = new Map<string, TimerHandle>();
 
-	const clear = () => {
-		if (handle !== null) clearTimer(handle);
-		handle = null;
+	const clear = (conversationId: string) => {
+		const handle = timers.get(conversationId);
+		if (handle !== undefined) clearTimer(handle);
+		timers.delete(conversationId);
 	};
 
-	const arm = () => {
-		clear();
-		handle = setTimer(() => {
-			handle = null;
-			const target = conversationId;
-			if (target === null) return;
+	const arm = (conversationId: string) => {
+		clear(conversationId);
+		const handle = setTimer(() => {
+			timers.delete(conversationId);
 			if (options.isWaitingForUser()) {
-				arm(); // 人在犹豫：继续等，不算卡住
+				arm(conversationId); // 人在犹豫：继续等，不算卡住
 				return;
 			}
-			conversationId = null;
-			options.onTimeout(target);
+			options.onTimeout(conversationId);
 		}, timeoutMs);
+		timers.set(conversationId, handle);
 	};
 
 	return {
-		start(nextConversationId) {
-			conversationId = nextConversationId;
-			arm();
+		start: (conversationId) => arm(conversationId),
+		stop(conversationId) {
+			if (conversationId === undefined) {
+				for (const id of timers.keys()) clear(id);
+				return;
+			}
+			clear(conversationId);
 		},
-		stop() {
-			conversationId = null;
-			clear();
-		},
-		armed() {
-			return handle !== null;
-		},
+		armed: (conversationId) => (conversationId === undefined ? timers.size > 0 : timers.has(conversationId)),
+		count: () => timers.size,
 	};
 }
 

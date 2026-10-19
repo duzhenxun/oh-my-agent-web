@@ -26,7 +26,7 @@ export type TurnEventContext = {
 	 * 正文增量处理（ADR-0022）：runtime 在这里累积**原始文本**（供回合结束解析建议），
 	 * 并返回**可以显示的部分**（把可能是 [[action:...]] 开头的内容扣住）。
 	 */
-	onTextDelta: (chunk: string) => string;
+	onTextDelta: (chunk: string, conversationId: string) => string;
 	/** 回合结束（done / interrupted / error）：由 runtime 负责落盘与状态收尾 */
 	onTurnEnd: (conversationId: string, reason: "done" | "interrupted" | "error") => void;
 };
@@ -48,10 +48,10 @@ export function applyEngineEvent(context: TurnEventContext, input: TurnEventInpu
 
 	switch (event.type) {
 		case "text_delta": {
-			const visible = context.onTextDelta(event.text);
+			const visible = context.onTextDelta(event.text, conversationId);
 			if (visible === "") return; // 抠住了（可能在写标记）
 			patch((message) => appendText(message, visible));
-			state.running.streamingText += visible;
+			if (conversationId === state.activeId) state.running.streamingText += visible;
 			context.emitEvent({ type: "event", event: "message_delta", conversationId, messageId, text: visible });
 			return;
 		}
