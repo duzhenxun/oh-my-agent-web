@@ -109,3 +109,16 @@
 	border-left: none;
 	border-right: none;
 }
+
+/* 贴边布局下正文与输入区需要一点内边距，否则文字/按钮顶到边缘被裁 */
+.workspace {
+	padding: 0 12px 10px;
+}
+
+.workspace .main {
+	padding: 4px 0 0;
+}
+
+.workspace .composer-wrap {
+	padding-top: 6px;
+}

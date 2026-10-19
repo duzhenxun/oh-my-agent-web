@@ -375,3 +375,16 @@
 	color: var(--text);
 	border-color: var(--accent-dim);
 }
+
+/* 工具卡里的图片预览（agent 读/写了图片时，直接显示出来而不是只给一行 args） */
+.tool-image-wrap {
+	margin: 6px 0 8px;
+}
+
+.tool-image {
+	max-width: 100%;
+	max-height: 360px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: #0d1117;
+}

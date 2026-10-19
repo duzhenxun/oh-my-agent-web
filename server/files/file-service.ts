@@ -115,7 +115,16 @@ export function mimeOf(path: string): string {
 export async function readRaw(root: string, relPath: string): Promise<RawResult> {
 	const mime = mimeOf(relPath);
 	if (mime === "") return { ok: false, error: `不支持的文件类型：${relPath.split(".").pop() ?? "无扩展名"}` };
-	const safe = resolveInsideRoot(root, join(root, relPath), realpathSync);
+	// 绝对路径（agent 把截图写到 /tmp/x.png 这种）：只做「存在 + 是文件 + 类型白名单」，
+	// 不做工作区包含 —— 否则模型刚生成的图在对话里就看不见。相对路径仍限制在工作区内。
+	let safe: { ok: true; path: string } | { ok: false; reason: string };
+	try {
+		safe = relPath.startsWith("/")
+			? { ok: true, path: realpathSync(relPath) }
+			: resolveInsideRoot(root, join(root, relPath), realpathSync);
+	} catch (error) {
+		return { ok: false, error: error instanceof Error ? error.message : String(error) };
+	}
 	if (!safe.ok) return { ok: false, error: safe.reason };
 	try {
 		const info = await stat(safe.path);
