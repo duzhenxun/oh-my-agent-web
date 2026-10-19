@@ -25,6 +25,7 @@ export function App() {
 	// 侧栏：可收起 + 可拖宽（状态存 localStorage，刷新后保持）
 	const [collapsed, setCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1");
 	const [pendingPanel, setPendingPanel] = useState<"models" | "skills" | "settings" | null>(null);
+	const [previewVisible, setPreviewVisible] = useState(true);
 	// 右侧对话大纲（开关在顶栏）
 	const [outlineOpen, setOutlineOpen] = useState(true);
 	const [sideWidth, setSideWidth] = useState(() => readStoredWidth(localStorage.getItem(SIDEBAR_WIDTH_KEY)));
@@ -119,6 +120,15 @@ export function App() {
 					title={outlineOpen ? "收起对话大纲" : "展开对话大纲"}
 				>
 					☰ 大纲
+				</button>
+				<button
+					type="button"
+					className={`chip chip-quiet${previewVisible && panelItems.length > 0 ? " chip-on" : ""}`}
+					onClick={() => setPreviewVisible((visible) => !visible)}
+					disabled={panelItems.length === 0}
+					title={panelItems.length === 0 ? "还没有打开文件或终端" : previewVisible ? "收起右侧面板" : "展开右侧面板"}
+				>
+					▤ 面板
 				</button>
 				<SidebarMenu variant="full" placement="appbar" />
 			</div>
@@ -222,7 +232,7 @@ export function App() {
 					<ConversationOutline messages={messages} hasMoreBefore={snapshot?.active.hasMoreBefore ?? false} />
 				) : null}
 
-				{panelItems.length > 0 ? (
+				{panelItems.length > 0 && previewVisible ? (
 					<PreviewPanel
 						items={panelItems}
 						activeId={activeItem ?? panelItems[0]?.id ?? ""}

@@ -35,7 +35,6 @@ export function PreviewPanel({
 	onCloseAll: () => void;
 }) {
 	const [width, setWidth] = useState(readWidth);
-	const [collapsed, setCollapsed] = useState(false);
 	const [fullscreen, setFullscreen] = useState(false);
 	const dragging = useRef(false);
 
@@ -68,16 +67,6 @@ export function PreviewPanel({
 	}, [width]);
 
 	const active = items.find((item) => item.id === activeId) ?? items[0];
-
-	if (collapsed) {
-		return (
-			<div className="preview-rail">
-				<button type="button" className="preview-arrow" onClick={() => setCollapsed(false)} title="展开预览">
-					›
-				</button>
-			</div>
-		);
-	}
 
 	return (
 		<aside
@@ -126,9 +115,6 @@ export function PreviewPanel({
 					title={fullscreen ? "退出全屏" : "全屏"}
 				>
 					{fullscreen ? "⤡" : "⛶"}
-				</button>
-				<button type="button" className="preview-arrow" onClick={() => setCollapsed(true)} title="收起预览">
-					‹
 				</button>
 				<button type="button" className="btn btn-tiny" onClick={onCloseAll} title="关闭全部">
 					✕
