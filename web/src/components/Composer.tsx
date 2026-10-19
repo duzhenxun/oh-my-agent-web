@@ -1,9 +1,10 @@
 import { useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import { imagesMarkdown, pickUploadableFiles, uploadFile } from "../attachments.ts";
+import { ModelPicker } from "./ModelPicker.tsx";
 import { TemplateEditor, TemplateGallery } from "./TemplateModals.tsx";
 import { setDraft, useAppState } from "../store.ts";
 import type { AttachmentRef, PromptTemplate } from "../types.ts";
-import { interrupt, sendMessage, setModel } from "../ws.ts";
+import { interrupt, sendMessage, setApprovalMode } from "../ws.ts";
 
 function formatBytes(bytes: number): string {
 	if (bytes < 1024) return `${bytes}B`;
@@ -166,31 +167,30 @@ export function Composer({ running, conversationId }: { running: boolean; conver
 					🧩 模板
 				</button>
 				<span className="tool-sep" aria-hidden="true" />
-				{snapshot?.model || snapshot?.models.length || conversationId ? (
+				{snapshot && snapshot.models.length > 0 && snapshot.engineCapabilities.modelSwitch ? (
+					<ModelPicker models={snapshot.models} current={snapshot.model} />
+				) : snapshot?.model ? (
 					<span className="tool-group" title="这个会话使用的模型">
 						<span className="tool-icon" aria-hidden="true">
 							🤖
 						</span>
-						{snapshot && snapshot.models.length > 0 && snapshot.engineCapabilities.modelSwitch ? (
-							<select
-								className="tool-chip tool-select mono"
-								value={snapshot.model ?? ""}
-								onChange={(event) => setModel(event.target.value)}
-							>
-								{snapshot.model && !snapshot.models.some((model) => model.id === snapshot.model) ? (
-									<option value={snapshot.model}>{snapshot.model}</option>
-								) : null}
-								{snapshot.models.map((model) => (
-									<option key={model.id} value={model.id}>
-										{model.label}
-									</option>
-								))}
-							</select>
-						) : (
-							<span className="tool-chip tool-static mono">{snapshot?.model ?? "模型未就绪"}</span>
-						)}
+						<span className="tool-chip tool-static mono">{snapshot.model}</span>
 					</span>
 				) : null}
+				{snapshot?.engineCapabilities.approvals === false ? (
+					<span className="tool-chip tool-static" title="该引擎自行决定授权，本工作台拦不住它的危险操作">
+						🔒 审批：引擎自理
+					</span>
+				) : (
+					<button
+						type="button"
+						className={`tool-chip${snapshot?.approvalMode === "allow" ? " tool-chip-warn" : ""}`}
+						onClick={() => setApprovalMode(snapshot?.approvalMode === "allow" ? "ask" : "allow")}
+						title="审批模式（只在本会话生效，重启恢复询问）"
+					>
+						{snapshot?.approvalMode === "allow" ? "🔓 审批：全部放行" : "🔒 审批：询问"}
+					</button>
+				)}
 				{/* 右侧扩展位：思考强度 / 工具范围 / 压缩（P4 待做，先占位保持排布稳定） */}
 				<span className="topbar-spacer" />
 			</div>

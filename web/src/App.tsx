@@ -1,7 +1,6 @@
 import { useStickToBottom } from "./stick-to-bottom.ts";
 import { useState } from "react";
 import { useAppState } from "./store.ts";
-import { setApprovalMode } from "./ws.ts";
 import { ApprovalDialog, NoticeBar } from "./components/ApprovalDialog.tsx";
 import { Composer } from "./components/Composer.tsx";
 import { MessageList } from "./components/MessageList.tsx";
@@ -57,7 +56,6 @@ export function App() {
 					<span className="topbar-spacer" />
 					{activeConversation ? <span className="chip chip-quiet">{activeConversation.title}</span> : null}
 					{snapshot?.files ? <span className="chip chip-quiet mono">{snapshot.files.root}</span> : null}
-					{snapshot ? <span className="chip chip-quiet">引擎 {snapshot.engine}</span> : null}
 					<button
 						type="button"
 						className={`chip chip-quiet${filePanelOpen ? " chip-on" : ""}`}
@@ -66,20 +64,6 @@ export function App() {
 					>
 						📁 文件
 					</button>
-					{snapshot?.engineCapabilities.approvals === false ? (
-						<span className="chip chip-quiet" title="该引擎自行决定授权，本工作台拦不住它的危险操作">
-							审批：引擎自理
-						</span>
-					) : (
-						<button
-							type="button"
-							className={`chip ${snapshot?.approvalMode === "allow" ? "chip-warn" : "chip-quiet"}`}
-							onClick={() => setApprovalMode(snapshot?.approvalMode === "allow" ? "ask" : "allow")}
-							title="审批模式（只在本会话生效，重启恢复询问）"
-						>
-							{snapshot?.approvalMode === "allow" ? "审批：全部放行" : "审批：询问"}
-						</button>
-					)}
 					<span className="chip chip-quiet">协议 v{snapshot?.protocolVersion ?? "?"}</span>
 				</header>
 

@@ -12,5 +12,6 @@
 @import "./styles/files.css";
 @import "./styles/overlay.css";
 @import "./styles/templates.css";
+@import "./styles/model-picker.css";
 @import "./styles/highlight.css";
 @import "./styles/markdown.css";

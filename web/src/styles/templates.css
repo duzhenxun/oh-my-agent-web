@@ -253,3 +253,119 @@
 	color: var(--text-faint);
 	cursor: default;
 }
+
+/* ---- 模型选择器（按厂家分组 + 可筛选）---- */
+.model-picker {
+	position: relative;
+	min-width: 0;
+}
+
+.model-current {
+	max-width: 200px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.model-caret {
+	flex: none;
+	color: var(--text-faint);
+	font-size: 10px;
+}
+
+.model-pop {
+	position: absolute;
+	bottom: calc(100% + 6px);
+	left: 0;
+	z-index: 40;
+	width: min(380px, 82vw);
+	max-height: 52vh;
+	display: flex;
+	flex-direction: column;
+	border: 1px solid var(--border-strong);
+	border-radius: 10px;
+	background: var(--bg-elev);
+	box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+	overflow: hidden;
+}
+
+.model-filter {
+	margin: 8px;
+	padding: 6px 8px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--bg);
+	color: var(--text);
+	font: inherit;
+	font-size: 12.5px;
+}
+
+.model-list {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: auto;
+	padding-bottom: 4px;
+}
+
+.model-provider {
+	padding: 8px 10px 4px;
+	color: var(--text-faint);
+	font-size: 10.5px;
+	letter-spacing: 0.06em;
+}
+
+.model-item {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	width: 100%;
+	padding: 6px 12px;
+	background: none;
+	border: none;
+	color: var(--text-dim);
+	font: inherit;
+	font-size: 12.5px;
+	text-align: left;
+	cursor: pointer;
+	min-width: 0;
+}
+
+.model-item:hover {
+	background: var(--bg-elev-2);
+	color: var(--text);
+}
+
+.model-item-on {
+	color: var(--text);
+	font-weight: 600;
+}
+
+.model-check {
+	flex: none;
+	width: 12px;
+	color: var(--accent);
+}
+
+.model-label {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.model-empty,
+.model-foot {
+	padding: 6px 12px;
+	color: var(--text-faint);
+	font-size: 11px;
+}
+
+.model-foot {
+	border-top: 1px solid var(--border);
+}
+
+/* 审批模式放到输入区后：放行态用暖色提醒（别让人忘了自己关掉了审批） */
+.tool-chip-warn {
+	border-color: color-mix(in srgb, var(--yellow, #d9a441) 60%, transparent);
+	color: var(--yellow, #d9a441);
+}
