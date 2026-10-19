@@ -93,8 +93,8 @@ export function App() {
 			{/* 顶部区域：横跨整个宽度，三栏都在它下面 */}
 			<div className="appbar">
 				<span className="brand">
-					Agent Web
 					<img className="brand-icon" src="/favicon.svg" alt="" aria-hidden="true" />
+					Agent Web
 				</span>
 				<button type="button" className="appbar-new appbar-new-primary" onClick={() => newChat()} title="新建会话">
 					＋ 新会话

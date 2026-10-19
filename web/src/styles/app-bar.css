@@ -230,8 +230,9 @@
 }
 
 .brand-icon {
-	width: 16px;
-	height: 16px;
-	border-radius: 4px;
+	/* 比文字（15px）大一点，但不能抢戏 */
+	width: 20px;
+	height: 20px;
+	border-radius: 5px;
 	flex: none;
 }
