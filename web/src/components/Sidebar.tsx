@@ -6,7 +6,7 @@ import { sortProjects } from "../project-sort.ts";
 import { newChat, setSettings, switchConversation } from "../ws.ts";
 import { NewProjectDialog } from "./NewProjectDialog.tsx";
 import { ArchivedSessions } from "./ArchivedSessions.tsx";
-import { groupArchived } from "../archived-groups.ts";
+import { groupArchived, isProjectOpen } from "../archived-groups.ts";
 import { SessionRow } from "./SessionRow.tsx";
 import { SidebarFiles } from "./SidebarFiles.tsx";
 
@@ -130,10 +130,20 @@ export function Sidebar({
 	}
 	// 排序统一走 ADR-0028 的纯函数：置顶 → 显式顺序 → 新项目落最上面
 	groups.splice(0, groups.length, ...sortProjects(groups, prefs));
+	// 头部箭头方向：所有项目当前都展开才算"已展开"
+	const allOpen = groups.every((group, index) => isProjectOpen(group, index, openMap, activeId));
 
 	return (
 		<aside className="sidebar">
 			<div className="sidebar-head">
+				<button
+					type="button"
+					className="project-collapse-all"
+					title={allOpen ? "收起所有项目" : "展开所有项目"}
+					onClick={() => setOpenMap(Object.fromEntries(groups.map((group) => [group.cwd, !allOpen])))}
+				>
+					{allOpen ? "⌄" : "›"}
+				</button>
 				<span className="sidebar-title">项目（{groups.length}）</span>
 				<span className="topbar-spacer" />
 				<button
@@ -339,7 +349,7 @@ export function Sidebar({
 					);
 				})}
 			</div>
-			{archivedGroups.length > 0 ? (
+			{!archivedView && archivedGroups.length > 0 ? (
 				<button type="button" className="archived-entry" onClick={() => setArchivedView(true)} title="查看已归档的会话">
 					🗄 已归档 · {archivedGroups.reduce((sum, group) => sum + group.items.length, 0)}
 				</button>

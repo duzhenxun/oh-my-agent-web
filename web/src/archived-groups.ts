@@ -20,3 +20,13 @@ export function groupArchived(projects: PiProject[], prefs: SessionPrefs): Archi
 		}))
 		.filter((group) => group.items.length > 0);
 }
+
+/** 项目默认展开规则：显式记录优先；否则第一个项目或含当前会话的项目展开 */
+export function isProjectOpen(
+	project: { cwd: string; sessions: { id: string }[] },
+	index: number,
+	openMap: Record<string, boolean>,
+	activeId: string | null,
+): boolean {
+	return openMap[project.cwd] ?? (index === 0 || project.sessions.some((session) => session.id === activeId));
+}
