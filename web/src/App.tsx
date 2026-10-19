@@ -31,6 +31,8 @@ export function App() {
 	// 文件面板（M4）：跟着当前会话的工作区走
 	const [filePanelOpen, setFilePanelOpen] = useState(false);
 	const [terminalOpen, setTerminalOpen] = useState(false);
+	const [terminalCwd, setTerminalCwd] = useState<string | null>(null);
+	const [fileRoot, setFileRoot] = useState<string | null>(null);
 	// 侧栏：可收起 + 可拖宽（状态存 localStorage，刷新后保持）
 	const [collapsed, setCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1");
 	const [pendingPanel, setPendingPanel] = useState<"models" | "skills" | "settings" | null>(null);
@@ -95,7 +97,10 @@ export function App() {
 					<button
 						type="button"
 						className="activity-btn"
-						onClick={() => setFilePanelOpen((open) => !open)}
+						onClick={() => {
+							setFilePanelOpen((open) => !open);
+							setFileRoot(null);
+						}}
 						title="文件列表"
 					>
 						📁
@@ -112,6 +117,14 @@ export function App() {
 						runningConversationId={
 							snapshot?.running.status === "idle" ? null : (snapshot?.running.conversationId ?? null)
 						}
+						onOpenTerminal={(cwd) => {
+							setTerminalCwd(cwd);
+							setTerminalOpen(true);
+						}}
+						onOpenFiles={(cwd) => {
+							setFileRoot(cwd);
+							setFilePanelOpen(true);
+						}}
 					/>
 					{/* 拖拽条：右边边缘 6px，双击回到默认宽度 */}
 					<div
@@ -207,13 +220,27 @@ export function App() {
 							收起
 						</button>
 					</div>
-					<FileTree root={snapshot?.files?.root ?? null} onOpenFile={setPreviewPath} />
+					<FileTree root={fileRoot ?? snapshot?.files?.root ?? null} onOpenFile={setPreviewPath} />
 				</aside>
 			) : null}
 
-			{terminalOpen ? <TerminalPanel onClose={() => setTerminalOpen(false)} /> : null}
+			{terminalOpen ? (
+				<TerminalPanel
+					cwd={terminalCwd}
+					onClose={() => {
+						setTerminalOpen(false);
+						setTerminalCwd(null);
+					}}
+				/>
+			) : null}
 
-			{previewPath ? <FilePreview path={previewPath} onClose={() => setPreviewPath(null)} /> : null}
+			{previewPath ? (
+				<FilePreview
+					path={previewPath}
+					root={fileRoot ?? snapshot?.files?.root ?? null}
+					onClose={() => setPreviewPath(null)}
+				/>
+			) : null}
 
 			{snapshot?.pendingApproval ? <ApprovalDialog approval={snapshot.pendingApproval} /> : null}
 		</div>

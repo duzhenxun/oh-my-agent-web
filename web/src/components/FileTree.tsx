@@ -13,9 +13,11 @@ type Node = {
 	error: string | null;
 };
 
-async function fetchList(path: string): Promise<{ entries?: FileEntry[]; error?: string }> {
+async function fetchList(path: string, root: string | null): Promise<{ entries?: FileEntry[]; error?: string }> {
 	try {
-		const response = await fetch(`/api/files/list?path=${encodeURIComponent(path)}`);
+		const response = await fetch(
+			`/api/files/list?path=${encodeURIComponent(path)}${root ? `&root=${encodeURIComponent(root)}` : ""}`,
+		);
 		const body = (await response.json()) as { entries?: FileEntry[]; error?: { message?: string } };
 		if (!response.ok) return { error: body.error?.message ?? `HTTP ${response.status}` };
 		return { entries: body.entries ?? [] };
@@ -36,7 +38,7 @@ export function FileTree({ root, onOpenFile }: { root: string | null; onOpenFile
 		setNodes([]);
 		setError(null);
 		if (!root) return;
-		void fetchList("").then(({ entries, error: failure }) => {
+		void fetchList("", root).then(({ entries, error: failure }) => {
 			if (failure) {
 				setError(failure);
 				return;
@@ -62,7 +64,7 @@ export function FileTree({ root, onOpenFile }: { root: string | null; onOpenFile
 			return;
 		}
 		setNodes((current) => current.map((item, i) => (i === index ? { ...item, expanded: true, loading: true } : item)));
-		const { entries, error: failure } = await fetchList(node.entry.path);
+		const { entries, error: failure } = await fetchList(node.entry.path, root);
 		setNodes((current) => {
 			const next: Node[] = [];
 			current.forEach((item, i) => {

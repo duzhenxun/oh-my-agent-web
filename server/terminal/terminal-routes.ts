@@ -11,6 +11,8 @@
  *
  * 同时只允许 1 个 PTY（ADR-0027 §2）。
  */
+import { spawn } from "node:child_process";
+import { realpathSync, statSync } from "node:fs";
 import type { Express } from "express";
 import { startTerminal, type TerminalSession } from "./terminal-session.js";
 
@@ -35,9 +37,23 @@ export function registerTerminalRoutes(app: Express, options: { workspaceOf: () 
 			session = null;
 		}
 		const body = request.body as { cols?: number; rows?: number; cwd?: string } | undefined;
+		// 指定了 cwd（从项目菜单「在终端中打开」进来）：必须存在且是目录，且以它自身为根
+		let root = workspace;
+		let cwd = workspace;
+		if (typeof body?.cwd === "string" && body.cwd.startsWith("/")) {
+			try {
+				const real = realpathSync(body.cwd);
+				if (statSync(real).isDirectory()) {
+					root = real;
+					cwd = real;
+				}
+			} catch {
+				// 路径不可用 → 回落到当前工作区
+			}
+		}
 		const result = await startTerminal({
-			workspaceRoot: workspace,
-			cwd: body?.cwd ?? workspace,
+			workspaceRoot: root,
+			cwd,
 			cols: body?.cols,
 			rows: body?.rows,
 			handlers: {
@@ -92,4 +108,45 @@ export function registerTerminalRoutes(app: Express, options: { workspaceOf: () 
 
 	// 进程退出时统一收拾（不留孤儿 shell）
 	process.on("exit", () => session?.kill());
+}
+
+/**
+ * 「在文件中打开」/「在终端中打开」的支撑（ADR-0027 增补）。
+ *
+ * 安全边界（刻意保守）：
+ *   - **只接受绝对路径**，且 realpath 后必须存在、必须是目录；
+ *   - 「在文件中打开」用 `open -R`（**只定位、不执行**）：直接 `open <path>` 遇到 .app/.command
+ *     会**执行**它，这是必须避开的坑；
+ *   - 不读目录内容、不返回任何文件信息，只回 ok。
+ */
+export function registerProjectActions(app: Express, _options: { workspaceOf: () => string | null }): void {
+	app.post("/api/projects/reveal", async (request, response) => {
+		const cwd =
+			typeof (request.body as { cwd?: unknown } | undefined)?.cwd === "string"
+				? String((request.body as { cwd: string }).cwd)
+				: "";
+		const safe = await safeDirectory(cwd);
+		if (!safe) {
+			response.status(400).json({ error: { code: "project.bad_path", message: "不是可用的目录路径" } });
+			return;
+		}
+		if (process.platform !== "darwin") {
+			response.status(501).json({ error: { code: "project.unsupported", message: "当前平台暂不支持" } });
+			return;
+		}
+		// -R = 在 Finder 里定位，不执行
+		spawn("open", ["-R", safe], { detached: true, stdio: "ignore" }).unref();
+		response.json({ ok: true });
+	});
+}
+
+/** 纯函数式的校验：绝对路径 + 存在 + 是目录 */
+async function safeDirectory(cwd: string): Promise<string | null> {
+	if (!cwd.startsWith("/")) return null;
+	try {
+		const real = realpathSync(cwd);
+		return statSync(real).isDirectory() ? real : null;
+	} catch {
+		return null;
+	}
 }

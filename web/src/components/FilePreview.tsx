@@ -44,7 +44,7 @@ hljs.registerLanguage("sql", sql);
  *   - **点行号选中、Shift+点行号选范围** → 「添加到对话」写进输入框的是 `@path:10-20` 这种**引用**，
  *     不注入文件内容（ADR-0002 的原则：只给路径引用，模型自己去 read 那几行）。
  */
-export function FilePreview({ path, onClose }: { path: string; onClose: () => void }) {
+export function FilePreview({ path, root, onClose }: { path: string; root?: string | null; onClose: () => void }) {
 	const [state, setState] = useState<{
 		text: string;
 		bytes: number;
@@ -60,7 +60,9 @@ export function FilePreview({ path, onClose }: { path: string; onClose: () => vo
 		setAnchor(null);
 		setFocus(null);
 		void (async () => {
-			const response = await fetch(`/api/files/read?path=${encodeURIComponent(path)}`);
+			const response = await fetch(
+				`/api/files/read?path=${encodeURIComponent(path)}${root ? `&root=${encodeURIComponent(root)}` : ""}`,
+			);
 			const body = (await response.json()) as {
 				text?: string;
 				bytes?: number;
@@ -89,7 +91,7 @@ export function FilePreview({ path, onClose }: { path: string; onClose: () => vo
 		return () => {
 			cancelled = true;
 		};
-	}, [path]);
+	}, [path, root]);
 
 	const language = languageOf(path);
 	const lines = state && !state.binary && !state.error ? state.text.split("\n") : [];

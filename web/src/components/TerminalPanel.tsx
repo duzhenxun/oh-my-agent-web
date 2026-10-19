@@ -11,7 +11,7 @@ import "@xterm/xterm/css/xterm.css";
  *   2. SSE 读输出、键盘输入 POST 回去、尺寸变化报给服务端（否则 vim 显示会错位）；
  *   3. 关闭时 POST /api/terminal/stop，**不留孤儿 shell**。
  */
-export function TerminalPanel({ onClose }: { onClose: () => void }) {
+export function TerminalPanel({ cwd, onClose }: { cwd?: string | null; onClose: () => void }) {
 	const hostRef = useRef<HTMLDivElement>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [ready, setReady] = useState(false);
@@ -38,7 +38,7 @@ export function TerminalPanel({ onClose }: { onClose: () => void }) {
 			const response = await fetch("/api/terminal/start", {
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ cols: term.cols, rows: term.rows }),
+				body: JSON.stringify({ cols: term.cols, rows: term.rows, ...(cwd ? { cwd } : {}) }),
 			});
 			const body = (await response.json()) as { error?: { message?: string } };
 			if (disposed) return;
@@ -85,12 +85,12 @@ export function TerminalPanel({ onClose }: { onClose: () => void }) {
 			void fetch("/api/terminal/stop", { method: "POST" });
 			term.dispose();
 		};
-	}, []);
+	}, [cwd]);
 
 	return (
 		<aside className="terminal-panel">
 			<div className="terminal-head">
-				<span>⌨ 终端</span>
+				<span>⌨ 终端{cwd ? ` · ${cwd.split("/").filter(Boolean).pop()}` : ""}</span>
 				{ready ? (
 					<span className="side-panel-count">PTY 已启动</span>
 				) : (

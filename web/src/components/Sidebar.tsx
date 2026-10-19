@@ -32,6 +32,8 @@ export function Sidebar({
 	piProjects,
 	onCollapse,
 	runningConversationId = null,
+	onOpenTerminal,
+	onOpenFiles,
 }: {
 	conversations: ConversationMeta[];
 	activeId: string | null;
@@ -40,6 +42,10 @@ export function Sidebar({
 	onCollapse?: () => void;
 	/** 正在跑的是哪个会话（不是当前选中）—— 那一行显示转圈 + 「运行中」 */
 	runningConversationId?: string | null;
+	/** 在指定目录打开终端（项目菜单「在终端中打开」） */
+	onOpenTerminal?: (cwd: string) => void;
+	/** 在应用内的文件面板打开这个项目 */
+	onOpenFiles?: (cwd: string) => void;
 }) {
 	// 置顶项目（存 localStorage：先做客户端排序，落服务端 settings 是下一步）
 	const [pinned, setPinned] = useState<string[]>(() => {
@@ -54,6 +60,24 @@ export function Sidebar({
 	const [menuFor, setMenuFor] = useState<string | null>(null);
 	// 「还有 N 个…」点开后就显示全部（每个项目各自记）
 	const [showAll, setShowAll] = useState<Record<string, boolean>>({});
+	// 项目显示名（别名）：只改展示，不动 pi 的会话目录（ADR-0028：身份是 cwd）
+	const [aliases, setAliases] = useState<Record<string, string>>(() => {
+		try {
+			return JSON.parse(localStorage.getItem("agent-web.projectAliases") ?? "{}") as Record<string, string>;
+		} catch {
+			return {};
+		}
+	});
+	const renameProject = (cwd: string, current: string) => {
+		const next = window.prompt("项目显示名（只影响这里，不改目录）", current);
+		if (next === null) return;
+		const name = next.trim();
+		setAliases((old) => {
+			const merged = { ...old, [cwd]: name };
+			localStorage.setItem("agent-web.projectAliases", JSON.stringify(merged));
+			return merged;
+		});
+	};
 
 	const togglePin = (cwd: string) => {
 		setPinned((current) => {
@@ -123,7 +147,7 @@ export function Sidebar({
 					const shown = expanded ? project.sessions : project.sessions.slice(0, SESSIONS_PER_PROJECT);
 					const rest = project.sessions.length - shown.length;
 					const hasActive = project.sessions.some((session) => session.id === activeId);
-					const name = project.name || "（未知项目）";
+					const name = aliases[project.cwd] || project.name || "（未知项目）";
 					void knownWorkspaces;
 					return (
 						<details
@@ -179,39 +203,31 @@ export function Sidebar({
 										type="button"
 										className="proj-menu-item"
 										onClick={() => {
-											newChat(project.cwd);
+											renameProject(project.cwd, name);
 											setMenuFor(null);
 										}}
 									>
-										＋ 新建会话
+										✏️ 重命名…
 									</button>
 									<button
 										type="button"
 										className="proj-menu-item"
 										onClick={() => {
-											setOpenMap(Object.fromEntries(groups.map((group) => [group.cwd, group.cwd === project.cwd])));
+											onOpenFiles?.(project.cwd);
 											setMenuFor(null);
 										}}
 									>
-										⌄ 折叠其他项目
+										📁 在文件中打开
 									</button>
 									<button
 										type="button"
 										className="proj-menu-item"
 										onClick={() => {
-											setOpenMap(Object.fromEntries(groups.map((group) => [group.cwd, true])));
+											onOpenTerminal?.(project.cwd);
 											setMenuFor(null);
 										}}
 									>
-										⌃ 展开全部项目
-									</button>
-									<button
-										type="button"
-										className="proj-menu-item proj-menu-danger"
-										title="会删除这个项目下的所有会话文件，需要二次确认（下一步实现）"
-										disabled
-									>
-										🗑 删除项目（未实现）
+										⌨ 在终端中打开
 									</button>
 								</div>
 							) : null}
