@@ -221,3 +221,17 @@
 .workspace .statusbar {
 	margin-right: 14px;
 }
+
+/* 顶栏品牌：文字 + 一个小图标（放在文字右边） */
+.brand {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.brand-icon {
+	width: 16px;
+	height: 16px;
+	border-radius: 4px;
+	flex: none;
+}
