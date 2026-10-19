@@ -2,7 +2,8 @@ import { useStickToBottom } from "./stick-to-bottom.ts";
 import { useEffect, useRef, useState } from "react";
 import { clampSidebarWidth, readStoredWidth, SIDEBAR_COLLAPSED_KEY, SIDEBAR_WIDTH_KEY } from "./sidebar-layout.ts";
 import { useAppState } from "./store.ts";
-import { newChat } from "./ws.ts";
+import { sessionIdFromUrl, sessionUrlFor } from "./session-url.ts";
+import { newChat, switchConversation } from "./ws.ts";
 import { ApprovalDialog, NoticeBar } from "./components/ApprovalDialog.tsx";
 import { Composer } from "./components/Composer.tsx";
 import { MessageList } from "./components/MessageList.tsx";
@@ -59,6 +60,26 @@ export function App() {
 	const state = useAppState();
 	const snapshot = state.snapshot;
 	const messages = snapshot?.active.messages ?? [];
+	// 地址栏 ↔ 当前会话（?session=xxx）
+	const urlSession = useRef<string | null>(sessionIdFromUrl(window.location.search));
+	const appliedUrlSession = useRef(false);
+	useEffect(() => {
+		// 连上之后把地址栏里的会话打开（只做一次）
+		if (appliedUrlSession.current || state.connection !== "open") return;
+		appliedUrlSession.current = true;
+		if (urlSession.current) void switchConversation(urlSession.current);
+	}, [state.connection]);
+	useEffect(() => {
+		if (!snapshot) return;
+		// 地址栏里指定的会话还没打开时先别改地址，否则会被"默认会话"覆盖掉
+		if (urlSession.current !== null && snapshot.active.conversationId !== urlSession.current) return;
+		urlSession.current = null;
+		const href = sessionUrlFor(window.location.href, snapshot.active.conversationId);
+		if (href !== `${window.location.pathname}${window.location.search}${window.location.hash}`) {
+			window.history.replaceState(null, "", href);
+		}
+	}, [snapshot?.active.conversationId]);
+
 	// 粘底滚动：条数、末条正文长度、流式文本任一变化都算「内容更新」
 	const lastTextLength =
 		messages.at(-1)?.blocks.reduce((sum, block) => sum + (block.kind === "text" ? block.text.length : 0), 0) ?? 0;
