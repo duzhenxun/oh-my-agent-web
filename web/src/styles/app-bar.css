@@ -128,3 +128,10 @@
 .workspace .main {
 	background: var(--bg);
 }
+
+/* 对话区：去掉上下边框（只留左右分隔由栏边界提供） */
+.workspace .main {
+	border-top: none;
+	border-bottom: none;
+	border-radius: 0;
+}
