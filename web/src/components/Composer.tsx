@@ -168,16 +168,22 @@ export function Composer({ running, conversationId }: { running: boolean; conver
 					🧩 模板
 				</button>
 				<span className="tool-sep" aria-hidden="true" />
+				{/* 模型槽位**永远在**：列表没到 / 引擎暂时取不到时显示占位，
+				    免得用户以为功能坏了（"怎么又不见了" 就是清空列表造成的） */}
 				{snapshot && snapshot.models.length > 0 && snapshot.engineCapabilities.modelSwitch ? (
 					<ModelPicker models={snapshot.models} current={snapshot.model} />
-				) : snapshot?.model ? (
-					<span className="tool-group" title="这个会话使用的模型">
+				) : (
+					<span
+						className="tool-group"
+						title={snapshot?.model ? "这个会话使用的模型" : "还没打开会话，模型列表要等会话就绪"}
+					>
 						<span className="tool-icon" aria-hidden="true">
 							🤖
 						</span>
-						<span className="tool-chip tool-static mono">{snapshot.model}</span>
+						<span className="tool-chip tool-static mono">{snapshot?.model ?? "模型未就绪"}</span>
 					</span>
-				) : null}
+				)}
+				<ThinkingPicker level={snapshot?.thinkingLevel ?? null} levels={snapshot?.thinkingLevels ?? []} />
 				{snapshot?.engineCapabilities.approvals === false ? (
 					<span className="tool-chip tool-static" title="该引擎自行决定授权，本工作台拦不住它的危险操作">
 						🔒 审批：引擎自理
@@ -192,7 +198,6 @@ export function Composer({ running, conversationId }: { running: boolean; conver
 						{snapshot?.approvalMode === "allow" ? "🔓 审批：全部放行" : "🔒 审批：询问"}
 					</button>
 				)}
-				<ThinkingPicker level={snapshot?.thinkingLevel ?? null} levels={snapshot?.thinkingLevels ?? []} />
 				{/* 右侧扩展位：工具范围 / 压缩（P4 待做，先占位保持排布稳定） */}
 				<span className="topbar-spacer" />
 			</div>

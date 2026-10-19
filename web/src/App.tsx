@@ -64,7 +64,6 @@ export function App() {
 					>
 						📁 文件
 					</button>
-					<span className="chip chip-quiet">协议 v{snapshot?.protocolVersion ?? "?"}</span>
 				</header>
 
 				<main className="main" ref={scroll.ref}>
