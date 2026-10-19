@@ -245,16 +245,33 @@
 }
 
 /* 会话区与文件区之间的分隔条：上下拖动改文件区高度 */
-/* 分隔条：不画线（视觉上就是两段之间的空白），但仍然可以上下拖动改高度 */
+/* 分隔条：常驻一条细线，鼠标移上去变粗变清晰（占位高度不变，避免抖动） */
 .side-split {
+	position: relative;
 	flex: none;
-	height: 8px;
+	height: 11px;
 	margin: 0;
 	cursor: row-resize;
 	background: transparent;
 }
 
-.side-split:hover,
-.side-split:active {
-	background: color-mix(in srgb, var(--accent) 25%, transparent);
+.side-split::after {
+	content: "";
+	position: absolute;
+	left: 10px;
+	right: 10px;
+	top: 50%;
+	height: 1px;
+	transform: translateY(-50%);
+	background: var(--border);
+	border-radius: 2px;
+	transition:
+		height 0.12s ease,
+		background 0.12s ease;
+}
+
+.side-split:hover::after,
+.side-split:active::after {
+	height: 4px;
+	background: var(--accent-dim);
 }

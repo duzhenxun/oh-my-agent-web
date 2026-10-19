@@ -336,14 +336,16 @@ export function Sidebar({
 				})}
 			</div>
 			{/* 分隔条：按住上下拖 = 改文件区高度 */}
-			<div
-				className="side-split"
-				role="separator"
-				aria-orientation="horizontal"
-				title="拖动调整文件区高度（双击复位）"
-				onPointerDown={split.start}
-				onDoubleClick={split.reset}
-			/>
+			{fileOpen ? (
+				<div
+					className="side-split"
+					role="separator"
+					aria-orientation="horizontal"
+					title="拖动调整文件区高度（双击复位）"
+					onPointerDown={split.start}
+					onDoubleClick={split.reset}
+				/>
+			) : null}
 			<SidebarFiles
 				open={fileOpen}
 				onToggle={() => setFileOpen((open) => !open)}
