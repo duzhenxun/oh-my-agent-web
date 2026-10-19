@@ -174,7 +174,7 @@
 
 /* ---- 侧栏底部：文件区（会话在上、文件在下）---- */
 .side-files {
-	flex: 0 1 auto;
+	flex: none;
 	min-height: 0;
 	display: flex;
 	flex-direction: column;
@@ -182,7 +182,6 @@
 	border-top: 1px solid var(--border);
 	padding-top: 8px;
 	margin-top: 4px;
-	max-height: 46%;
 }
 
 .side-files-head {
@@ -243,4 +242,19 @@
 .side-files-term:hover {
 	color: var(--accent);
 	border-color: var(--accent-dim);
+}
+
+/* 会话区与文件区之间的分隔条：上下拖动改文件区高度 */
+.side-split {
+	flex: none;
+	height: 7px;
+	margin: 2px 0;
+	cursor: row-resize;
+	border-radius: 4px;
+	background: linear-gradient(to bottom, transparent 40%, var(--border) 40%, var(--border) 60%, transparent 60%);
+}
+
+.side-split:hover,
+.side-split:active {
+	background: color-mix(in srgb, var(--accent) 45%, transparent);
 }

@@ -15,17 +15,29 @@ export function TerminalPanel({
 	termId,
 	cwd,
 	embedded,
+	active = true,
 	onClose,
 }: {
 	/** 终端 id：多终端互不干扰，切换标签不重建 */
 	termId: string;
 	cwd?: string | null;
 	embedded?: boolean;
+	/** 是否当前激活的标签：切回来时要 refit + 抢回焦点（否则键盘打不进去） */
+	active?: boolean;
 	onClose: () => void;
 }) {
 	const hostRef = useRef<HTMLDivElement>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [ready, setReady] = useState(false);
+
+	// 切回这个标签时：重新 fit（隐藏期间容器宽高是 0）+ 把焦点还给终端
+	const refitRef = useRef<(() => void) | null>(null);
+	useEffect(() => {
+		if (!active) return;
+		// 下一帧再动，等 display 从 none 变回 flex
+		const timer = setTimeout(() => refitRef.current?.(), 30);
+		return () => clearTimeout(timer);
+	}, [active]);
 
 	useEffect(() => {
 		const host = hostRef.current;
@@ -44,6 +56,29 @@ export function TerminalPanel({
 
 		let source: EventSource | null = null;
 		let disposed = false;
+		let started = false;
+		// 先注册输入：/api/terminal/start 是异步的，等它回来之前敲的字不能丢
+		const pending: string[] = [];
+		term.onData((data) => {
+			if (!started) {
+				pending.push(data);
+				return;
+			}
+			void fetch("/api/terminal/input", {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ id: termId, data }),
+			});
+		});
+		// 尺寸变化 → 服务端（否则 vim / top 的布局会错）
+		term.onResize(
+			({ cols, rows }) =>
+				void fetch("/api/terminal/resize", {
+					method: "POST",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify({ id: termId, cols, rows }),
+				}),
+		);
 
 		void (async () => {
 			const response = await fetch("/api/terminal/start", {
@@ -58,6 +93,16 @@ export function TerminalPanel({
 				return;
 			}
 			setReady(true);
+			// start 成功：把「输入已就绪」打开，并把启动前敲的字补发出去
+			// （之前漏了这句：所有按键都被当成"未启动"塞进 pending，永远发不出去 → 输入丢失）
+			started = true;
+			for (const chunk of pending.splice(0)) {
+				void fetch("/api/terminal/input", {
+					method: "POST",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify({ id: termId, data: chunk }),
+				});
+			}
 			// SSE 收输出
 			source = new EventSource(`/api/terminal/stream?id=${encodeURIComponent(termId)}`);
 			source.onmessage = (event) => {
@@ -67,26 +112,12 @@ export function TerminalPanel({
 					term.write(event.data);
 				}
 			};
-			// 键盘 → 服务端
-			term.onData(
-				(data) =>
-					void fetch("/api/terminal/input", {
-						method: "POST",
-						headers: { "content-type": "application/json" },
-						body: JSON.stringify({ data }),
-					}),
-			);
-			// 尺寸变化 → 服务端（否则 vim / top 的布局会错）
-			term.onResize(
-				({ cols, rows }) =>
-					void fetch("/api/terminal/resize", {
-						method: "POST",
-						headers: { "content-type": "application/json" },
-						body: JSON.stringify({ cols, rows }),
-					}),
-			);
 			const observer = new ResizeObserver(() => fit.fit());
 			observer.observe(host);
+			refitRef.current = () => {
+				fit.fit();
+				term.focus();
+			};
 			term.focus();
 		})();
 

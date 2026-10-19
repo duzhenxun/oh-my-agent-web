@@ -125,7 +125,13 @@ export function PreviewPanel({
 						{item.kind === "file" ? (
 							<FileViewer path={item.path} root={item.root} />
 						) : (
-							<TerminalPanel termId={item.id} cwd={item.cwd} embedded onClose={() => onCloseItem(item.id)} />
+							<TerminalPanel
+								termId={item.id}
+								cwd={item.cwd}
+								embedded
+								active={item.id === active?.id}
+								onClose={() => onCloseItem(item.id)}
+							/>
 						)}
 					</div>
 				))}

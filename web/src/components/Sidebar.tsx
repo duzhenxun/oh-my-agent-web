@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSplitHeight } from "../use-split-height.ts";
 import { useAppState } from "../store.ts";
 import type { ConversationMeta, PiProject, ProjectPrefs } from "../types.ts";
 import { sortProjects } from "../project-sort.ts";
@@ -72,15 +73,13 @@ export function Sidebar({
 	const renameProject = (cwd: string, current: string) => {
 		const next = window.prompt("项目显示名（只影响这里，不改目录）", current);
 		if (next === null) return;
-		const name = next.trim();
-		setSettings({ projectPrefs: { ...prefs, aliases: { ...prefs.aliases, [cwd]: name } } });
+		setSettings({ projectPrefs: { ...prefs, aliases: { ...prefs.aliases, [cwd]: next.trim() } } });
 	};
 
-	/** 上移/下移：置顶段改 pinned 顺序，其余改 order 顺序（ADR-0028 §5 的键盘等价物） */
+	/** 上移/下移：置顶段改 pinned 顺序，其余改 order 顺序（ADR-0028 §5） */
 	const moveWithin = (cwd: string, direction: -1 | 1) => {
 		const isPinned = pinned.includes(cwd);
-		// order 还空的时候（从没用过上下移）要先按「当前看到的顺序」播种，
-		// 否则 indexOf 找不到 → 点了没反应（这正是第一次实现踩的坑）
+		// order 还空时要先按「当前看到的顺序」播种，否则 indexOf 找不到 → 点了没反应
 		const currentOrder = prefs.order.filter((item) => !pinned.includes(item));
 		const seeded =
 			currentOrder.length > 0
@@ -88,9 +87,8 @@ export function Sidebar({
 				: groups.filter((group) => !pinned.includes(group.cwd)).map((group) => group.cwd);
 		const list = (isPinned ? pinned : seeded) as string[];
 		const current = list.indexOf(cwd);
-		if (current < 0) return;
 		const target = current + direction;
-		if (target < 0 || target >= list.length) return;
+		if (current < 0 || target < 0 || target >= list.length) return;
 		const next = [...list];
 		next.splice(current, 1);
 		next.splice(target, 0, cwd);
@@ -101,6 +99,9 @@ export function Sidebar({
 		const next = pinned.includes(cwd) ? pinned.filter((item) => item !== cwd) : [cwd, ...pinned];
 		setSettings({ projectPrefs: { ...prefs, pinned: next } });
 	};
+
+	// 会话区与文件区之间的分隔条（拖动改高度，存 localStorage）
+	const split = useSplitHeight({ storageKey: "agent-web.side.filesHeight", initial: 260, min: 120 });
 
 	// 把「本地待归档」的会话按 workspace 归组；workspace 不在已知项目里的，单独成组（避免新建的会话消失）
 	const knownWorkspaces = new Set(piProjects.map((project) => project.cwd));
@@ -332,8 +333,16 @@ export function Sidebar({
 					);
 				})}
 			</div>
-			{/* 文件区（放在会话列表下面）：顶部下拉可切项目，下面是懒加载文件树 */}
-			<section className="side-files">
+			{/* 分隔条：按住上下拖 = 改文件区高度 */}
+			<div
+				className="side-split"
+				role="separator"
+				aria-orientation="horizontal"
+				title="拖动调整文件区高度（双击复位）"
+				onPointerDown={split.start}
+				onDoubleClick={split.reset}
+			/>
+			<section className="side-files" style={{ height: split.height }}>
 				<div className="side-files-head">
 					<span className="side-files-title">文件</span>
 					<button
