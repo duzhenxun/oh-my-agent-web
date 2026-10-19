@@ -14,14 +14,15 @@ import "@xterm/xterm/css/xterm.css";
 export function TerminalPanel({
 	termId,
 	cwd,
-	embedded,
+	standalone = false,
 	active = true,
 	onClose,
 }: {
 	/** 终端 id：多终端互不干扰，切换标签不重建 */
 	termId: string;
 	cwd?: string | null;
-	embedded?: boolean;
+	/** 独立使用时才显示内部标题栏；嵌入面板默认不显示（标签上已有信息） */
+	standalone?: boolean;
 	/** 是否当前激活的标签：切回来时要 refit + 抢回焦点（否则键盘打不进去） */
 	active?: boolean;
 	onClose: () => void;
@@ -130,8 +131,8 @@ export function TerminalPanel({
 	}, [cwd, termId]);
 
 	return (
-		<aside className={`terminal-panel${embedded ? " terminal-panel-embedded" : ""}`}>
-			{embedded ? null : (
+		<aside className={`terminal-panel${standalone ? "" : " terminal-panel-embedded"}`}>
+			{standalone ? (
 				<div className="terminal-head">
 					<span>⌨ 终端{cwd ? ` · ${cwd.split("/").filter(Boolean).pop()}` : ""}</span>
 					<span className="side-panel-count">{ready ? "PTY 已启动" : "启动中…"}</span>
@@ -140,7 +141,7 @@ export function TerminalPanel({
 						关闭
 					</button>
 				</div>
-			)}
+			) : null}
 			{error ? <div className="file-preview-error">{error}</div> : null}
 			<div className="terminal-host" ref={hostRef} />
 		</aside>

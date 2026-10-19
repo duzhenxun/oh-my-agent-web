@@ -128,7 +128,6 @@ export function PreviewPanel({
 							<TerminalPanel
 								termId={item.id}
 								cwd={item.cwd}
-								embedded
 								active={item.id === active?.id}
 								onClose={() => onCloseItem(item.id)}
 							/>
