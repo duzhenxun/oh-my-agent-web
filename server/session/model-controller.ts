@@ -16,11 +16,15 @@ export type ModelController = {
 	refresh: (conversationId: string) => Promise<void>;
 	/** 切换当前会话的模型 */
 	switchTo: (conversationId: string | null, modelId: string) => Promise<Result>;
+	/** 刷新可选档位与当前值（模型不支持推理时两者都为空/null） */
+	refreshThinking: (conversationId: string | null) => Promise<void>;
+	/** 设置思考强度；档位不被支持时返回错误（不静默吞掉） */
+	setThinking: (conversationId: string | null, level: string) => Promise<Result>;
 };
 
 export function createModelController(options: {
 	engine: EnginePort;
-	state: { model: string | null; models: ModelOption[] };
+	state: { model: string | null; models: ModelOption[]; thinkingLevel: string | null; thinkingLevels: string[] };
 	notice: (text: string, level: "info" | "warn" | "error") => void;
 	onChanged: () => void;
 }): ModelController {
@@ -37,6 +41,29 @@ export function createModelController(options: {
 			} catch {
 				// 保留旧值：下次刷新成功自然会更新
 			}
+		},
+
+		async refreshThinking(conversationId) {
+			// 与模型列表同一套纪律：取不到就保留旧值，别让控件闪没
+			try {
+				const levels = (await options.engine.listThinkingLevels?.(conversationId ?? undefined)) ?? [];
+				const current = (await options.engine.getThinkingLevel?.(conversationId ?? undefined)) ?? null;
+				if (levels.length === 0 && options.state.thinkingLevels.length > 0) return;
+				options.state.thinkingLevels = levels;
+				options.state.thinkingLevel = current;
+			} catch {
+				// 保留旧值
+			}
+		},
+
+		async setThinking(conversationId, level) {
+			if (!conversationId) return { ok: false, error: { code: "session.none", message: "先打开一个会话" } };
+			const applied = (await options.engine.setThinkingLevel?.(conversationId, level)) ?? false;
+			if (!applied)
+				return { ok: false, error: { code: "thinking.unsupported", message: `这个模型不支持档位：${level}` } };
+			options.state.thinkingLevel = level;
+			options.onChanged();
+			return { ok: true };
 		},
 
 		async switchTo(conversationId, modelId) {

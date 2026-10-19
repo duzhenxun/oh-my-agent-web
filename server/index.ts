@@ -281,6 +281,9 @@ async function handleMessage(socket: WebSocket, raw: string): Promise<void> {
 				reply(socket, request.id, runtime.setApprovalMode(request.payload.mode));
 				return;
 			}
+			case "set_thinking_level":
+				reply(socket, request.id, await runtime.setThinkingLevel(request.payload.level));
+				return;
 			case "set_model": {
 				reply(socket, request.id, await runtime.setModel(request.payload.modelId));
 				return;

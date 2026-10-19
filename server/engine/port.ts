@@ -79,6 +79,12 @@ export type EnginePort = {
 	listModels?(sessionId?: string): Promise<EngineModelInfo[]>;
 	/** 切换某个会话的模型（写进会话文件，续聊时模型不变） */
 	switchModel?(sessionId: string, modelId: string): Promise<boolean>;
+	/** 这个会话可选的思考强度（模型不支持推理时返回空数组 → 界面隐藏该控件） */
+	listThinkingLevels?(sessionId?: string): Promise<string[]>;
+	/** 当前思考强度；不支持时为 null */
+	getThinkingLevel?(sessionId?: string): Promise<string | null>;
+	/** 设置思考强度；返回 false = 这个档位该模型不支持 */
+	setThinkingLevel?(sessionId: string, level: string): Promise<boolean>;
 	/** 当前模型（用于界面显示；取不到返回 null） */
 	currentModel?(sessionId: string): Promise<{ provider: string; model: string } | null>;
 };

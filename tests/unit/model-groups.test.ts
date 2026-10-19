@@ -49,7 +49,12 @@ describe("groupModels", () => {
 describe("模型列表的稳定性（回归）", () => {
 	it("取模型失败时保留旧列表，不清空", async () => {
 		const { createModelController } = await import("../../server/session/model-controller.js");
-		const state = { model: "a/x" as string | null, models: [{ id: "a/x", label: "A X" }] };
+		const state = {
+			model: "a/x" as string | null,
+			models: [{ id: "a/x", label: "A X" }],
+			thinkingLevel: null,
+			thinkingLevels: [],
+		};
 		const controller = createModelController({
 			engine: {
 				listModels: async () => {
@@ -66,7 +71,12 @@ describe("模型列表的稳定性（回归）", () => {
 
 	it("返回空数组时也保留旧列表（切会话瞬间的正常现象）", async () => {
 		const { createModelController } = await import("../../server/session/model-controller.js");
-		const state = { model: "a/x" as string | null, models: [{ id: "a/x", label: "A X" }] };
+		const state = {
+			model: "a/x" as string | null,
+			models: [{ id: "a/x", label: "A X" }],
+			thinkingLevel: null,
+			thinkingLevels: [],
+		};
 		const controller = createModelController({
 			engine: { listModels: async () => [] } as never,
 			state,

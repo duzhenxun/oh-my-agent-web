@@ -32,6 +32,8 @@ export type ServerState = {
 	approvalMode: ApprovalMode;
 	engineCapabilities: EngineCapabilities;
 	providers: ProviderView[];
+	thinkingLevel: string | null;
+	thinkingLevels: string[];
 	models: ModelOption[];
 	piProjects: PiProject[];
 	settings: SettingsView;
@@ -58,6 +60,8 @@ export function createServerState(workspace: string, engine: EngineName = "pi"):
 		approvalMode: "ask",
 		engineCapabilities: { approvals: true, tools: true, modelSwitch: true, thinkingLevel: true, resume: true },
 		providers: [],
+		thinkingLevel: null,
+		thinkingLevels: [],
 		models: [],
 		piProjects: [],
 		settings: { quickPhrases: [], quickPhrasesEnabled: true, templates: [] },
@@ -103,6 +107,8 @@ export function buildSnapshot(state: ServerState, limit = SNAPSHOT_MESSAGE_LIMIT
 			...provider,
 			models: provider.models.map((model) => ({ ...model })),
 		})),
+		thinkingLevel: state.thinkingLevel,
+		thinkingLevels: [...state.thinkingLevels],
 		models: state.models.map((model) => ({ ...model })),
 		actions: state.actions.map((action) => ({ ...action })),
 		settings: {

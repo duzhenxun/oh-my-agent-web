@@ -89,3 +89,27 @@ describe("set_approval_mode（P4 审批模式）", () => {
 		expect(parseClientRequest({ id: "r5", type: "set_approval_mode" })).toBeNull();
 	});
 });
+
+describe("set_thinking_level（P4 思考强度）", () => {
+	it("接受合法档位", () => {
+		expect(parseClientRequest({ id: "t1", type: "set_thinking_level", payload: { level: "high" } })).toEqual({
+			id: "t1",
+			type: "set_thinking_level",
+			payload: { level: "high" },
+		});
+	});
+
+	it("缺 level / 空白 → 拒绝", () => {
+		expect(parseClientRequest({ id: "t2", type: "set_thinking_level", payload: {} })).toBeNull();
+		expect(parseClientRequest({ id: "t3", type: "set_thinking_level", payload: { level: "  " } })).toBeNull();
+	});
+
+	it("provider 的 delete / test 也在白名单里（曾经漏掉被判 bad_payload）", () => {
+		expect(parseClientRequest({ id: "t4", type: "delete_provider", payload: { provider: "acme" } })?.type).toBe(
+			"delete_provider",
+		);
+		expect(parseClientRequest({ id: "t5", type: "test_provider", payload: { provider: "acme" } })?.type).toBe(
+			"test_provider",
+		);
+	});
+});

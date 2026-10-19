@@ -200,6 +200,10 @@ export type Snapshot = {
 	engineCapabilities: EngineCapabilities;
 	/** 已配置的 provider（ADR-0025 B 期）：**不含明文 key**，只给 hasKey/尾 4 位 */
 	providers: ProviderView[];
+	/** 本会话当前思考强度（null = 该模型不支持） */
+	thinkingLevel: string | null;
+	/** 可选的思考强度档位（空数组 → 界面隐藏该控件） */
+	thinkingLevels: string[];
 	/** pi 已有项目与会话（只读；ADR-0021 §1） */
 	piProjects: PiProject[];
 	/** 客户端设置（快捷短语等） */
@@ -280,6 +284,9 @@ export type DeleteProviderRequest = { id: string; type: "delete_provider"; provi
 /** 连通性测试（ADR-0025 B 期）：只打一次 GET /models，不花钱也不改远端状态 */
 export type TestProviderRequest = { id: string; type: "test_provider"; provider: string };
 
+/** 设置思考强度（P4）：档位由引擎给（off/minimal/low/medium/high/xhigh/max） */
+export type SetThinkingLevelRequest = { id: string; type: "set_thinking_level"; payload: { level: string } };
+
 /** 切换当前会话的模型（ADR-0020 §P2）：写进会话文件，续聊时不变 */
 export type SetModelRequest = { id: string; type: "set_model"; payload: { modelId: string } };
 
@@ -295,6 +302,7 @@ export type ClientRequest =
 	| UpsertProviderRequest
 	| DeleteProviderRequest
 	| TestProviderRequest
+	| SetThinkingLevelRequest
 	| NewChatRequest
 	| SwitchConversationRequest;
 

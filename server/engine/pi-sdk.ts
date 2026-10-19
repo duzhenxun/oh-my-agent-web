@@ -82,8 +82,11 @@ export const SUGGESTION_GUIDANCE = [
 	"Put them on their own lines at the very end, and never mention this syntax in prose.",
 ].join("\n");
 
+import { createPiThinking } from "./pi-thinking.js";
+
 export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort {
 	const sessions = new Map<string, SessionHandle>();
+	const thinking = createPiThinking(sessions as unknown as Map<string, { session: unknown }>);
 	let approvalHandler: ApprovalHandler | null = null;
 
 	const notice = (text: string, level: "info" | "warn" | "error" = "warn") => options.onNotice?.(text, level);
@@ -311,6 +314,10 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 				return [];
 			}
 		},
+
+		listThinkingLevels: thinking.listThinkingLevels,
+		getThinkingLevel: thinking.getThinkingLevel,
+		setThinkingLevel: thinking.setThinkingLevel,
 
 		async switchModel(sessionId: string, modelId: string) {
 			// ModelRuntime 上没有 find（那是 ModelRegistry 的方法）→ 从可用列表里自己匹配

@@ -110,6 +110,11 @@ export function switchConversation(conversationId: string): void {
 
 /** 改客户端设置（ADR-0020 §P1）：服务端归一化后落盘，并随快照回推 */
 /** 切换当前会话的模型（ADR-0020 §P2） */
+/** 思考强度（P4）：档位由引擎给 */
+export function setThinkingLevel(level: string): void {
+	send({ id: `req-${++seq}`, type: "set_thinking_level", payload: { level } });
+}
+
 /** 审批模式（P4）：本会话放行 / 照旧询问 */
 export function setApprovalMode(mode: ApprovalMode): void {
 	send({ id: `req-${++seq}`, type: "set_approval_mode", payload: { mode } });

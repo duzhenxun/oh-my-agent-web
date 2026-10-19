@@ -157,7 +157,10 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		nextId,
 		now,
 		titleChars,
-		onReady: (id) => models.refresh(id),
+		onReady: (id) => {
+			void models.refresh(id);
+			void models.refreshThinking(id);
+		},
 	});
 	// 模型列表与切换（ADR-0020 §P2）：抽在 model-controller 里
 	const models = createModelController({
@@ -268,6 +271,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 					if (opened === null) throw new Error(`会话打不开：${conversationId}`);
 					state.messages[conversationId] = opened;
 					await models.refresh(conversationId);
+					await models.refreshThinking(conversationId);
 				}
 				const ts = now();
 				const userMessage = appendText(createMessage(nextId("msg"), "user", ts), text);
@@ -335,6 +339,10 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 
 		setModel: (modelId) => models.switchTo(state.activeId, modelId),
 
+		setThinkingLevel: (level) => models.setThinking(state.activeId, level),
+
+		pushSnapshot, // 供 provider 等模块「只推帧、不造提示」
+
 		setApprovalMode(mode) {
 			approval.setMode(mode);
 			state.approvalMode = mode;
@@ -371,6 +379,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 					}
 					state.messages[conversationId] = messages;
 					await models.refresh(conversationId);
+					await models.refreshThinking(conversationId);
 					state.activeId = conversationId;
 					state.files = { root: fromPi.workspace, treeVersion: (state.files?.treeVersion ?? 0) + 1 };
 					pushSnapshot();

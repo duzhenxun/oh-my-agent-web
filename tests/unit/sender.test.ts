@@ -10,6 +10,8 @@ function makeSnapshot(tag: number): Snapshot {
 		approvalMode: "ask",
 		engineCapabilities: { approvals: true, tools: true, modelSwitch: true, thinkingLevel: true, resume: true },
 		providers: [],
+		thinkingLevel: null,
+		thinkingLevels: [],
 		models: [],
 		piProjects: [],
 		actions: [],

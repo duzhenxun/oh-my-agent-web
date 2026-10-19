@@ -40,6 +40,7 @@ export type {
 	SetApprovalModeRequest,
 	SetModelRequest,
 	SetSettingsRequest,
+	SetThinkingLevelRequest,
 	TestProviderRequest,
 	SettingsView,
 	ServerEvent,

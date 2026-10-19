@@ -157,6 +157,8 @@ export function createProviderWiring(options: {
 	probe: ProviderHandlerDeps["probe"];
 	getRuntime: () => {
 		notify: (text: string, level?: "info" | "warn" | "error") => void;
+		/** 直接推一帧快照（不制造一条空提示） */
+		pushSnapshot: () => void;
 		state: () => { providers: ProviderView[]; models: { id: string; label: string }[] };
 	};
 }): (request: { type: string } & Record<string, unknown>, reply: (result: ProviderReply) => void) => Promise<void> {
@@ -169,7 +171,7 @@ export function createProviderWiring(options: {
 		builtinProviders: () => builtinProviderGroups(runtime().state().models),
 		refresh: async () => {
 			runtime().state().providers = await options.store.list(builtinProviderGroups(runtime().state().models));
-			runtime().notify("", "info");
+			runtime().pushSnapshot();
 		},
 	});
 }

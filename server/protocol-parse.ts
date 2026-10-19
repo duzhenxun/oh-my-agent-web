@@ -18,6 +18,9 @@ const REQUEST_TYPES: ClientRequestType[] = [
 	"set_approval_mode",
 	"list_providers",
 	"upsert_provider",
+	"delete_provider",
+	"test_provider",
+	"set_thinking_level",
 ];
 const DECISIONS: ApprovalDecision[] = ["once", "always", "deny"];
 
@@ -103,6 +106,11 @@ export function parseClientRequest(raw: unknown): ClientRequest | null {
 				),
 			},
 		};
+	}
+
+	if (type === "set_thinking_level") {
+		const level = typeof payload?.level === "string" ? payload.level.trim() : "";
+		return level === "" ? null : { id, type: "set_thinking_level", payload: { level } };
 	}
 
 	if (type === "set_approval_mode") {

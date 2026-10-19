@@ -1,6 +1,7 @@
 import { useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import { imagesMarkdown, pickUploadableFiles, uploadFile } from "../attachments.ts";
 import { ModelPicker } from "./ModelPicker.tsx";
+import { ThinkingPicker } from "./ThinkingPicker.tsx";
 import { TemplateEditor, TemplateGallery } from "./TemplateModals.tsx";
 import { setDraft, useAppState } from "../store.ts";
 import type { AttachmentRef, PromptTemplate } from "../types.ts";
@@ -191,7 +192,8 @@ export function Composer({ running, conversationId }: { running: boolean; conver
 						{snapshot?.approvalMode === "allow" ? "🔓 审批：全部放行" : "🔒 审批：询问"}
 					</button>
 				)}
-				{/* 右侧扩展位：思考强度 / 工具范围 / 压缩（P4 待做，先占位保持排布稳定） */}
+				<ThinkingPicker level={snapshot?.thinkingLevel ?? null} levels={snapshot?.thinkingLevels ?? []} />
+				{/* 右侧扩展位：工具范围 / 压缩（P4 待做，先占位保持排布稳定） */}
 				<span className="topbar-spacer" />
 			</div>
 

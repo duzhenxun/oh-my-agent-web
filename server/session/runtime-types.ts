@@ -30,6 +30,10 @@ export type Runtime = {
 	applySettings(patch: unknown): Promise<Result>;
 	/** 切换当前会话的模型（ADR-0020 §P2） */
 	setModel(modelId: string): Promise<Result>;
+	/** 思考强度（P4）：档位由引擎给，不支持时界面隐藏控件 */
+	setThinkingLevel(level: string): Promise<Result>;
+	/** 只推一帧快照（不制造提示条） */
+	pushSnapshot(): void;
 	/** 审批模式（P4）：只在本会话内存里生效，重启回到 ask */
 	setApprovalMode(mode: ApprovalMode): Result;
 	switchConversation(conversationId: string): Promise<Result>;

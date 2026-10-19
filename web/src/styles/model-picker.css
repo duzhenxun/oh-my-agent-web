@@ -116,3 +116,20 @@
 	font-size: 12px;
 	padding: 8px;
 }
+
+/* 思考强度选择器（P4）：跟在模型选择器后面 */
+.thinking-picker {
+	gap: 3px;
+	cursor: pointer;
+}
+
+.thinking-select {
+	border: none;
+	background: none;
+	color: inherit;
+	font: inherit;
+	font-size: 12px;
+	cursor: pointer;
+	padding: 0 2px;
+	outline: none;
+}
