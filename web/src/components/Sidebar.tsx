@@ -162,6 +162,11 @@ export function Sidebar({
 							<summary className="proj-head" title={`${project.cwd || "（未知项目）"}\n点「+」在这个项目下新建会话`}>
 								<span className="proj-chevron" aria-hidden="true" />
 								<span className="proj-name">{name}</span>
+								{pinned.includes(project.cwd) ? (
+									<span className="proj-pin" title="已置顶" aria-label="已置顶">
+										📌
+									</span>
+								) : null}
 								<button
 									type="button"
 									className="proj-menu-btn"

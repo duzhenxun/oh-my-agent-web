@@ -160,22 +160,6 @@ export function App() {
 							上下文 {formatTokens(snapshot.sessionStats.contextTokens)}
 						</span>
 					) : null}
-					<button
-						type="button"
-						className={`chip chip-quiet${filePanelOpen ? " chip-on" : ""}`}
-						onClick={() => setFilePanelOpen((open) => !open)}
-						title="文件列表（当前项目）"
-					>
-						📁 文件
-					</button>
-					<button
-						type="button"
-						className={`chip chip-quiet${terminalOpen ? " chip-on" : ""}`}
-						onClick={() => setTerminalOpen((open) => !open)}
-						title="终端（在项目目录里跑命令）"
-					>
-						⌨ 终端
-					</button>
 				</header>
 
 				<main className="main" ref={scroll.ref}>

@@ -85,3 +85,11 @@
 	color: var(--accent);
 	background: var(--bg-elev-2);
 }
+
+/* 置顶标记：跟在项目名后面，小一点、别抢注意力 */
+.proj-pin {
+	flex: none;
+	font-size: 10px;
+	line-height: 1;
+	opacity: 0.85;
+}
