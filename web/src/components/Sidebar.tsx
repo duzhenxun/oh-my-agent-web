@@ -229,6 +229,21 @@ export function Sidebar({
 									>
 										⌨ 在终端中打开
 									</button>
+									<button
+										type="button"
+										className="proj-menu-item"
+										title="在系统文件管理器里定位这个目录（只定位，不执行任何文件）"
+										onClick={() => {
+											void fetch("/api/projects/reveal", {
+												method: "POST",
+												headers: { "content-type": "application/json" },
+												body: JSON.stringify({ cwd: project.cwd }),
+											});
+											setMenuFor(null);
+										}}
+									>
+										🔍 在 Finder 中显示
+									</button>
 								</div>
 							) : null}
 							<div className="proj-body">
