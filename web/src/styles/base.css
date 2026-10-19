@@ -195,20 +195,21 @@ body {
 	font: inherit;
 }
 
-/* 「发送」按钮贴在输入框内部右下角 */
+/* 「发送」按钮贴在输入框内部右侧、**垂直居中** */
 .composer-actions {
 	position: absolute;
 	right: 8px;
-	bottom: 8px;
+	top: 50%;
+	transform: translateY(-50%);
 	display: flex;
 	align-items: center;
 	gap: 6px;
 }
 
-.btn-send {
+.btn.btn-send {
 	border-radius: 8px;
-	padding: 6px 12px;
-	font-size: 12.5px;
+	padding: 4px 10px;
+	font-size: 12px;
 	font-weight: 600;
 	/* 没输入时是灰的：不可点、也不抢注意力 */
 	background: var(--bg-elev-2);
@@ -218,14 +219,14 @@ body {
 }
 
 /* 有内容才变亮（蓝底白字） */
-.btn-send:not(:disabled) {
+.btn.btn-send:not(:disabled) {
 	background: #2f6feb;
 	border-color: #2f6feb;
 	color: #fff;
 	cursor: pointer;
 }
 
-.btn-send:not(:disabled):hover {
+.btn.btn-send:not(:disabled):hover {
 	background: #3b7bf5;
 }
 
