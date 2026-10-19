@@ -40,6 +40,7 @@ export type {
 	SetApprovalModeRequest,
 	SetModelRequest,
 	SetSettingsRequest,
+	SessionStats,
 	SetThinkingLevelRequest,
 	TestProviderRequest,
 	UpdateModelRequest,

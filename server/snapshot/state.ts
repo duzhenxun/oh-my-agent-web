@@ -10,6 +10,7 @@ import {
 	type ApprovalMode,
 	type EngineCapabilities,
 	type ProviderView,
+	type SessionStats,
 	type ConversationMeta,
 	type EngineName,
 	type ModelOption,
@@ -34,6 +35,7 @@ export type ServerState = {
 	providers: ProviderView[];
 	thinkingLevel: string | null;
 	thinkingLevels: string[];
+	sessionStats: SessionStats | null;
 	models: ModelOption[];
 	piProjects: PiProject[];
 	settings: SettingsView;
@@ -62,6 +64,7 @@ export function createServerState(workspace: string, engine: EngineName = "pi"):
 		providers: [],
 		thinkingLevel: null,
 		thinkingLevels: [],
+		sessionStats: null,
 		models: [],
 		piProjects: [],
 		settings: { quickPhrases: [], quickPhrasesEnabled: true, templates: [] },
@@ -109,6 +112,7 @@ export function buildSnapshot(state: ServerState, limit = SNAPSHOT_MESSAGE_LIMIT
 		})),
 		thinkingLevel: state.thinkingLevel,
 		thinkingLevels: [...state.thinkingLevels],
+		sessionStats: state.sessionStats ? { ...state.sessionStats } : null,
 		models: state.models.map((model) => ({ ...model })),
 		actions: state.actions.map((action) => ({ ...action })),
 		settings: {

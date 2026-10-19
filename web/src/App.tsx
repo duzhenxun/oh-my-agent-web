@@ -20,6 +20,13 @@ const RUNNING_LABEL = {
 	error: "上一回合出错",
 } as const;
 
+/** 148242 → 148k（顶栏空间有限，只保留一位小数） */
+function formatTokens(value: number): string {
+	if (value < 1000) return String(value);
+	if (value < 1_000_000) return `${(value / 1000).toFixed(value < 10_000 ? 1 : 0)}k`;
+	return `${(value / 1_000_000).toFixed(1)}M`;
+}
+
 export function App() {
 	// 文件面板（M4）：跟着当前会话的工作区走
 	const [filePanelOpen, setFilePanelOpen] = useState(false);
@@ -59,7 +66,6 @@ export function App() {
 	const state = useAppState();
 	const snapshot = state.snapshot;
 	const messages = snapshot?.active.messages ?? [];
-	const running = snapshot ? snapshot.running.status !== "idle" : false;
 	// 粘底滚动：条数、末条正文长度、流式文本任一变化都算「内容更新」
 	const lastTextLength =
 		messages.at(-1)?.blocks.reduce((sum, block) => sum + (block.kind === "text" ? block.text.length : 0), 0) ?? 0;
@@ -123,10 +129,24 @@ export function App() {
 				<header className="topbar">
 					<span className="brand">agent-web</span>
 					<span className={`chip chip-${state.connection}`}>{CONNECTION_LABEL[state.connection]}</span>
-					{snapshot ? (
+					{snapshot &&
+					(snapshot.running.status === "idle" || snapshot.running.conversationId === snapshot.active.conversationId) ? (
 						<span className={`chip chip-run-${snapshot.running.status}`}>{RUNNING_LABEL[snapshot.running.status]}</span>
 					) : null}
 					<span className="topbar-spacer" />
+					{snapshot?.sessionStats ? (
+						<span
+							className="chip chip-quiet mono"
+							title={[
+								`消息：用户 ${snapshot.sessionStats.userMessages} / 助手 ${snapshot.sessionStats.assistantMessages} / 工具 ${snapshot.sessionStats.toolCalls}`,
+								`Token：输入 ${snapshot.sessionStats.inputTokens} · 输出 ${snapshot.sessionStats.outputTokens} · 缓存读 ${snapshot.sessionStats.cacheRead}`,
+								`上下文占用：${snapshot.sessionStats.contextTokens}`,
+							].join("\n")}
+						>
+							↑ {formatTokens(snapshot.sessionStats.inputTokens)} ↓ {formatTokens(snapshot.sessionStats.outputTokens)} ·
+							上下文 {formatTokens(snapshot.sessionStats.contextTokens)}
+						</span>
+					) : null}
 					<button
 						type="button"
 						className={`chip chip-quiet${filePanelOpen ? " chip-on" : ""}`}
@@ -152,7 +172,10 @@ export function App() {
 							hasMoreBefore={snapshot.active.hasMoreBefore}
 							engine={snapshot.engine}
 							actions={snapshot.actions}
-							running={running}
+							running={
+								snapshot?.running.status !== "idle" &&
+								snapshot?.running.conversationId === snapshot?.active.conversationId
+							}
 						/>
 					) : (
 						<div className="empty">等待服务端快照…（后端没起来的话看终端日志）</div>
@@ -166,7 +189,13 @@ export function App() {
 
 				{state.lastError ? <div className="error-bar">{state.lastError}</div> : null}
 				<NoticeBar notices={snapshot?.notices ?? []} />
-				<Composer running={running} conversationId={snapshot?.active.conversationId ?? null} />
+				<Composer
+					running={
+						snapshot?.running.status !== "idle" &&
+						snapshot?.running.conversationId === (snapshot?.active.conversationId ?? null)
+					}
+					conversationId={snapshot?.active.conversationId ?? null}
+				/>
 			</div>
 
 			{filePanelOpen ? (

@@ -152,6 +152,22 @@ export type ActionItem = {
 };
 
 /** 客户端设置（ADR-0020 §P1）：界面直接读快照里的这一份 */
+/** 会话统计（顶部「会话信息」）：从 pi 的会话 JSONL 聚合出来 */
+export type SessionStats = {
+	userMessages: number;
+	assistantMessages: number;
+	toolCalls: number;
+	toolResults: number;
+	totalMessages: number;
+	inputTokens: number;
+	outputTokens: number;
+	cacheRead: number;
+	cacheWrite: number;
+	totalTokens: number;
+	/** 上下文占用（最近一条 assistant 的输入侧，近似"当前上下文多大"） */
+	contextTokens: number;
+};
+
 /** 提示词模板（P5）：一个模板 = 名字 + 一句说明 + 图标 + 正文 */
 export type PromptTemplate = {
 	id: string;
@@ -202,6 +218,8 @@ export type Snapshot = {
 	engineCapabilities: EngineCapabilities;
 	/** 已配置的 provider（ADR-0025 B 期）：**不含明文 key**，只给 hasKey/尾 4 位 */
 	providers: ProviderView[];
+	/** 会话统计（顶部会话信息）：消息数 / 工具调用 / token 与上下文占用 */
+	sessionStats: SessionStats | null;
 	/** 本会话当前思考强度（null = 该模型不支持） */
 	thinkingLevel: string | null;
 	/** 可选的思考强度档位（空数组 → 界面隐藏该控件） */

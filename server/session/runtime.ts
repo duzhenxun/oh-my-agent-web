@@ -9,59 +9,26 @@
  *   - 转录**追加写**：用户消息发出时落盘；助手消息**在回合结束时**落盘（整条，不留半条）。
  *     代价写清楚：进程在回合计中被杀 → 这一轮的助手输出丢失（用户消息还在）。
  */
-import type { RuleStore } from "../approval/rules.js";
 import { createMarkerStreamFilter } from "../markers/actions.js";
 import { createRuntimeServices } from "./runtime-services.js";
+import { createStatsRefresher } from "./stats-refresher.js";
 import { createConversationFactory } from "./conversation-create.js";
 import { resolveAttachments } from "./attachment-resolve.js";
 import { createModelController } from "./model-controller.js";
 import { createPiSessionOpener } from "./pi-opener.js";
 import { createPiRefresher } from "./pi-refresh.js";
 import { settleTurnMarkers } from "./turn-markers.js";
-import { applySettingsPatch, defaultSettings, type SettingsStore } from "./settings.js";
+import { applySettingsPatch, defaultSettings } from "./settings.js";
 import { applyEngineEvent, type TurnEventContext } from "./turn-events.js";
 import { makeIdFactory } from "../util/ids.js";
 import type {
 	AttachmentRef, // 附件引用（ADR-0020 §P3）
-	PiProject,
 } from "../protocol.js";
-import type { EnginePort } from "../engine/port.js";
 import { appendText, createMessage } from "../snapshot/messages.js";
 import { buildSnapshot, createServerState, emptyRunning } from "../snapshot/state.js";
 export type { Result, Runtime, RuntimeEmit } from "./runtime-types.js";
-import type { Runtime, RuntimeEmit } from "./runtime-types.js";
-export type RuntimeOptions = {
-	/** 启动信息（只进日志，不进对话流） */
-	onStartupInfo?: (text: string) => void;
-	engine: EnginePort;
-	/** 审批规则落盘（ADR-0006）：「总是允许这类」跨重启生效 */
-	rules: RuleStore;
-	/** 回合看门狗超时（ADR-0023）；不给就用默认 20 分钟 */
-	turnTimeoutMs?: number;
-	/** 附件上传存储（ADR-0020 §P3）：读回上传的文件；不给则附件一律失效 */
-	uploadStore?: {
-		read: (id: string) => Promise<{ bytes: Buffer; mime: string } | null>;
-		pathOf?: (id: string) => string;
-	};
-	/** 客户端设置存储（ADR-0020 §P1）；不给就用默认值（单测用） */
-	settings?: SettingsStore;
-	/** pi 已有会话的扫描器（ADR-0021 §1）；不给就不显示那一栏（单测用） */
-	piSessions?: () => Promise<PiProject[]>;
-	/** 两次扫描的最小间隔（默认 10s） */
-	piSessionsMinIntervalMs?: number;
-	workspace: string;
-	/** 当前引擎名（ADR-0016）：会进快照，供界面决定提示语 */
-	engineName?: string;
-	/** 引擎能力（ADR-0024 §2）；不给就当作全能（单测用） */
-	engineCapabilities?: import("../protocol.js").EngineCapabilities;
-	emit: RuntimeEmit;
-	now?: () => number;
-	/** 测试注入可预测的 id；默认 `<前缀>-<序号>` */
-	idSeq?: (prefix: string) => string;
-	noticeDedupeMs?: number;
-	maxNotices?: number;
-	titleChars?: number;
-};
+import type { Runtime, RuntimeOptions } from "./runtime-types.js";
+export type { RuntimeOptions } from "./runtime-types.js";
 
 export function createRuntime(options: RuntimeOptions): Runtime {
 	const now = options.now ?? (() => Date.now());
@@ -159,6 +126,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		titleChars,
 		onReady: (id) => {
 			void models.refresh(id);
+			void refreshStats();
 			void models.refreshThinking(id);
 		},
 	});
@@ -185,9 +153,18 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		},
 	};
 
+	const refreshStats = createStatsRefresher({
+		activeId: () => state.activeId,
+		pathOf: (id) => piOpener.pathOf(id),
+		projects: () => state.piProjects,
+		setStats: (stats) => void (state.sessionStats = stats),
+		onChanged: pushSnapshot,
+	});
+
 	async function finishTurn(conversationId: string, reason: "done" | "interrupted" | "error"): Promise<void> {
 		const keepError = reason === "error" || state.running.status === "error";
 		state.running = { ...emptyRunning(), status: keepError ? "error" : "idle" };
+		void refreshStats();
 		state.pendingApproval = null;
 		approval.cancelPending();
 

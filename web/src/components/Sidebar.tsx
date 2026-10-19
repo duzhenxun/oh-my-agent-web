@@ -68,10 +68,11 @@ export function Sidebar({
 			...group.sessions,
 		];
 	}
-	// 最近活动的项目排前面；已知项目按自身活跃度（含 pending 的更新时间）
-	const latestOf = (project: PiProject) =>
-		project.sessions.reduce((max, session) => Math.max(max, session.updatedAt), 0);
-	groups.sort((a, b) => latestOf(b) - latestOf(a));
+	// 项目顺序**必须稳定**：按「最新会话的创建时间」倒序（新项目在上），
+	// 绝不能用 updatedAt —— 切会话 / 跑一轮都会把它顶起来，项目就会自己跳到最上面。
+	const newestOf = (project: PiProject) =>
+		project.sessions.reduce((max, session) => Math.max(max, session.startedAt), 0);
+	groups.sort((a, b) => newestOf(b) - newestOf(a) || a.cwd.localeCompare(b.cwd));
 
 	return (
 		<aside className="sidebar">

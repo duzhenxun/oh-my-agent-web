@@ -16,6 +16,7 @@ export type PiSessionOpener = {
 	remember: (projects: PiProject[]) => void;
 	isOpen: (conversationId: string) => boolean;
 	infoOf: (conversationId: string) => PiSessionInfo | null;
+	pathOf: (conversationId: string) => string | null;
 	/** 打开并读回转录；打不开返回 null（调用方负责给用户错误） */
 	open: (conversationId: string, refresh: (force?: boolean) => Promise<void>) => Promise<UiMessage[] | null>;
 };
@@ -51,6 +52,9 @@ export function createPiSessionOpener(options: PiSessionOpenerOptions): PiSessio
 		isOpen: (conversationId) => opened.has(conversationId),
 
 		infoOf: (conversationId) => infoById.get(conversationId) ?? null,
+
+		/** 会话文件路径（统计要读它；web 新建的会话也在这里登记过） */
+		pathOf: (conversationId: string) => pathById.get(conversationId) ?? null,
 
 		async open(conversationId, refresh) {
 			if (opened.has(conversationId)) return options.engine.readUiMessages(conversationId);
