@@ -44,6 +44,8 @@ export type ServerState = {
 	activeId: string | null;
 	messages: Record<string, UiMessage[]>;
 	running: RunningState;
+	/** 按会话的运行状态（并行回合用；只放 status 与开始时间，够侧栏转圈用） */
+	runningByConversation: Record<string, { status: RunningState["status"]; turnStartedAt: number }>;
 	pendingApproval: PendingApproval | null;
 	notices: Notice[];
 	terminal: TerminalMeta | null;
@@ -79,6 +81,7 @@ export function createServerState(workspace: string, engine: EngineName = "pi"):
 		activeId: null,
 		messages: {},
 		running: emptyRunning(),
+		runningByConversation: {},
 		pendingApproval: null,
 		notices: [],
 		terminal: null,
@@ -147,6 +150,7 @@ export function buildSnapshot(state: ServerState, limit = SNAPSHOT_MESSAGE_LIMIT
 			hasMoreBefore: all.length > messages.length,
 		},
 		running: { ...state.running, activeTool: state.running.activeTool ? { ...state.running.activeTool } : null },
+		runningByConversation: { ...state.runningByConversation },
 		pendingApproval: state.pendingApproval ? { ...state.pendingApproval } : null,
 		terminal: state.terminal ? { ...state.terminal } : null,
 		files: state.files ? { ...state.files } : null,

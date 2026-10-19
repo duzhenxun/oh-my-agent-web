@@ -144,9 +144,7 @@ export function App() {
 							activeId={snapshot?.active.conversationId ?? null}
 							piProjects={snapshot?.piProjects ?? []}
 							onCollapse={() => setCollapsed(true)}
-							runningConversationId={
-								snapshot?.running.status === "idle" ? null : (snapshot?.running.conversationId ?? null)
-							}
+							runningIds={Object.keys(snapshot?.runningByConversation ?? {})}
 							onOpenTerminal={(cwd) => {
 								const id = `term:${termSeq}:${cwd}`;
 								setTermSeq((value) => value + 1);

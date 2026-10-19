@@ -25,7 +25,7 @@ export function Sidebar({
 	activeId,
 	piProjects,
 	onCollapse,
-	runningConversationId = null,
+	runningIds = [],
 	onOpenTerminal,
 	onOpenFiles,
 	onOpenFile,
@@ -35,8 +35,8 @@ export function Sidebar({
 	piProjects: PiProject[];
 	/** 提供时在标题栏显示「收起」按钮（‹） */
 	onCollapse?: () => void;
-	/** 正在跑的是哪个会话（不是当前选中）—— 那一行显示转圈 + 「运行中」 */
-	runningConversationId?: string | null;
+	/** 正在跑的会话 id（ADR-0030：可以同时有多个） */
+	runningIds?: string[];
 	/** 在指定目录打开终端（项目菜单「在终端中打开」） */
 	onOpenTerminal?: (cwd: string) => void;
 	/** 在应用内的文件面板打开这个项目 */
@@ -304,7 +304,7 @@ export function Sidebar({
 										key={session.id}
 										session={session}
 										active={session.id === activeId}
-										running={session.id === runningConversationId}
+										running={runningIds.includes(session.id)}
 										title={sessionPrefs.titles[session.id] ?? (session.title || "（无标题）")}
 										pinned={sessionPrefs.pinned.includes(session.id)}
 										menuOpen={sessionMenu === session.id}

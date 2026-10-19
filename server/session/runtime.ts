@@ -12,13 +12,13 @@
 import { createMarkerStreamFilter } from "../markers/actions.js";
 import { createRuntimeServices } from "./runtime-services.js";
 import { createStatsRefresher } from "./stats-refresher.js";
+import { awaitTurnPersisted, createTurnFinisher, setRunning, settleWith } from "./turn-finish.js";
 import { createBusyHandler, createTurnQueue } from "./turn-queue.js";
 import { createConversationFactory } from "./conversation-create.js";
 import { resolveAttachments } from "./attachment-resolve.js";
 import { createModelController } from "./model-controller.js";
 import { createPiSessionOpener } from "./pi-opener.js";
 import { createPiRefresher } from "./pi-refresh.js";
-import { settleTurnMarkers } from "./turn-markers.js";
 import { applySettingsPatch, defaultSettings } from "./settings.js";
 import { applyEngineEvent, type TurnEventContext } from "./turn-events.js";
 import { makeIdFactory } from "../util/ids.js";
@@ -44,14 +44,16 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 
 	// 默认真实运行用全局唯一 id（ADR-0019）；测试注入确定性 id
 	const nextId = options.idSeq ?? makeIdFactory();
-	let inFlight = false;
-	/** 当前回合的流式标记过滤器（ADR-0022） */
-	let markerFilter = createMarkerStreamFilter();
-	/** 本回合的原始文本（含标记）：建议要在回合结束从这里解析 */
-	let rawTurnText = "";
+	// 按会话的在飞回合（ADR-0030 ③）：finish 是落盘 Promise，sendMessage 返回前要等它
+	type TurnState = {
+		messageId: string;
+		filter: ReturnType<typeof createMarkerStreamFilter>;
+		rawText: string;
+		finish?: Promise<void>;
+	};
+	const turns = new Map<string, TurnState>();
 
-	// 回合看门狗（ADR-0023）：卡住的回合要能自己收场 —— 全局只有 1 路在飞，卡一路等于堵死整个应用
-	let currentTurn: { conversationId: string; messageId: string } | null = null;
+	// 回合看门狗（ADR-0023）：按会话计时（ADR-0030 ①），A 卡住不影响 B
 	const turnQueue = createTurnQueue();
 	const busy = createBusyHandler({
 		activeId: () => state.activeId,
@@ -69,8 +71,6 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 	let apiRef: {
 		sendMessage: (text: string, attachments?: AttachmentRef[], mode?: SendMode) => Promise<unknown>;
 	} | null = null;
-	/** 回合结束时的落盘任务：sendMessage 必须在返回前等它完成（否则「应答已回、转录还没写」） */
-	let finishPromise: Promise<void> | null = null;
 
 	const pushSnapshot = () => options.emit.snapshot(buildSnapshot(state));
 
@@ -161,17 +161,18 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		state,
 		now,
 		onTextDelta: (chunk, conversationId) => {
-			// 流式缓冲暂时还是全局的（③ turns Map 会把它挪进按会话的状态里）；
-			// 这里先按会话判断，避免并行时两个会话的字串到一起
-			if (conversationId !== state.activeId) return "";
-			rawTurnText += chunk;
-			return markerFilter.push(chunk);
+			const turn = turns.get(conversationId);
+			if (!turn) return "";
+			turn.rawText += chunk;
+			return turn.filter.push(chunk);
 		},
 		emitEvent: (event) => options.emit.event(event),
 		pushSnapshot,
 		notice,
 		onTurnEnd: (conversationId, reason) => {
-			finishPromise = finishTurn(conversationId, reason);
+			const turn = turns.get(conversationId);
+			const promise = finishTurn(conversationId, reason);
+			if (turn) turn.finish = promise;
 		},
 	};
 
@@ -183,34 +184,19 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		onChanged: pushSnapshot,
 	});
 
-	async function finishTurn(conversationId: string, reason: "done" | "interrupted" | "error"): Promise<void> {
-		const keepError = reason === "error" || state.running.status === "error";
-		state.running = { ...emptyRunning(), status: keepError ? "error" : "idle" };
-		void refreshStats();
-		const next = turnQueue.shift(conversationId); // 排空：这一轮结束后自动发下一条
-		if (next) setTimeout(() => void apiRef?.sendMessage(next.text, next.attachments, "now"), 0);
-		state.pendingApproval = null;
-		approval.cancelPending();
-
-		// 助手消息在回合结束落盘：整条写入，不留半条（代价：进程在回合计中被杀会丢这一轮的助手输出）
-		const turn = currentTurn;
-		currentTurn = null;
-		if (turn) {
-			settleTurnMarkers({
-				state,
-				conversationId: turn.conversationId,
-				messageId: turn.messageId,
-				rawText: rawTurnText,
-				nextId,
-			});
-			// 转录由 SDK 写进会话文件（ADR-0021 §2）—— 我们不再自己追加任何东西
-		}
-
-		touchConversation(conversationId);
-		void piRefresher.refresh(true);
-		if (reason === "interrupted") notice("回合已中断", "info");
-		pushSnapshot();
-	}
+	const finishTurn = createTurnFinisher({
+		state,
+		turns,
+		shiftQueued: (conversationId) => turnQueue.shift(conversationId),
+		sendNext: (message) => setTimeout(() => void apiRef?.sendMessage(message.text, message.attachments, "now"), 0),
+		cancelPending: () => approval.cancelPending(),
+		settle: settleWith(state, nextId),
+		touchConversation: (conversationId) => touchConversation(conversationId),
+		refreshStats: () => void refreshStats(),
+		refreshProjects: () => void piRefresher.refresh(true),
+		notice: (text, level) => notice(text, level),
+		pushSnapshot,
+	});
 
 	const api: Runtime = {
 		async init() {
@@ -244,7 +230,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		},
 
 		isBusy() {
-			return inFlight;
+			return turns.size > 0;
 		},
 
 		notify(text, level = "info") {
@@ -257,48 +243,58 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			for (const name of resolved.missing) notice(`附件已失效（可能过期被清理）：${name}`, "warn");
 			if (resolved.images.length > 0) notice(`已附加 ${resolved.images.length} 张图片（走视觉注入）`, "info");
 
-			if (inFlight) {
-				// 回合进行中：引导 / 排队 / 拒绝，判定与副作用都在 turn-queue.ts（runtime 有 400 行护栏）
+			// 只有**同一个会话**在跑才需要判定引导/排队；别的会话各跑各的（ADR-0030 §3）
+			if (state.activeId !== null && turns.has(state.activeId)) {
 				const handled = await busy(mode, text, resolved.promptText, resolved.images, attachments);
 				if (handled) return handled;
 			}
-			inFlight = true;
+			// 会话 id 要在 catch/finally 里也能用（watchdog / 落盘 / 清理都按会话）
+			let conversationId: string | null = null;
 			try {
 				// 没有活动会话才新建（否则复用当前会话 —— 这里曾经写成「每轮都新建」）
-				const conversationId = state.activeId ?? (await conversations.create(text));
-				if (!piOpener.isOpen(conversationId)) {
-					const opened = await piOpener.open(conversationId, (force) => piRefresher.refresh(force));
-					if (opened === null) throw new Error(`会话打不开：${conversationId}`);
-					state.messages[conversationId] = opened;
-					await models.refresh(conversationId);
-					await models.refreshThinking(conversationId);
+				conversationId = state.activeId ?? (await conversations.create(text));
+				const conv = conversationId; // 非空别名（TS 收窄）
+				if (!piOpener.isOpen(conv)) {
+					const opened = await piOpener.open(conv, (force) => piRefresher.refresh(force));
+					if (opened === null) throw new Error(`会话打不开：${conv}`);
+					state.messages[conv] = opened;
+					await models.refresh(conv);
+					await models.refreshThinking(conv);
 				}
 				const ts = now();
 				const userMessage = appendText(createMessage(nextId("msg"), "user", ts), text);
 				const assistantMessage = createMessage(nextId("msg"), "assistant", ts);
 
 				// 首条用户消息决定标题
-				const isFirstMessage = (state.messages[conversationId] ?? []).length === 0;
+				const isFirstMessage = (state.messages[conv] ?? []).length === 0;
 				if (isFirstMessage) {
-					touchConversation(conversationId, { title: text.replace(/\s+/g, " ").trim().slice(0, titleChars) });
+					touchConversation(conv, { title: text.replace(/\s+/g, " ").trim().slice(0, titleChars) });
 				}
 
-				state.messages[conversationId] = [...(state.messages[conversationId] ?? []), userMessage, assistantMessage];
-				state.running = { status: "streaming", conversationId, turnStartedAt: ts, streamingText: "", activeTool: null };
-				state.actions = []; // 新一轮开始：上一轮的建议作废（ADR-0022）
-				markerFilter = createMarkerStreamFilter();
-				rawTurnText = "";
-				watchdog.start(conversationId);
-				currentTurn = { conversationId, messageId: assistantMessage.id };
-				touchConversation(conversationId);
+				state.messages[conv] = [...(state.messages[conv] ?? []), userMessage, assistantMessage];
+				// state.running 只反映当前会话；别的会话并行时不覆盖它（ADR-0030 §2）
+				if (conv === state.activeId) {
+					state.running = {
+						status: "streaming",
+						conversationId: conv,
+						turnStartedAt: ts,
+						streamingText: "",
+						activeTool: null,
+					};
+				}
+				state.actions = [];
+				turns.set(conv, { messageId: assistantMessage.id, filter: createMarkerStreamFilter(), rawText: "" });
+				setRunning(state, conv, { status: "streaming", turnStartedAt: ts });
+				watchdog.start(conv);
+				touchConversation(conv);
 
 				pushSnapshot();
 
 				await options.engine.sendMessage(
-					conversationId,
+					conv,
 					resolved.promptText,
 					(event) => {
-						applyEngineEvent(turnContext, { conversationId, messageId: assistantMessage.id, event });
+						applyEngineEvent(turnContext, { conversationId: conv, messageId: assistantMessage.id, event });
 					},
 					resolved.images.length > 0 ? { images: resolved.images } : undefined,
 				);
@@ -306,25 +302,28 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
 				notice(`回合执行失败：${message}`, "error");
-				state.running = { ...emptyRunning(), status: "error" };
-				currentTurn = null;
+				if (conversationId !== null && conversationId === state.activeId) {
+					state.running = { ...emptyRunning(), status: "error" };
+				}
+				if (conversationId !== null) {
+					turns.delete(conversationId);
+					setRunning(state, conversationId, null);
+				}
 				pushSnapshot();
 				return { ok: false, error: { code: "session.turn_failed", message } };
 			} finally {
-				watchdog.stop();
-				// 等落盘完成再放开「在飞」闸门：下一次回合不应该与上一次的持久化重叠
-				if (finishPromise) {
-					await finishPromise;
-					finishPromise = null;
+				if (conversationId !== null) {
+					watchdog.stop(conversationId);
+					await awaitTurnPersisted(turns, conversationId); // 等这一轮落盘，避免与下一轮重叠
 				}
-				inFlight = false;
 			}
 		},
 
 		async interrupt() {
-			// 中断的是**在飞的那个回合**，不一定是你正在看的那个会话（可以切走再停）
-			const target = currentTurn?.conversationId ?? state.activeId;
-			if (!inFlight || !target) {
+			// 优先中断当前会话；它没在跑就中断任意一个在飞的（可以切走再停）
+			const fallback = state.activeId !== null && turns.has(state.activeId) ? state.activeId : [...turns.keys()][0];
+			const target = fallback ?? null;
+			if (!target) {
 				return { ok: false, error: { code: "session.idle", message: "当前没有在跑的回合" } };
 			}
 			await options.engine.interrupt(target);
