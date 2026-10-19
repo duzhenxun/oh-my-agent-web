@@ -1,0 +1,124 @@
+/*
+ * 手机 / 窄屏适配（最后加载，专门覆盖前面的固定尺寸）。
+ *
+ * 三栏在手机上放不下，所以按"抽屉 + 整屏"的思路收缩：
+ *   - 左栏（项目/文件树）变成覆盖式抽屉，宽度 86vw 封顶 320px；
+ *   - 右侧预览/终端变成整屏（它是"第二个页面"的性质）；
+ *   - 顶栏允许换行、底部状态栏隐藏次要信息；
+ *   - 输入区与消息的左右内边距收窄。
+ * 断点取 900px：再窄三栏就必然挤成一团，再宽笔记本仍用桌面布局。
+ */
+
+@media (max-width: 900px) {
+	/* 顶栏：允许换行，缩小间距 */
+	.appbar {
+		flex-wrap: wrap;
+		gap: 6px;
+		padding: 6px 8px;
+	}
+
+	.appbar .brand {
+		font-size: 14px;
+	}
+
+	/* 左栏：变成覆盖抽屉（不再占据文档流宽度） */
+	.side-host {
+		position: fixed;
+		top: 0;
+		left: 0;
+		bottom: 0;
+		z-index: 40;
+		width: min(86vw, 320px) !important;
+		border-radius: 0;
+		box-shadow: 0 0 0 100vmax rgb(0 0 0 / 35%);
+	}
+
+	/* 收起态的竖条仍然留在文档流里，方便点开 */
+	.activity-bar {
+		width: 40px;
+	}
+
+	/* 右侧预览 / 终端：整屏（相当于第二个页面） */
+	.preview-panel {
+		position: fixed;
+		inset: 0;
+		width: 100% !important;
+		z-index: 30;
+		border-radius: 0;
+		border: none;
+	}
+
+	.preview-resizer,
+	.preview-rail {
+		display: none;
+	}
+
+	/* 对话区：收窄内边距，去掉左侧 20px 的"留白" */
+	.workspace {
+		padding: 0 8px 8px;
+	}
+
+	.workspace .main {
+		padding: 0 4px;
+	}
+
+	/* 输入区：允许换行（横向滚动会出现孤立的分隔线），分隔线在换行后没意义 → 隐藏 */
+	.composer-topbar {
+		flex-wrap: wrap;
+	}
+
+	.composer-topbar .tool-sep {
+		display: none;
+	}
+
+	.composer-input {
+		padding-right: 92px;
+	}
+
+	/* 状态栏：只留关键几项（连接 / 工作中 / 排队） */
+	.statusbar {
+		gap: 8px;
+		padding: 4px 8px;
+		font-size: 11px;
+	}
+
+	.statusbar .status-item:nth-child(2),
+	.statusbar .status-item:nth-child(3),
+	.statusbar .status-item:nth-last-child(2) {
+		display: none;
+	}
+
+	/* 消息：用户气泡可以更宽 */
+	.msg-user {
+		max-width: 92%;
+	}
+
+	/* 提示词模板 / 技能等大弹窗：整屏 */
+	.modal.big-modal,
+	.modal.tpl-modal,
+	.modal.new-project,
+	.modal.file-preview {
+		width: 100vw;
+		height: 100vh;
+		max-height: none;
+		border-radius: 0;
+	}
+
+	/* 大纲窄条在手机上没必要（点不动、还挡内容） */
+	.outline {
+		display: none;
+	}
+}
+
+/* 超窄屏（老机型 / 分屏）：再收一档 */
+@media (max-width: 480px) {
+	.composer-tools .tool-chip,
+	.quick-chip {
+		font-size: 12px;
+		padding: 3px 8px;
+	}
+
+	.statusbar {
+		font-size: 10.5px;
+	}
+}
