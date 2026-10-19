@@ -52,7 +52,14 @@ export type UiMessage = {
 	blocks: MessageBlock[];
 };
 
-export type Notice = { id: string; level: "info" | "warn" | "error"; text: string; ts: number };
+export type Notice = {
+	id: string;
+	level: "info" | "warn" | "error";
+	text: string;
+	ts: number;
+	/** 同一 key 的提示「**替换**」而不是堆叠（例：审批模式切换只占一行，跟着状态变） */
+	key?: string;
+};
 
 export type ConversationMeta = {
 	id: string;

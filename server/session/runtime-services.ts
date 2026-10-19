@@ -17,7 +17,7 @@ import { createRuntimeTurnWatchdog, type TurnWatchdog } from "./turn-watchdog.js
 
 export type RuntimeServices = {
 	/** 推一条界面提示（去重由提示牌负责） */
-	notice: (text: string, level?: Notice["level"]) => void;
+	notice: (text: string, level?: Notice["level"], key?: string) => void;
 	approval: ApprovalBridge;
 	watchdog: TurnWatchdog;
 };
@@ -48,7 +48,8 @@ export function createRuntimeServices(options: RuntimeServicesOptions): RuntimeS
 		max: options.options.maxNotices,
 		onNotice: options.onNotice,
 	});
-	const notice = (text: string, level: Notice["level"] = "info"): void => void sink.push(text, level);
+	const notice = (text: string, level: Notice["level"] = "info", key?: string): void =>
+		void sink.push(text, level, key);
 
 	const approval = createApprovalBridge({
 		rules: options.options.rules,

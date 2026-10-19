@@ -7,8 +7,11 @@
 import type { Notice } from "../protocol.js";
 
 export type NoticeSink = {
-	/** 返回 Notice 表示真的推送了；返回 null 表示被去重窗口吃掉了 */
-	push: (text: string, level: Notice["level"]) => Notice | null;
+	/**
+	 * 返回 Notice 表示真的推送了；返回 null 表示被去重窗口吃掉了。
+	 * 传了 `key` 且已有同 key 的提示 → **原地替换**（保留 id），不会在对话流里再堆一行。
+	 */
+	push: (text: string, level: Notice["level"], noticeKey?: string) => Notice | null;
 	all: () => Notice[];
 };
 
@@ -30,15 +33,25 @@ export function createNoticeSink(options: NoticeSinkOptions): NoticeSink {
 	let notices: Notice[] = [];
 
 	return {
-		push(text, level) {
+		push(text, level, noticeKey) {
 			const key = `${level}:${text}`;
 			const ts = options.now();
 			const last = recent.get(key);
 			if (last !== undefined && ts - last < dedupeMs) return null;
 			recent.set(key, ts);
 
-			const notice: Notice = { id: options.nextId("notice"), level, text, ts };
-			notices = [...notices, notice].slice(-max);
+			// 同 key 原地替换：保留 id 与位置，只换文案/级别/时间戳
+			const existing = noticeKey ? notices.find((notice) => notice.key === noticeKey) : undefined;
+			const notice: Notice = {
+				id: existing?.id ?? options.nextId("notice"),
+				level,
+				text,
+				ts,
+				...(noticeKey ? { key: noticeKey } : {}),
+			};
+			notices = existing
+				? notices.map((item) => (item.id === existing.id ? notice : item))
+				: [...notices, notice].slice(-max);
 			options.onNotice(notice);
 			return notice;
 		},

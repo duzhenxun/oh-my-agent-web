@@ -105,7 +105,10 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		now,
 		nextId,
 		onNotice: (entry) => {
-			state.notices = [...state.notices, entry].slice(-(options.maxNotices ?? 20));
+			// 按 id upsert：同 key 的提示是「替换」原行，不能当新行追加（否则同一 id 出现两次）
+			state.notices = [...state.notices.filter((item) => item.id !== entry.id), entry].slice(
+				-(options.maxNotices ?? 20),
+			);
 			options.emit.event({ type: "event", event: "notice", notice: entry });
 			pushSnapshot();
 		},
@@ -333,9 +336,11 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			approval.setMode(mode);
 			state.approvalMode = mode;
 			pushSnapshot();
+			// 同一个 key：反复点芯片只**替换**这一行（顶栏芯片本身也在显示状态）
 			notice(
 				mode === "allow" ? "审批模式：本会话全部放行（重启即恢复询问）" : "审批模式：照旧询问",
 				mode === "allow" ? "warn" : "info",
+				"approval-mode",
 			);
 			return { ok: true };
 		},

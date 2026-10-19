@@ -184,3 +184,14 @@ describe("M3.5-P2：模型列表与切换（ADR-0020）", () => {
 		if (!result.ok) expect(result.error.code).toBe("session.none");
 	});
 });
+
+describe("审批模式提示（替换语义）", () => {
+	it("反复切换只留一行，且内容跟着最后状态", async () => {
+		const { runtime } = harness(createMemoryRuleStore());
+		await runtime.init();
+		for (const mode of ["allow", "ask", "allow", "ask"] as const) runtime.setApprovalMode(mode);
+		const rows = runtime.snapshot().notices.filter((notice) => notice.key === "approval-mode");
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.text).toBe("审批模式：照旧询问");
+	});
+});
