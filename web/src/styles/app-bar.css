@@ -274,3 +274,63 @@
 	line-height: 1;
 	flex: none;
 }
+
+/* ---- 顶栏「会话信息」下拉 ---- */
+.session-info {
+	position: relative;
+	flex: none;
+}
+
+.session-info-pop {
+	position: absolute;
+	top: calc(100% + 6px);
+	right: 0;
+	z-index: 30;
+	display: flex;
+	gap: 18px;
+	width: min(760px, 92vw);
+	padding: 12px 14px;
+	border: 1px solid var(--border-strong);
+	border-radius: 10px;
+	background: var(--bg);
+	box-shadow: 0 16px 40px rgb(0 0 0 / 18%);
+}
+
+.session-info-col {
+	flex: 1 1 0;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.session-info-wide {
+	flex: 1.6 1 0;
+}
+
+.session-info-title {
+	color: var(--text);
+	font-size: 12px;
+	font-weight: 600;
+	margin-bottom: 2px;
+}
+
+.session-info-row {
+	display: flex;
+	gap: 8px;
+	font-size: 11.5px;
+	min-width: 0;
+}
+
+.session-info-label {
+	flex: none;
+	width: 76px;
+	color: var(--text-faint);
+}
+
+.session-info-value {
+	flex: 1 1 auto;
+	min-width: 0;
+	color: var(--text-dim);
+	overflow-wrap: anywhere;
+}

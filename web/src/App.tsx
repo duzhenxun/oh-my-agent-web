@@ -11,15 +11,9 @@ import { MessageList } from "./components/MessageList.tsx";
 import { ConversationOutline } from "./components/ConversationOutline.tsx";
 import { SidebarMenu } from "./components/SidebarMenu.tsx";
 import { PreviewPanel, type PanelItem } from "./components/PreviewPanel.tsx";
+import { SessionInfo } from "./components/SessionInfo.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
 import { StatusBar } from "./components/StatusBar.tsx";
-
-/** 148242 → 148k（顶栏空间有限，只保留一位小数） */
-function formatTokens(value: number): string {
-	if (value < 1000) return String(value);
-	if (value < 1_000_000) return `${(value / 1000).toFixed(value < 10_000 ? 1 : 0)}k`;
-	return `${(value / 1_000_000).toFixed(1)}M`;
-}
 
 export function App() {
 	// 文件面板（M4）：跟着当前会话的工作区走
@@ -120,19 +114,7 @@ export function App() {
 				</button>
 				{/* 预留区：以后放全局搜索 / 命令面板 */}
 				<span className="appbar-slot" />
-				{snapshot?.sessionStats ? (
-					<span
-						className="chip chip-quiet mono"
-						title={[
-							`消息：用户 ${snapshot.sessionStats.userMessages} / 助手 ${snapshot.sessionStats.assistantMessages} / 工具 ${snapshot.sessionStats.toolCalls}`,
-							`Token：输入 ${snapshot.sessionStats.inputTokens} · 输出 ${snapshot.sessionStats.outputTokens} · 缓存读 ${snapshot.sessionStats.cacheRead}`,
-							`上下文占用：${snapshot.sessionStats.contextTokens}`,
-						].join("\n")}
-					>
-						↑ {formatTokens(snapshot.sessionStats.inputTokens)} ↓ {formatTokens(snapshot.sessionStats.outputTokens)} ·
-						上下文 {formatTokens(snapshot.sessionStats.contextTokens)}
-					</span>
-				) : null}
+				<SessionInfo snapshot={snapshot} />
 				<SidebarMenu variant="full" placement="appbar" />
 				{panelItems.length > 0 ? (
 					<button
