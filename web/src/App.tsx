@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useStickToBottom } from "./stick-to-bottom.ts";
 import { useState } from "react";
 import { useAppState } from "./store.ts";
 import { setApprovalMode, setModel } from "./ws.ts";
@@ -32,11 +32,12 @@ export function App() {
 		snapshot?.conversations.find((item) => item.id === activeId) ??
 		snapshot?.piProjects.flatMap((project) => project.sessions).find((session) => session.id === activeId) ??
 		null;
-	const scroller = useRef<HTMLDivElement>(null);
-
-	useEffect(() => {
-		scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
-	}, [messages.length, snapshot?.running.streamingText]);
+	// 粘底滚动：条数、末条正文长度、流式文本任一变化都算「内容更新」
+	const lastTextLength =
+		messages.at(-1)?.blocks.reduce((sum, block) => sum + (block.kind === "text" ? block.text.length : 0), 0) ?? 0;
+	const scroll = useStickToBottom(
+		`${messages.length}:${lastTextLength}:${snapshot?.running.streamingText?.length ?? 0}:${snapshot?.active.conversationId ?? ""}`,
+	);
 
 	return (
 		<div className="app">
@@ -95,7 +96,7 @@ export function App() {
 					<span className="chip chip-quiet">协议 v{snapshot?.protocolVersion ?? "?"}</span>
 				</header>
 
-				<main className="main" ref={scroller}>
+				<main className="main" ref={scroll.ref}>
 					{snapshot ? (
 						<MessageList
 							messages={messages}
@@ -106,6 +107,11 @@ export function App() {
 						/>
 					) : (
 						<div className="empty">等待服务端快照…（后端没起来的话看终端日志）</div>
+					)}
+					{scroll.stuck ? null : (
+						<button type="button" className="jump-bottom" onClick={scroll.toBottom} title="回到最新">
+							↓ 回到底部
+						</button>
 					)}
 				</main>
 

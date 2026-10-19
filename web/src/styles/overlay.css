@@ -58,3 +58,25 @@
 	gap: 8px;
 	justify-content: flex-end;
 }
+
+/* 粘底滚动：不粘底时出现的「回到底部」（见 web/src/stick-to-bottom.ts；样式放在此处（浮层控件分区）） */
+.jump-bottom {
+	position: sticky;
+	bottom: 10px;
+	align-self: center;
+	margin-top: -46px;
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	background: var(--bg-elev-2);
+	color: var(--text);
+	font: inherit;
+	font-size: 12.5px;
+	padding: 5px 12px;
+	cursor: pointer;
+	box-shadow: var(--shadow, 0 6px 18px rgba(0, 0, 0, 0.28));
+}
+
+.jump-bottom:hover {
+	border-color: var(--accent-dim);
+	color: var(--accent);
+}

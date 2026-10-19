@@ -82,6 +82,7 @@ body {
 .main {
 	flex: 1 1 auto;
 	overflow-y: auto;
+	position: relative; /* 「回到底部」按钮的定位参照 */
 	min-height: 0;
 	min-width: 0;
 	border: 1px solid var(--border);
