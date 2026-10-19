@@ -67,7 +67,12 @@ export function createServerState(workspace: string, engine: EngineName = "pi"):
 		sessionStats: null,
 		models: [],
 		piProjects: [],
-		settings: { quickPhrases: [], quickPhrasesEnabled: true, templates: [] },
+		settings: {
+			quickPhrases: [],
+			quickPhrasesEnabled: true,
+			templates: [],
+			projectPrefs: { order: [], pinned: [], aliases: {} },
+		},
 		actions: [],
 		conversations: [],
 		activeId: null,
@@ -119,6 +124,11 @@ export function buildSnapshot(state: ServerState, limit = SNAPSHOT_MESSAGE_LIMIT
 			quickPhrases: [...state.settings.quickPhrases],
 			quickPhrasesEnabled: state.settings.quickPhrasesEnabled,
 			templates: state.settings.templates.map((template) => ({ ...template })),
+			projectPrefs: {
+				order: [...state.settings.projectPrefs.order],
+				pinned: [...state.settings.projectPrefs.pinned],
+				aliases: { ...state.settings.projectPrefs.aliases },
+			},
 		},
 		piProjects: state.piProjects.map((project) => ({
 			...project,

@@ -62,10 +62,20 @@ describe("normalizeQuickPhrases", () => {
 describe("mergeSettings", () => {
 	it("只改给出的字段", () => {
 		const current = defaultSettings();
-		expect(mergeSettings(current, { quickPhrasesEnabled: false, templates: [] }).quickPhrasesEnabled).toBe(false);
-		expect(mergeSettings(current, { quickPhrasesEnabled: false, templates: [] }).quickPhrases).toEqual(
-			current.quickPhrases,
-		);
+		expect(
+			mergeSettings(current, {
+				quickPhrasesEnabled: false,
+				templates: [],
+				projectPrefs: { order: [], pinned: [], aliases: {} },
+			}).quickPhrasesEnabled,
+		).toBe(false);
+		expect(
+			mergeSettings(current, {
+				quickPhrasesEnabled: false,
+				templates: [],
+				projectPrefs: { order: [], pinned: [], aliases: {} },
+			}).quickPhrases,
+		).toEqual(current.quickPhrases);
 	});
 
 	it("坏载荷一律忽略（保持原样，不抛）", () => {
@@ -88,19 +98,40 @@ describe("parseSettings", () => {
 
 	it("合法文件按原样读出（并过一遍归一化）", () => {
 		const parsed = parseSettings(
-			JSON.stringify({ v: 1, quickPhrases: ["继续", " 继续 "], quickPhrasesEnabled: false, templates: [] }),
+			JSON.stringify({
+				v: 1,
+				quickPhrases: ["继续", " 继续 "],
+				quickPhrasesEnabled: false,
+				templates: [],
+				projectPrefs: { order: [], pinned: [], aliases: {} },
+			}),
 		);
-		expect(parsed).toEqual({ quickPhrases: ["继续"], quickPhrasesEnabled: false, templates: [] });
+		expect(parsed).toEqual({
+			quickPhrases: ["继续"],
+			quickPhrasesEnabled: false,
+			templates: [],
+			projectPrefs: { order: [], pinned: [], aliases: {} },
+		});
 	});
 });
 
 describe("文件存储", () => {
 	it("保存后可读回，且是原子写（不留 .tmp）", async () => {
 		const store = createFileSettingsStore(dir);
-		await store.save({ quickPhrases: ["继续"], quickPhrasesEnabled: false, templates: [] });
+		await store.save({
+			quickPhrases: ["继续"],
+			quickPhrasesEnabled: false,
+			templates: [],
+			projectPrefs: { order: [], pinned: [], aliases: {} },
+		});
 		expect(existsSync(settingsPath(dir))).toBe(true);
 		expect(existsSync(`${settingsPath(dir)}.tmp`)).toBe(false);
-		expect(await store.load()).toEqual({ quickPhrases: ["继续"], quickPhrasesEnabled: false, templates: [] });
+		expect(await store.load()).toEqual({
+			quickPhrases: ["继续"],
+			quickPhrasesEnabled: false,
+			templates: [],
+			projectPrefs: { order: [], pinned: [], aliases: {} },
+		});
 	});
 
 	it("文件不存在 → 默认值（不是空列表）", async () => {
@@ -113,7 +144,12 @@ describe("文件存储", () => {
 	});
 
 	it("落盘内容是人能手工编辑的 JSON", async () => {
-		await createFileSettingsStore(dir).save({ quickPhrases: ["继续"], quickPhrasesEnabled: true, templates: [] });
+		await createFileSettingsStore(dir).save({
+			quickPhrases: ["继续"],
+			quickPhrasesEnabled: true,
+			templates: [],
+			projectPrefs: { order: [], pinned: [], aliases: {} },
+		});
 		const parsed = JSON.parse(readFileSync(settingsPath(dir), "utf8"));
 		expect(parsed.v).toBe(1);
 		expect(parsed.quickPhrases).toEqual(["继续"]);
@@ -127,9 +163,24 @@ describe("文件存储", () => {
 
 describe("内存存储", () => {
 	it("可预置、可读写", async () => {
-		const store = createMemorySettingsStore({ quickPhrases: ["a"], quickPhrasesEnabled: false, templates: [] });
-		expect(await store.load()).toEqual({ quickPhrases: ["a"], quickPhrasesEnabled: false, templates: [] });
-		await store.save({ quickPhrases: ["b"], quickPhrasesEnabled: true, templates: [] });
+		const store = createMemorySettingsStore({
+			quickPhrases: ["a"],
+			quickPhrasesEnabled: false,
+			templates: [],
+			projectPrefs: { order: [], pinned: [], aliases: {} },
+		});
+		expect(await store.load()).toEqual({
+			quickPhrases: ["a"],
+			quickPhrasesEnabled: false,
+			templates: [],
+			projectPrefs: { order: [], pinned: [], aliases: {} },
+		});
+		await store.save({
+			quickPhrases: ["b"],
+			quickPhrasesEnabled: true,
+			templates: [],
+			projectPrefs: { order: [], pinned: [], aliases: {} },
+		});
 		expect((await store.load()).quickPhrases).toEqual(["b"]);
 	});
 });

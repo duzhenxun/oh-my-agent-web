@@ -168,6 +168,13 @@ export type SessionStats = {
 	contextTokens: number;
 };
 
+/** 项目偏好（ADR-0028）：显式顺序 + 置顶 + 显示名别名（身份仍是 cwd） */
+export type ProjectPrefs = {
+	order: string[];
+	pinned: string[];
+	aliases: Record<string, string>;
+};
+
 /** 提示词模板（P5）：一个模板 = 名字 + 一句说明 + 图标 + 正文 */
 export type PromptTemplate = {
 	id: string;
@@ -184,6 +191,8 @@ export type SettingsView = {
 	quickPhrasesEnabled: boolean;
 	/** 提示词模板库（P5）：点卡片直接填进输入框；可增删改、可恢复默认 */
 	templates: PromptTemplate[];
+	/** 项目排序 / 置顶 / 别名（ADR-0028） */
+	projectPrefs: ProjectPrefs;
 };
 
 export type PiProject = {

@@ -114,7 +114,12 @@ describe("id 必须全局唯一（ADR-0019）", () => {
 
 describe("M3.5-P1：客户端设置（ADR-0020）", () => {
 	it("init 装载设置；applySettings 归一化后写盘并进快照", async () => {
-		const store = createMemorySettingsStore({ quickPhrases: ["旧的"], quickPhrasesEnabled: true, templates: [] });
+		const store = createMemorySettingsStore({
+			quickPhrases: ["旧的"],
+			quickPhrasesEnabled: true,
+			templates: [],
+			projectPrefs: { order: [], pinned: [], aliases: {} },
+		});
 		const { runtime } = harness(createMemoryRuleStore(), { settings: store });
 		await runtime.init();
 		expect(runtime.snapshot().settings.quickPhrases).toEqual(["旧的"]);
@@ -123,19 +128,31 @@ describe("M3.5-P1：客户端设置（ADR-0020）", () => {
 			quickPhrases: ["  继续  ", "重复", "重复", ""],
 			quickPhrasesEnabled: false,
 			templates: [],
+			projectPrefs: { order: [], pinned: [], aliases: {} },
 		});
 		expect(result.ok).toBe(true);
 		expect(runtime.snapshot().settings).toEqual({
 			quickPhrases: ["继续", "重复"],
 			quickPhrasesEnabled: false,
 			templates: [],
+			projectPrefs: { order: [], pinned: [], aliases: {} },
 		});
 		// 真的落盘了
-		expect(await store.load()).toEqual({ quickPhrases: ["继续", "重复"], quickPhrasesEnabled: false, templates: [] });
+		expect(await store.load()).toEqual({
+			quickPhrases: ["继续", "重复"],
+			quickPhrasesEnabled: false,
+			templates: [],
+			projectPrefs: { order: [], pinned: [], aliases: {} },
+		});
 	});
 
 	it("坏载荷不会把设置弄坏（保持原样）", async () => {
-		const store = createMemorySettingsStore({ quickPhrases: ["保留"], quickPhrasesEnabled: true, templates: [] });
+		const store = createMemorySettingsStore({
+			quickPhrases: ["保留"],
+			quickPhrasesEnabled: true,
+			templates: [],
+			projectPrefs: { order: [], pinned: [], aliases: {} },
+		});
 		const { runtime } = harness(createMemoryRuleStore(), { settings: store });
 		await runtime.init();
 		await runtime.applySettings(null);

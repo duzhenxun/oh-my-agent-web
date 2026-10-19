@@ -33,6 +33,7 @@ export type {
 	ProviderView,
 	PiProject,
 	PiSessionSummary,
+	ProjectPrefs,
 	PromptTemplate,
 	ProtocolError,
 	RunningState,

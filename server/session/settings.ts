@@ -7,7 +7,7 @@
  */
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import type { PromptTemplate } from "../protocol.js";
+import type { ProjectPrefs, PromptTemplate } from "../protocol.js";
 
 export const SETTINGS_FILE = "settings.json";
 export const SETTINGS_VERSION = 1;
@@ -125,13 +125,49 @@ export type ClientSettings = {
 	quickPhrases: string[];
 	quickPhrasesEnabled: boolean;
 	templates: PromptTemplate[];
+	/** 项目偏好（ADR-0028）：显式顺序 / 置顶 / 别名 */
+	projectPrefs: ProjectPrefs;
 };
+
+export const MAX_PROJECT_PREFS = 500;
+export const MAX_ALIAS_CHARS = 40;
+
+/** 纯函数：归一化项目偏好 —— 只保留绝对路径、去重、上限、别名裁剪 */
+export function normalizeProjectPrefs(input: unknown): ProjectPrefs {
+	const empty: ProjectPrefs = { order: [], pinned: [], aliases: {} };
+	if (typeof input !== "object" || input === null) return empty;
+	const record = input as Record<string, unknown>;
+	const paths = (value: unknown): string[] => {
+		if (!Array.isArray(value)) return [];
+		const seen = new Set<string>();
+		const out: string[] = [];
+		for (const item of value) {
+			if (typeof item !== "string") continue;
+			const path = item.trim();
+			if (!path.startsWith("/") || seen.has(path)) continue;
+			seen.add(path);
+			out.push(path);
+			if (out.length >= MAX_PROJECT_PREFS) break;
+		}
+		return out;
+	};
+	const aliases: Record<string, string> = {};
+	if (typeof record.aliases === "object" && record.aliases !== null) {
+		for (const [key, value] of Object.entries(record.aliases as Record<string, unknown>)) {
+			if (!key.startsWith("/") || typeof value !== "string") continue;
+			const name = value.trim().slice(0, MAX_ALIAS_CHARS);
+			if (name !== "") aliases[key] = name;
+		}
+	}
+	return { order: paths(record.order), pinned: paths(record.pinned), aliases };
+}
 
 export function defaultSettings(): ClientSettings {
 	return {
 		quickPhrases: [...DEFAULT_QUICK_PHRASES],
 		quickPhrasesEnabled: true,
 		templates: DEFAULT_TEMPLATES.map((template) => ({ ...template })),
+		projectPrefs: { order: [], pinned: [], aliases: {} },
 	};
 }
 
@@ -202,6 +238,7 @@ export function mergeSettings(current: ClientSettings, patch: unknown): ClientSe
 	// templates 传 null = 「恢复默认模板」（显式手势，不当成坏值忽略）
 	if (record.templates === null) next.templates = DEFAULT_TEMPLATES.map((template) => ({ ...template }));
 	else if ("templates" in record) next.templates = normalizeTemplates(record.templates);
+	if ("projectPrefs" in record) next.projectPrefs = normalizeProjectPrefs(record.projectPrefs);
 	return next;
 }
 

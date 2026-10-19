@@ -16,7 +16,12 @@ function makeSnapshot(tag: number): Snapshot {
 		models: [],
 		piProjects: [],
 		actions: [],
-		settings: { quickPhrases: [], quickPhrasesEnabled: true, templates: [] },
+		settings: {
+			quickPhrases: [],
+			quickPhrasesEnabled: true,
+			templates: [],
+			projectPrefs: { order: [], pinned: [], aliases: {} },
+		},
 		conversations: [],
 		active: { conversationId: null, messages: [], hasMoreBefore: false },
 		running: {

@@ -1,6 +1,8 @@
 import { useState } from "react";
-import type { ConversationMeta, PiProject } from "../types.ts";
-import { newChat, switchConversation } from "../ws.ts";
+import { useAppState } from "../store.ts";
+import type { ConversationMeta, PiProject, ProjectPrefs } from "../types.ts";
+import { sortProjects } from "../project-sort.ts";
+import { newChat, setSettings, switchConversation } from "../ws.ts";
 import { NewProjectDialog } from "./NewProjectDialog.tsx";
 import { SidebarMenu } from "./SidebarMenu.tsx";
 
@@ -48,14 +50,10 @@ export function Sidebar({
 	/** 在应用内的文件面板打开这个项目 */
 	onOpenFiles?: (cwd: string) => void;
 }) {
-	// 置顶项目（存 localStorage：先做客户端排序，落服务端 settings 是下一步）
-	const [pinned, setPinned] = useState<string[]>(() => {
-		try {
-			return JSON.parse(localStorage.getItem("agent-web.pinnedProjects") ?? "[]") as string[];
-		} catch {
-			return [];
-		}
-	});
+	const { snapshot } = useAppState();
+	// 项目偏好来自 settings.json（ADR-0028）：置顶 / 顺序 / 别名都是服务端事实源
+	const prefs: ProjectPrefs = snapshot?.settings.projectPrefs ?? { order: [], pinned: [], aliases: {} };
+	const pinned = prefs.pinned;
 	// 受控展开：菜单里的「折叠其他项目 / 展开全部」需要它
 	const [openMap, setOpenMap] = useState<Record<string, boolean>>({});
 	const [menuFor, setMenuFor] = useState<string | null>(null);
@@ -63,30 +61,17 @@ export function Sidebar({
 	// 「还有 N 个…」点开后就显示全部（每个项目各自记）
 	const [showAll, setShowAll] = useState<Record<string, boolean>>({});
 	// 项目显示名（别名）：只改展示，不动 pi 的会话目录（ADR-0028：身份是 cwd）
-	const [aliases, setAliases] = useState<Record<string, string>>(() => {
-		try {
-			return JSON.parse(localStorage.getItem("agent-web.projectAliases") ?? "{}") as Record<string, string>;
-		} catch {
-			return {};
-		}
-	});
+	const aliases = prefs.aliases;
 	const renameProject = (cwd: string, current: string) => {
 		const next = window.prompt("项目显示名（只影响这里，不改目录）", current);
 		if (next === null) return;
 		const name = next.trim();
-		setAliases((old) => {
-			const merged = { ...old, [cwd]: name };
-			localStorage.setItem("agent-web.projectAliases", JSON.stringify(merged));
-			return merged;
-		});
+		setSettings({ projectPrefs: { ...prefs, aliases: { ...prefs.aliases, [cwd]: name } } });
 	};
 
 	const togglePin = (cwd: string) => {
-		setPinned((current) => {
-			const next = current.includes(cwd) ? current.filter((item) => item !== cwd) : [...current, cwd];
-			localStorage.setItem("agent-web.pinnedProjects", JSON.stringify(next));
-			return next;
-		});
+		const next = pinned.includes(cwd) ? pinned.filter((item) => item !== cwd) : [cwd, ...pinned];
+		setSettings({ projectPrefs: { ...prefs, pinned: next } });
 	};
 
 	// 把「本地待归档」的会话按 workspace 归组；workspace 不在已知项目里的，单独成组（避免新建的会话消失）
@@ -117,15 +102,8 @@ export function Sidebar({
 			...group.sessions,
 		];
 	}
-	// 项目顺序**必须稳定**：按「最新会话的创建时间」倒序（新项目在上），
-	// 绝不能用 updatedAt —— 切会话 / 跑一轮都会把它顶起来，项目就会自己跳到最上面。
-	const newestOf = (project: PiProject) =>
-		project.sessions.reduce((max, session) => Math.max(max, session.startedAt), 0);
-	groups.sort((a, b) => {
-		const pinDiff = Number(pinned.includes(b.cwd)) - Number(pinned.includes(a.cwd));
-		if (pinDiff !== 0) return pinDiff;
-		return newestOf(b) - newestOf(a) || a.cwd.localeCompare(b.cwd);
-	});
+	// 排序统一走 ADR-0028 的纯函数：置顶 → 显式顺序 → 新项目落最上面
+	groups.splice(0, groups.length, ...sortProjects(groups, prefs));
 
 	return (
 		<aside className="sidebar">

@@ -10,11 +10,12 @@
  */
 import { getAppState, setAppState } from "./store.ts";
 import type {
-	PromptTemplate,
 	ApprovalMode,
 	AttachmentRef,
 	ClientRequest,
 	ClientRequestType,
+	ProjectPrefs,
+	PromptTemplate,
 	ServerMessage,
 	Snapshot,
 } from "./types.ts";
@@ -186,6 +187,8 @@ export function setSettings(payload: {
 	quickPhrasesEnabled?: boolean;
 	/** null = 恢复默认模板库（服务端专门处理这个手势） */
 	templates?: PromptTemplate[] | null;
+	/** 项目排序 / 置顶 / 别名（ADR-0028） */
+	projectPrefs?: ProjectPrefs;
 }): void {
 	send({ id: `req-${++seq}`, type: "set_settings", payload });
 }
