@@ -9,6 +9,7 @@ import { createCatalogLookup } from "../providers/catalog.js";
 import { testModel } from "../providers/model-test.js";
 import { registerSkillRoutes } from "../skills/skill-routes.js";
 import { registerProjectActions, registerTerminalRoutes } from "../terminal/terminal-routes.js";
+import { registerDirRoutes } from "../files/dir-routes.js";
 
 export function registerAuxRoutes(
 	app: Express,
@@ -16,6 +17,7 @@ export function registerAuxRoutes(
 ): void {
 	registerTerminalRoutes(app, { workspaceOf: options.workspaceOf });
 	registerProjectActions(app, { workspaceOf: options.workspaceOf });
+	registerDirRoutes(app, { workspaceOf: options.workspaceOf });
 	registerSkillRoutes(app);
 	registerImportRoutes(app, { store: options.providerStore, onChange: options.onChange });
 	registerCatalogRoutes(app, {

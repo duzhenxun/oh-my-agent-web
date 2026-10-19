@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { ConversationMeta, PiProject } from "../types.ts";
 import { newChat, switchConversation } from "../ws.ts";
+import { NewProjectDialog } from "./NewProjectDialog.tsx";
 import { SidebarMenu } from "./SidebarMenu.tsx";
 
 /** 相对时间（参考实现的风格：刚刚 / 5分 / 3小时 / 2天 / 1个月） */
@@ -58,6 +59,7 @@ export function Sidebar({
 	// 受控展开：菜单里的「折叠其他项目 / 展开全部」需要它
 	const [openMap, setOpenMap] = useState<Record<string, boolean>>({});
 	const [menuFor, setMenuFor] = useState<string | null>(null);
+	const [newProjectOpen, setNewProjectOpen] = useState(false);
 	// 「还有 N 个…」点开后就显示全部（每个项目各自记）
 	const [showAll, setShowAll] = useState<Record<string, boolean>>({});
 	// 项目显示名（别名）：只改展示，不动 pi 的会话目录（ADR-0028：身份是 cwd）
@@ -128,8 +130,16 @@ export function Sidebar({
 	return (
 		<aside className="sidebar">
 			<div className="sidebar-head">
-				<span className="sidebar-title">会话</span>
+				<span className="sidebar-title">最近项目（{groups.length}）</span>
 				<span className="topbar-spacer" />
+				<button
+					type="button"
+					className="btn btn-new"
+					title="新建项目（选择一个本地目录）"
+					onClick={() => setNewProjectOpen(true)}
+				>
+					📁＋
+				</button>
 				{onCollapse ? (
 					<button type="button" className="btn btn-new" onClick={onCollapse} title="收起侧栏">
 						‹
@@ -294,6 +304,7 @@ export function Sidebar({
 					);
 				})}
 			</div>
+			{newProjectOpen ? <NewProjectDialog onClose={() => setNewProjectOpen(false)} /> : null}
 			<SidebarMenu />
 		</aside>
 	);

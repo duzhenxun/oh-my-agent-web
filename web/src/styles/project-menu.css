@@ -93,3 +93,81 @@
 	line-height: 1;
 	opacity: 0.85;
 }
+
+/* 「新建项目」目录选择器 */
+.new-project {
+	width: min(720px, 94vw);
+	height: min(640px, 84vh);
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.new-project-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex: none;
+}
+
+.new-project-bar {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-wrap: wrap;
+	flex: none;
+}
+
+.new-project-input {
+	flex: 1 1 240px;
+	min-width: 0;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--bg);
+	color: var(--text);
+	font-size: 12.5px;
+	padding: 6px 9px;
+}
+
+.new-project-list {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.new-project-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 2px 4px;
+	border-radius: 6px;
+}
+
+.new-project-row:hover {
+	background: var(--bg-elev-2);
+}
+
+.new-project-name {
+	flex: 1 1 auto;
+	min-width: 0;
+	text-align: left;
+	background: none;
+	border: none;
+	color: var(--text);
+	font: inherit;
+	font-size: 12.5px;
+	cursor: pointer;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	padding: 3px 2px;
+}
+
+.new-project-foot {
+	flex: none;
+	border-top: 1px solid var(--border);
+	padding-top: 6px;
+}
