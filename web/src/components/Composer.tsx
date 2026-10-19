@@ -125,13 +125,13 @@ export function Composer({ running, conversationId }: { running: boolean; conver
 						<ModelPicker models={snapshot.models} current={snapshot.model} />
 					) : (
 						<span
-							className="tool-group"
+							className="tool-chip tool-static mono"
 							title={snapshot?.model ? "这个会话使用的模型" : "还没打开会话，模型列表要等会话就绪"}
 						>
 							<span className="tool-icon" aria-hidden="true">
 								🤖
 							</span>
-							<span className="tool-chip tool-static mono">{snapshot?.model ?? "模型未就绪"}</span>
+							<span>{snapshot?.model ?? "模型未就绪"}</span>
 						</span>
 					)}
 					<ThinkingPicker level={snapshot?.thinkingLevel ?? null} levels={snapshot?.thinkingLevels ?? []} />
