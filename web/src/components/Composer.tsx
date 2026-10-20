@@ -183,9 +183,7 @@ export function Composer({ running, conversationId }: { running: boolean; conver
 					ref={inputRef}
 					className="composer-input"
 					value={draft}
-					placeholder={
-						running ? "正在跑…（回车排队会被拒绝，先点停止）" : "说点什么，回车发送 · Shift+回车换行 · 可直接粘贴截图"
-					}
+					placeholder={running ? "正在跑…（回车排队会被拒绝，先点停止）" : "说点什么，回车发送 · Shift+回车换行"}
 					onChange={(event) => {
 						setDraft(event.target.value);
 						// 自动高度：先归零再按内容算，上限 240px（超过就内部滚动）
