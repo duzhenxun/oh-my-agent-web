@@ -93,7 +93,8 @@
 
 	.sidebar {
 		width: 100%;
-		max-height: 30vh;
+		/* 不设 max-height：手机上是整屏抽屉，让内容自然撑开、由容器滚动 */
+		max-height: none;
 	}
 }
 

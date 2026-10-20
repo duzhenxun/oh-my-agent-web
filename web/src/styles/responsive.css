@@ -133,10 +133,18 @@
 }
 
 @media (max-width: 900px) {
-	/* 抽屉：整高 + 自己滚动（否则文件区会盖到消息上） */
+	/* 手机抽屉：占满整屏并自己滚动；**不再给侧栏设 max-height**
+	   （旧规则里 `max-height: 30vh` 会让项目列表只露三行，剩下全是空白） */
+	.side-host > .sidebar {
+		max-height: none;
+		height: auto;
+	}
+
 	.side-host {
 		top: 0;
 		height: 100dvh;
+		/* 顶栏压在抽屉之上，这里给它让出位置，免得「项目 (14)」标题被盖住 */
+		padding-top: 52px;
 		overflow-y: auto;
 		overscroll-behavior: contain;
 		box-shadow: none;
