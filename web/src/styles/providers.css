@@ -100,6 +100,14 @@
 	min-width: 0;
 	min-height: 0;
 	padding: 10px 12px;
+	/* 整体不滚：表单自己滚，模型区固定在下方（否则「批量测试」被表单一脚踹到屏幕外） */
+	overflow: hidden;
+}
+
+/* 表单区：占据剩余空间，自己滚 */
+.prov-detail > .side-panel {
+	flex: 1 1 auto;
+	min-height: 96px;
 	overflow: auto;
 }
 
@@ -110,6 +118,10 @@
 	border-top: 1px solid var(--border);
 	padding-top: 8px;
 	min-height: 0;
+	/* 固定在下方：表头（模型 / 批量测试 / 导入模型）永远可见 */
+	flex: 0 0 auto;
+	max-height: 46%;
+	max-height: min(46%, 420px);
 }
 
 .prov-models-head {
