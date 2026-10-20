@@ -8,56 +8,91 @@ import { ProviderForm } from "./ProviderForm.tsx";
 /**
  * 模型管理（左列表 + 右详情）。
  *
- * 布局照参考实现：**左边只放 provider**，右边放这个 provider 的表单与模型表。
- * 之前的写法是「把引擎可用模型按厂家平铺一遍 + 底下再列 provider」，
- * 结果是两套东西混在一起：既看不清自己配了什么，`0 个可用（先打开一个会话）`
- * 这种提示也毫无用处 —— 配置 provider 跟有没有打开会话无关。
+ * 左栏列**全部** provider（自定义的 + pi 内置的），点哪个就把它的模型摊在下面；
+ * 右栏是它的配置。之前只列自定义的，用户会以为 nexita / nexita-anthropic 之类「丢了」。
  *
- * 只认**用户自己配的** provider（source=custom）：Pi 内置目录里的那些由 pi 管，
- * 在这里列出来既不能改也容易误改，统一折叠成底部一行提示。
+ * 内置 provider 由 pi 自己的目录管理（baseUrl / 模型表都是 pi 给的），
+ * 这里只展示 + 说明，不给编辑入口 —— 改了会写坏 pi 的配置。
  */
 export function ProvidersPanel() {
 	const { snapshot } = useAppState();
-	const all: ProviderView[] = snapshot?.providers ?? [];
-	const custom = all.filter((provider) => provider.source === "custom");
-	const builtin = all.filter((provider) => provider.source === "builtin");
+	const providers: ProviderView[] = snapshot?.providers ?? [];
+	/** 引擎当前可用的模型（`provider/modelId`）：用来标「已启用」 */
+	const enabled = new Set((snapshot?.models ?? []).map((model) => model.id));
 
 	const [selected, setSelected] = useState<string | null>(null);
 	const [creating, setCreating] = useState(false);
 	const [importing, setImporting] = useState(false);
 	const [editingModel, setEditingModel] = useState<string | null>(null);
 
-	// 没选或选中的被删掉了 → 落到第一个（列表随快照变，不额外存副本）
-	const current = custom.find((provider) => provider.provider === selected) ?? custom[0] ?? null;
+	// 没选或选中的没了 → 落到第一个（列表随快照变，不另存副本）
+	const current = providers.find((provider) => provider.provider === selected) ?? providers[0] ?? null;
+	const isCustom = current?.source === "custom";
 	const showForm = creating || current === null;
+	const enabledCount = (provider: ProviderView) =>
+		provider.models.filter((model) => enabled.has(`${provider.provider}/${model.id}`)).length;
 
 	return (
 		<div className="prov-shell">
 			<aside className="prov-list">
 				<div className="prov-list-head">
 					<span>Provider</span>
-					<span className="side-panel-count">{custom.length}</span>
+					<span className="side-panel-count">{providers.length}</span>
 				</div>
 				<div className="prov-list-scroll">
-					{custom.length === 0 ? <div className="side-panel-hint">还没有自定义 provider</div> : null}
-					{custom.map((provider) => (
-						<button
-							type="button"
-							key={provider.provider}
-							className={`prov-item${!creating && current?.provider === provider.provider ? " prov-item-on" : ""}`}
-							onClick={() => {
-								setCreating(false);
-								setSelected(provider.provider);
-								setImporting(false);
-								setEditingModel(null);
-							}}
-						>
-							<span className="prov-item-name">{provider.provider}</span>
-							<span className="prov-item-meta">
-								{provider.models.length} 模型{provider.hasKey ? "" : " · 无 key"}
-							</span>
-						</button>
-					))}
+					{providers.length === 0 ? <div className="side-panel-hint">还没有 provider</div> : null}
+					{providers.map((provider) => {
+						const active = !creating && current?.provider === provider.provider;
+						return (
+							<div key={provider.provider} className={`prov-block${active ? " prov-block-on" : ""}`}>
+								<button
+									type="button"
+									className={`prov-item${active ? " prov-item-on" : ""}`}
+									onClick={() => {
+										setCreating(false);
+										setImporting(false);
+										setEditingModel(null);
+										setSelected(provider.provider);
+									}}
+								>
+									<span className="prov-item-name">
+										{provider.provider}
+										{provider.source === "builtin" ? <span className="side-provider-badge">内置</span> : null}
+										{provider.hasKey ? null : <span className="prov-item-warn">无 key</span>}
+									</span>
+									<span className="prov-item-meta">
+										启用 {enabledCount(provider)}/{provider.models.length}
+									</span>
+								</button>
+								{active ? (
+									<div className="prov-models-inline">
+										{provider.models.length === 0 ? (
+											<div className="side-panel-hint">这个 provider 下没有模型</div>
+										) : null}
+										{provider.models.map((model) => (
+											<button
+												type="button"
+												key={model.id}
+												className="prov-inline-row"
+												title={model.id}
+												onClick={() => {
+													if (provider.source !== "custom") return;
+													setImporting(false);
+													setEditingModel(model.id);
+												}}
+											>
+												<span
+													className={`prov-dot${enabled.has(`${provider.provider}/${model.id}`) ? " prov-dot-on" : ""}`}
+													title={enabled.has(`${provider.provider}/${model.id}`) ? "已启用" : "未启用"}
+												/>
+												<span className="prov-inline-name">{model.name}</span>
+											</button>
+										))}
+									</div>
+								) : null}
+							</div>
+						);
+					})}
 				</div>
 				<button
 					type="button"
@@ -70,15 +105,44 @@ export function ProvidersPanel() {
 				>
 					＋ 添加 Provider
 				</button>
-				{builtin.length > 0 ? (
-					<div className="prov-builtin" title={builtin.map((provider) => provider.provider).join(", ")}>
-						pi 内置 {builtin.length} 个 provider（由 pi 管理，不在此编辑）
-					</div>
-				) : null}
 			</aside>
 
 			<section className="prov-detail">
-				{editingModel && current ? (
+				{current?.source === "builtin" && !creating ? (
+					<div className="side-panel">
+						<div className="side-panel-head">
+							<strong>{current.provider}</strong>
+							<span className="side-provider-badge">内置</span>
+							<span className="topbar-spacer" />
+							<span className="side-panel-count">
+								{enabledCount(current)}/{current.models.length} 启用
+							</span>
+						</div>
+						<div className="side-panel-hint">
+							它由 pi 内置目录管理：baseUrl 与模型表都来自 pi 自己
+							{current.hasKey ? `，key ${current.keyHint ?? ""}` : "，目前没有 key"}。 要改它请用 pi
+							的配置文件，这里只做展示（改这里会写坏 pi 的目录）。
+						</div>
+						<div className="prov-models">
+							<div className="prov-models-head">
+								<span>模型</span>
+								<span className="side-panel-count">{current.models.length}</span>
+							</div>
+							<div className="prov-models-scroll">
+								{current.models.map((model) => (
+									<div className="prov-model-row" key={model.id}>
+										<span className="prov-model-name" title={model.id}>
+											{model.name}
+										</span>
+										<span className="prov-model-spec">
+											{enabled.has(`${current.provider}/${model.id}`) ? "已启用" : "未启用"}
+										</span>
+									</div>
+								))}
+							</div>
+						</div>
+					</div>
+				) : editingModel && current ? (
 					<ModelEditor
 						key={`${current.provider}/${editingModel}`}
 						provider={current}
@@ -94,7 +158,7 @@ export function ProvidersPanel() {
 							initial={showForm ? null : current}
 							onClose={() => setCreating(false)}
 						/>
-						{current && !creating ? (
+						{isCustom && current && !creating ? (
 							<div className="prov-models">
 								<div className="prov-models-head">
 									<span>模型</span>

@@ -183,3 +183,92 @@
 .prov-detail .import-foot {
 	position: static;
 }
+
+/* 左栏：provider 块（选中时把模型摊在下面） */
+.prov-block {
+	display: flex;
+	flex-direction: column;
+	border-radius: 8px;
+}
+
+.prov-block-on {
+	background: var(--bg);
+}
+
+.prov-block .prov-item {
+	padding: 6px 8px;
+	border: none;
+	border-radius: 8px;
+}
+
+.prov-item-name {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+}
+
+.prov-item-warn {
+	font-size: 9.5px;
+	font-weight: 400;
+	color: var(--text-faint);
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	padding: 0 5px;
+}
+
+.prov-models-inline {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	padding: 2px 4px 6px 16px;
+}
+
+.prov-inline-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 3px 6px;
+	border: none;
+	border-radius: 6px;
+	background: none;
+	color: inherit;
+	cursor: pointer;
+	text-align: left;
+	font-size: 12px;
+}
+
+.prov-inline-row:hover {
+	background: var(--bg-soft);
+}
+
+.prov-inline-name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.prov-dot {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: var(--border);
+	flex: none;
+}
+
+.prov-dot-on {
+	background: var(--accent);
+}
+
+/* 左栏名称行别把「无 key / 内置」徽标挤出边界 */
+.prov-item-name {
+	flex-wrap: wrap;
+	min-width: 0;
+}
+
+.prov-item-name > span {
+	flex: none;
+}
+
+.prov-item-meta {
+	font-variant-numeric: tabular-nums;
+}
