@@ -358,3 +358,25 @@ body {
 .tool-output {
 	scrollbar-gutter: stable;
 }
+
+/* 底部状态栏里的「顶部栏」开关 */
+.status-toggle {
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--bg-elev);
+	color: var(--text-faint);
+	font: inherit;
+	font-size: 11px;
+	padding: 1px 6px;
+	cursor: pointer;
+}
+
+.status-toggle:hover {
+	color: var(--text);
+	border-color: var(--accent-dim);
+}
+
+/* `hidden` 属性打不过作者样式里的 display:flex，得显式关掉 */
+.appbar[hidden] {
+	display: none;
+}

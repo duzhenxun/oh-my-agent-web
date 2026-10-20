@@ -18,6 +18,8 @@ export function App() {
 	// 文件面板（M4）：跟着当前会话的工作区走
 	// 侧栏：可收起 + 可拖宽（状态存 localStorage，刷新后保持）
 	const [collapsed, setCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1");
+	/** 顶部栏是否收起（底部状态栏的「▴ 顶部」切换，状态存 localStorage） */
+	const [appbarHidden, setAppbarHidden] = useState(() => localStorage.getItem("agent-web:appbar-hidden") === "1");
 	const [previewVisible, setPreviewVisible] = useState(true);
 	const [sideWidth, setSideWidth] = useState(() => readStoredWidth(localStorage.getItem(SIDEBAR_WIDTH_KEY)));
 	const dragging = useRef(false);
@@ -25,6 +27,9 @@ export function App() {
 	useEffect(() => {
 		localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? "1" : "0");
 	}, [collapsed]);
+	useEffect(() => {
+		localStorage.setItem("agent-web:appbar-hidden", appbarHidden ? "1" : "0");
+	}, [appbarHidden]);
 	useEffect(() => {
 		localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sideWidth));
 	}, [sideWidth]);
@@ -101,7 +106,7 @@ export function App() {
 	return (
 		<div className="app">
 			{/* 顶部区域：横跨整个宽度，三栏都在它下面 */}
-			<div className="appbar">
+			<div className="appbar" hidden={appbarHidden}>
 				<button
 					type="button"
 					className="appbar-drawer"
@@ -249,7 +254,12 @@ export function App() {
 				) : null}
 			</div>
 
-			<StatusBar connection={state.connection} snapshot={snapshot} />
+			<StatusBar
+				connection={state.connection}
+				snapshot={snapshot}
+				appbarHidden={appbarHidden}
+				onToggleAppbar={() => setAppbarHidden((value) => !value)}
+			/>
 
 			{snapshot?.pendingApproval ? <ApprovalDialog approval={snapshot.pendingApproval} /> : null}
 		</div>

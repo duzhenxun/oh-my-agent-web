@@ -13,7 +13,18 @@ function formatTokens(value: number): string {
  * 左：连接 / 引擎 / 对话数 / 工作中 / 排队；右：会话 token / 项目路径。
  * 数据全部来自已有快照，不额外拉取。
  */
-export function StatusBar({ connection, snapshot }: { connection: string; snapshot: Snapshot | null }) {
+export function StatusBar({
+	connection,
+	snapshot,
+	appbarHidden,
+	onToggleAppbar,
+}: {
+	connection: string;
+	snapshot: Snapshot | null;
+	/** 顶部栏是否收起（状态由 App 持有并持久化） */
+	appbarHidden: boolean;
+	onToggleAppbar: () => void;
+}) {
 	const running = Object.keys(snapshot?.runningByConversation ?? {}).length;
 	const tokens = snapshot?.sessionStats?.totalTokens ?? 0;
 	return (
@@ -28,6 +39,14 @@ export function StatusBar({ connection, snapshot }: { connection: string; snapsh
 			<span className="status-item" title="本会话累计 token">
 				Σ {formatTokens(tokens)}
 			</span>
+			<button
+				type="button"
+				className="status-toggle"
+				onClick={onToggleAppbar}
+				title={appbarHidden ? "显示顶部栏" : "隐藏顶部栏"}
+			>
+				{appbarHidden ? "▾ 顶部" : "▴ 顶部"}
+			</button>
 			<span className="status-item status-path" title={snapshot?.files?.root ?? ""}>
 				📁 {snapshot?.files?.root?.split("/").filter(Boolean).pop() ?? "—"}
 			</span>
