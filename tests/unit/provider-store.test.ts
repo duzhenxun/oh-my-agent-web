@@ -213,3 +213,66 @@ describe("updateModel（ADR-0026 A 期）", () => {
 		expect(noModel.ok).toBe(false);
 	});
 });
+
+describe("removeModel（从 provider 下移除模型）", () => {
+	it("只删这一个模型，其它模型与凭证都留着", async () => {
+		writeFileSync(
+			join(agentDir, MODELS_STORE_FILE),
+			JSON.stringify({ acme: { models: [{ id: "m1" }, { id: "m2" }] } }),
+		);
+		writeFileSync(join(agentDir, AUTH_FILE), JSON.stringify({ acme: { type: "api_key", key: "sk-abcdefgh" } }));
+		const result = await store().removeModel("acme", "m1");
+		expect(result.ok).toBe(true);
+		const models = JSON.parse(readFileSync(join(agentDir, MODELS_STORE_FILE), "utf8"));
+		expect(models.acme.models.map((model: { id: string }) => model.id)).toEqual(["m2"]);
+		expect(JSON.parse(readFileSync(join(agentDir, AUTH_FILE), "utf8")).acme.key).toBe("sk-abcdefgh");
+		expect(statSync(join(agentDir, MODELS_STORE_FILE)).mode & 0o777).toBe(0o600);
+	});
+
+	it("模型或 provider 不存在 → 明确报错（不乱写文件）", async () => {
+		writeFileSync(join(agentDir, MODELS_STORE_FILE), JSON.stringify({ acme: { models: [{ id: "m1" }] } }));
+		expect((await store().removeModel("acme", "ghost")).ok).toBe(false);
+		expect((await store().removeModel("ghost", "m1")).ok).toBe(false);
+	});
+});
+
+describe("list 带逐模型规格（编辑器预填）", () => {
+	it("reasoning / 图片输入 / 规格 / 价格都读回来", async () => {
+		writeFileSync(
+			join(agentDir, MODELS_STORE_FILE),
+			JSON.stringify({
+				acme: {
+					models: [
+						{
+							id: "m1",
+							name: "M1",
+							reasoning: true,
+							input: ["text", "image"],
+							contextWindow: 1000000,
+							maxTokens: 384000,
+							cost: { input: 0.1, output: 0.4, cacheRead: 0, cacheWrite: 0 },
+						},
+					],
+				},
+			}),
+		);
+		const view = await store().get("acme");
+		expect(view?.models[0]).toMatchObject({
+			id: "m1",
+			name: "M1",
+			reasoning: true,
+			imageInput: true,
+			contextWindow: 1000000,
+			maxTokens: 384000,
+			cost: { input: 0.1, output: 0.4 },
+		});
+	});
+
+	it("没配过的模型不编造规格（不给 0、不给 false 之外的假值）", async () => {
+		writeFileSync(join(agentDir, MODELS_STORE_FILE), JSON.stringify({ acme: { models: [{ id: "m1" }] } }));
+		const model = (await store().get("acme"))?.models[0];
+		expect(model?.imageInput).toBe(false);
+		expect(model?.contextWindow).toBeUndefined();
+		expect(model?.cost).toBeUndefined();
+	});
+});

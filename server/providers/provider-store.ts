@@ -57,6 +57,8 @@ export type ProviderStore = {
 		provider: string,
 		ids: string[],
 	) => Promise<{ ok: true; added: string[]; skipped: string[] } | { ok: false; error: string }>;
+	/** 从 provider 下移除一个模型（模型表里的条目，不动凭证） */
+	removeModel: (provider: string, modelId: string) => Promise<{ ok: true } | { ok: false; error: string }>;
 	/**
 	 * 读明文 key —— **只给服务端内部用**（例如连通性测试发请求）。
 	 * 绝不能挂到任何返回给前端的路径上；协议里没有、也不会有对应字段。
@@ -107,7 +109,15 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 					hasKey: typeof key === "string" && key !== "",
 					keyHint: maskKey(typeof key === "string" ? key : undefined),
 					...(headers ? { headerNames: Object.keys(headers) } : {}),
-					models: list.map((model) => ({ id: model.id, name: model.name ?? model.id })),
+					models: list.map((model) => ({
+						id: model.id,
+						name: model.name ?? model.id,
+						reasoning: model.reasoning === true,
+						imageInput: Array.isArray(model.input) && model.input.includes("image"),
+						...(typeof model.contextWindow === "number" ? { contextWindow: model.contextWindow } : {}),
+						...(typeof model.maxTokens === "number" ? { maxTokens: model.maxTokens } : {}),
+						...(model.cost ? { cost: model.cost as Record<string, number> } : {}),
+					})),
 				};
 			});
 			// 内置 provider（nexita / nexita-anthropic …）：pi 的目录里，models-store 里没有它们
@@ -133,6 +143,18 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 			const auth = await readJson<AuthStore>(authPath, {});
 			const key = auth[provider]?.key;
 			return typeof key === "string" && key !== "" ? key : null;
+		},
+
+		async removeModel(provider, modelId) {
+			const models = await readJson<ModelsStore>(modelsPath, {});
+			const entry = models[provider];
+			if (!entry) return { ok: false, error: `没有这个 provider：${provider}` };
+			const list = Array.isArray(entry.models) ? entry.models : [];
+			const next = list.filter((model) => model.id !== modelId);
+			if (next.length === list.length) return { ok: false, error: `这个 provider 下没有模型：${modelId}` };
+			models[provider] = { ...entry, models: next, lastModified: options.now() };
+			await writeJsonPrivate(modelsPath, models);
+			return { ok: true };
 		},
 
 		async readHeaders(provider) {

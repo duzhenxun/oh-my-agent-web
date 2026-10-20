@@ -190,6 +190,11 @@ export function updateModel(provider: string, model: Record<string, unknown>): v
 	send({ id: `req-${++seq}`, type: "update_model", payload: { provider, model } });
 }
 
+/** 从 provider 下移除一个模型（不动凭证） */
+export function removeModel(provider: string, modelId: string): void {
+	send({ id: `req-${++seq}`, type: "remove_model", payload: { provider, modelId } });
+}
+
 /** 删除 provider（B 期）：模型表与凭证一起删；界面负责二次确认 */
 export function deleteProvider(provider: string): void {
 	send({ id: `req-${++seq}`, type: "delete_provider", provider });

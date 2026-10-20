@@ -1,14 +1,6 @@
 /**
- * wire 协议唯一事实源（ADR-0002 纪律①、ADR-0004、ADR-0012）。
- *
- * ⚠️ 这个文件是线上消息规格的**唯一**定义处：
- *   - 只允许类型与常量，不允许任何 import、不允许任何运行时逻辑（`web` 侧要直接吃它）；
- *   - 改了这里必须同步 `web/src/types.ts`（它只是 shim），守卫 `check-protocol-sync.mjs` 会红。
- *
- * 消息分三类（ADR-0004 §2）：
- *   上行请求 `ClientRequest`（必带 id）
- *   下行应答 `ServerReply`（回同一个 id）
- *   下行事件 `ServerEvent`（不需要回执：snapshot / message_delta / notice）
+ * wire 协议唯一事实源（ADR-0002 纪律①）：改这里必须同步 `web/src/types.ts`（只是 shim）。
+ * 三类消息：`ClientRequest`（必带 id）/ `ServerReply` / `ServerEvent`（snapshot、delta、notice）。
  */
 
 export const PROTOCOL_VERSION = 1;
@@ -106,10 +98,7 @@ export type PiSessionSummary = {
 };
 
 /** 按项目（工作目录）分组的会话列表 */
-/**
- * 附件引用（ADR-0020 §P3）：**只带引用，不带内容** —— 图片走 HTTP 上传（ADR-0004 的单条 ≤64KB），
- * 消息里只有 id。服务端据此读回文件（图片交给模型做视觉注入，其它只给路径引用）。
- */
+/** 附件引用（ADR-0020 §P3）：只带 id 不带内容；图片走 HTTP 上传，服务端据此读回文件。 */
 export type AttachmentRef = {
 	id: string;
 	kind: "image" | "file";
@@ -121,9 +110,17 @@ export type AttachmentRef = {
 /** 可选模型（ADR-0020 §P2）：id 是 `provider/modelId`，label 给人看 */
 export type ModelOption = { id: string; label: string };
 
-/**
- * provider 配置视图（ADR-0025 §2）：**永远不含明文 key**，只给 hasKey 与尾 4 位提示。
- */
+/** provider 配置视图（ADR-0025 §2）：**永远不含明文 key**，只给 hasKey 与尾 4 位。 */
+export type ModelSpecView = {
+	id: string;
+	name: string;
+	reasoning?: boolean;
+	imageInput?: boolean;
+	contextWindow?: number;
+	maxTokens?: number;
+	cost?: Record<string, number>;
+};
+
 export type ProviderView = {
 	provider: string;
 	/**
@@ -138,7 +135,8 @@ export type ProviderView = {
 	keyHint: string | null;
 	/** 自定义 header 只回传名称，不回传值 */
 	headerNames?: string[];
-	models: { id: string; name: string }[];
+	/** 逐模型规格（编辑器预填用；没配过就缺省，不算 0） */
+	models: ModelSpecView[];
 };
 
 /** 建议操作（ADR-0022）：模型用 [[action:suggest:...]] 给出的「下一步」，前端渲染成按钮 */
@@ -335,6 +333,9 @@ export type UpdateModelRequest = {
 	payload: { provider: string; model: Record<string, unknown> };
 };
 
+/** 从 provider 下移除一个模型（不动凭证） */
+export type RemoveModelRequest = { id: string; type: "remove_model"; payload: { provider: string; modelId: string } };
+
 export type CancelQueuedRequest = { id: string; type: "cancel_queued"; payload: { queueId: string } };
 /** 设置思考强度（P4）：档位由引擎给（off/minimal/low/medium/high/xhigh/max） */
 export type SetThinkingLevelRequest = { id: string; type: "set_thinking_level"; payload: { level: string } };
@@ -356,6 +357,7 @@ export type ClientRequest =
 	| TestProviderRequest
 	| SetThinkingLevelRequest
 	| CancelQueuedRequest
+	| RemoveModelRequest
 	| UpdateModelRequest
 	| NewChatRequest
 	| SwitchConversationRequest;

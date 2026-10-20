@@ -75,6 +75,17 @@ export async function handleProviderRequest(
 		return { ok: true };
 	}
 
+	if (request.type === "remove_model") {
+		const payload = (request as unknown as { payload: { provider: string; modelId: string } }).payload;
+		const result = await deps.store.removeModel(payload.provider, payload.modelId);
+		if (!result.ok) {
+			deps.notify(`移除模型失败：${result.error}`, "error");
+			return { ok: false, error: { code: "model.remove_failed", message: result.error } };
+		}
+		deps.notify(`已从「${payload.provider}」移除模型：${payload.modelId}`, "info");
+		return { ok: true };
+	}
+
 	if (request.type === "delete_provider") {
 		const provider = String((request as { provider?: unknown }).provider ?? "");
 		const result = await deps.store.remove(provider);

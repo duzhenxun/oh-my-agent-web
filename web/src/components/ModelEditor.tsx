@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { testModel } from "../ws.ts";
 import type { ProviderView } from "../types.ts";
-import { updateModel } from "../ws.ts";
+import { removeModel, updateModel } from "../ws.ts";
 
 type ModelSpecForm = {
 	id: string;
@@ -19,17 +19,19 @@ type ModelSpecForm = {
 /** 从 provider 视图里取一个模型的初始表单（规格/价格拿不到就留空 —— 显示"未提供"，不写 0） */
 function initialForm(provider: ProviderView, modelId: string): ModelSpecForm {
 	const model = provider.models.find((item) => item.id === modelId);
+	const cost = model?.cost ?? {};
+	const text = (value: unknown) => (typeof value === "number" ? String(value) : "");
 	return {
 		id: modelId,
 		name: model?.name ?? modelId,
-		reasoning: false,
-		imageInput: false,
-		contextWindow: "",
-		maxTokens: "",
-		input: "",
-		output: "",
-		cacheRead: "",
-		cacheWrite: "",
+		reasoning: model?.reasoning === true,
+		imageInput: model?.imageInput === true,
+		contextWindow: text(model?.contextWindow),
+		maxTokens: text(model?.maxTokens),
+		input: text(cost.input),
+		output: text(cost.output),
+		cacheRead: text(cost.cacheRead),
+		cacheWrite: text(cost.cacheWrite),
 	};
 }
 
@@ -75,7 +77,7 @@ export function ModelEditor({
 			error?: { message?: string };
 		};
 		if (!response.ok || !body.spec) {
-			setCatalog("没查到");
+			setCatalog("models.dev 里没查到，请手动填写");
 			return;
 		}
 		const spec = body.spec;
@@ -97,7 +99,9 @@ export function ModelEditor({
 	const runTest = async () => {
 		setTesting("测试中…");
 		const result = await testModel(provider.provider, form.id);
-		setTesting(result.ok ? `✅ 通了（HTTP ${result.status}，${result.latencyMs}ms）` : `❌ 没通：${result.message}`);
+		setTesting(
+			result.ok ? `✅ 响应正常：${result.latencyMs}ms（HTTP ${result.status}）` : `❌ 没通：${result.message}`,
+		);
 	};
 
 	const save = () => {
@@ -119,6 +123,21 @@ export function ModelEditor({
 				<strong>模型</strong>
 				<span className="side-panel-count mono">{provider.provider}</span>
 				<span className="topbar-spacer" />
+				<button type="button" className="btn btn-tiny" onClick={() => void runTest()} disabled={testing !== null}>
+					测试
+				</button>
+				<button
+					type="button"
+					className="btn btn-tiny btn-danger"
+					onClick={() => {
+						// 只移出模型表，不动 api key：误删了重新导入即可
+						if (!window.confirm(`从「${provider.provider}」移除模型 ${form.id}？`)) return;
+						removeModel(provider.provider, form.id);
+						onClose();
+					}}
+				>
+					移除
+				</button>
 				<button type="button" className="btn btn-tiny" onClick={onClose}>
 					关闭
 				</button>
@@ -234,16 +253,10 @@ export function ModelEditor({
 				>
 					填入模型信息
 				</button>
-				<button
-					type="button"
-					className="btn btn-tiny"
-					title="发送一次最小 chat 请求（max_tokens=1）—— 会消耗一次请求"
-					onClick={() => void runTest()}
-				>
-					🔌 测试（会消耗一次请求）
-				</button>
 			</div>
-			{catalog ? <div className="side-panel-hint">来源：models.dev（建议值，按需修改）</div> : null}
+			{catalog ? (
+				<div className={catalog.startsWith("已填入") ? "side-ok" : "side-panel-hint side-error"}>{catalog}</div>
+			) : null}
 			{testing ? (
 				<div className={testing.startsWith("✅") ? "side-ok" : "side-panel-hint side-error"}>{testing}</div>
 			) : null}

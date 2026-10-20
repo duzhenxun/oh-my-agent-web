@@ -128,6 +128,12 @@ export function parseClientRequest(raw: unknown): ClientRequest | null {
 		return { id, type: "update_model", payload: { provider, model } };
 	}
 
+	if (type === "remove_model") {
+		const provider = typeof payload?.provider === "string" ? payload.provider.trim() : "";
+		const modelId = typeof payload?.modelId === "string" ? payload.modelId.trim() : "";
+		return provider === "" || modelId === "" ? null : { id, type: "remove_model", payload: { provider, modelId } };
+	}
+
 	if (type === "cancel_queued") {
 		const queueId = typeof payload?.queueId === "string" ? payload.queueId.trim() : "";
 		return queueId === "" ? null : { id, type: "cancel_queued", payload: { queueId } };
