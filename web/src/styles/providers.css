@@ -292,3 +292,43 @@
 .prov-item-meta {
 	font-variant-numeric: tabular-nums;
 }
+
+/* 字段标题行：文字 + 右侧小按钮（如「从 API 获取」） */
+.prov-field-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+}
+
+/* 表单里的「从 API 获取」选择框（复用导入模型的样式，限制高度可滚） */
+.prov-picker {
+	margin-top: 6px;
+	gap: 8px;
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	flex: 0 0 auto;
+}
+
+.prov-picker-filter {
+	width: 100%;
+	padding: 6px 8px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--bg);
+	color: var(--text);
+	font-size: 12.5px;
+}
+
+.prov-picker .import-list {
+	max-height: 260px;
+	overflow: auto;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+}
+
+.import-row-head {
+	font-weight: 600;
+	border-bottom: 1px solid var(--border);
+}

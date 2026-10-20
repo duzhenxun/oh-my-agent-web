@@ -45,6 +45,37 @@ export function registerImportRoutes(app: Express, options: { store: ProviderSto
 		response.json({ models: result.models.map((model) => ({ ...model, imported: imported.has(model.id) })) });
 	});
 
+	/** 保存前先探测模型清单：用**表单里还没保存**的值（新 provider 不用先存一次） */
+	app.post("/api/providers/remote-models", async (request, response) => {
+		const body = request.body as
+			| { provider?: string; baseUrl?: string; api?: string; apiKey?: string; headers?: Record<string, string> }
+			| undefined;
+		// 表单没填 baseUrl 时回落到已保存的配置（内置 provider 就是这样：界面上不重复填）
+		const stored = body?.provider ? await options.store.get(body.provider) : null;
+		const baseUrl = (typeof body?.baseUrl === "string" ? body.baseUrl.trim() : "") || stored?.baseUrl || "";
+		if (baseUrl === "") {
+			response.status(400).json({ error: { code: "remote.no_base_url", message: "先填 base url" } });
+			return;
+		}
+		const apiKey = body?.apiKey?.trim() ? body.apiKey.trim() : await options.store.readKey(body?.provider ?? "");
+		if (!apiKey) {
+			response.status(400).json({ error: { code: "remote.no_key", message: "先填 api key 再探测" } });
+			return;
+		}
+		const headers = body?.headers ?? (body?.provider ? await options.store.readHeaders(body.provider) : {});
+		const result = await listRemoteModels({
+			baseUrl,
+			api: (body?.api ?? stored?.api) || undefined,
+			apiKey,
+			...(Object.keys(headers ?? {}).length > 0 ? { headers } : {}),
+		});
+		if (!result.ok) {
+			response.status(502).json({ error: { code: "remote.failed", message: result.message } });
+			return;
+		}
+		response.json({ models: result.models });
+	});
+
 	/** 保存前先验证：用**表单里还没保存**的值试一次（key 留空则用已存的那把） */
 	app.post("/api/providers/verify", async (request, response) => {
 		const body = request.body as

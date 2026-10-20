@@ -213,6 +213,12 @@ export function ProvidersPanel() {
 								key={showForm ? "new" : current?.provider}
 								initial={showForm ? null : current}
 								onClose={() => setCreating(false)}
+								onSaved={(saved) => {
+									// 存完就选中它：否则表单还停在「添加」态，看着像没保存成功
+									setCreating(false);
+									setSelected(saved);
+									setTab("config");
+								}}
 							/>
 						) : null}
 

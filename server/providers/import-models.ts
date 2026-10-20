@@ -17,9 +17,15 @@ export async function listRemoteModels(options: {
 	timeoutMs?: number;
 	fetchImpl?: typeof fetch;
 }): Promise<RemoteListResult> {
+	const root = options.baseUrl.replace(/\/+$/, "");
+	// 有的网关 baseUrl 不带 /v1（例如 https://codeapi.nexita.net），/models 会 404；
+	// 所以按 [/models, /v1/models] 依次试，第一次成功就用它。
+	const candidates = [`${root}/models`, `${root}/v1/models`].filter(
+		(value, index, all) => all.indexOf(value) === index,
+	);
 	let url: URL;
 	try {
-		url = new URL(`${options.baseUrl.replace(/\/+$/, "")}/models`);
+		url = new URL(candidates[0] ?? "");
 	} catch {
 		return { ok: false, message: "baseUrl 不是合法 URL" };
 	}
@@ -29,11 +35,13 @@ export async function listRemoteModels(options: {
 	const controller = new AbortController();
 	const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 8000);
 	try {
-		const response = await doFetch(url.toString(), {
-			method: "GET",
-			headers: providerHeaders(options.api ?? "openai-completions", options.apiKey, options.headers),
-			signal: controller.signal,
-		});
+		const headers = providerHeaders(options.api ?? "openai-completions", options.apiKey, options.headers);
+		let response = await doFetch(url.toString(), { method: "GET", headers, signal: controller.signal });
+		for (const candidate of candidates.slice(1)) {
+			if (response.status !== 404 && response.status !== 405) break;
+			url = new URL(candidate);
+			response = await doFetch(url.toString(), { method: "GET", headers, signal: controller.signal });
+		}
 		if (!response.ok) {
 			return {
 				ok: false,
