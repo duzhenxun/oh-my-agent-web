@@ -30,6 +30,22 @@ import { sessionUrlFor } from "./session-url.ts";
 const MAX_BACKOFF_MS = 8000;
 const BASE_BACKOFF_MS = 500;
 
+/**
+ * 每个**标签页**自己的标识（ADR-0033）。
+ *
+ * 不能用 cookie：cookie 是同浏览器所有标签页共享的，A 切会话 B 会跟着变。
+ * sessionStorage 天然是「每个标签页一份」，刷新保留、新标签页新值。
+ */
+const CLIENT_KEY = "agent-web-client";
+function clientId(): string {
+	let value = sessionStorage.getItem(CLIENT_KEY);
+	if (!value) {
+		value = crypto.randomUUID();
+		sessionStorage.setItem(CLIENT_KEY, value);
+	}
+	return value;
+}
+
 let source: EventSource | null = null;
 let attempt = 0;
 let seq = 0;
@@ -38,7 +54,8 @@ export function connect(): void {
 	if (source && source.readyState !== EventSource.CLOSED) return;
 
 	setAppState({ connection: "connecting" });
-	const next = new EventSource("/api/events");
+	// SSE 带不了自定义头，所以用查询参数把标签页标识带过去
+	const next = new EventSource(`/api/events?client=${encodeURIComponent(clientId())}`);
 	source = next;
 
 	next.addEventListener("open", () => {
@@ -82,7 +99,7 @@ export function send(requestMessage: ClientRequest): void {
 		try {
 			const response = await fetch("/api/rpc", {
 				method: "POST",
-				headers: { "content-type": "application/json" },
+				headers: { "content-type": "application/json", "x-agent-client": clientId() },
 				body: JSON.stringify(requestMessage),
 			});
 			if (!response.ok) {

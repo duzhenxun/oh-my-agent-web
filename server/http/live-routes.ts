@@ -13,6 +13,8 @@ import type { Express } from "express";
 import type { Snapshot } from "../protocol.js";
 
 export const CLIENT_COOKIE = "agent-web-client";
+/** 每个标签页自己的标识（cookie 是同浏览器共享的，不能用来区分标签页） */
+export const CLIENT_HEADER = "x-agent-client";
 
 export type Sink = (payload: string) => void;
 
@@ -25,6 +27,18 @@ export type LiveDeps = {
 	handleMessage: (clientId: string, socket: { send: (payload: string) => void }, raw: string) => Promise<void>;
 	logger: { info: (message: string, meta?: Record<string, unknown>) => void };
 };
+
+/** 客户端标识：优先请求头 / 查询参数（每个标签页不一样），最后才回落到 cookie */
+export function clientIdOf(input: {
+	header?: string | string[] | undefined;
+	query?: unknown;
+	cookie?: string | undefined;
+}): string | null {
+	const fromHeader = Array.isArray(input.header) ? input.header[0] : input.header;
+	if (typeof fromHeader === "string" && fromHeader.trim() !== "") return fromHeader.trim();
+	if (typeof input.query === "string" && input.query.trim() !== "") return input.query.trim();
+	return clientIdFromCookie(input.cookie);
+}
 
 /** 从 Cookie 头里取客户端标识 */
 export function clientIdFromCookie(header: string | undefined): string | null {
@@ -41,7 +55,11 @@ export function clientIdFromCookie(header: string | undefined): string | null {
 
 export function registerLiveRoutes(app: Express, deps: LiveDeps): void {
 	app.get("/api/events", (request, response) => {
-		const existing = clientIdFromCookie(request.headers.cookie);
+		const existing = clientIdOf({
+			header: request.headers[CLIENT_HEADER],
+			query: request.query?.client,
+			cookie: request.headers.cookie,
+		});
 		const clientId = existing ?? randomUUID();
 		if (!existing) {
 			response.setHeader(
@@ -77,7 +95,8 @@ export function registerLiveRoutes(app: Express, deps: LiveDeps): void {
 	});
 
 	app.post("/api/rpc", async (request, response) => {
-		const clientId = clientIdFromCookie(request.headers.cookie) ?? "anonymous";
+		const clientId =
+			clientIdOf({ header: request.headers[CLIENT_HEADER], cookie: request.headers.cookie }) ?? "anonymous";
 		const frames: string[] = [];
 		const shim = { send: (payload: string) => frames.push(payload) };
 		try {

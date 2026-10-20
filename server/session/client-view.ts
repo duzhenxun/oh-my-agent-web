@@ -21,7 +21,15 @@ export type ClientView = {
 export function createClientView(): ClientView {
 	const active = new Map<string, string>();
 	return {
-		activeFor: (clientId, fallback) => (clientId ? (active.get(clientId) ?? fallback) : fallback),
+		activeFor: (clientId, fallback) => {
+			if (!clientId) return fallback;
+			const own = active.get(clientId);
+			if (own !== undefined) return own;
+			// 第一次为这个客户端定型：之后全局 activeId 被别人改也不影响它（串台的真正来源）
+			const initial = fallback;
+			active.set(clientId, initial ?? "");
+			return initial;
+		},
 		setActive: (clientId, conversationId) => {
 			active.set(clientId, conversationId);
 		},
@@ -31,6 +39,6 @@ export function createClientView(): ClientView {
 		drop: (clientId) => {
 			active.delete(clientId);
 		},
-		size: () => active.size,
+		size: () => [...active.values()].filter((id) => id !== "").length,
 	};
 }
