@@ -2,6 +2,7 @@
  * HTTP 的「非 API」部分（从 index.ts 抽出：400 行护栏）：健康检查 + 前端静态资源。
  */
 import express, { type Express } from "express";
+import { compressText, immutableAssets } from "./compress.js";
 import { PROTOCOL_VERSION, type EngineName } from "../protocol.js";
 
 export function registerHealthAndStatic(
@@ -14,6 +15,10 @@ export function registerHealthAndStatic(
 		counts: () => { sessions: number; conversations: number };
 	},
 ): void {
+	// 压缩 + 缓存头要在静态与 API 之前挂（两条都是外网首屏的关键路径）
+	app.use(compressText());
+	app.use(immutableAssets());
+
 	app.get("/api/health", (_request, response) => {
 		const counts = options.counts();
 		response.json({
