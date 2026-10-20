@@ -8,9 +8,10 @@
 	background: var(--bg);
 }
 
+/* 用户消息：淡蓝底 + 蓝边（和助手的无底色区分开，又不用深色压住文字） */
 .msg-user {
-	border-color: var(--border-strong);
-	background: var(--bg-elev-2);
+	border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+	background: color-mix(in srgb, var(--accent) 13%, transparent);
 }
 
 .msg-head {

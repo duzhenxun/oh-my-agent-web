@@ -71,13 +71,6 @@ export function ModelPicker({
 					<button type="button" className="model-sheet-close" onClick={() => setOpen(false)} title="关闭">
 						✕ 关闭
 					</button>
-					<input
-						autoFocus
-						className="model-filter"
-						value={filter}
-						onChange={(event) => setFilter(event.target.value)}
-						placeholder="筛选模型…"
-					/>
 					<div className="model-list">
 						{groups.length === 0 ? <div className="model-empty">没有匹配的模型</div> : null}
 						{groups.map((group) => (
