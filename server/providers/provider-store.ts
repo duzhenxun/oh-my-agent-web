@@ -11,7 +11,7 @@ import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { ProviderView } from "../protocol.js";
 import { maskKey, type ModelSpec, type ProviderInput } from "./validate.js";
-import { addCatalogModels, writeCatalogModelPatch, writeCatalogUpsert } from "./catalog-writes.js";
+import { addCatalogModels, removeFromCatalog, writeCatalogModelPatch, writeCatalogUpsert } from "./catalog-writes.js";
 import { MODELS_FILE, readCatalog } from "./catalog-store.js";
 
 export const MODELS_STORE_FILE = "models-store.json";
@@ -36,8 +36,7 @@ type ModelsCatalog = {
 };
 
 /**
- * 把内置 provider「落成自定义条目」时用的种子（pi 的目录里本来就有这些模型）。
- * 只有整表照抄，才不会因为覆盖而丢掉内置的其它模型。
+ * 把内置 provider「落成自定义条目」时用的种子（整表照抄，才不会丢掉内置的其它模型）。
  */
 export type ProviderSeed = { baseUrl: string; api: string; models: { id: string; name: string }[] };
 
@@ -70,10 +69,7 @@ export type ProviderStore = {
 		spec: ModelSpec,
 		seed?: ProviderSeed,
 	) => Promise<{ ok: true } | { ok: false; error: string }>;
-	/**
-	 * 批量导入模型（ADR-0026 B 期）：只追加**不存在**的 id，已有的跳过（不覆盖用户填过的规格）。
-	 * api / baseUrl 沿用该 provider 现有条目；一个都没有时要求调用方先做一次 provider 级保存。
-	 */
+	/** 批量导入模型：只追加不存在的 id（不覆盖用户填过的规格） */
 	addModels: (
 		provider: string,
 		ids: string[],
@@ -311,6 +307,9 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 
 		async remove(provider) {
 			if (!/^[a-z0-9][a-z0-9-]{1,30}$/.test(provider)) return { ok: false, error: "provider 名字不合法" };
+			// 目录里的 provider：删的是 pi 的 models.json 条目
+			if (!(provider in (await readJson<ModelsStore>(modelsPath, {}))) && (await inCatalog(provider)))
+				return { ok: true, removed: await removeFromCatalog(options.agentDir, provider) };
 			const models = await readJson<ModelsStore>(modelsPath, {});
 			const auth = await readJson<AuthStore>(authPath, {});
 			const existed = provider in models || provider in auth;

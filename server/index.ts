@@ -29,6 +29,7 @@ import { createUploadStore, uploadsDir } from "./uploads/upload-store.js";
 import { builtinProviderGroups, createProviderWiring } from "./providers/provider-handlers.js";
 import { probeProvider } from "./providers/probe.js";
 import { createProviderStore } from "./providers/provider-store.js";
+import { createEnabledStore } from "./providers/enabled-models.js";
 import { registerAuxRoutes } from "./http/aux-routes.js";
 import { handleMessage } from "./ws/handle-message.js";
 import { registerHealthAndStatic } from "./http/health-and-static.js";
@@ -104,11 +105,13 @@ const engine: EnginePort = resolved.engine;
 /** 引擎在 runtime 建好之前就会创建，用一个 ref 把「通知」转发给界面 */
 /** provider 配置存储（ADR-0025）：复用 pi 自己的 models-store.json / auth.json */
 const providerStore = createProviderStore({ agentDir: piAgentDir(), now: Date.now });
+const enabledStore = createEnabledStore({ agentDir: piAgentDir() });
 
 const runProviderRequest = createProviderWiring({
 	store: providerStore,
 	logger,
 	probe: probeProvider,
+	enabled: enabledStore,
 	getRuntime: () => runtime,
 });
 
@@ -116,7 +119,13 @@ const runtimeRef: { current: { notify: (text: string, level?: "info" | "warn" | 
 	current: null,
 };
 /** 懒读：provider 列表里要带上内置 provider 分组，而那需要 runtime 里的模型表 */
-const providerList = async () => providerStore.list(builtinProviderGroups(runtime?.state().models ?? []));
+const providerList = async () => {
+	const list = await providerStore.list(builtinProviderGroups(runtime?.state().models ?? []));
+	// 白名单在同一次刷新里带出：界面上 provider / 模型的启用状态都靠它
+	const live = runtime?.state();
+	if (live) live.enabledModels = await enabledStore.read();
+	return list;
+};
 
 const runtime = createRuntime({
 	engine,

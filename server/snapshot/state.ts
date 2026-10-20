@@ -46,6 +46,8 @@ export type ServerState = {
 	running: RunningState;
 	/** 按会话的运行状态（并行回合用；只放 status 与开始时间，够侧栏转圈用） */
 	queued: { id: string; conversationId: string; text: string }[];
+	/** 已启用模型白名单（pi settings.json） */
+	enabledModels: string[];
 	runningByConversation: Record<string, { status: RunningState["status"]; turnStartedAt: number }>;
 	pendingApproval: PendingApproval | null;
 	notices: Notice[];
@@ -83,6 +85,7 @@ export function createServerState(workspace: string, engine: EngineName = "pi"):
 		messages: {},
 		running: emptyRunning(),
 		queued: [],
+		enabledModels: [],
 		runningByConversation: {},
 		pendingApproval: null,
 		notices: [],
@@ -153,6 +156,7 @@ export function buildSnapshot(state: ServerState, limit = SNAPSHOT_MESSAGE_LIMIT
 		},
 		running: { ...state.running, activeTool: state.running.activeTool ? { ...state.running.activeTool } : null },
 		queued: state.queued.map((item) => ({ ...item })),
+		enabledModels: [...state.enabledModels],
 		runningByConversation: { ...state.runningByConversation },
 		pendingApproval: state.pendingApproval ? { ...state.pendingApproval } : null,
 		terminal: state.terminal ? { ...state.terminal } : null,

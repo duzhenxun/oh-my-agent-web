@@ -26,6 +26,7 @@ function makeSnapshot(tag: number): Snapshot {
 		conversations: [],
 		active: { conversationId: null, messages: [], hasMoreBefore: false },
 		queued: [],
+		enabledModels: [],
 		runningByConversation: {},
 		running: {
 			status: "idle",

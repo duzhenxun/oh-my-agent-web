@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useAppState } from "../store.ts";
+import { deleteProvider, setProviderEnabled } from "../ws.ts";
 import type { ProviderView } from "../types.ts";
 import { ImportModels } from "./ImportModels.tsx";
 import { ModelEditor } from "./ModelEditor.tsx";
@@ -19,6 +20,11 @@ export function ProvidersPanel() {
 	const providers: ProviderView[] = snapshot?.providers ?? [];
 	/** 引擎当前可用的模型（`provider/modelId`）：用来标「已启用」 */
 	const enabled = new Set((snapshot?.models ?? []).map((model) => model.id));
+	/** 启用白名单（pi settings.json）：空数组 = 全开 */
+	const allowlist = snapshot?.enabledModels ?? [];
+	const providerEnabled = (provider: ProviderView) =>
+		allowlist.length === 0 ||
+		allowlist.some((pattern) => pattern === `${provider.provider}/**` || pattern.startsWith(`${provider.provider}/`));
 
 	const [selected, setSelected] = useState<string | null>(null);
 	const [creating, setCreating] = useState(false);
@@ -205,6 +211,27 @@ export function ProvidersPanel() {
 								<span className="side-panel-count">
 									{enabledCount(current)}/{current.models.length} 启用
 								</span>
+								<label className="prov-switch" title="停用后这个 provider 的模型不再出现在选择器里">
+									<input
+										type="checkbox"
+										checked={providerEnabled(current)}
+										onChange={(event) => setProviderEnabled(current.provider, event.target.checked)}
+									/>
+									<span className="prov-switch-track" aria-hidden="true" />
+								</label>
+								<button
+									type="button"
+									className="btn btn-tiny btn-danger"
+									onClick={() => {
+										const where = current.source === "builtin" ? "（会从 ~/.pi/agent/models.json 里整条删掉）" : "";
+										if (!window.confirm(`删除 provider「${current.provider}」？它的 api key 也会一起删。${where}`))
+											return;
+										deleteProvider(current.provider);
+										setSelected(null);
+									}}
+								>
+									删除
+								</button>
 							</div>
 						) : null}
 

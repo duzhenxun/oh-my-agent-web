@@ -42,6 +42,7 @@ export type {
 	RunningState,
 	SendMessageRequest,
 	SetApprovalModeRequest,
+	SetEnabledModelsRequest,
 	SetModelRequest,
 	SetSettingsRequest,
 	SessionPrefs,

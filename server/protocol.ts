@@ -1,14 +1,11 @@
 /**
- * wire 协议唯一事实源（ADR-0002 纪律①）：改这里必须同步 `web/src/types.ts`（只是 shim）。
- * 三类消息：`ClientRequest`（必带 id）/ `ServerReply` / `ServerEvent`（snapshot、delta、notice）。
+ * 三类消息：ClientRequest / ServerReply / ServerEvent。
  */
 
 export const PROTOCOL_VERSION = 1;
 
-/** 快照携带的最近消息条数（ADR-0012：N=100，前后端共用） */
 export const SNAPSHOT_MESSAGE_LIMIT = 100;
 
-/** WS 单条消息上限 */
 export const MAX_FRAME_BYTES = 64 * 1024;
 /** 工具输出摘录上限 */
 export const TOOL_EXCERPT_CHARS = 2000;
@@ -113,7 +110,6 @@ export type ModelOption = {
 	api?: string;
 };
 
-/** provider 配置视图（ADR-0025 §2）：**永远不含明文 key**，只给 hasKey 与尾 4 位。 */
 export type ModelSpecView = {
 	id: string;
 	name: string;
@@ -128,7 +124,6 @@ export type ProviderView = {
 	provider: string;
 	/**
 	 * custom = 我们（用户）在 models-store.json 里配的，可以编辑/删除；
-	 * builtin = pi 内置目录里的 provider（nexita / nexita-anthropic / …），
 	 */
 	source: "custom" | "builtin";
 	baseUrl: string;
@@ -141,7 +136,6 @@ export type ProviderView = {
 	models: ModelSpecView[];
 };
 
-/** 建议操作（ADR-0022）：模型用 [[action:suggest:...]] 给出的「下一步」，前端渲染成按钮 */
 export type ActionItem = {
 	id: string;
 	/** 按钮显示文字 */
@@ -233,8 +227,9 @@ export type Snapshot = {
 	approvalMode: ApprovalMode;
 	/** 当前引擎的能力（ADR-0024）：不支持的功能界面直接不显示，而不是点了报错 */
 	engineCapabilities: EngineCapabilities;
-	/** 已配置的 provider（ADR-0025 B 期）：**不含明文 key**，只给 hasKey/尾 4 位 */
 	providers: ProviderView[];
+	/** 已启用模型白名单（pi settings.json；空 = 全开） */
+	enabledModels: string[];
 	/** 排队中的后续消息（逐条下发，界面上的 × 才能真取消） */
 	queued: { id: string; conversationId: string; text: string }[];
 	runningByConversation: Record<string, { status: RunningState["status"]; turnStartedAt: number }>;
@@ -263,9 +258,7 @@ export type Snapshot = {
 	notices: Notice[];
 };
 
-// ---------------------------------------------------------------------------
 // 上行：请求
-// ---------------------------------------------------------------------------
 
 export type ApprovalDecision = "once" | "always" | "deny";
 
@@ -287,7 +280,6 @@ export type GetStateRequest = { id: string; type: "get_state" };
 
 /**
  * 改客户端设置（ADR-0020 §P1）：只带要改的字段，服务端归一化后落盘。
- * `templates: null` 是**显式**手势 = 恢复默认模板库（见 settings.ts 的 mergeSettings）。
  */
 export type SetSettingsRequest = {
 	id: string;
@@ -337,7 +329,13 @@ export type UpdateModelRequest = {
 export type RemoveModelRequest = { id: string; type: "remove_model"; payload: { provider: string; modelId: string } };
 
 export type CancelQueuedRequest = { id: string; type: "cancel_queued"; payload: { queueId: string } };
-/** 设置思考强度（P4）：档位由引擎给（off/minimal/low/medium/high/xhigh/max） */
+
+/** 启用/停用 provider（写 pi settings.json 的 enabledModels） */
+export type SetEnabledModelsRequest = {
+	id: string;
+	type: "set_enabled_models";
+	payload: { provider: string; enabled: boolean };
+};
 export type SetThinkingLevelRequest = { id: string; type: "set_thinking_level"; payload: { level: string } };
 
 /** 切换当前会话的模型（ADR-0020 §P2）：写进会话文件，续聊时不变 */
@@ -358,6 +356,7 @@ export type ClientRequest =
 	| SetThinkingLevelRequest
 	| CancelQueuedRequest
 	| RemoveModelRequest
+	| SetEnabledModelsRequest
 	| UpdateModelRequest
 	| NewChatRequest
 	| SwitchConversationRequest;

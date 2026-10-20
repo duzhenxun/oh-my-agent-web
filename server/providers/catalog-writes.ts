@@ -79,3 +79,14 @@ export async function addCatalogModels(
 	}
 	return { ok: true, added, skipped };
 }
+
+/** 从 models.json 里整条删掉一个 provider（连带它的 key） */
+export async function removeFromCatalog(agentDir: string, provider: string): Promise<boolean> {
+	const catalog = await readCatalog(agentDir);
+	if (!catalog.providers?.[provider]) return false;
+	const next = { ...catalog.providers };
+	delete next[provider];
+	catalog.providers = next;
+	await writeCatalog(agentDir, catalog);
+	return true;
+}

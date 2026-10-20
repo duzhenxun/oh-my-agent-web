@@ -6,6 +6,7 @@
 import type { ProviderView, UpsertProviderRequest } from "../protocol.js";
 import type { BuiltinProvider, ProviderStore } from "./provider-store.js";
 import { validateModelSpec, validateProviderInput } from "./validate.js";
+import { toggleProvider } from "./enabled-models.js";
 
 export type ProviderHandlerDeps = {
 	store: ProviderStore;
@@ -16,6 +17,8 @@ export type ProviderHandlerDeps = {
 	builtinProviders: () => { provider: string; models: { id: string; name: string }[] }[];
 	/** 测试连通性时要读明文 key（只在这一处、只用于发出请求，不返回给界面） */
 	readKey: (provider: string) => Promise<string | null>;
+	/** 启用白名单（pi settings.json 的 enabledModels） */
+	enabled: { read: () => Promise<string[]>; write: (patterns: string[]) => Promise<void> };
 	probe: (options: {
 		baseUrl: string;
 		api?: string;
@@ -78,6 +81,25 @@ export async function handleProviderRequest(
 		}
 		deps.notify(`模型「${parsed.value.name}」已保存，模型表已热重载`, "info");
 		return { ok: true };
+	}
+
+	if (request.type === "set_enabled_models") {
+		const payload = (request as unknown as { payload: { provider: string; enabled: boolean } }).payload;
+		const patterns = await deps.enabled.read();
+		const view = await deps.store.get(payload.provider);
+		// 关掉某个 provider 要把它下面所有单模型条目一起删；打开则整体 /** 开
+		const next = toggleProvider(
+			patterns,
+			payload.provider,
+			(view?.models ?? []).map((model) => model.id),
+			payload.enabled,
+		);
+		await deps.enabled.write(next);
+		deps.notify(
+			`provider「${payload.provider}」${payload.enabled ? "已启用" : "已停用"}（写进 pi 的 settings.json）`,
+			"info",
+		);
+		return { ok: true, result: { enabledModels: next } };
 	}
 
 	if (request.type === "remove_model") {
@@ -148,6 +170,7 @@ export function createProviderDeps(options: {
 	logger: { info: (message: string, meta?: Record<string, unknown>) => void };
 	probe: ProviderHandlerDeps["probe"];
 	builtinProviders: ProviderHandlerDeps["builtinProviders"];
+	enabled?: ProviderHandlerDeps["enabled"];
 }): ProviderHandlerDeps {
 	return {
 		store: options.store,
@@ -155,6 +178,10 @@ export function createProviderDeps(options: {
 		logInfo: (message, meta) => options.logger.info(message, meta),
 		readKey: (provider) => options.store.readKey(provider),
 		builtinProviders: options.builtinProviders,
+		enabled: options.enabled ?? {
+			read: async () => [],
+			write: async () => {},
+		},
 		probe: options.probe,
 	};
 }
@@ -169,6 +196,7 @@ export function createProviderRunner(options: {
 	logger: { info: (message: string, meta?: Record<string, unknown>) => void };
 	probe: ProviderHandlerDeps["probe"];
 	builtinProviders: ProviderHandlerDeps["builtinProviders"];
+	enabled?: ProviderHandlerDeps["enabled"];
 	/** 变更后把最新列表塞回 state 并推快照（前端只认快照，ADR-0004） */
 	refresh: () => Promise<void>;
 }): (request: { type: string } & Record<string, unknown>, reply: (result: ProviderReply) => void) => Promise<void> {
@@ -210,12 +238,13 @@ export function createProviderWiring(options: {
 	store: ProviderStore;
 	logger: { info: (message: string, meta?: Record<string, unknown>) => void };
 	probe: ProviderHandlerDeps["probe"];
+	enabled?: ProviderHandlerDeps["enabled"];
 	getRuntime: () => {
 		notify: (text: string, level?: "info" | "warn" | "error") => void;
 		/** 直接推一帧快照（不制造一条空提示） */
 		pushSnapshot: () => void;
 		reloadModels: () => Promise<void>;
-		state: () => { providers: ProviderView[]; models: { id: string; label: string }[] };
+		state: () => { providers: ProviderView[]; models: { id: string; label: string }[]; enabledModels: string[] };
 	};
 }): (request: { type: string } & Record<string, unknown>, reply: (result: ProviderReply) => void) => Promise<void> {
 	const runtime = () => options.getRuntime();
@@ -223,10 +252,14 @@ export function createProviderWiring(options: {
 		store: options.store,
 		logger: options.logger,
 		probe: options.probe,
+		...(options.enabled ? { enabled: options.enabled } : {}),
 		notify: (text, level) => runtime().notify(text, level),
 		builtinProviders: () => builtinProviderGroups(runtime().state().models),
 		refresh: async () => {
-			runtime().state().providers = await options.store.list(builtinProviderGroups(runtime().state().models));
+			const live = runtime().state();
+			live.providers = await options.store.list(builtinProviderGroups(live.models));
+			// 启用白名单也一起刷：否则界面的开关会停在旧状态（点了像没生效）
+			if (options.enabled) live.enabledModels = await options.enabled.read();
 			await runtime().reloadModels();
 			runtime().pushSnapshot();
 		},

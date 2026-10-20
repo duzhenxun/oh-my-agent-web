@@ -24,6 +24,7 @@ export const REQUEST_TYPES: ClientRequestType[] = [
 	"update_model",
 	"remove_model",
 	"cancel_queued",
+	"set_enabled_models",
 ];
 const DECISIONS: ApprovalDecision[] = ["once", "always", "deny"];
 
@@ -64,6 +65,17 @@ export function parseClientRequest(raw: unknown): ClientRequest | null {
 		return workspace ? { id, type: "new_chat", payload: { workspace } } : { id, type: "new_chat" };
 	}
 
+	// 这两个请求的 provider 在**顶层**（老的形状），也容忍放进 payload 里
+	if (type === "delete_provider" || type === "test_provider") {
+		const source = isRecord(raw.payload) ? raw.payload.provider : undefined;
+		const rawProvider = typeof raw.provider === "string" ? raw.provider : source;
+		const provider = typeof rawProvider === "string" ? rawProvider.trim() : "";
+		if (provider === "") return null;
+		return type === "delete_provider"
+			? { id, type: "delete_provider", provider }
+			: { id, type: "test_provider", provider };
+	}
+
 	const payload = raw.payload;
 	if (!isRecord(payload)) return null;
 
@@ -84,14 +96,6 @@ export function parseClientRequest(raw: unknown): ClientRequest | null {
 		};
 	}
 	if (type === "list_providers") return { id, type: "list_providers" };
-
-	if (type === "delete_provider" || type === "test_provider") {
-		const provider = typeof payload?.provider === "string" ? payload.provider.trim() : "";
-		if (provider === "") return null;
-		return type === "delete_provider"
-			? { id, type: "delete_provider", provider }
-			: { id, type: "test_provider", provider };
-	}
 
 	if (type === "upsert_provider") {
 		// 细节校验在 providers/validate.ts（这里只做形状校验，避免协议层重复实现业务规则）
@@ -134,6 +138,12 @@ export function parseClientRequest(raw: unknown): ClientRequest | null {
 		const provider = typeof payload?.provider === "string" ? payload.provider.trim() : "";
 		const modelId = typeof payload?.modelId === "string" ? payload.modelId.trim() : "";
 		return provider === "" || modelId === "" ? null : { id, type: "remove_model", payload: { provider, modelId } };
+	}
+
+	if (type === "set_enabled_models") {
+		const provider = typeof payload?.provider === "string" ? payload.provider.trim() : "";
+		if (provider === "" || typeof payload?.enabled !== "boolean") return null;
+		return { id, type: "set_enabled_models", payload: { provider, enabled: payload.enabled } };
 	}
 
 	if (type === "cancel_queued") {

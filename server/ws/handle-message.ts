@@ -70,6 +70,7 @@ export async function handleMessage(socket: WebSocket, raw: string, deps: Handle
 			case "test_provider":
 			case "update_model":
 			case "remove_model":
+			case "set_enabled_models":
 				await deps.runProviderRequest(request, (result) => deps.reply(socket, request.id, result as never));
 				return;
 			case "set_approval_mode": {
