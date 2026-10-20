@@ -20,6 +20,7 @@
 @import "./styles/terminal.css";
 @import "./styles/skills.css";
 @import "./styles/chat.css";
+@import "./styles/composer-actions.css";
 @import "./styles/sent-queue.css";
 @import "./styles/messages.css";
 @import "./styles/files.css";
