@@ -311,6 +311,19 @@
 		width: 100%;
 	}
 
+	/* 「项目 (N)」标题行固定在抽屉顶部：手机上列表很长，
+	   滚下去之后没有大标题会失去「我在哪」的定位，也不方便点「＋ / ‹」。 */
+	.side-host .sidebar-head {
+		position: sticky;
+		top: 0;
+		z-index: 2;
+		background: var(--bg-elev);
+		/* 贴住时别露出下面滚过去的内容 */
+		margin: -10px -10px 0;
+		padding: 10px;
+		border-bottom: 1px solid var(--border);
+	}
+
 	/* 会话行：左右各留一点内边距，行内按钮不再贴边被裁 */
 	.side-host .pi-row,
 	.side-host .session-row {
