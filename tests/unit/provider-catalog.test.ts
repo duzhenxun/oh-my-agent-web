@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync }
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { migrateStoreToCatalog } from "../../server/providers/catalog-writes.js";
+import { adoptRename, migrateStoreToCatalog } from "../../server/providers/catalog-writes.js";
 import { MODELS_STORE_FILE, createProviderStore } from "../../server/providers/provider-store.js";
 
 let agentDir = "";
@@ -156,5 +156,50 @@ describe("把老 provider 补进 models.json（幂等，不删原文件）", () 
 		expect(JSON.parse(readFileSync(join(agentDir, MODELS_STORE_FILE), "utf8")).old).toBeDefined();
 		// 再跑一次：已经在了，不再重复迁移
 		expect(await migrateStoreToCatalog(agentDir)).toEqual([]);
+	});
+});
+
+describe("改名（编辑 provider 时改了名字）", () => {
+	it("旧条目搬走、新条目落下，key 跟着走", async () => {
+		writeFileSync(
+			join(agentDir, "models.json"),
+			JSON.stringify({
+				providers: { old: { api: "openai-completions", baseUrl: "https://x", apiKey: "sk-1", models: [{ id: "m1" }] } },
+			}),
+		);
+		writeFileSync(join(agentDir, "auth.json"), JSON.stringify({ old: { key: "sk-1" } }));
+
+		const moved = await adoptRename(agentDir, "old", "renamed");
+		expect(moved).toBe("sk-1"); // 返回旧 key 供调用方兜底
+
+		const catalog = JSON.parse(readFileSync(join(agentDir, "models.json"), "utf8"));
+		expect(catalog.providers.old).toBeUndefined();
+		expect(catalog.providers.renamed).toMatchObject({
+			api: "openai-completions",
+			baseUrl: "https://x",
+			apiKey: "sk-1",
+		});
+		expect(JSON.parse(readFileSync(join(agentDir, "auth.json"), "utf8")).old).toBeUndefined();
+		expect(JSON.parse(readFileSync(join(agentDir, "auth.json"), "utf8")).renamed.key).toBe("sk-1");
+	});
+
+	it("upsert 带 previousProvider：不会既留旧的又多一个新的", async () => {
+		writeFileSync(
+			join(agentDir, "models.json"),
+			JSON.stringify({
+				providers: { old: { api: "openai-completions", baseUrl: "https://x", apiKey: "sk-1", models: [{ id: "m1" }] } },
+			}),
+		);
+		const result = await store().upsert({
+			provider: "renamed",
+			previousProvider: "old",
+			baseUrl: "https://x",
+			api: "openai-completions",
+			models: [{ id: "m1" }],
+		});
+		expect(result.ok).toBe(true);
+		const catalog = JSON.parse(readFileSync(join(agentDir, "models.json"), "utf8")).providers;
+		expect(Object.keys(catalog)).toEqual(["renamed"]);
+		expect(catalog.renamed.apiKey).toBe("sk-1"); // 没填新 key 也不能丢
 	});
 });

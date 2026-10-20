@@ -2,8 +2,8 @@
  * 把「目录里的 provider」写回 models.json（nexita / nexita-anthropic 这类）。
  * 单独放一个文件：provider-store 已经接近 400 行护栏，而这块逻辑是自成一体的。
  */
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { patchCatalogModel, readCatalog, specToCatalog, writeCatalog, type CatalogEntry } from "./catalog-store.js";
 
 async function readJson<T>(path: string, fallback: T): Promise<T> {
@@ -138,4 +138,72 @@ export async function migrateStoreToCatalog(agentDir: string): Promise<string[]>
 		await writeCatalog(agentDir, catalog);
 	}
 	return migrated;
+}
+
+/**
+ * 改名并返回旧 key（调用方用它兜底：用户没填新 key 时不能丢）。
+ * 这一层单独存在，是为了让 provider-store 里只留一行调用（400 行护栏）。
+ */
+export async function adoptRename(agentDir: string, from: string, to: string): Promise<string | null> {
+	const auth = await readJson<Record<string, { key?: string }>>(join(agentDir, "auth.json"), {});
+	const oldKey = auth[from]?.key ?? (await readCatalog(agentDir)).providers?.[from]?.apiKey ?? null;
+	await renameProvider(agentDir, from, to);
+	return typeof oldKey === "string" && oldKey !== "" ? oldKey : null;
+}
+
+/**
+ * 改名：把 provider 的条目从 from 搬到 to（三个文件都搬）。
+ *
+ * 没有这一步，「编辑 provider 时改名字」会变成「新建一个 + 旧的还在」——
+ * 因为上传的 provider 名就是写入的 key。
+ */
+export async function renameProvider(agentDir: string, from: string, to: string): Promise<boolean> {
+	if (from === to) return false;
+	let moved = false;
+
+	// models.json（pi CLI 认的那份）
+	const catalog = await readCatalog(agentDir);
+	const entry = catalog.providers?.[from];
+	if (entry) {
+		const providers = { ...catalog.providers };
+		delete providers[from];
+		providers[to] = { ...entry, models: (entry.models ?? []).map((model) => ({ ...model, provider: to })) };
+		catalog.providers = providers;
+		await writeCatalog(agentDir, catalog);
+		moved = true;
+	}
+
+	// models-store.json（历史位置）
+	const storePath = join(agentDir, "models-store.json");
+	const store = await readJson<Record<string, { models?: Record<string, unknown>[] }>>(storePath, {});
+	if (store[from]) {
+		const entryStore = store[from];
+		delete store[from];
+		store[to] = {
+			...entryStore,
+			models: (entryStore.models ?? []).map((model) => ({ ...model, provider: to })),
+		};
+		await writeJsonPrivate(storePath, store);
+		moved = true;
+	}
+
+	// auth.json（凭证跟着走，否则改名后 key 就"丢"了）
+	const authPath = join(agentDir, "auth.json");
+	const auth = await readJson<Record<string, unknown>>(authPath, {});
+	if (auth[from]) {
+		auth[to] = auth[from];
+		delete auth[from];
+		await writeJsonPrivate(authPath, auth);
+		moved = true;
+	}
+	return moved;
+}
+
+/** 原子写 + 0600（auth.json / models-store.json 里可能有凭证） */
+async function writeJsonPrivate(path: string, value: unknown): Promise<void> {
+	await mkdir(dirname(path), { recursive: true });
+	const temporary = `${path}.tmp-${process.pid}-${Date.now()}`;
+	await writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
+	await rename(temporary, path);
+	await chmod(path, 0o600);
 }

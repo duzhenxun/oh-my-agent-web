@@ -9,8 +9,14 @@ import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { ProviderView } from "../protocol.js";
 import { maskKey, type ModelSpec, type ProviderInput } from "./validate.js";
-import { addCatalogModels, removeFromCatalog, writeCatalogModelPatch, writeCatalogUpsert } from "./catalog-writes.js";
-import { MODELS_FILE, readCatalog } from "./catalog-store.js";
+import {
+	addCatalogModels,
+	removeFromCatalog,
+	adoptRename,
+	writeCatalogModelPatch,
+	writeCatalogUpsert,
+} from "./catalog-writes.js";
+import { MODELS_FILE, readCatalog, specView } from "./catalog-store.js";
 
 export const MODELS_STORE_FILE = "models-store.json";
 export const AUTH_FILE = "auth.json";
@@ -101,19 +107,6 @@ async function writeJsonPrivate(path: string, value: unknown): Promise<void> {
 	await writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
 	await rename(temporary, path);
 	await chmod(path, 0o600);
-}
-
-/** ModelDefinition → 界面用的规格视图（没配过就缺省，不编造 0） */
-function specView(model: ModelDefinition) {
-	return {
-		id: model.id,
-		name: model.name ?? model.id,
-		reasoning: model.reasoning === true,
-		imageInput: Array.isArray(model.input) && model.input.includes("image"),
-		...(typeof model.contextWindow === "number" ? { contextWindow: model.contextWindow } : {}),
-		...(typeof model.maxTokens === "number" ? { maxTokens: model.maxTokens } : {}),
-		...(model.cost ? { cost: model.cost as Record<string, number> } : {}),
-	};
 }
 
 /** 内置 provider → 可写条目（整表照抄，避免覆盖时丢掉别的模型） */
@@ -320,6 +313,11 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 		},
 
 		async upsert(input) {
+			// 改名：把旧条目搬到新名字（否则会变成「新建一个、旧的还在」），并带上旧 key
+			if (input.previousProvider && input.previousProvider !== input.provider) {
+				const oldKey = await adoptRename(options.agentDir, input.previousProvider, input.provider);
+				if (input.apiKey === undefined && oldKey) input = { ...input, apiKey: oldKey };
+			}
 			const [models, auth] = await Promise.all([
 				readJson<ModelsStore>(modelsPath, {}),
 				readJson<AuthStore>(authPath, {}),

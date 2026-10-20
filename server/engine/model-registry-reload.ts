@@ -20,6 +20,7 @@ type WarmSession = {
 		modelRuntime?: {
 			refresh?: (options?: unknown) => Promise<unknown>;
 			registerProvider?: (id: string, config: Record<string, unknown>) => void;
+			unregisterProvider?: (id: string) => void;
 		};
 	};
 };
@@ -105,6 +106,9 @@ function toProviderModel(model: ModelJson) {
 	};
 }
 
+/** 我们通过 registerProvider 推给运行时的 provider（用来在改名/删除后注销旧的） */
+const pushed = new Set<string>();
+
 export async function reloadModelRegistry(
 	sessions: Map<string, WarmSession>,
 	prewarmId: string,
@@ -127,6 +131,12 @@ export async function reloadModelRegistry(
 	for (const handle of sessions.values()) {
 		const runtime = handle.session.modelRuntime;
 		await runtime?.refresh?.({ allowNetwork: false }).catch(() => undefined);
+		// 配置里已经没有的（改名 / 删除）：从运行时注销，否则旧名字会一直挂在模型表里
+		for (const id of pushed) {
+			if (configs.some((config) => config.id === id)) continue;
+			runtime?.unregisterProvider?.(id);
+			pushed.delete(id);
+		}
 		for (const config of configs) {
 			try {
 				runtime?.registerProvider?.(config.id, {
@@ -136,6 +146,7 @@ export async function reloadModelRegistry(
 					...(config.headers ? { headers: config.headers } : {}),
 					models: config.models.map(toProviderModel),
 				});
+				pushed.add(config.id);
 			} catch {
 				// 单个 provider 注册失败不该拖垮整次刷新（它只是不出现在列表里）
 			}

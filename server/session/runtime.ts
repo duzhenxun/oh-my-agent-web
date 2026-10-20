@@ -1,8 +1,4 @@
-/**
- * 会话运行时（宿主侧）：把引擎事件翻译成 UI 状态 / 协议事件，并把转录落盘（M2）。
- *
- * 遵守的规则（都已由 ADR 定死）：
- */
+/** 会话运行时（宿主侧）：把引擎事件翻译成 UI 状态 / 协议事件，并落盘转录。规则见 ADR。 */
 import { createMarkerStreamFilter } from "../markers/actions.js";
 import { createRuntimeServices } from "./runtime-services.js";
 import { createStatsRefresher } from "./stats-refresher.js";
@@ -196,11 +192,8 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			const ruleCount = await approval.loadRules();
 			if (ruleCount > 0) options.onStartupInfo?.(`已装载 ${ruleCount} 条审批规则（这些操作不会再询问）`);
 			state.settings = settings ? await settings.load() : defaultSettings();
-			await options.engine.prewarm?.();
-			const warmed = (await options.engine.listModels?.()) ?? [];
-			if (warmed.length > 0) state.models = warmed;
 			await piRefresher.refresh(true);
-			if (options.loadProviders) state.providers = await options.loadProviders();
+			await apiRef?.refreshProviders();
 			pushSnapshot();
 		},
 
@@ -218,7 +211,12 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		refreshPiSessions: (force?: boolean) => piRefresher.refresh(force),
 		// 先让引擎重读模型表：否则外部改过 models.json 时界面是新的、引擎还是旧的
 		refreshProviders: async () => {
+			// pi 的模型表挂在会话上：先保证有会话，再让它重读配置
+			await options.engine.prewarm?.();
 			await options.engine.reloadModels?.();
+			// 模型表也要跟着更新：provider 列表里的「内置」分组是从它推出来的
+			const models = (await options.engine.listModels?.()) ?? [];
+			if (models.length > 0) state.models = models;
 			if (options.loadProviders) state.providers = await options.loadProviders();
 		},
 

@@ -110,6 +110,9 @@ export function parseClientRequest(raw: unknown): ClientRequest | null {
 				baseUrl: String(payload.baseUrl ?? ""),
 				...(typeof payload.api === "string" ? { api: payload.api } : {}),
 				...(typeof payload.apiKey === "string" ? { apiKey: payload.apiKey } : {}),
+				...(typeof payload.previousProvider === "string" && payload.previousProvider.trim() !== ""
+					? { previousProvider: payload.previousProvider.trim() }
+					: {}),
 				...(isRecord(payload.headers)
 					? {
 							headers: Object.fromEntries(

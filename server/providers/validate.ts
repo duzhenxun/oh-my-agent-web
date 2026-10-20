@@ -32,6 +32,8 @@ export type ProviderInput = {
 	apiKey?: string;
 	/** 自定义请求头；不传 = 保留已有值 */
 	headers?: Record<string, string>;
+	/** 改名时带上原来的名字（服务端据此把旧条目搬过去，不然会变成「新建一个」） */
+	previousProvider?: string;
 	models: ProviderModelInput[];
 };
 
@@ -148,10 +150,14 @@ export function validateProviderInput(input: unknown): ProviderValidation {
 	if (models.length > MAX_MODELS_PER_PROVIDER) errors.push(`最多 ${MAX_MODELS_PER_PROVIDER} 个模型`);
 
 	if (errors.length > 0) return { ok: false, errors };
+	const previousRaw = typeof record.previousProvider === "string" ? record.previousProvider.trim().toLowerCase() : "";
+	const previousProvider = previousRaw !== "" && previousRaw !== provider ? previousRaw : undefined;
+
 	return {
 		ok: true,
 		value: {
 			provider,
+			...(previousProvider ? { previousProvider } : {}),
 			baseUrl: baseUrlResult.ok ? baseUrlResult.value : "",
 			api,
 			...(keyResult.ok && keyResult.value ? { apiKey: keyResult.value } : {}),

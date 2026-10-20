@@ -97,6 +97,8 @@ export function ProviderForm({
 
 	const payload = () => ({
 		provider,
+		// 改名时告诉服务端原来的名字，它会把旧条目搬过去（否则会变成「新建一个」）
+		...(initial && initial.provider !== provider.trim() ? { previousProvider: initial.provider } : {}),
 		baseUrl,
 		api,
 		...(apiKey.trim() === "" ? {} : { apiKey: apiKey.trim() }),

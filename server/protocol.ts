@@ -308,6 +308,8 @@ export type UpsertProviderRequest = {
 		api?: string;
 		apiKey?: string;
 		headers?: Record<string, string>;
+		/** 改名时传原名字（服务端据此把旧条目搬过去） */
+		previousProvider?: string;
 		models: { id: string; name?: string; contextWindow?: number }[];
 	};
 };

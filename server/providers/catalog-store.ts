@@ -101,3 +101,17 @@ export function specToCatalog(spec: {
 		...(spec.cost ? { cost: spec.cost } : {}),
 	};
 }
+
+/** pi 目录条目里的模型 → 界面用的规格视图（没配过就缺省，不编造 0） */
+/** ModelDefinition → 界面用的规格视图（没配过就缺省，不编造 0） */
+export function specView(model: CatalogModel) {
+	return {
+		id: model.id,
+		name: model.name ?? model.id,
+		reasoning: model.reasoning === true,
+		imageInput: Array.isArray(model.input) && model.input.includes("image"),
+		...(typeof model.contextWindow === "number" ? { contextWindow: model.contextWindow } : {}),
+		...(typeof model.maxTokens === "number" ? { maxTokens: model.maxTokens } : {}),
+		...(model.cost ? { cost: model.cost as Record<string, number> } : {}),
+	};
+}

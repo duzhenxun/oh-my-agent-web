@@ -54,8 +54,12 @@ export async function handleProviderRequest(
 			hasKey: result.view.hasKey,
 			models: result.view.models.length,
 		});
+		const from = (request as unknown as { payload?: { previousProvider?: string } }).payload?.previousProvider;
+		const what = from
+			? `provider「${from}」已改名为「${result.view.provider}」`
+			: `provider「${result.view.provider}」已保存`;
 		deps.notify(
-			`provider「${result.view.provider}」已保存：${result.view.models.length} 个模型${result.view.hasKey ? `，key ${result.view.keyHint}` : ""}（已热重载，选择器里可直接看到）`,
+			`${what}：${result.view.models.length} 个模型${result.view.hasKey ? `，key ${result.view.keyHint}` : ""}（已热重载）`,
 			"info",
 		);
 		return { ok: true, result: { provider: result.view } };

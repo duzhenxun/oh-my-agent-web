@@ -159,6 +159,8 @@ export type UpsertProviderPayload = {
 	apiKey?: string;
 	models: { id: string; name?: string }[];
 	headers?: Record<string, string>;
+	/** 改名时传原名字 */
+	previousProvider?: string;
 };
 
 /** 逐模型测试（ADR-0026 C 期）：会发一次真实请求，所以用 HTTP 拿结构化结果 */
