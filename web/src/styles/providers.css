@@ -335,3 +335,32 @@
 	font-weight: 600;
 	border-bottom: 1px solid var(--border);
 }
+
+/* 模型行：显示名 + id（重名时靠 id 区分） */
+.prov-model-open {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 1px;
+	min-width: 0;
+}
+
+.prov-model-title {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	max-width: 100%;
+}
+
+.prov-model-id {
+	font-size: 10.5px;
+	color: var(--text-faint);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	max-width: 100%;
+}
+
+.prov-model-open:hover .prov-model-id {
+	color: var(--text-dim);
+}

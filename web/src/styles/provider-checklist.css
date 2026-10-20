@@ -84,3 +84,14 @@
 	opacity: 0.4;
 	cursor: not-allowed;
 }
+
+/* 左栏模型行里的 id（小字，跟在显示名后面） */
+.prov-inline-id {
+	display: block;
+	font-size: 10px;
+	font-style: normal;
+	color: var(--text-faint);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}

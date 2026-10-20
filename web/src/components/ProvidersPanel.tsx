@@ -175,7 +175,10 @@ export function ProvidersPanel() {
 														className={`prov-dot${modelEnabled(provider.provider, model.id) ? " prov-dot-on" : ""}`}
 														title={modelEnabled(provider.provider, model.id) ? "已启用" : "未启用"}
 													/>
-													<span className="prov-inline-name">{model.name}</span>
+													<span className="prov-inline-name">
+														{model.name}
+														{model.name === model.id ? null : <em className="prov-inline-id mono">{model.id}</em>}
+													</span>
 												</button>
 											))}
 										</div>
@@ -313,7 +316,9 @@ export function ProvidersPanel() {
 													title={model.id}
 													onClick={() => setEditingModel(model.id)}
 												>
-													{model.name}
+													<span className="prov-model-title">{model.name}</span>
+													{/* 重名时全靠这一行区分（不同 id 可以有同一个显示名） */}
+													{model.name === model.id ? null : <span className="prov-model-id mono">{model.id}</span>}
 												</button>
 												<LatencyCell result={latency[model.id]} />
 												<label className="prov-switch prov-switch-sm" title="单独启用 / 停用这个模型">
