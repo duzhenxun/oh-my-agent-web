@@ -369,3 +369,24 @@
 		gap: 6px;
 	}
 }
+
+@media (max-width: 900px) {
+	/* 新建项目对话框：手机上不要撑满整屏高度（撑满后顶部会被裁掉，
+	   路径栏与「关闭」按钮看不见） */
+	.modal.new-project {
+		height: auto;
+		max-height: 92dvh;
+	}
+
+	/* 弹窗必须盖在顶栏之上（顶栏在手机上是 z-index:45，否则弹窗标题被压住） */
+	.modal-backdrop {
+		z-index: 60;
+		padding-top: calc(8px + env(safe-area-inset-top, 0px));
+		align-items: flex-start;
+	}
+
+	/* 目录列表在手机上至少给 40vh，否则只剩两行可点 */
+	.new-project-list {
+		min-height: 40vh;
+	}
+}

@@ -159,7 +159,16 @@ export function App() {
 					<>
 						{/* 手机端：抽屉外的遮罩，点一下收起（桌面态 CSS 里 display:none） */}
 						<div className="side-backdrop" onClick={() => setCollapsed(true)} aria-hidden="true" />
-						<div className="side-host" style={{ width: sideWidth }}>
+						<div
+							className="side-host"
+							style={{ width: sideWidth }}
+							// 手机上点了会话就把抽屉收起，直接看对话（桌面上 side-backdrop 是隐藏的，不受影响）
+							onClickCapture={(event) => {
+								if (window.matchMedia("(max-width: 900px)").matches === false) return;
+								const target = event.target as HTMLElement;
+								if (target.closest(".session-row, .pi-row, .archived-view-list *")) setCollapsed(true);
+							}}
+						>
 							<Sidebar
 								conversations={snapshot?.conversations ?? []}
 								activeId={snapshot?.active.conversationId ?? null}
