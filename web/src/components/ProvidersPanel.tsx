@@ -122,7 +122,7 @@ export function ProvidersPanel() {
 					启用全部模型
 				</button>
 			</div>
-			<div className="prov-shell" style={{ gridTemplateColumns: `minmax(140px, ${listWidth}px) 6px minmax(0, 1fr)` }}>
+			<div className="prov-shell" style={{ "--prov-list-width": `${listWidth}px` } as React.CSSProperties}>
 				<aside className="prov-list">
 					<div className="prov-list-head">
 						<span>Provider</span>

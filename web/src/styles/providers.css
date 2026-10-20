@@ -6,8 +6,8 @@
  */
 .prov-shell {
 	display: grid;
-	/* 列宽由组件行内样式给出（可拖）；这里留兜底 */
-	grid-template-columns: minmax(140px, 190px) 6px minmax(0, 1fr);
+	/* 列宽由组件写入 --prov-list-width（可拖）；手机断点会覆盖成单列 */
+	grid-template-columns: minmax(140px, var(--prov-list-width, 190px)) 6px minmax(0, 1fr);
 	gap: 0;
 	flex: 1 1 auto;
 	min-height: 0;
@@ -181,14 +181,25 @@
 }
 
 @media (max-width: 720px) {
+	/* 手机上分左右两栏没法用：改成「上面列表、下面详情」 */
 	.prov-shell {
 		grid-template-columns: minmax(0, 1fr);
+		grid-template-rows: auto minmax(0, 1fr);
 	}
 
 	.prov-list {
 		border-right: none;
 		border-bottom: 1px solid var(--border);
-		max-height: 180px;
+		max-height: 34vh;
+	}
+
+	.prov-resizer {
+		display: none;
+	}
+
+	/* 里层的两列（列表 / 详情）本来由 shell 决定，这里保证详情不再被挤窄 */
+	.prov-detail {
+		min-height: 0;
 	}
 }
 

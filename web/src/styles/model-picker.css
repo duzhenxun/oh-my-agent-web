@@ -133,3 +133,62 @@
 	padding: 0 2px;
 	outline: none;
 }
+
+/* 手机上打开时的遮罩（点一下关闭）；桌面上不显示 */
+.model-sheet-backdrop {
+	display: none;
+}
+
+/* 抽屉上的关闭按钮，桌面态不需要（点外面或再点触发按钮就能关） */
+.model-sheet-close {
+	display: none;
+}
+
+@media (max-width: 900px) {
+	/* 模型菜单在手机上：整宽底部抽屉，而不是向上弹出的小浮层 */
+	.model-sheet-backdrop {
+		display: block;
+		position: fixed;
+		inset: 0;
+		z-index: 30;
+		background: rgb(0 0 0 / 45%);
+	}
+
+	.model-menu {
+		position: fixed;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		top: auto;
+		width: 100vw;
+		max-height: 72dvh;
+		border-radius: 14px 14px 0 0;
+		border: none;
+		border-top: 1px solid var(--border-strong, var(--border));
+		padding: 10px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+		z-index: 31;
+		box-shadow: 0 -12px 40px rgb(0 0 0 / 45%);
+	}
+
+	.model-sheet-close {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 6px;
+		align-self: flex-end;
+		border: 1px solid var(--border);
+		background: var(--bg-soft);
+		color: var(--text);
+		border-radius: 999px;
+		padding: 6px 14px;
+		font-size: 13px;
+		cursor: pointer;
+	}
+
+	/* 每条模型行加大点击高度，手机上更好点 */
+	.model-item {
+		padding-top: 11px;
+		padding-bottom: 11px;
+		font-size: 15px;
+	}
+}

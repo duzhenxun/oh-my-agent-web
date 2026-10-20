@@ -64,8 +64,13 @@ export function ModelPicker({
 				</span>
 			</button>
 
+			{open ? <div className="model-sheet-backdrop" onClick={() => setOpen(false)} aria-hidden="true" /> : null}
 			{open ? (
 				<div className="model-menu" role="listbox" aria-label="选择模型">
+					{/* 手机上菜单是整宽的底部抽屉，需要一个明确可见的关闭入口 */}
+					<button type="button" className="model-sheet-close" onClick={() => setOpen(false)} title="关闭">
+						✕ 关闭
+					</button>
 					<input
 						autoFocus
 						className="model-filter"

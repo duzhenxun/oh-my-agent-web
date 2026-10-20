@@ -91,6 +91,15 @@ export function App() {
 		<div className="app">
 			{/* 顶部区域：横跨整个宽度，三栏都在它下面 */}
 			<div className="appbar">
+				<button
+					type="button"
+					className="appbar-drawer"
+					onClick={() => setCollapsed((value) => !value)}
+					title="项目列表"
+					aria-label="项目列表"
+				>
+					☰
+				</button>
 				<span className="brand">
 					<img className="brand-icon" src="/favicon.svg" alt="" aria-hidden="true" />
 					Agent Web
@@ -158,37 +167,41 @@ export function App() {
 						{pendingPanel ? <SidebarMenu key={pendingPanel} initialPanel={pendingPanel} variant="modal" /> : null}
 					</aside>
 				) : (
-					<div className="side-host" style={{ width: sideWidth }}>
-						<Sidebar
-							conversations={snapshot?.conversations ?? []}
-							activeId={snapshot?.active.conversationId ?? null}
-							piProjects={snapshot?.piProjects ?? []}
-							onCollapse={() => setCollapsed(true)}
-							runningIds={Object.keys(snapshot?.runningByConversation ?? {})}
-							onOpenTerminal={(cwd) => {
-								const id = `term:${termSeq}:${cwd}`;
-								setTermSeq((value) => value + 1);
-								setPanelItems((current) => [...current, { id, kind: "terminal", cwd }]);
-								setActiveItem(id);
-							}}
-							onOpenFile={(path, root) => {
-								const id = `file:${root}:${path}`;
-								setPanelItems((current) =>
-									current.some((item) => item.id === id) ? current : [...current, { id, kind: "file", path, root }],
-								);
-								setActiveItem(id);
-							}}
-						/>
-						{/* 拖拽条：右边边缘 6px，双击回到默认宽度 */}
-						<div
-							className="side-resizer"
-							role="separator"
-							aria-orientation="vertical"
-							title="拖动调整宽度（双击复位）"
-							onPointerDown={startResize}
-							onDoubleClick={() => setSideWidth(readStoredWidth(null))}
-						/>
-					</div>
+					<>
+						{/* 手机端：抽屉外的遮罩，点一下收起（桌面态 CSS 里 display:none） */}
+						<div className="side-backdrop" onClick={() => setCollapsed(true)} aria-hidden="true" />
+						<div className="side-host" style={{ width: sideWidth }}>
+							<Sidebar
+								conversations={snapshot?.conversations ?? []}
+								activeId={snapshot?.active.conversationId ?? null}
+								piProjects={snapshot?.piProjects ?? []}
+								onCollapse={() => setCollapsed(true)}
+								runningIds={Object.keys(snapshot?.runningByConversation ?? {})}
+								onOpenTerminal={(cwd) => {
+									const id = `term:${termSeq}:${cwd}`;
+									setTermSeq((value) => value + 1);
+									setPanelItems((current) => [...current, { id, kind: "terminal", cwd }]);
+									setActiveItem(id);
+								}}
+								onOpenFile={(path, root) => {
+									const id = `file:${root}:${path}`;
+									setPanelItems((current) =>
+										current.some((item) => item.id === id) ? current : [...current, { id, kind: "file", path, root }],
+									);
+									setActiveItem(id);
+								}}
+							/>
+							{/* 拖拽条：右边边缘 6px，双击回到默认宽度 */}
+							<div
+								className="side-resizer"
+								role="separator"
+								aria-orientation="vertical"
+								title="拖动调整宽度（双击复位）"
+								onPointerDown={startResize}
+								onDoubleClick={() => setSideWidth(readStoredWidth(null))}
+							/>
+						</div>
+					</>
 				)}
 
 				<div className="workspace">
