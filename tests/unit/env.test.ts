@@ -13,7 +13,7 @@ const HOME = "/Users/tester";
 const CWD = "/Users/tester/code/agent-web";
 
 describe("readConfig", () => {
-	it("空环境给出默认值（端口 8790 / 数据目录 ~/.agent-web / info）", () => {
+	it("空环境给出默认值（端口 25257 / 数据目录 ~/.agent-web / info）", () => {
 		const { config, problems } = readConfig({}, { home: HOME, cwd: CWD });
 		expect(problems).toEqual([]);
 		expect(config.port).toBe(DEFAULT_PORT);

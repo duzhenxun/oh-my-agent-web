@@ -2,14 +2,16 @@
  * 配置与环境变量（ADR-0007 §环境变量、ADR-0011 命名）。
  *
  * 四个环境变量，仅此四个：
- *   AGENT_WEB_PORT       默认 8790
+ *   AGENT_WEB_PORT       默认 25257
  *   AGENT_WEB_CWD        默认 process.cwd()
  *   AGENT_WEB_DATA_DIR   默认 ~/.agent-web
+ *   AGENT_WEB_HOST       默认 127.0.0.1（对外监听需要它）
+ *   AGENT_WEB_PASSWORD   远程访问密码（不设 = 只允许本机）
  *   AGENT_WEB_TOKEN      占位：v1 不实现鉴权（ADR-0006），只留开关位
  * 外加一个日志级别：AGENT_WEB_LOG（debug|info|warn|error，默认 info）
  *
- * 刻意**不提供** HOST 变量：监听地址永远绑 127.0.0.1（ADR-0006），
- * 安全决策不应该能被一个环境变量绕过。
+ * 监听地址默认 127.0.0.1；改成别的地址也**不会**让远程随便进 ——
+ * 没有 AGENT_WEB_PASSWORD 时，非本机请求一律 403（ADR-0031）。
  *
  * 本模块全是纯函数：不读 process.env、不碰文件系统 —— 便于单测与守卫复用。
  */
@@ -22,7 +24,7 @@ export type EngineName = "pi" | "fake";
 
 export type Config = {
 	port: number;
-	readonly host: "127.0.0.1";
+	host: string;
 	workspace: string;
 	dataDir: string;
 	logLevel: LogLevel;
@@ -31,9 +33,15 @@ export type Config = {
 	turnTimeoutMs: number;
 	/** ADR-0006：v1 不实现，仅保留开关位 */
 	token: string | null;
+	/** 非本机访问时要求的密码（明文只存在进程内存里）；空 = 只允许本机访问 */
+	password: string | null;
 };
 
-export const DEFAULT_PORT = 8790;
+export const DEFAULT_PORT = 25257;
+/** 默认只听本机；要对外提供访问得显式改它 + 设密码（ADR-0031） */
+export const DEFAULT_HOST = "127.0.0.1";
+export const HOST_ENV = "AGENT_WEB_HOST";
+export const PASSWORD_ENV = "AGENT_WEB_PASSWORD";
 /** 回合看门狗默认超时：20 分钟（与参考实现同口径） */
 export const DEFAULT_TURN_TIMEOUT_MS = 20 * 60 * 1000;
 export const DEFAULT_DATA_DIR_NAME = ".agent-web";
@@ -91,10 +99,14 @@ export function readConfig(env: EnvLike, options: ReadConfigOptions): ConfigResu
 		else problems.push(`AGENT_WEB_ENGINE 不是合法值：${rawEngine}（可选 pi / fake，回落到 pi）`);
 	}
 
+	let host = DEFAULT_HOST;
+	const rawHost = env[`${HOST_ENV}`];
+	if (rawHost !== undefined && rawHost !== "") host = rawHost.trim();
+	const password = env[`${PASSWORD_ENV}`] && env[`${PASSWORD_ENV}`] !== "" ? String(env[`${PASSWORD_ENV}`]) : null;
 	return {
 		config: {
 			port,
-			host: "127.0.0.1",
+			host,
 			workspace: env.AGENT_WEB_CWD && env.AGENT_WEB_CWD !== "" ? resolve(env.AGENT_WEB_CWD) : resolve(options.cwd),
 			dataDir:
 				env[DATA_DIR_ENV] && env[DATA_DIR_ENV] !== ""
@@ -104,6 +116,7 @@ export function readConfig(env: EnvLike, options: ReadConfigOptions): ConfigResu
 			engine,
 			turnTimeoutMs,
 			token: env.AGENT_WEB_TOKEN && env.AGENT_WEB_TOKEN !== "" ? env.AGENT_WEB_TOKEN : null,
+			password,
 		},
 		problems,
 	};
@@ -136,9 +149,6 @@ export function validateConfig(config: Config, options: { home: string }): strin
 	}
 	if (isForeignDataDir(config.dataDir)) {
 		problems.push(`数据目录不能与参考实现共用：${config.dataDir}（ADR-0011，会互相覆盖会话）`);
-	}
-	if (config.host !== "127.0.0.1") {
-		problems.push(`监听地址必须是 127.0.0.1：${config.host}（ADR-0006）`);
 	}
 	return problems;
 }

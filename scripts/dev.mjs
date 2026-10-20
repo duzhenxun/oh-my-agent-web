@@ -4,7 +4,9 @@
  * 刻意不引 concurrently：这层只需要「起两个子进程 + 转发 Ctrl-C + 任一退出就收摊」，
  * 二十行以内能写完，比多一个依赖划算（何况本项目有依赖预算，ADR-0008）。
  *
- * 端口（ADR-0007）：后端 8791、前端 5174 —— 全部避开参考实现的 8787/8788/5173。
+ * 端口（ADR-0007）：**对外只有一个 25257**（开发期由 Vite 监听，生产期由后端监听）。
+ * 开发态后端躲到内部端口 25258，只给 Vite 反代用 —— 这样开发和生产记的是同一个地址，
+ * 也不用再解释「开发是 5174、生产是 25257」这种差异。
  */
 import { spawn } from "node:child_process";
 import { dirname, join } from "node:path";
@@ -17,7 +19,7 @@ const CHILDREN = [
 		name: "server",
 		command: process.execPath,
 		args: ["--import", "tsx", "--watch", join(REPO_ROOT, "server/index.ts")],
-		env: { AGENT_WEB_PORT: process.env.AGENT_WEB_PORT ?? "8791" },
+		env: { AGENT_WEB_PORT: process.env.AGENT_WEB_BACKEND_PORT ?? "25258" },
 	},
 	{
 		name: "web",
@@ -57,4 +59,4 @@ for (const spec of CHILDREN) {
 process.on("SIGINT", () => shutdown(0));
 process.on("SIGTERM", () => shutdown(0));
 
-console.log("[dev] 后端 :8791 · 前端 :5174（Ctrl-C 停止两者）");
+console.log("[dev] 打开 http://127.0.0.1:25257 （后端在内部 :25258，Ctrl-C 停止两者）");

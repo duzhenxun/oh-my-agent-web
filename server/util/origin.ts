@@ -16,7 +16,7 @@
 export const LOOPBACK_HOSTNAMES = ["127.0.0.1", "localhost", "::1", "[::1]"];
 
 export type OriginPolicy = {
-	/** 服务自己的端口（生产：8790；开发态后端：8791） */
+	/** 服务自己的端口（默认 25257；开发态同样用它） */
 	port: number;
 	/** 额外放行的端口（vite 开发服务器） */
 	devPorts?: number[];

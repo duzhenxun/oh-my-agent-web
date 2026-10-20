@@ -40,6 +40,7 @@ import { createLogger } from "./util/log.js";
 import { createRotatingFileSink, logFileName, type RotatingFileSink } from "./util/log-file.js";
 import { describePolicy, isAllowedHost, isAllowedOrigin } from "./util/origin.js";
 import { pickExisting, webDistCandidates } from "./util/paths.js";
+import { authMiddleware, decide, AUTH_REALM } from "./http/auth.js";
 import { checkDataDirWritable, describeListenError } from "./util/startup.js";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
@@ -183,6 +184,8 @@ function reply(
 // ------------------------------ HTTP ------------------------------
 
 const app = express();
+// 鉴权最先挂：本机放行，其它来源必须过密码（ADR-0031）
+app.use(authMiddleware(config.password));
 app.use(express.json()); // 终端/技能/导入要读 body
 const webDist = pickExisting(webDistCandidates(HERE), existsSync);
 const uploadStore = createUploadStore({ dataDir: config.dataDir });
@@ -216,6 +219,21 @@ const httpServer = createServer(app);
 const wss = new WebSocketServer({ noServer: true });
 
 httpServer.on("upgrade", (request: IncomingMessage, socket, head) => {
+	// WS 不走 Express 中间件，得在这里单独判一次
+	const auth = decide({
+		password: config.password,
+		remoteAddress: request.socket.remoteAddress,
+		authorization: request.headers.authorization,
+	});
+	if (auth !== "allow") {
+		socket.write(
+			auth === "forbid"
+				? "HTTP/1.1 403 Forbidden\r\n\r\n"
+				: `HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm="${AUTH_REALM}"\r\n\r\n`,
+		);
+		socket.destroy();
+		return;
+	}
 	const origin = request.headers.origin;
 	const host = request.headers.host;
 	if (!isAllowedOrigin(origin, policy) || !isAllowedHost(host, policy)) {
