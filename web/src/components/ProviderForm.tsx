@@ -162,12 +162,15 @@ export function ProviderForm({
 
 	return (
 		<div className="side-panel">
-			<div className="side-panel-head">
-				<strong>{initial ? "编辑 provider" : "添加模型"}</strong>
-				<button type="button" className="btn btn-tiny" onClick={onClose}>
-					关闭
-				</button>
-			</div>
+			{/* 编辑已有 provider 时不显示标题与「关闭」：它在 Tab 里，关掉也没地方可去 */}
+			{initial ? null : (
+				<div className="side-panel-head">
+					<strong>添加 provider</strong>
+					<button type="button" className="btn btn-tiny" onClick={onClose}>
+						取消
+					</button>
+				</div>
+			)}
 			<label className="side-field">
 				<span>provider（小写，作为 provider/model 前缀）</span>
 				<input value={provider} onChange={(event) => setProvider(event.target.value)} placeholder="my-endpoint" />
