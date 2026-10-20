@@ -85,14 +85,25 @@ export async function handleProviderRequest(
 
 	if (request.type === "set_enabled_models") {
 		const payload = (request as unknown as { payload: { provider: string; enabled: boolean } }).payload;
+		// provider === "*"：全开（pi 的语义是「没有白名单 = 不限制」）
+		if (payload.provider === "*") {
+			await deps.enabled.write([]);
+			deps.notify("已启用全部模型（清空 enabledModels 白名单）", "info");
+			return { ok: true, result: { enabledModels: [] } };
+		}
 		const patterns = await deps.enabled.read();
 		const view = await deps.store.get(payload.provider);
-		// 关掉某个 provider 要把它下面所有单模型条目一起删；打开则整体 /** 开
+		// 全开状态下停用一个 provider，需要知道「其它 provider 有哪些模型」才能展开成白名单
+		const universe = (await deps.store.list()).map((item) => ({
+			provider: item.provider,
+			models: item.models.map((model) => model.id),
+		}));
 		const next = toggleProvider(
 			patterns,
 			payload.provider,
 			(view?.models ?? []).map((model) => model.id),
 			payload.enabled,
+			universe,
 		);
 		await deps.enabled.write(next);
 		deps.notify(

@@ -37,16 +37,29 @@ function matches(pattern: string, provider: string, full: string): boolean {
 	return pattern === full;
 }
 
-/** 纯函数：整体开关一个 provider */
+/**
+ * 纯函数：整体开关一个 provider。
+ *
+ * 关键在「全开状态下停用一个」：白名单为空时删条目等于没删，
+ * 必须**展开**成「除它以外所有 provider 的所有模型」—— 否则点了停用毫无效果。
+ * `universe` 就是为此传进来的全量模型清单。
+ */
 export function toggleProvider(
 	patterns: EnabledPatterns,
 	provider: string,
 	models: string[],
 	enabled: boolean,
+	universe: { provider: string; models: string[] }[] = [],
 ): EnabledPatterns {
+	if (patterns.length === 0) {
+		if (enabled) return patterns; // 已经全开
+		return universe
+			.filter((item) => item.provider !== provider)
+			.flatMap((item) => item.models.map((id) => `${item.provider}/${id}`))
+			.sort();
+	}
 	const others = patterns.filter((pattern) => !(pattern === `${provider}/**` || pattern.startsWith(`${provider}/`)));
 	if (!enabled) return others;
-	if (patterns.length === 0) return patterns; // 本来就是全开
 	return [`${provider}/**`, ...others].sort();
 }
 
