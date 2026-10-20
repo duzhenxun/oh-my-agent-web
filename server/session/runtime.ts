@@ -4,14 +4,13 @@
  * 遵守的规则（都已由 ADR 定死）：
  *   - 回合进行中再发消息：默认引导、可选排队（这轮结束自动发）；
  *   - 快照只在**结构性变化**时推：正文靠 message_delta 增量（ADR-0004 §3）；
- *   - 转录**追加写**：用户消息发出时落盘；助手消息**在回合结束时**落盘（整条，不留半条）。
  */
 import { createMarkerStreamFilter } from "../markers/actions.js";
 import { createRuntimeServices } from "./runtime-services.js";
 import { createStatsRefresher } from "./stats-refresher.js";
 import { createThrottle } from "./throttle.js";
 import { awaitTurnPersisted, createTurnFinisher, setRunning, settleWith } from "./turn-finish.js";
-import { createTurnPlumbing } from "./turn-queue.js";
+import { cancelQueuedWith, createTurnPlumbing } from "./turn-queue.js";
 import { createConversationFactory } from "./conversation-create.js";
 import { resolveAttachments } from "./attachment-resolve.js";
 import { createModelController } from "./model-controller.js";
@@ -201,6 +200,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			if (ruleCount > 0) options.onStartupInfo?.(`已装载 ${ruleCount} 条审批规则（这些操作不会再询问）`);
 			state.settings = settings ? await settings.load() : defaultSettings();
 			await piRefresher.refresh(true);
+			if (options.loadProviders) state.providers = await options.loadProviders();
 			pushSnapshot();
 		},
 
@@ -216,6 +216,10 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		},
 
 		refreshPiSessions: (force?: boolean) => piRefresher.refresh(force),
+
+		refreshProviders: async () => {
+			if (options.loadProviders) state.providers = await options.loadProviders();
+		},
 
 		snapshot() {
 			return buildSnapshot(state);
@@ -336,12 +340,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		setThinkingLevel: (level) => models.setThinking(state.activeId, level),
 		reloadModels: () => models.reload(state.activeId),
 
-		cancelQueued(queueId) {
-			if (!queue.cancel(queueId))
-				return { ok: false, error: { code: "queue.not_found", message: "这条排队消息已经不在了" } };
-			notice("已取消排队", "info");
-			return { ok: true };
-		},
+		cancelQueued: (queueId) => cancelQueuedWith(queue, queueId, notice),
 
 		pushSnapshot, // 供 provider 等模块「只推帧、不造提示」
 

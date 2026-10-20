@@ -36,6 +36,8 @@ export function harness(
 		settings?: SettingsStore;
 		/** 会话列表来源（ADR-0021 §2 起是唯一来源）：默认空列表 */
 		piSessions?: () => Promise<PiProject[]>;
+		/** provider 列表来源（模型面板）：默认空列表 */
+		loadProviders?: () => Promise<import("../../../server/protocol.js").ProviderView[]>;
 	} = {},
 ): {
 	runtime: Runtime;
@@ -52,6 +54,9 @@ export function harness(
 		rules,
 		...(options.settings ? { settings: options.settings } : {}),
 		...(options.piSessions ? { piSessions: options.piSessions } : { piSessions: async () => [] }),
+		...((options.loadProviders ?? (async () => []))
+			? { loadProviders: options.loadProviders ?? (async () => []) }
+			: {}),
 		workspace: "/tmp/agent-web-test",
 		emit: recorderInstance.emit,
 		// 默认确定性 id（用例好断言）；显式关掉时用真实运行的全局唯一 id（ADR-0019）

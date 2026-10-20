@@ -26,7 +26,7 @@ import { createFileSettingsStore } from "./session/settings.js";
 import { createSender, type OutFrame } from "./snapshot/sender.js";
 import { createPiSessionsProvider, piAgentDir } from "./session/pi-sessions-provider.js";
 import { createUploadStore, uploadsDir } from "./uploads/upload-store.js";
-import { createProviderWiring } from "./providers/provider-handlers.js";
+import { builtinProviderGroups, createProviderWiring } from "./providers/provider-handlers.js";
 import { probeProvider } from "./providers/probe.js";
 import { createProviderStore } from "./providers/provider-store.js";
 import { registerAuxRoutes } from "./http/aux-routes.js";
@@ -115,9 +115,13 @@ const runProviderRequest = createProviderWiring({
 const runtimeRef: { current: { notify: (text: string, level?: "info" | "warn" | "error") => void } | null } = {
 	current: null,
 };
+/** 懒读：provider 列表里要带上内置 provider 分组，而那需要 runtime 里的模型表 */
+const providerList = async () => providerStore.list(builtinProviderGroups(runtime?.state().models ?? []));
 
 const runtime = createRuntime({
 	engine,
+	// 自定义 provider 来自 models-store.json；不主动读一次，界面上就只剩内置的那几个
+	loadProviders: providerList,
 	rules: createFileRuleStore(config.dataDir),
 	// 启动信息只进日志，不进对话流
 	onStartupInfo: (text) => logger.info(text),

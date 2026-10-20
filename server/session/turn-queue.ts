@@ -155,3 +155,15 @@ export function createTurnPlumbing(options: {
 	});
 	return { queue, busy };
 }
+
+/** 取消一条排队消息的对外动作（runtime 里只留一行） */
+export function cancelQueuedWith(
+	queue: { cancel: (queueId: string) => boolean },
+	queueId: string,
+	notice: (text: string, level: "info" | "warn") => void,
+): { ok: true } | { ok: false; error: { code: string; message: string } } {
+	if (!queue.cancel(queueId))
+		return { ok: false, error: { code: "queue.not_found", message: "这条排队消息已经不在了" } };
+	notice("已取消排队", "info");
+	return { ok: true };
+}

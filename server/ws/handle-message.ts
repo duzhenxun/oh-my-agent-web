@@ -93,6 +93,7 @@ export async function handleMessage(socket: WebSocket, raw: string, deps: Handle
 			case "get_state": {
 				// 重连/刷新后的第一件事：拉一份权威快照（ADR-0004 §3）；顺便刷一次 pi 会话列表（带 10s 下限）
 				await deps.runtime.refreshPiSessions();
+				await deps.runtime.refreshProviders();
 				deps.sender.pushSnapshot(deps.runtime.snapshot());
 				deps.sender.flush(Date.now());
 				deps.reply(socket, request.id, { ok: true });

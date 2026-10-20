@@ -52,7 +52,7 @@ export function SidebarMenu({
 			source: "builtin",
 			baseUrl: "",
 			api: "",
-			hasKey: group.models.some((model) => model.id === snapshot?.model) || true,
+			hasKey: false, // 真值来自 providerStore（auth.json）；这里只是引擎模型的兜底分组
 			keyHint: null,
 			models: group.models.map((model) => ({ id: model.id, name: model.label })),
 		}));

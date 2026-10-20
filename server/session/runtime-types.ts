@@ -11,6 +11,7 @@ import type {
 	ProtocolError,
 	SendMode,
 	ServerEvent,
+	ProviderView,
 	Snapshot,
 } from "../protocol.js";
 import type { ServerState } from "../snapshot/state.js";
@@ -51,6 +52,8 @@ export type Runtime = {
 	/** 审批模式（P4）：只在本会话内存里生效，重启回到 ask */
 	setApprovalMode(mode: ApprovalMode): Result;
 	switchConversation(conversationId: string): Promise<Result>;
+	/** 重新读 provider 配置（models-store.json 可能被外部改动；页面刷新时顺手更新） */
+	refreshProviders(): Promise<void>;
 	/** 重新扫 pi 已有的项目/会话（ADR-0021 §1）；带最小间隔，避免每次刷新都扫盘 */
 	refreshPiSessions(force?: boolean): Promise<void>;
 	/** 给宿主其他部分（引擎、启动流程）推一条界面提示 */
@@ -75,6 +78,8 @@ export type RuntimeOptions = {
 	settings?: SettingsStore;
 	/** pi 已有会话的扫描器（ADR-0021 §1）；不给就不显示那一栏（单测用） */
 	piSessions?: () => Promise<PiProject[]>;
+	/** 读 provider 列表（index 注入：它同时知道内置 provider 的分组） */
+	loadProviders?: () => Promise<ProviderView[]>;
 	/** 两次扫描的最小间隔（默认 10s） */
 	piSessionsMinIntervalMs?: number;
 	workspace: string;
