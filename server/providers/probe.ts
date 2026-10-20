@@ -12,6 +12,7 @@
  */
 export type ProbeResult = { ok: true; status: number; latencyMs: number } | { ok: false; message: string };
 
+import { testModel } from "./model-test.js";
 import { providerHeaders } from "./request-headers.js";
 
 export async function probeProvider(options: {
@@ -53,4 +54,48 @@ export async function probeProvider(options: {
 	} finally {
 		clearTimeout(timer);
 	}
+}
+
+/**
+ * 「保存前先验证」：把表单里**还没保存**的 baseUrl / 协议 / key / headers 拿去试一次。
+ *
+ * 两步：
+ *   1. `GET /models` —— 验证地址可达、key 与鉴权头对不对（不花钱）；
+ *   2. 给了 modelId 时再发一次最小 completion —— **这一步才真正验证协议**
+ *      （有的网关 /models 能通，但 chat 不接受该协议），会花一次请求。
+ */
+export type VerifyResult =
+	| { ok: true; status: number; latencyMs: number; modelLatencyMs?: number }
+	| { ok: false; step: "models" | "chat"; message: string };
+
+export async function verifyProviderConfig(options: {
+	baseUrl: string;
+	api?: string;
+	apiKey: string;
+	headers?: Record<string, string>;
+	modelId?: string;
+	timeoutMs?: number;
+	fetchImpl?: typeof fetch;
+}): Promise<VerifyResult> {
+	const probe = await probeProvider({
+		baseUrl: options.baseUrl,
+		api: options.api,
+		apiKey: options.apiKey,
+		...(options.headers ? { headers: options.headers } : {}),
+		...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
+		...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
+	});
+	if (!probe.ok) return { ok: false, step: "models", message: probe.message };
+	if (!options.modelId) return { ok: true, status: probe.status ?? 200, latencyMs: probe.latencyMs };
+
+	const chat = await testModel({
+		baseUrl: options.baseUrl,
+		api: options.api,
+		apiKey: options.apiKey,
+		modelId: options.modelId,
+		...(options.headers ? { headers: options.headers } : {}),
+		...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
+	});
+	if (!chat.ok) return { ok: false, step: "chat", message: chat.message };
+	return { ok: true, status: probe.status ?? 200, latencyMs: probe.latencyMs, modelLatencyMs: chat.latencyMs };
 }

@@ -8,6 +8,7 @@
  */
 import type { Express } from "express";
 import { listRemoteModels } from "./import-models.js";
+import { verifyProviderConfig } from "./probe.js";
 import type { ProviderStore } from "./provider-store.js";
 
 export function registerImportRoutes(app: Express, options: { store: ProviderStore; onChange?: () => void }): void {
@@ -42,6 +43,39 @@ export function registerImportRoutes(app: Express, options: { store: ProviderSto
 		// 已经导入过的标出来，界面置灰（避免重复导入）
 		const imported = new Set(view.models.map((model) => model.id));
 		response.json({ models: result.models.map((model) => ({ ...model, imported: imported.has(model.id) })) });
+	});
+
+	/** 保存前先验证：用**表单里还没保存**的值试一次（key 留空则用已存的那把） */
+	app.post("/api/providers/verify", async (request, response) => {
+		const body = request.body as
+			| {
+					provider?: string;
+					baseUrl?: string;
+					api?: string;
+					apiKey?: string;
+					headers?: Record<string, string>;
+					modelId?: string;
+			  }
+			| undefined;
+		const baseUrl = typeof body?.baseUrl === "string" ? body.baseUrl.trim() : "";
+		if (baseUrl === "") {
+			response.status(400).json({ error: { code: "verify.no_base_url", message: "先填 base url" } });
+			return;
+		}
+		const apiKey = body?.apiKey?.trim() ? body.apiKey.trim() : await options.store.readKey(body?.provider ?? "");
+		if (!apiKey) {
+			response.status(400).json({ error: { code: "verify.no_key", message: "还没有 api key：先填一个再测试" } });
+			return;
+		}
+		const headers = body?.headers ?? (body?.provider ? await options.store.readHeaders(body.provider) : {});
+		const result = await verifyProviderConfig({
+			baseUrl,
+			...(body?.api ? { api: body.api } : {}),
+			apiKey,
+			...(Object.keys(headers ?? {}).length > 0 ? { headers } : {}),
+			...(body?.modelId ? { modelId: body.modelId } : {}),
+		});
+		response.status(result.ok ? 200 : 400).json(result);
 	});
 
 	app.post("/api/providers/:provider/import", async (request, response) => {

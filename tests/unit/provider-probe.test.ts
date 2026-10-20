@@ -5,7 +5,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { probeProvider } from "../../server/providers/probe.js";
+import { probeProvider, verifyProviderConfig } from "../../server/providers/probe.js";
 
 let server: Server;
 let port = 0;
@@ -78,5 +78,65 @@ describe("probeProvider", () => {
 	it("非 http(s) 直接拒（旧文件里的脏数据也挡得住）", async () => {
 		const result = await probeProvider({ baseUrl: "file:///etc", apiKey: "sk-1234567890" });
 		expect(result.ok).toBe(false);
+	});
+});
+
+describe("verifyProviderConfig：保存前先验证", () => {
+	const json = (body: unknown, status = 200) =>
+		new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+
+	it("列表就不通 → step=models，且不再发对话请求", async () => {
+		const urls: string[] = [];
+		const result = await verifyProviderConfig({
+			baseUrl: "https://gw.example.com/v1",
+			apiKey: "sk-12345678",
+			modelId: "m1",
+			fetchImpl: (async (url: string) => {
+				urls.push(String(url));
+				return json({}, 401);
+			}) as unknown as typeof fetch,
+		});
+		expect(result).toMatchObject({ ok: false, step: "models" });
+		expect(urls).toHaveLength(1); // 关键：没通就别再花钱
+	});
+
+	it("列表通了但协议不对（chat 404）→ step=chat", async () => {
+		const result = await verifyProviderConfig({
+			baseUrl: "https://gw.example.com/v1",
+			api: "anthropic-messages",
+			apiKey: "sk-12345678",
+			modelId: "m1",
+			fetchImpl: (async (url: string) =>
+				String(url).endsWith("/models") ? json({ data: [] }) : json({}, 404)) as unknown as typeof fetch,
+		});
+		expect(result).toMatchObject({ ok: false, step: "chat" });
+	});
+
+	it("两步都通 → 给出两个耗时", async () => {
+		const result = await verifyProviderConfig({
+			baseUrl: "https://gw.example.com/v1",
+			apiKey: "sk-12345678",
+			modelId: "m1",
+			fetchImpl: (async () => json({ data: [] })) as unknown as typeof fetch,
+		});
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(typeof result.latencyMs).toBe("number");
+			expect(typeof result.modelLatencyMs).toBe("number");
+		}
+	});
+
+	it("没给 modelId 时只验证列表（不花钱）", async () => {
+		let calls = 0;
+		const result = await verifyProviderConfig({
+			baseUrl: "https://gw.example.com/v1",
+			apiKey: "sk-12345678",
+			fetchImpl: (async () => {
+				calls += 1;
+				return json({ data: [] });
+			}) as unknown as typeof fetch,
+		});
+		expect(result.ok).toBe(true);
+		expect(calls).toBe(1);
 	});
 });

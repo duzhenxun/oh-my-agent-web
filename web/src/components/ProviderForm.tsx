@@ -15,28 +15,76 @@ export function ProviderForm({ initial, onClose }: { initial?: ProviderView | nu
 	const [headersText, setHeadersText] = useState("");
 	const [modelsText, setModelsText] = useState((initial?.models ?? []).map((model) => model.id).join(" "));
 	const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
+	const [verifying, setVerifying] = useState(false);
+
+	const modelIds = modelsText
+		.split(/[\s,]+/)
+		.map((item) => item.trim())
+		.filter(Boolean);
+	const headers = Object.fromEntries(
+		headersText
+			.split("\n")
+			.map((line) => line.split(/:(.*)/s))
+			.filter(([name, value]) => Boolean(name?.trim() && value?.trim()))
+			.map(([name, value]) => [name.trim(), value.trim()]),
+	);
+
+	const payload = () => ({
+		provider,
+		baseUrl,
+		api,
+		...(apiKey.trim() === "" ? {} : { apiKey: apiKey.trim() }),
+		...(Object.keys(headers).length > 0 ? { headers } : {}),
+		models: modelIds.map((id) => ({ id })),
+	});
+
+	/** 先试再存：地址/key/协议不对时**不写盘**，避免把坏配置写进 models-store */
+	const verifyAndSubmit = async () => {
+		setVerifying(true);
+		setMessage(null);
+		try {
+			const response = await fetch("/api/providers/verify", {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					provider,
+					baseUrl,
+					api,
+					...(apiKey.trim() === "" ? {} : { apiKey: apiKey.trim() }),
+					...(Object.keys(headers).length > 0 ? { headers } : {}),
+					...(modelIds[0] ? { modelId: modelIds[0] } : {}),
+				}),
+			});
+			const body = (await response.json()) as {
+				ok?: boolean;
+				step?: string;
+				message?: string;
+				latencyMs?: number;
+				modelLatencyMs?: number;
+				error?: { message?: string };
+			};
+			if (!response.ok || !body.ok) {
+				setMessage({
+					kind: "error",
+					text: `没通过（${body.step === "chat" ? "模型对话" : "模型列表"}）：${body.message ?? body.error?.message ?? `HTTP ${response.status}`}`,
+				});
+				return;
+			}
+			upsertProvider(payload());
+			setMessage({
+				kind: "ok",
+				text: `验证通过（列表 ${body.latencyMs ?? "-"}ms${body.modelLatencyMs ? `，模型 ${body.modelLatencyMs}ms` : ""}），已保存`,
+			});
+			setApiKey("");
+		} catch (cause) {
+			setMessage({ kind: "error", text: cause instanceof Error ? cause.message : String(cause) });
+		} finally {
+			setVerifying(false);
+		}
+	};
 
 	const submit = () => {
-		const models = modelsText
-			.split(/[\s,]+/)
-			.map((item) => item.trim())
-			.filter(Boolean)
-			.map((id) => ({ id }));
-		const headers = Object.fromEntries(
-			headersText
-				.split("\n")
-				.map((line) => line.split(/:(.*)/s))
-				.filter(([name, value]) => Boolean(name?.trim() && value?.trim()))
-				.map(([name, value]) => [name.trim(), value.trim()]),
-		);
-		upsertProvider({
-			provider,
-			baseUrl,
-			api,
-			...(apiKey.trim() === "" ? {} : { apiKey: apiKey.trim() }),
-			...(Object.keys(headers).length > 0 ? { headers } : {}),
-			models,
-		});
+		upsertProvider(payload());
 		// 校验与写盘都在服务端；结果用提示条回传（前端没有 request/response 配对机制）
 		setMessage({ kind: "ok", text: "已提交，结果会以提示形式出现在对话区" });
 		setApiKey("");
@@ -107,9 +155,21 @@ export function ProviderForm({ initial, onClose }: { initial?: ProviderView | nu
 			{message ? (
 				<div className={message.kind === "ok" ? "side-ok" : "side-panel-hint side-error"}>{message.text}</div>
 			) : null}
-			<button type="button" className="btn btn-tiny" onClick={submit}>
-				保存
-			</button>
+			<div className="import-foot">
+				<button
+					type="button"
+					className="btn btn-tiny btn-primary"
+					title="先拉一次 /models（不花钱），再用第一个模型发一次最小请求（会消耗一次请求）验证协议"
+					onClick={() => void verifyAndSubmit()}
+					disabled={verifying}
+				>
+					{verifying ? "验证中…" : "测试并保存"}
+				</button>
+				<span className="topbar-spacer" />
+				<button type="button" className="btn btn-tiny" onClick={submit} disabled={verifying}>
+					直接保存
+				</button>
+			</div>
 		</div>
 	);
 }
