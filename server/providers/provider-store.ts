@@ -4,20 +4,24 @@
  *   ~/.pi/agent/models-store.json   { [provider]: { models: ModelDefinition[], lastModified } }
  *   ~/.pi/agent/auth.json           { [provider]: { type, key } }
  *
- * 两条纪律：
- *   - 原子写（临时文件 + rename）且强制 0600 —— 这两个文件里可能有凭证；
- *   - **key 不出服务端**：对外只给 `hasKey` + 尾 4 位（ADR-0025 §2）。
+ * 纪律：原子写 + 0600（文件里有凭证）；**key 不出服务端**（只给 hasKey + 尾 4 位）。
+ * 目录文件（models.json）里的 provider 也在这里读写 —— 改它就等于改 pi 的配置。
  */
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { ProviderView } from "../protocol.js";
 import { maskKey, type ModelSpec, type ProviderInput } from "./validate.js";
+import {
+	MODELS_FILE,
+	patchCatalogModel,
+	readCatalog,
+	specToCatalog,
+	writeCatalog,
+	type CatalogEntry,
+} from "./catalog-store.js";
 
 export const MODELS_STORE_FILE = "models-store.json";
 export const AUTH_FILE = "auth.json";
-/** pi 的 provider 目录（nexita / nexita-anthropic 这类就写在这里，不在 models-store.json） */
-export const MODELS_FILE = "models.json";
-
 type ModelDefinition = {
 	id: string;
 	name?: string;
@@ -146,6 +150,18 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 	const authPath = join(options.agentDir, AUTH_FILE);
 	const catalogPath = join(options.agentDir, MODELS_FILE);
 
+	const inCatalog = async (provider: string) => Boolean((await readCatalog(options.agentDir)).providers?.[provider]);
+
+	/** 只改目标 provider 的条目；不存在就不写（避免凭空造 provider） */
+	const patchCatalog = async (provider: string, patch: (entry: CatalogEntry) => CatalogEntry) => {
+		const catalog = await readCatalog(options.agentDir);
+		const entry = catalog.providers?.[provider];
+		if (!entry) return false; // 不存在就不写（别凭空造 provider）
+		catalog.providers = { ...catalog.providers, [provider]: patch(entry) };
+		await writeCatalog(options.agentDir, catalog);
+		return true;
+	};
+
 	return {
 		async list(builtin = []) {
 			const [models, auth] = await Promise.all([
@@ -213,6 +229,10 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 
 		async removeModel(provider, modelId, seed) {
 			const models = await readJson<ModelsStore>(modelsPath, {});
+			if (!models[provider] && (await inCatalog(provider))) {
+				await patchCatalog(provider, (entry) => patchCatalogModel(entry, modelId, () => null));
+				return { ok: true };
+			}
 			const entry = models[provider] ?? materialize(provider, seed);
 			if (!entry) return { ok: false, error: `没有这个 provider：${provider}` };
 			const list = Array.isArray(entry.models) ? entry.models : [];
@@ -239,6 +259,13 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 
 		async updateModel(provider, spec, seed) {
 			const models = await readJson<ModelsStore>(modelsPath, {});
+			// 目录里的 provider（nexita 之类）：直接改 pi 的 models.json，不另建覆盖条目
+			if (!models[provider] && (await inCatalog(provider))) {
+				await patchCatalog(provider, (entry) =>
+					patchCatalogModel(entry, spec.id, (current) => ({ ...current, ...specToCatalog(spec) })),
+				);
+				return { ok: true };
+			}
 			const entry = models[provider] ?? materialize(provider, seed);
 			if (!entry) return { ok: false, error: `没有这个 provider：${provider}` };
 			const list = Array.isArray(entry.models) ? entry.models : [];

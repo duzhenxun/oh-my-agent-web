@@ -135,8 +135,8 @@ export function ModelEditor({
 				) : null}
 				<button
 					type="button"
-					// 出结果后按钮变亮（下次还能直接点）；测试中禁用并显示进度
-					className={`btn btn-tiny${testResult ? " btn-primary" : ""}`}
+					// 样式保持原样（不搞成蓝底）：出结果后只是恢复可点，随时能再测
+					className="btn btn-tiny"
 					onClick={() => void runTest()}
 					disabled={testBusy}
 					title="发送一次最小 chat 请求（max_tokens=1）"

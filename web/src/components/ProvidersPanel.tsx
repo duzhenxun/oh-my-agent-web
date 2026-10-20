@@ -24,6 +24,36 @@ export function ProvidersPanel() {
 	const [creating, setCreating] = useState(false);
 	const [importing, setImporting] = useState(false);
 	const [editingModel, setEditingModel] = useState<string | null>(null);
+	/** 批量测试结果：modelId → 耗时 / 失败原因 */
+	const [latency, setLatency] = useState<Record<string, { ok: boolean; text: string }>>({});
+	const [batchBusy, setBatchBusy] = useState(false);
+
+	/** 逐个测（顺序执行：并发打容易把网关打出 429，也会让耗时失真） */
+	const batchTest = async (provider: ProviderView) => {
+		setBatchBusy(true);
+		setLatency({});
+		for (const model of provider.models) {
+			try {
+				const response = await fetch(
+					`/api/providers/${encodeURIComponent(provider.provider)}/models/${encodeURIComponent(model.id)}/test`,
+					{ method: "POST" },
+				);
+				const body = (await response.json()) as { ok?: boolean; latencyMs?: number; message?: string };
+				setLatency((current) => ({
+					...current,
+					[model.id]: body.ok
+						? { ok: true, text: `${body.latencyMs ?? "?"}ms` }
+						: { ok: false, text: `失败 ${body.message ?? ""}`.trim() },
+				}));
+			} catch (cause) {
+				setLatency((current) => ({
+					...current,
+					[model.id]: { ok: false, text: cause instanceof Error ? cause.message : "失败" },
+				}));
+			}
+		}
+		setBatchBusy(false);
+	};
 
 	// 没选或选中的没了 → 落到第一个（列表随快照变，不另存副本）
 	const current = providers.find((provider) => provider.provider === selected) ?? providers[0] ?? null;
@@ -134,6 +164,16 @@ export function ProvidersPanel() {
 							<div className="prov-models-head">
 								<span>模型</span>
 								<span className="side-panel-count">{current.models.length}</span>
+								<span className="topbar-spacer" />
+								<button
+									type="button"
+									className="btn btn-tiny"
+									onClick={() => void batchTest(current)}
+									disabled={batchBusy || current.models.length === 0}
+									title="逐个发一次最小请求，量出每个模型的响应时间（会消耗与模型数相同的请求数）"
+								>
+									{batchBusy ? "测试中…" : "⏱ 批量测试"}
+								</button>
 							</div>
 							<div className="prov-models-scroll">
 								{current.models.map((model) => (
@@ -141,6 +181,7 @@ export function ProvidersPanel() {
 										<span className="prov-model-name" title={model.id}>
 											{model.name}
 										</span>
+										<LatencyCell result={latency[model.id]} />
 										<span className="prov-model-spec">
 											{enabled.has(`${current.provider}/${model.id}`) ? "已启用" : "未启用"}
 										</span>
@@ -167,6 +208,15 @@ export function ProvidersPanel() {
 									<button
 										type="button"
 										className="btn btn-tiny"
+										onClick={() => void batchTest(current)}
+										disabled={batchBusy || current.models.length === 0}
+										title="逐个发一次最小请求，量出每个模型的响应时间（会消耗与模型数相同的请求数）"
+									>
+										{batchBusy ? "测试中…" : "⏱ 批量测试"}
+									</button>
+									<button
+										type="button"
+										className="btn btn-tiny"
 										onClick={() => setImporting(true)}
 										title="探测这个 provider 下面还有哪些模型，勾选后批量导入"
 									>
@@ -184,6 +234,7 @@ export function ProvidersPanel() {
 											<span className="prov-model-name" title={model.id}>
 												{model.name}
 											</span>
+											<LatencyCell result={latency[model.id]} />
 											<span className="prov-model-spec">
 												{[
 													model.contextWindow ? `${model.contextWindow} ctx` : null,
@@ -211,4 +262,10 @@ export function ProvidersPanel() {
 			</section>
 		</div>
 	);
+}
+
+/** 响应耗时列（批量测试前是占位符，保持列宽不跳动） */
+function LatencyCell({ result }: { result?: { ok: boolean; text: string } }) {
+	if (!result) return <span className="prov-latency prov-latency-idle">—</span>;
+	return <span className={`prov-latency${result.ok ? " prov-latency-ok" : " prov-latency-fail"}`}>{result.text}</span>;
 }

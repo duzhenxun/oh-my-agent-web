@@ -297,3 +297,30 @@
 	background: color-mix(in srgb, #ff3b30 14%, transparent);
 	border-color: color-mix(in srgb, #ff3b30 38%, transparent);
 }
+
+/* 批量测试的耗时列（放在「已启用」前面） */
+.prov-latency {
+	font-size: 10.5px;
+	font-variant-numeric: tabular-nums;
+	padding: 1px 6px;
+	border-radius: 999px;
+	margin-left: auto;
+	white-space: nowrap;
+	max-width: 140px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.prov-latency-idle {
+	color: var(--text-faint);
+}
+
+.prov-latency-ok {
+	color: #1a7f43;
+	background: color-mix(in srgb, #34c759 14%, transparent);
+}
+
+.prov-latency-fail {
+	color: #b3261e;
+	background: color-mix(in srgb, #ff3b30 14%, transparent);
+}

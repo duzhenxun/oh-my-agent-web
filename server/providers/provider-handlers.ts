@@ -199,7 +199,7 @@ export function builtinProviderGroups(
 			});
 		}
 	}
-	return [...groups].map(([provider, list]) => ({ provider, models: list, ...(endpoint.get(provider) ?? {}) }));
+	return [...groups].map(([provider, list]) => ({ provider, models: list, ...endpoint.get(provider) }));
 }
 
 /**
