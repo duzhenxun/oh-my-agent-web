@@ -36,11 +36,13 @@
 
 /* ---- markdown 正文：长文本防溢出一律 min-width:0 + overflow-wrap ---- */
 
-/* 用户消息：靠右的气泡（不再占满整行） */
+/* 用户消息：占满整行、从左边开始（不再靠右）。
+   阅读顺序与助手消息一致，长文本也不用挤在右侧窄栏里。 */
 .msg-user {
-	align-self: flex-end;
-	max-width: min(78%, 720px);
-	border-radius: 14px;
+	align-self: stretch;
+	width: 100%;
+	max-width: none;
+	border-radius: 12px;
 }
 
 /* 助手消息：整行，但不用边框（更接近参考实现的观感） */
