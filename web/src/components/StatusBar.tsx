@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { Snapshot } from "../types.ts";
 
 const CONNECTION: Record<string, string> = { connecting: "连接中", open: "已连接", closed: "已断开" };
@@ -40,6 +40,7 @@ export function StatusBar({
 	const piSessions = (snapshot?.piProjects ?? []).reduce((sum, project) => sum + project.sessions.length, 0);
 	const conversations = piSessions > 0 ? piSessions : (snapshot?.conversations.length ?? 0);
 	const stats = snapshot?.sessionStats ?? null;
+	const [usageOpen, setUsageOpen] = useState(false);
 	return (
 		<footer className="statusbar">
 			<span className={`status-dot status-dot-${connection}`} aria-hidden="true" />
@@ -49,10 +50,37 @@ export function StatusBar({
 			<span className="status-item status-running">⚙ 工作中 {running}</span>
 			<span className="status-item status-queued">⏳ 排队 {snapshot?.queued.length ?? 0}</span>
 			{stats ? (
-				<span className="status-item status-usage" title="本会话累计输入 / 输出 / 当前上下文占用">
-					<span className="tok-in">↑ {formatTokens(stats.inputTokens)}</span>{" "}
-					<span className="tok-out">↓ {formatTokens(stats.outputTokens)}</span> · 上下文{" "}
-					{formatTokens(stats.contextTokens)}
+				<span className="status-usage-wrap">
+					{usageOpen ? (
+						<div className="status-usage-pop" role="dialog" aria-label="会话信息">
+							<div className="status-usage-title">会话信息</div>
+							{[
+								["用户消息", String(stats.userMessages)],
+								["助手消息", String(stats.assistantMessages)],
+								["工具调用", String(stats.toolCalls)],
+								["输入 tokens", formatTokens(stats.inputTokens)],
+								["输出 tokens", formatTokens(stats.outputTokens)],
+								["缓存读", formatTokens(stats.cacheRead)],
+								["缓存写", formatTokens(stats.cacheWrite)],
+								["上下文占用", formatTokens(stats.contextTokens)],
+							].map(([label, value]) => (
+								<div className="status-usage-row" key={label}>
+									<span>{label}</span>
+									<span className="mono">{value}</span>
+								</div>
+							))}
+						</div>
+					) : null}
+					<button
+						type="button"
+						className="status-item status-usage"
+						title="点开看会话信息"
+						onClick={() => setUsageOpen((value) => !value)}
+					>
+						<span className="tok-in">↑ {formatTokens(stats.inputTokens)}</span>{" "}
+						<span className="tok-out">↓ {formatTokens(stats.outputTokens)}</span> · 上下文{" "}
+						{formatTokens(stats.contextTokens)}
+					</button>
 				</span>
 			) : null}
 			<span className="status-spacer" />

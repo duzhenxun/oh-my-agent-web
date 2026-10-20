@@ -74,3 +74,52 @@
 		display: none;
 	}
 }
+
+/* token 胶囊：点一下从**上方**弹出会话信息（原来在顶栏时就是这么用的） */
+.status-usage-wrap {
+	position: relative;
+	display: inline-flex;
+}
+
+button.status-usage {
+	background: none;
+	border: none;
+	font: inherit;
+	cursor: pointer;
+}
+
+.status-usage-pop {
+	position: absolute;
+	bottom: calc(100% + 8px);
+	left: 0;
+	z-index: 30;
+	min-width: 200px;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding: 8px 10px;
+	border: 1px solid var(--border-strong, var(--border));
+	border-radius: 10px;
+	background: var(--bg-elev);
+	box-shadow: 0 12px 32px rgb(0 0 0 / 35%);
+}
+
+.status-usage-title {
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--text-dim);
+	padding-bottom: 4px;
+	border-bottom: 1px solid var(--border);
+}
+
+.status-usage-row {
+	display: flex;
+	justify-content: space-between;
+	gap: 16px;
+	font-size: 11.5px;
+	color: var(--text-faint);
+}
+
+.status-usage-row .mono {
+	color: var(--text);
+}
