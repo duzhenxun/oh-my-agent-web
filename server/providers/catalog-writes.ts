@@ -2,7 +2,17 @@
  * 把「目录里的 provider」写回 models.json（nexita / nexita-anthropic 这类）。
  * 单独放一个文件：provider-store 已经接近 400 行护栏，而这块逻辑是自成一体的。
  */
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { patchCatalogModel, readCatalog, specToCatalog, writeCatalog, type CatalogEntry } from "./catalog-store.js";
+
+async function readJson<T>(path: string, fallback: T): Promise<T> {
+	try {
+		return JSON.parse(await readFile(path, "utf8")) as T;
+	} catch {
+		return fallback;
+	}
+}
 import type { ModelSpec, ProviderInput } from "./validate.js";
 
 export async function writeCatalogUpsert(
@@ -89,4 +99,43 @@ export async function removeFromCatalog(agentDir: string, provider: string): Pro
 	catalog.providers = next;
 	await writeCatalog(agentDir, catalog);
 	return true;
+}
+
+/**
+ * 把 models-store.json 里的老 provider 补一份到 models.json。
+ *
+ * 为什么：pi 的 CLI 只认 models.json（providers 段）里的配置；
+ * 早期我们按 ADR-0025 把用户配的 provider 写进了 models-store.json，
+ * 结果「本应用能用、pi CLI 里却没有」。这里做一次幂等补齐（**不删**原文件，失败也安全）。
+ */
+export async function migrateStoreToCatalog(agentDir: string): Promise<string[]> {
+	const [catalog, store, auth] = await Promise.all([
+		readCatalog(agentDir),
+		readJson<Record<string, { models?: Record<string, unknown>[] }>>(join(agentDir, "models-store.json"), {}),
+		readJson<Record<string, { key?: string }>>(join(agentDir, "auth.json"), {}),
+	]);
+	const providers = { ...catalog.providers };
+	const migrated: string[] = [];
+	for (const [id, entry] of Object.entries(store)) {
+		if (providers[id]) continue; // 已经在目录里，不动
+		const models = Array.isArray(entry.models) ? entry.models : [];
+		const template = models.find((model) => model.api && model.baseUrl) as Record<string, unknown> | undefined;
+		if (!template) continue; // 没有可用端点，补过去也是坏的
+		providers[id] = {
+			api: template.api as string,
+			baseUrl: template.baseUrl as string,
+			...(auth[id]?.key ? { apiKey: auth[id].key } : {}),
+			...(template.headers ? { headers: template.headers as Record<string, string> } : {}),
+			models: models.map((model) => ({
+				...model,
+				api: (model.api ?? template.api) as string,
+			})) as unknown as CatalogEntry["models"],
+		};
+		migrated.push(id);
+	}
+	if (migrated.length > 0) {
+		catalog.providers = providers;
+		await writeCatalog(agentDir, catalog);
+	}
+	return migrated;
 }

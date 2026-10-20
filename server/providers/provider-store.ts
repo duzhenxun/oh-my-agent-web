@@ -54,7 +54,6 @@ export type ProviderStore = {
 	upsert: (input: ProviderInput) => Promise<{ ok: true; view: ProviderView } | { ok: false; error: string }>;
 	/** 删掉一个 provider（模型表 + 凭证一起删，B 期；调用方必须先二次确认） */
 	remove: (provider: string) => Promise<{ ok: true; removed: boolean } | { ok: false; error: string }>;
-	/** 取单个 provider（编辑表单用；同样不含明文 key） */
 	get: (provider: string) => Promise<ProviderView | null>;
 	/**
 	 * 写回单个模型的规格（ADR-0026 A 期）：能力 / 上下文窗口 / 最大输出 / 价格。
@@ -301,7 +300,6 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 			return { ok: true, added, skipped };
 		},
 
-		// 删 provider：models-store / models.json / auth 三处都要清（只清一处会「删了又出现」）
 		async remove(provider) {
 			if (!/^[a-z0-9][a-z0-9-]{1,30}$/.test(provider)) return { ok: false, error: "provider 名字不合法" };
 			const models = await readJson<ModelsStore>(modelsPath, {});
@@ -326,9 +324,17 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 				readJson<ModelsStore>(modelsPath, {}),
 				readJson<AuthStore>(authPath, {}),
 			]);
-			if (!models[input.provider] && (await inCatalog(input.provider))) {
+			// 新 provider 一律写 pi 的目录（models.json）—— 只有写这里，pi 的 CLI 才看得到；
+			// models-store.json 是历史遗留位置，仅对已存在的条目继续沿用
+			if (!models[input.provider]) {
+				// 新增必须能拿到 key（目录里已有 key 的允许留空不改）
+				const existingKey =
+					auth[input.provider]?.key ?? (await readCatalog(options.agentDir)).providers?.[input.provider]?.apiKey;
+				if (input.apiKey === undefined && !existingKey) {
+					return { ok: false, error: "新增 provider 必须填 api key（否则模型调不通）" };
+				}
 				const { models: written } = await writeCatalogUpsert(options.agentDir, input);
-				const key = input.apiKey ?? (await readCatalog(options.agentDir)).providers?.[input.provider]?.apiKey;
+				const key = input.apiKey ?? existingKey;
 				return {
 					ok: true,
 					view: {
@@ -345,11 +351,6 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 			}
 
 			const existing = models[input.provider];
-			if (!existing && input.apiKey === undefined && auth[input.provider]?.key === undefined) {
-				return { ok: false, error: "新增 provider 必须填 api key（否则模型调不通）" };
-			}
-
-			// 模型表：保留原有其它字段（成本、compat 等），只覆盖我们管的四项
 			const previous = new Map((existing?.models ?? []).map((model) => [model.id, model]));
 			const nextModels: ModelDefinition[] = input.models.map((model) => {
 				const base: ModelDefinition = previous.get(model.id) ?? { id: model.id };

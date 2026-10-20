@@ -42,8 +42,9 @@ describe("list", () => {
 });
 
 describe("upsert", () => {
-	it("新增 provider：写模型表 + auth，权限 0600，其它 provider 不受影响", async () => {
+	it("新增 provider：写进 pi 的目录（models.json，CLI 只认这份），其它 provider 不受影响", async () => {
 		writeFileSync(join(agentDir, MODELS_STORE_FILE), JSON.stringify({ other: { models: [{ id: "keep-me" }] } }));
+		writeFileSync(join(agentDir, "models.json"), JSON.stringify({ providers: {} }));
 		const result = await store().upsert({
 			provider: "acme",
 			baseUrl: "https://a.example.com",
@@ -53,12 +54,18 @@ describe("upsert", () => {
 		});
 		expect(result.ok).toBe(true);
 
-		const models = JSON.parse(readFileSync(join(agentDir, MODELS_STORE_FILE), "utf8"));
-		expect(Object.keys(models).sort()).toEqual(["acme", "other"]);
-		expect(models.other.models[0].id).toBe("keep-me");
-		expect(models.acme.models[0]).toMatchObject({ id: "m1", provider: "acme", api: "openai-completions" });
-		expect(statSync(join(agentDir, MODELS_STORE_FILE)).mode & 0o777).toBe(0o600);
-		expect(statSync(join(agentDir, AUTH_FILE)).mode & 0o777).toBe(0o600);
+		// 新 provider 落在目录里（nexita-anthropic 那种形状），key 也写在同一处
+		const catalog = JSON.parse(readFileSync(join(agentDir, "models.json"), "utf8"));
+		expect(catalog.providers.acme).toMatchObject({
+			api: "openai-completions",
+			baseUrl: "https://a.example.com",
+			apiKey: "sk-1234567890",
+		});
+		expect(catalog.providers.acme.models[0]).toMatchObject({ id: "m1" });
+		// 老的 models-store 不动
+		const store2 = JSON.parse(readFileSync(join(agentDir, MODELS_STORE_FILE), "utf8"));
+		expect(Object.keys(store2)).toEqual(["other"]);
+		expect(statSync(join(agentDir, "models.json")).mode & 0o777).toBe(0o600);
 	});
 
 	it("不传 apiKey 时保留已有 key（留空 = 不修改）", async () => {

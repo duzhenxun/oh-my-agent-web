@@ -30,6 +30,7 @@ import { builtinProviderGroups, createProviderWiring } from "./providers/provide
 import { probeProvider } from "./providers/probe.js";
 import { createProviderStore } from "./providers/provider-store.js";
 import { createEnabledStore } from "./providers/enabled-models.js";
+import { migrateStoreToCatalog } from "./providers/catalog-writes.js";
 import { registerAuxRoutes } from "./http/aux-routes.js";
 import { handleMessage } from "./ws/handle-message.js";
 import { registerHealthAndStatic } from "./http/health-and-static.js";
@@ -105,6 +106,10 @@ const engine: EnginePort = resolved.engine;
 /** 引擎在 runtime 建好之前就会创建，用一个 ref 把「通知」转发给界面 */
 /** provider 配置存储（ADR-0025）：复用 pi 自己的 models-store.json / auth.json */
 const providerStore = createProviderStore({ agentDir: piAgentDir(), now: Date.now });
+// 早期写进 models-store.json 的 provider，补一份到 models.json（pi CLI 只认后者）
+void migrateStoreToCatalog(piAgentDir()).then((migrated) => {
+	if (migrated.length > 0) logger.info("已把老 provider 补进 models.json", { providers: migrated });
+});
 const enabledStore = createEnabledStore({ agentDir: piAgentDir() });
 
 const runProviderRequest = createProviderWiring({

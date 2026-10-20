@@ -6,6 +6,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync }
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { migrateStoreToCatalog } from "../../server/providers/catalog-writes.js";
 import { MODELS_STORE_FILE, createProviderStore } from "../../server/providers/provider-store.js";
 
 let agentDir = "";
@@ -109,5 +110,51 @@ describe("删除 provider：三处都要清", () => {
 
 	it("三处都没有 → removed:false（界面据此提示「可能是插件注册的」）", async () => {
 		expect(await store().remove("ghost")).toEqual({ ok: true, removed: false });
+	});
+});
+
+describe("新 provider 写进 models.json（pi CLI 只认这份）", () => {
+	it("upsert 新 provider → models.json 里出现，models-store 里没有", async () => {
+		writeFileSync(join(agentDir, "models.json"), JSON.stringify({ providers: {} }));
+		const result = await store().upsert({
+			provider: "new-gw",
+			baseUrl: "https://x/v1",
+			api: "openai-completions",
+			apiKey: "sk-new-1234",
+			models: [{ id: "m1" }, { id: "m2" }],
+		});
+		expect(result.ok).toBe(true);
+		const catalog = JSON.parse(readFileSync(join(agentDir, "models.json"), "utf8"));
+		expect(catalog.providers["new-gw"]).toMatchObject({
+			api: "openai-completions",
+			baseUrl: "https://x/v1",
+			apiKey: "sk-new-1234",
+		});
+		expect(catalog.providers["new-gw"].models.map((model: { id: string }) => model.id)).toEqual(["m1", "m2"]);
+		expect(() => readFileSync(join(agentDir, MODELS_STORE_FILE), "utf8")).toThrow();
+	});
+});
+
+describe("把老 provider 补进 models.json（幂等，不删原文件）", () => {
+	it("models-store 里的 provider 补一份到目录，key 从 auth.json 带上", async () => {
+		writeFileSync(join(agentDir, "models.json"), JSON.stringify({ providers: {} }));
+		writeFileSync(
+			join(agentDir, MODELS_STORE_FILE),
+			JSON.stringify({ old: { models: [{ id: "m1", api: "openai-completions", baseUrl: "https://old/v1" }] } }),
+		);
+		writeFileSync(join(agentDir, "auth.json"), JSON.stringify({ old: { key: "sk-old" } }));
+
+		const migrated = await migrateStoreToCatalog(agentDir);
+		expect(migrated).toEqual(["old"]);
+		const catalog = JSON.parse(readFileSync(join(agentDir, "models.json"), "utf8"));
+		expect(catalog.providers.old).toMatchObject({
+			baseUrl: "https://old/v1",
+			api: "openai-completions",
+			apiKey: "sk-old",
+		});
+		// 原来的文件不动（迁移失败也不会更糟）
+		expect(JSON.parse(readFileSync(join(agentDir, MODELS_STORE_FILE), "utf8")).old).toBeDefined();
+		// 再跑一次：已经在了，不再重复迁移
+		expect(await migrateStoreToCatalog(agentDir)).toEqual([]);
 	});
 });
