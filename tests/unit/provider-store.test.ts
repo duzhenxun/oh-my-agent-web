@@ -90,22 +90,21 @@ describe("upsert", () => {
 		expect(result.ok).toBe(false);
 	});
 
-	it("只加一个模型时，原有模型不会被删掉", async () => {
+	it("表单清单是权威的：没勾的模型会被去掉（取消勾选 + 保存要生效）", async () => {
 		writeFileSync(
 			join(agentDir, MODELS_STORE_FILE),
-			JSON.stringify({ acme: { models: [{ id: "old", cost: { input: 1 } }] } }),
+			JSON.stringify({
+				acme: { models: [{ id: "old", api: "openai-completions", baseUrl: "https://a" }, { id: "new" }] },
+			}),
 		);
-		writeFileSync(join(agentDir, AUTH_FILE), JSON.stringify({ acme: { type: "api_key", key: "sk-1234567890" } }));
 		await store().upsert({
 			provider: "acme",
-			baseUrl: "https://a.example.com",
+			baseUrl: "https://a",
 			api: "openai-completions",
 			models: [{ id: "new" }],
 		});
-		const models = JSON.parse(readFileSync(join(agentDir, MODELS_STORE_FILE), "utf8"));
-		expect(models.acme.models.map((model: { id: string }) => model.id).sort()).toEqual(["new", "old"]);
-		// 原有字段也保留（成本等不该被我们覆盖掉）
-		expect(models.acme.models.find((model: { id: string }) => model.id === "old").cost).toEqual({ input: 1 });
+		const models = JSON.parse(readFileSync(join(agentDir, MODELS_STORE_FILE), "utf8")).acme.models;
+		expect(models.map((model: { id: string }) => model.id)).toEqual(["new"]);
 	});
 });
 

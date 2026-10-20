@@ -363,8 +363,8 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 					...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
 				};
 			});
-			// 原有但这次没提到的模型保留，避免"只是加了一个模型却把别的删了"
-			for (const [id, model] of previous) if (!nextModels.some((item) => item.id === id)) nextModels.push(model);
+			// 表单里的清单是**权威**的：没勾的模型就是要去掉（之前这里会悄悄保留，
+			// 于是"取消勾选 + 保存"看起来毫无效果）
 
 			models[input.provider] = { ...existing, models: nextModels, lastModified: options.now() };
 			await writeJsonPrivate(modelsPath, models);
