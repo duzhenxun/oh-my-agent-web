@@ -389,10 +389,16 @@
 	background: #0d1117;
 }
 
-/* 引导 / 排队 / 停止：三个按钮统一大小（和发送键一样紧凑） */
+/* 引导 / 排队 / 停止：三个按钮**同一尺寸**（引导原来是主按钮尺寸，显得格外大） */
+.btn.btn-send,
 .btn.btn-queue,
 .btn.btn-stop {
-	padding: 4px 10px;
-	font-size: 12px;
+	padding: 6px 14px;
+	font-size: 12.5px;
+	line-height: 1.4;
 	border-radius: 8px;
+	min-height: 30px;
+	/* 三个按钮宽度也一致，切换「引导/排队/停止」时不会左右跳 */
+	min-width: 72px;
+	justify-content: center;
 }
