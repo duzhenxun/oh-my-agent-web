@@ -380,3 +380,11 @@ body {
 .appbar[hidden] {
 	display: none;
 }
+
+/* 状态栏里的 token / 上下文：淡色胶囊，不抢注意力 */
+.status-usage {
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	padding: 0 8px;
+	color: var(--text-faint);
+}

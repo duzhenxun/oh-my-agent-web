@@ -2,6 +2,12 @@ import type { Snapshot } from "../types.ts";
 
 const CONNECTION: Record<string, string> = { connecting: "连接中", open: "已连接", closed: "已断开" };
 
+function formatTokens(value: number): string {
+	if (value < 1000) return String(value);
+	if (value < 1_000_000) return `${(value / 1000).toFixed(1)}K`;
+	return `${(value / 1_000_000).toFixed(2)}M`;
+}
+
 /**
  * 底部状态栏：一眼看到"工作台现在是什么状态"。
  * 左：连接 / 引擎 / 对话数 / 工作中 / 排队；右：会话 token / 项目路径。
@@ -25,6 +31,7 @@ export function StatusBar({
 	onToggleSidebar: () => void;
 }) {
 	const running = Object.keys(snapshot?.runningByConversation ?? {}).length;
+	const stats = snapshot?.sessionStats ?? null;
 	return (
 		<footer className="statusbar">
 			<span className={`status-dot status-dot-${connection}`} aria-hidden="true" />
@@ -33,6 +40,12 @@ export function StatusBar({
 			<span className="status-item">💬 {snapshot?.conversations.length ?? 0} 个对话</span>
 			<span className="status-item">⚙ 工作中 {running}</span>
 			<span className="status-item">⏳ 排队 {snapshot?.queued.length ?? 0}</span>
+			{stats ? (
+				<span className="status-item status-usage" title="本会话累计输入 / 输出 / 当前上下文占用">
+					↑ {formatTokens(stats.inputTokens)} ↓ {formatTokens(stats.outputTokens)} · 上下文{" "}
+					{formatTokens(stats.contextTokens)}
+				</span>
+			) : null}
 			<span className="status-spacer" />
 			<button
 				type="button"

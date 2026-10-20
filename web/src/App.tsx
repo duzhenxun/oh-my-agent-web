@@ -10,7 +10,6 @@ import { MessageList } from "./components/MessageList.tsx";
 import { ConversationOutline } from "./components/ConversationOutline.tsx";
 import { SidebarMenu } from "./components/SidebarMenu.tsx";
 import { PreviewPanel, type PanelItem } from "./components/PreviewPanel.tsx";
-import { SessionInfo } from "./components/SessionInfo.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
 import { StatusBar } from "./components/StatusBar.tsx";
 
@@ -128,7 +127,6 @@ export function App() {
 				</button>
 				{/* 预留区：以后放全局搜索 / 命令面板 */}
 				<span className="appbar-slot" />
-				<SessionInfo snapshot={snapshot} />
 				<SidebarMenu variant="full" placement="appbar" />
 				{panelItems.length > 0 ? (
 					<button
