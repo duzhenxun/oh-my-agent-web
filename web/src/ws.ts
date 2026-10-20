@@ -190,9 +190,13 @@ export function updateModel(provider: string, model: Record<string, unknown>): v
 	send({ id: `req-${++seq}`, type: "update_model", payload: { provider, model } });
 }
 
-/** 启用 / 停用某个 provider（写 pi settings.json 的 enabledModels） */
-export function setProviderEnabled(provider: string, enabled: boolean): void {
-	send({ id: `req-${++seq}`, type: "set_enabled_models", payload: { provider, enabled } });
+/** 启用 / 停用 provider，或（传 modelId 时）单个模型；写 pi settings.json 的 enabledModels */
+export function setProviderEnabled(provider: string, enabled: boolean, modelId?: string): void {
+	send({
+		id: `req-${++seq}`,
+		type: "set_enabled_models",
+		payload: { provider, enabled, ...(modelId ? { modelId } : {}) },
+	});
 }
 
 /** 从 provider 下移除一个模型（不动凭证） */

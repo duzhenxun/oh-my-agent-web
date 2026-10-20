@@ -143,7 +143,13 @@ export function parseClientRequest(raw: unknown): ClientRequest | null {
 	if (type === "set_enabled_models") {
 		const provider = typeof payload?.provider === "string" ? payload.provider.trim() : "";
 		if (provider === "" || typeof payload?.enabled !== "boolean") return null;
-		return { id, type: "set_enabled_models", payload: { provider, enabled: payload.enabled } };
+		const modelId =
+			typeof payload?.modelId === "string" && payload.modelId.trim() !== "" ? payload.modelId.trim() : undefined;
+		return {
+			id,
+			type: "set_enabled_models",
+			payload: { provider, enabled: payload.enabled, ...(modelId ? { modelId } : {}) },
+		};
 	}
 
 	if (type === "cancel_queued") {

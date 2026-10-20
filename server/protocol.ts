@@ -334,7 +334,7 @@ export type CancelQueuedRequest = { id: string; type: "cancel_queued"; payload: 
 export type SetEnabledModelsRequest = {
 	id: string;
 	type: "set_enabled_models";
-	payload: { provider: string; enabled: boolean };
+	payload: { provider: string; enabled: boolean; /** 给了就是模型级开关 */ modelId?: string };
 };
 export type SetThinkingLevelRequest = { id: string; type: "set_thinking_level"; payload: { level: string } };
 

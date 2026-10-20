@@ -391,3 +391,18 @@
 	font-size: 11px;
 	color: var(--text-faint);
 }
+
+/* 模型行用的小号开关 */
+.prov-switch-sm .prov-switch-track {
+	width: 28px;
+	height: 16px;
+}
+
+.prov-switch-sm .prov-switch-track::after {
+	width: 12px;
+	height: 12px;
+}
+
+.prov-switch-sm input:checked + .prov-switch-track::after {
+	transform: translateX(12px);
+}

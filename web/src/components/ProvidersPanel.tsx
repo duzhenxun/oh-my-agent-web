@@ -316,9 +316,14 @@ export function ProvidersPanel() {
 													{model.name}
 												</button>
 												<LatencyCell result={latency[model.id]} />
-												<span className="prov-model-spec">
-													{modelEnabled(current.provider, model.id) ? "已启用" : "未启用"}
-												</span>
+												<label className="prov-switch prov-switch-sm" title="单独启用 / 停用这个模型">
+													<input
+														type="checkbox"
+														checked={modelEnabled(current.provider, model.id)}
+														onChange={(event) => setProviderEnabled(current.provider, event.target.checked, model.id)}
+													/>
+													<span className="prov-switch-track" aria-hidden="true" />
+												</label>
 												<button type="button" className="msg-action" onClick={() => setEditingModel(model.id)}>
 													编辑
 												</button>

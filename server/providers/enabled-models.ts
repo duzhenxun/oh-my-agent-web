@@ -70,13 +70,18 @@ export function toggleModel(
 	models: string[],
 	modelId: string,
 	enabled: boolean,
+	/** 全量清单：全开状态下关一个模型时要展开成「除它以外的所有模型」 */
+	universe: { provider: string; models: string[] }[] = [],
 ): EnabledPatterns {
 	if (patterns.length === 0) {
-		// 全开状态下关一个：必须展开成「除它以外的所有模型」
 		if (enabled) return patterns;
-		return models
-			.filter((id) => id !== modelId)
-			.map((id) => `${provider}/${id}`)
+		const source = universe.length > 0 ? universe : [{ provider, models }];
+		return source
+			.flatMap((item) =>
+				item.models
+					.filter((id) => !(item.provider === provider && id === modelId))
+					.map((id) => `${item.provider}/${id}`),
+			)
 			.sort();
 	}
 	const allOn = patterns.includes(`${provider}/**`);

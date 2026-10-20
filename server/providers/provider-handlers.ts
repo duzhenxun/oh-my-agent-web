@@ -6,7 +6,7 @@
 import type { ProviderView, UpsertProviderRequest } from "../protocol.js";
 import type { BuiltinProvider, ProviderStore } from "./provider-store.js";
 import { validateModelSpec, validateProviderInput } from "./validate.js";
-import { toggleProvider } from "./enabled-models.js";
+import { toggleModel, toggleProvider } from "./enabled-models.js";
 
 export type ProviderHandlerDeps = {
 	store: ProviderStore;
@@ -84,7 +84,8 @@ export async function handleProviderRequest(
 	}
 
 	if (request.type === "set_enabled_models") {
-		const payload = (request as unknown as { payload: { provider: string; enabled: boolean } }).payload;
+		const payload = (request as unknown as { payload: { provider: string; enabled: boolean; modelId?: string } })
+			.payload;
 		// provider === "*"：全开（pi 的语义是「没有白名单 = 不限制」）
 		if (payload.provider === "*") {
 			await deps.enabled.write([]);
@@ -98,18 +99,13 @@ export async function handleProviderRequest(
 			provider: item.provider,
 			models: item.models.map((model) => model.id),
 		}));
-		const next = toggleProvider(
-			patterns,
-			payload.provider,
-			(view?.models ?? []).map((model) => model.id),
-			payload.enabled,
-			universe,
-		);
+		const modelIds = (view?.models ?? []).map((model) => model.id);
+		const next = payload.modelId
+			? toggleModel(patterns, payload.provider, modelIds, payload.modelId, payload.enabled, universe)
+			: toggleProvider(patterns, payload.provider, modelIds, payload.enabled, universe);
 		await deps.enabled.write(next);
-		deps.notify(
-			`provider「${payload.provider}」${payload.enabled ? "已启用" : "已停用"}（写进 pi 的 settings.json）`,
-			"info",
-		);
+		const what = payload.modelId ? `模型「${payload.modelId}」` : `provider「${payload.provider}」`;
+		deps.notify(`${what}${payload.enabled ? "已启用" : "已停用"}（写进 pi 的 settings.json）`, "info");
 		return { ok: true, result: { enabledModels: next } };
 	}
 
