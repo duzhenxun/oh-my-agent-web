@@ -317,3 +317,22 @@
 		align-items: center;
 	}
 }
+
+@media (max-width: 900px) {
+	/* 手机端输入区只留「模型 + 思考强度 + 快捷短语」：
+	   模板库与审批模式是低频入口，留着会把输入框挤成一条缝；
+	   快捷短语是常用输入手段，**保留**（横向滚动，不换行）。 */
+	.composer-template-btn,
+	.composer-approval-btn {
+		display: none;
+	}
+
+	/* 隐藏后「间隔符」也别留，否则行首/行尾多出两道竖线 */
+	.composer-tools .tool-sep {
+		display: none;
+	}
+
+	.composer-tools {
+		gap: 6px;
+	}
+}

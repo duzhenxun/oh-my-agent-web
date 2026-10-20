@@ -81,7 +81,12 @@ export function Composer({ running, conversationId }: { running: boolean; conver
 			<div className="composer-topbar">
 				{/* 输入框上方一行：模板 / 模型 / 强度 / 审批 + 快捷短语（同一行） */}
 				<div className="composer-tools">
-					<button type="button" className="tool-chip" onClick={() => setGalleryOpen(true)} title="提示词模板库">
+					<button
+						type="button"
+						className="tool-chip composer-template-btn"
+						onClick={() => setGalleryOpen(true)}
+						title="提示词模板库"
+					>
 						🧩 模板
 					</button>
 					<span className="tool-sep" aria-hidden="true" />
@@ -109,7 +114,7 @@ export function Composer({ running, conversationId }: { running: boolean; conver
 					) : (
 						<button
 							type="button"
-							className={`tool-chip${snapshot?.approvalMode === "allow" ? " tool-chip-warn" : ""}`}
+							className={`tool-chip composer-approval-btn${snapshot?.approvalMode === "allow" ? " tool-chip-warn" : ""}`}
 							onClick={() => setApprovalMode(snapshot?.approvalMode === "allow" ? "ask" : "allow")}
 							title="审批模式（只在本会话生效，重启恢复询问）"
 						>
