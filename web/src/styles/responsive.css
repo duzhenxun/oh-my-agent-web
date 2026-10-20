@@ -145,6 +145,11 @@
 		height: 100dvh;
 		/* 顶栏压在抽屉之上，这里给它让出位置，免得「项目 (14)」标题被盖住 */
 		padding-top: 52px;
+		/* 手机上抽屉占满宽度：会话行右侧的按钮（置顶/归档/…）之前被 320px 掐掉 */
+		width: 100vw !important;
+		max-width: 100vw;
+		left: 0;
+		right: 0;
 		overflow-y: auto;
 		overscroll-behavior: contain;
 		box-shadow: none;
@@ -303,6 +308,14 @@
 	/* 抽屉顶部留一点安全区，别贴着刘海 */
 	.side-host .sidebar {
 		padding-top: env(safe-area-inset-top, 0);
+		width: 100%;
+	}
+
+	/* 会话行：左右各留一点内边距，行内按钮不再贴边被裁 */
+	.side-host .pi-row,
+	.side-host .session-row {
+		padding-right: 10px;
+		padding-left: 10px;
 	}
 }
 
