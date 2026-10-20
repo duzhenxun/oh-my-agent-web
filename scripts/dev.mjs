@@ -21,6 +21,8 @@ const CHILDREN = [
 		args: ["--import", "tsx", "--watch", join(REPO_ROOT, "server/index.ts")],
 		env: {
 			AGENT_WEB_PORT: process.env.AGENT_WEB_BACKEND_PORT ?? "25258",
+			// 开发态后端永远只听回环：对外由 Vite 承担（它会把真实来源写进 X-Forwarded-For）
+			AGENT_WEB_HOST: "127.0.0.1",
 			// 让后端的 Origin/Host 白名单认这个对外端口（否则 WS 握手会被判为跨站）
 			AGENT_WEB_DEV_PORT: process.env.AGENT_WEB_DEV_PORT ?? "25257",
 		},
@@ -28,7 +30,8 @@ const CHILDREN = [
 	{
 		name: "web",
 		command: "npm",
-		args: ["exec", "--", "vite", "--config", join(REPO_ROOT, "web/vite.config.ts")],
+		// 额外参数透传给 vite（例如 `npm run dev -- --host 0.0.0.0` 让手机也能访问）
+		args: ["exec", "--", "vite", "--config", join(REPO_ROOT, "web/vite.config.ts"), ...process.argv.slice(2)],
 		env: {},
 	},
 ];

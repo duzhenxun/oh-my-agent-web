@@ -4,7 +4,7 @@
  * 这一层的错误代价很高（要么被人随便进，要么自己进不去），所以按决策表逐条钉住。
  */
 import { describe, expect, it } from "vitest";
-import { decide, isLoopback, passwordFromHeader } from "../../server/http/auth.js";
+import { decide, effectiveAddress, isLoopback, passwordFromHeader } from "../../server/http/auth.js";
 
 describe("isLoopback", () => {
 	it("IPv4 / IPv6 / v4-mapped 都算本机", () => {
@@ -57,5 +57,29 @@ describe("decide（决策表）", () => {
 				authorization: `Basic ${Buffer.from("x:wrong").toString("base64")}`,
 			}),
 		).toBe("challenge");
+	});
+});
+
+describe("effectiveAddress（反代后的真实来源）", () => {
+	it("对端是回环时，用 X-Forwarded-For 里的第一个地址", () => {
+		expect(effectiveAddress("127.0.0.1", "192.168.1.9, 10.0.0.1")).toBe("192.168.1.9");
+	});
+
+	it("对端不是回环时**忽略**这个头（否则等于谁都能伪造）", () => {
+		expect(effectiveAddress("192.168.1.5", "127.0.0.1")).toBe("192.168.1.5");
+	});
+
+	it("没有这个头就按原样", () => {
+		expect(effectiveAddress("127.0.0.1", undefined)).toBe("127.0.0.1");
+		expect(effectiveAddress("127.0.0.1", "  ")).toBe("127.0.0.1");
+	});
+
+	it("经反代来的远程请求仍然要密码", () => {
+		const decision = decide({
+			password: "secret",
+			remoteAddress: effectiveAddress("127.0.0.1", "192.168.1.9"),
+			authorization: undefined,
+		});
+		expect(decision).toBe("challenge");
 	});
 });

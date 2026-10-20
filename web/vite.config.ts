@@ -19,8 +19,8 @@ export default defineConfig({
 		strictPort: true,
 		fs: { allow: [".."] },
 		proxy: {
-			"/api": { target: "http://127.0.0.1:25258" },
-			"/ws": { target: "ws://127.0.0.1:25258", ws: true },
+			"/api": { target: "http://127.0.0.1:25258", xfwd: true },
+			"/ws": { target: "ws://127.0.0.1:25258", ws: true, xfwd: true },
 		},
 	},
 });

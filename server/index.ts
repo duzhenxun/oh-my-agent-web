@@ -40,7 +40,7 @@ import { createLogger } from "./util/log.js";
 import { createRotatingFileSink, logFileName, type RotatingFileSink } from "./util/log-file.js";
 import { describePolicy, isAllowedHost, isAllowedOrigin } from "./util/origin.js";
 import { pickExisting, webDistCandidates } from "./util/paths.js";
-import { authMiddleware, decide, AUTH_REALM } from "./http/auth.js";
+import { authMiddleware, decide, effectiveAddress, AUTH_REALM } from "./http/auth.js";
 import { checkDataDirWritable, describeListenError } from "./util/startup.js";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
@@ -223,9 +223,13 @@ const wss = new WebSocketServer({ noServer: true });
 
 httpServer.on("upgrade", (request: IncomingMessage, socket, head) => {
 	// WS 不走 Express 中间件，得在这里单独判一次
+	const forwarded = request.headers["x-forwarded-for"];
 	const auth = decide({
 		password: config.password,
-		remoteAddress: request.socket.remoteAddress,
+		remoteAddress: effectiveAddress(
+			request.socket.remoteAddress,
+			typeof forwarded === "string" ? forwarded : undefined,
+		),
 		authorization: request.headers.authorization,
 	});
 	if (auth !== "allow") {

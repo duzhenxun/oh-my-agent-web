@@ -30,6 +30,17 @@ function sameSecret(a: string, b: string): boolean {
 	return timingSafeEqual(left, right);
 }
 
+/**
+ * 真实来源：本机对端（比如 Vite 反代）带了 `X-Forwarded-For` 时取最左边那个。
+ *
+ * 只在对端本身是回环时才看这个头 —— 否则任何人都能伪造它绕过鉴权。
+ */
+export function effectiveAddress(peer: string | undefined, forwardedFor: string | undefined): string | undefined {
+	if (!isLoopback(peer) || !forwardedFor) return peer;
+	const first = forwardedFor.split(",")[0]?.trim();
+	return first && first !== "" ? first : peer;
+}
+
 /** 从 `Authorization: Basic base64(user:pass)` 里取密码（用户名忽略） */
 export function passwordFromHeader(header: string | undefined): string | null {
 	if (!header || !header.toLowerCase().startsWith("basic ")) return null;
@@ -64,9 +75,13 @@ export function authMiddleware(password: string | null) {
 		next: () => void,
 	) => {
 		const authorization = request.headers.authorization;
+		const forwarded = request.headers["x-forwarded-for"];
 		const decision = decide({
 			password,
-			remoteAddress: request.socket.remoteAddress,
+			remoteAddress: effectiveAddress(
+				request.socket.remoteAddress,
+				typeof forwarded === "string" ? forwarded : undefined,
+			),
 			authorization: typeof authorization === "string" ? authorization : undefined,
 		});
 		if (decision === "allow") {
