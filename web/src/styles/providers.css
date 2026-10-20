@@ -192,7 +192,8 @@
 
 /* 详情区里的面板去掉外框（弹窗里不再套一层卡片） */
 .prov-detail .side-panel {
-	padding: 0;
+	/* 底部留白：按钮那一行不要贴着容器底边 */
+	padding: 0 0 16px;
 	border: none;
 	background: none;
 }
@@ -200,7 +201,7 @@
 .prov-detail .import-foot {
 	position: static;
 	/* 按钮别贴着容器底边 */
-	margin-bottom: 6px;
+	margin-bottom: 10px;
 }
 
 /* 左栏：provider 块（选中时把模型摊在下面） */
