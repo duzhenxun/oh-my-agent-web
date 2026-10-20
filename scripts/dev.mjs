@@ -19,7 +19,11 @@ const CHILDREN = [
 		name: "server",
 		command: process.execPath,
 		args: ["--import", "tsx", "--watch", join(REPO_ROOT, "server/index.ts")],
-		env: { AGENT_WEB_PORT: process.env.AGENT_WEB_BACKEND_PORT ?? "25258" },
+		env: {
+			AGENT_WEB_PORT: process.env.AGENT_WEB_BACKEND_PORT ?? "25258",
+			// 让后端的 Origin/Host 白名单认这个对外端口（否则 WS 握手会被判为跨站）
+			AGENT_WEB_DEV_PORT: process.env.AGENT_WEB_DEV_PORT ?? "25257",
+		},
 	},
 	{
 		name: "web",

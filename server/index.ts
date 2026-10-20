@@ -44,8 +44,11 @@ import { authMiddleware, decide, AUTH_REALM } from "./http/auth.js";
 import { checkDataDirWritable, describeListenError } from "./util/startup.js";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
-/** 开发态前端端口（vite），生产态不需要（ADR-0007） */
-const DEV_WEB_PORT = 5174;
+/**
+ * 开发态「用户访问的那个端口」（Vite）。生产态不需要（同一个端口由后端提供）。
+ * 现在统一是 25257；dev 脚本会把后端放到内部端口，再用这个变量告诉后端可信来源。
+ */
+const DEV_WEB_PORT = Number(process.env.AGENT_WEB_DEV_PORT ?? 25257);
 /** 快照节流窗口（ADR-0004 §3） */
 const SNAPSHOT_WINDOW_MS = 60;
 const TICK_MS = 20;
