@@ -301,6 +301,7 @@ details[open] > .proj-head .proj-chevron {
 	width: 7px;
 	height: 100%;
 	cursor: col-resize;
+	/* 不能盖住模态（模型/技能/设置面板）：拖宽手柄只属于侧栏这一层 */
 	z-index: 5;
 	background: transparent;
 }

@@ -328,3 +328,45 @@ describe("内置 provider 落成自定义条目（seed）", () => {
 		expect(entry.models.map((model: { id: string }) => model.id)).toEqual(["m2"]);
 	});
 });
+
+describe("models.json（pi 的 provider 目录）", () => {
+	const catalog = {
+		providers: {
+			"nexita-anthropic": {
+				api: "anthropic-messages",
+				baseUrl: "https://codeapi.nexita.net",
+				apiKey: "sk-catalog-key",
+				models: [{ id: "deepseek-v4.1-flash", name: "DeepSeek V4.1 Flash", reasoning: true, contextWindow: 1000000 }],
+			},
+			nexita: { api: "openai-responses", baseUrl: "https://codeapi.nexita.net/v1", models: [{ id: "gpt-6" }] },
+		},
+	};
+
+	it("目录里的 provider 也要列出来（nexita / nexita-anthropic 曾经查无此 provider）", async () => {
+		writeFileSync(join(agentDir, "models.json"), JSON.stringify(catalog));
+		const views = await store().list();
+		expect(views.map((view) => view.provider).sort()).toEqual(["nexita", "nexita-anthropic"]);
+		const anthropic = views.find((view) => view.provider === "nexita-anthropic");
+		expect(anthropic).toMatchObject({ source: "builtin", baseUrl: "https://codeapi.nexita.net", hasKey: true });
+		expect(anthropic?.keyHint).toBe("…-key".slice(-4).replace(/^/, "…"));
+		expect(anthropic?.models[0]).toMatchObject({ id: "deepseek-v4.1-flash", reasoning: true, contextWindow: 1000000 });
+	});
+
+	it("目录里的 key 只回尾 4 位，明文不出服务端", async () => {
+		writeFileSync(join(agentDir, "models.json"), JSON.stringify(catalog));
+		const raw = JSON.stringify(await store().list());
+		expect(raw).not.toContain("sk-catalog-key");
+		expect(await store().readKey("nexita-anthropic")).toBe("sk-catalog-key");
+	});
+
+	it("models-store 里的同名条目优先（用户覆盖目录）", async () => {
+		writeFileSync(join(agentDir, "models.json"), JSON.stringify(catalog));
+		writeFileSync(
+			join(agentDir, MODELS_STORE_FILE),
+			JSON.stringify({ nexita: { models: [{ id: "gpt-6", api: "openai-completions", baseUrl: "https://x" }] } }),
+		);
+		const views = await store().list();
+		expect(views.filter((view) => view.provider === "nexita")).toHaveLength(1);
+		expect(views.find((view) => view.provider === "nexita")?.source).toBe("custom");
+	});
+});

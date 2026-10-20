@@ -15,6 +15,8 @@ import { maskKey, type ModelSpec, type ProviderInput } from "./validate.js";
 
 export const MODELS_STORE_FILE = "models-store.json";
 export const AUTH_FILE = "auth.json";
+/** pi 的 provider 目录（nexita / nexita-anthropic 这类就写在这里，不在 models-store.json） */
+export const MODELS_FILE = "models.json";
 
 type ModelDefinition = {
 	id: string;
@@ -28,6 +30,12 @@ type ModelDefinition = {
 };
 type ModelsStore = Record<string, { models?: ModelDefinition[]; lastModified?: number; [key: string]: unknown }>;
 type AuthStore = Record<string, { type?: string; key?: string; [key: string]: unknown }>;
+type ModelsCatalog = {
+	providers?: Record<
+		string,
+		{ api?: string; baseUrl?: string; apiKey?: string; headers?: Record<string, string>; models?: ModelDefinition[] }
+	>;
+};
 
 /**
  * 把内置 provider「落成自定义条目」时用的种子（pi 的目录里本来就有这些模型）。
@@ -106,6 +114,19 @@ async function writeJsonPrivate(path: string, value: unknown): Promise<void> {
 	await chmod(path, 0o600);
 }
 
+/** ModelDefinition → 界面用的规格视图（没配过就缺省，不编造 0） */
+function specView(model: ModelDefinition) {
+	return {
+		id: model.id,
+		name: model.name ?? model.id,
+		reasoning: model.reasoning === true,
+		imageInput: Array.isArray(model.input) && model.input.includes("image"),
+		...(typeof model.contextWindow === "number" ? { contextWindow: model.contextWindow } : {}),
+		...(typeof model.maxTokens === "number" ? { maxTokens: model.maxTokens } : {}),
+		...(model.cost ? { cost: model.cost as Record<string, number> } : {}),
+	};
+}
+
 /** 内置 provider → 可写条目（整表照抄，避免覆盖时丢掉别的模型） */
 function materialize(provider: string, seed?: ProviderSeed): { models: ModelDefinition[] } | null {
 	if (!seed || seed.models.length === 0) return null;
@@ -123,6 +144,7 @@ function materialize(provider: string, seed?: ProviderSeed): { models: ModelDefi
 export function createProviderStore(options: { agentDir: string; now: () => number }): ProviderStore {
 	const modelsPath = join(options.agentDir, MODELS_STORE_FILE);
 	const authPath = join(options.agentDir, AUTH_FILE);
+	const catalogPath = join(options.agentDir, MODELS_FILE);
 
 	return {
 		async list(builtin = []) {
@@ -142,19 +164,30 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 					hasKey: typeof key === "string" && key !== "",
 					keyHint: maskKey(typeof key === "string" ? key : undefined),
 					...(headers ? { headerNames: Object.keys(headers) } : {}),
-					models: list.map((model) => ({
-						id: model.id,
-						name: model.name ?? model.id,
-						reasoning: model.reasoning === true,
-						imageInput: Array.isArray(model.input) && model.input.includes("image"),
-						...(typeof model.contextWindow === "number" ? { contextWindow: model.contextWindow } : {}),
-						...(typeof model.maxTokens === "number" ? { maxTokens: model.maxTokens } : {}),
-						...(model.cost ? { cost: model.cost as Record<string, number> } : {}),
-					})),
+					models: list.map(specView),
 				};
 			});
-			// 内置 provider（nexita / nexita-anthropic …）：pi 的目录里，models-store 里没有它们
-			const known = new Set(custom.map((view) => view.provider));
+			// pi 的 provider 目录（models.json）：nexita / nexita-anthropic 这类就写在这里。
+			// 之前只从 models-store.json 读，于是它们在界面上「查无此 provider」。
+			const catalog = await readJson<ModelsCatalog>(catalogPath, {});
+			const fromCatalog: ProviderView[] = Object.entries(catalog.providers ?? {})
+				.filter(([provider]) => !models[provider])
+				.map(([provider, entry]) => {
+					const key = auth[provider]?.key ?? entry.apiKey;
+					const headers = entry.headers ?? entry.models?.find((model) => model.headers)?.headers;
+					return {
+						provider,
+						source: "builtin" as const,
+						baseUrl: entry.baseUrl ?? "",
+						api: entry.api ?? "",
+						hasKey: typeof key === "string" && key !== "",
+						keyHint: maskKey(typeof key === "string" ? key : undefined),
+						...(headers ? { headerNames: Object.keys(headers) } : {}),
+						models: (entry.models ?? []).map((model) => specView(model)),
+					};
+				});
+			// 引擎报上来的内置 provider：补上目录里没有的（例如插件注册的）
+			const known = new Set([...custom, ...fromCatalog].map((view) => view.provider));
 			const builtinViews: ProviderView[] = builtin
 				.filter((item) => !known.has(item.provider))
 				.map((item) => {
@@ -166,15 +199,15 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 						api: item.api ?? "",
 						hasKey: typeof key === "string" && key !== "",
 						keyHint: maskKey(typeof key === "string" ? key : undefined),
-						models: item.models,
+						models: (item.models ?? []).map((model) => specView({ id: model.id, name: model.name } as ModelDefinition)),
 					};
 				});
-			return [...custom, ...builtinViews];
+			return [...custom, ...fromCatalog, ...builtinViews];
 		},
 
 		async readKey(provider) {
 			const auth = await readJson<AuthStore>(authPath, {});
-			const key = auth[provider]?.key;
+			const key = auth[provider]?.key ?? (await readJson<ModelsCatalog>(catalogPath, {})).providers?.[provider]?.apiKey;
 			return typeof key === "string" && key !== "" ? key : null;
 		},
 
@@ -192,8 +225,11 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 
 		async readHeaders(provider) {
 			const models = await readJson<ModelsStore>(modelsPath, {});
-			const headers = models[provider]?.models?.find((model) => model.headers)?.headers;
-			return headers ? { ...headers } : {};
+			const own = models[provider]?.models?.find((model) => model.headers)?.headers;
+			if (own) return { ...own };
+			const entry = (await readJson<ModelsCatalog>(catalogPath, {})).providers?.[provider];
+			const fromCatalog = entry?.headers ?? entry?.models?.find((model) => model.headers)?.headers;
+			return fromCatalog ? { ...fromCatalog } : {};
 		},
 
 		async get(provider) {
