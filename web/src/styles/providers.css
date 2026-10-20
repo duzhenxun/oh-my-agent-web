@@ -1,0 +1,185 @@
+/*
+ * 模型管理（provider 左列表 + 右详情）。
+ *
+ * 左边只放 provider，右边放这个 provider 的表单与模型表 —— 别再把「引擎可用模型」
+ * 平铺进来：那是运行时清单，与「我配了什么」不是一回事。
+ */
+.prov-shell {
+	display: grid;
+	grid-template-columns: minmax(160px, 190px) minmax(0, 1fr);
+	gap: 0;
+	flex: 1 1 auto;
+	min-height: 0;
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	overflow: hidden;
+	background: var(--bg);
+}
+
+.prov-list {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	min-height: 0;
+	padding: 8px;
+	border-right: 1px solid var(--border);
+	background: var(--bg-soft);
+}
+
+.prov-list-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	font-size: 11px;
+	text-transform: uppercase;
+	letter-spacing: 0.03em;
+	color: var(--text-faint);
+	padding: 2px 4px;
+}
+
+.prov-list-scroll {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	overflow: auto;
+	min-height: 0;
+	flex: 1 1 auto;
+}
+
+.prov-item {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	text-align: left;
+	padding: 6px 8px;
+	border: 1px solid transparent;
+	border-radius: 8px;
+	background: none;
+	color: inherit;
+	cursor: pointer;
+}
+
+.prov-item:hover {
+	background: var(--bg);
+}
+
+.prov-item-on {
+	background: var(--bg);
+	border-color: var(--accent);
+}
+
+.prov-item-name {
+	font-size: 12.5px;
+	font-weight: 600;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.prov-item-meta {
+	font-size: 10.5px;
+	color: var(--text-faint);
+}
+
+.prov-add {
+	margin-top: auto;
+	width: 100%;
+}
+
+.prov-builtin {
+	font-size: 10.5px;
+	line-height: 1.4;
+	color: var(--text-faint);
+	padding: 2px 4px;
+}
+
+.prov-detail {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	min-width: 0;
+	min-height: 0;
+	padding: 10px 12px;
+	overflow: auto;
+}
+
+.prov-models {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	border-top: 1px solid var(--border);
+	padding-top: 8px;
+	min-height: 0;
+}
+
+.prov-models-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 12px;
+	font-weight: 600;
+}
+
+.prov-models-scroll {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	overflow: auto;
+	min-height: 0;
+}
+
+.prov-model-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 5px 6px;
+	border-radius: 7px;
+}
+
+.prov-model-row:hover {
+	background: var(--bg-soft);
+}
+
+.prov-model-name {
+	font-size: 12.5px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	min-width: 0;
+	flex: 0 1 auto;
+}
+
+.prov-model-spec {
+	font-size: 10.5px;
+	color: var(--text-faint);
+	margin-left: auto;
+	white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+	.prov-shell {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.prov-list {
+		border-right: none;
+		border-bottom: 1px solid var(--border);
+		max-height: 180px;
+	}
+}
+
+/* 详情区里表单与模型表各占各的高度，别让 .side-panel 的 flex:1 把模型表顶出去 */
+.prov-detail > * {
+	flex: 0 0 auto;
+}
+
+.prov-detail .side-panel {
+	flex: 0 0 auto;
+	padding: 0;
+	border: none;
+	background: none;
+}
+
+.prov-detail .import-foot {
+	position: static;
+}

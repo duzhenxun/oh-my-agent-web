@@ -1,12 +1,6 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { groupModels } from "../model-groups.ts";
-import { useAppState } from "../store.ts";
-import type { ProviderView } from "../types.ts";
-import { ImportModels } from "./ImportModels.tsx";
-import { ModelEditor } from "./ModelEditor.tsx";
-import { ProviderForm } from "./ProviderForm.tsx";
-import { deleteProvider, testProvider } from "../ws.ts";
+import { ProvidersPanel } from "./ProvidersPanel.tsx";
 import { SettingsPanel } from "./SettingsPanel.tsx";
 import { SkillsPanel } from "./SkillsPanel.tsx";
 
@@ -33,31 +27,7 @@ export function SidebarMenu({
 	/** footer = 侧栏底部；appbar = 顶部那一排 */
 	placement?: "footer" | "appbar";
 } = {}) {
-	const { snapshot } = useAppState();
 	const [panel, setPanel] = useState<Panel>(initialPanel);
-	const [adding, setAdding] = useState(false);
-	const [editingProvider, setEditingProvider] = useState<string | null>(null);
-	const [editingModel, setEditingModel] = useState<{ provider: ProviderView; modelId: string } | null>(null);
-	const [importing, setImporting] = useState<ProviderView | null>(null);
-	const configured: ProviderView[] = snapshot?.providers ?? [];
-	const models = snapshot?.models ?? [];
-	const groups = groupModels(models);
-	// 内置 provider（nexita / nexita-anthropic …）不在 models-store 里，直接从引擎模型归组，
-	// 与「模型选择器」同源 —— 这样会话一打开它们就出现在列表里，不用等后端刷新
-	const configuredNames = new Set(configured.map((view) => view.provider));
-	const builtinProviders: ProviderView[] = groups
-		.filter((group) => !configuredNames.has(group.provider))
-		.map((group) => ({
-			provider: group.provider,
-			source: "builtin",
-			baseUrl: "",
-			api: "",
-			hasKey: false, // 真值来自 providerStore（auth.json）；这里只是引擎模型的兜底分组
-			keyHint: null,
-			models: group.models.map((model) => ({ id: model.id, name: model.label })),
-		}));
-	const providers: ProviderView[] = [...configured, ...builtinProviders];
-
 	const item = (key: Exclude<Panel, null>, icon: string, label: string) => (
 		<button
 			type="button"
@@ -103,149 +73,7 @@ export function SidebarMenu({
 								</div>
 
 								<div className="big-modal-body">
-									{panel === "models" ? (
-										<div className="side-panel">
-											<div className="side-panel-head">
-												<strong>模型</strong>
-												<span className="side-panel-count">{models.length} 个可用</span>
-											</div>
-											<div className="side-panel-scroll">
-												{groups.length === 0 ? (
-													<div className="side-panel-hint">还没有可用模型（先打开一个会话）</div>
-												) : null}
-												{groups.map((group) => (
-													<div className="side-model-group" key={group.provider}>
-														<div className="side-model-provider">{group.provider.toUpperCase()}</div>
-														{group.models.map((model) => (
-															<div
-																className={`side-model-row${model.id === snapshot?.model ? " side-model-row-on" : ""}`}
-																key={model.id}
-																title={model.id}
-															>
-																<span className="side-model-check">{model.id === snapshot?.model ? "✓" : ""}</span>
-																<span className="side-model-label">{model.label}</span>
-															</div>
-														))}
-													</div>
-												))}
-											</div>
-											{providers.length > 0 ? (
-												<div className="side-provider-list">
-													{providers.map((provider) => (
-														<div className="side-provider" key={provider.provider}>
-															<div className="side-provider-head" title={provider.baseUrl}>
-																<span className="side-provider-name">
-																	{provider.provider}
-																	{provider.source === "builtin" ? (
-																		<span className="side-provider-badge">内置</span>
-																	) : null}
-																</span>
-																<span className="side-provider-meta">
-																	{provider.models.length} 模型 ·{" "}
-																	{provider.hasKey ? `key ${provider.keyHint ?? ""}` : "无 key"}
-																</span>
-															</div>
-															<div className="side-provider-models">
-																{provider.models.map((model) => (
-																	<div className="side-provider-model" key={model.id}>
-																		<span className="side-model-label" title={model.id}>
-																			{model.name}
-																		</span>
-																		{provider.source === "custom" ? (
-																			<button
-																				type="button"
-																				className="msg-action side-model-edit"
-																				title="编辑这个模型的规格与价格"
-																				onClick={() => setEditingModel({ provider, modelId: model.id })}
-																			>
-																				编辑
-																			</button>
-																		) : null}
-																	</div>
-																))}
-															</div>
-															{provider.source === "custom" ? (
-																<div className="side-provider-actions">
-																	<button type="button" className="msg-action" onClick={() => setImporting(provider)}>
-																		⬇️ 导入模型
-																	</button>
-																	<button
-																		type="button"
-																		className="msg-action"
-																		onClick={() => setEditingProvider(provider.provider)}
-																	>
-																		✏️ 编辑
-																	</button>
-																	<button
-																		type="button"
-																		className="msg-action"
-																		onClick={() => testProvider(provider.provider)}
-																	>
-																		🔌 测试
-																	</button>
-																	<button
-																		type="button"
-																		className="msg-action"
-																		onClick={() => {
-																			// 二次确认：删的是模型表 + 凭证，误删要重填 key
-																			if (
-																				!window.confirm(
-																					`删除 provider「${provider.provider}」？它的 api key 也会一起删掉。`,
-																				)
-																			)
-																				return;
-																			deleteProvider(provider.provider);
-																		}}
-																	>
-																		🗑 删除
-																	</button>
-																</div>
-															) : (
-																<div className="side-provider-actions">
-																	<span className="side-panel-hint">由 pi 内置目录管理，这里只读</span>
-																</div>
-															)}
-														</div>
-													))}
-												</div>
-											) : (
-												<div className="side-panel-hint">还没有自己配置的 provider</div>
-											)}
-											{importing ? (
-												<ImportModels
-													provider={importing}
-													onClose={() => setImporting(null)}
-													onImported={() => setImporting(null)}
-												/>
-											) : null}
-
-											{editingModel ? (
-												<ModelEditor
-													provider={editingModel.provider}
-													modelId={editingModel.modelId}
-													onClose={() => setEditingModel(null)}
-												/>
-											) : null}
-
-											{adding || editingProvider ? (
-												<ProviderForm
-													initial={
-														editingProvider
-															? (providers.find((item) => item.provider === editingProvider) ?? null)
-															: null
-													}
-													onClose={() => {
-														setAdding(false);
-														setEditingProvider(null);
-													}}
-												/>
-											) : (
-												<button type="button" className="btn btn-tiny" onClick={() => setAdding(true)}>
-													＋ 添加模型
-												</button>
-											)}
-										</div>
-									) : null}
+									{panel === "models" ? <ProvidersPanel /> : null}
 
 									{panel === "skills" ? <SkillsPanel /> : null}
 									{panel === "settings" ? <SettingsPanel /> : null}
