@@ -137,7 +137,7 @@ export function ProvidersPanel() {
 				</button>
 			</aside>
 
-			<section className="prov-detail">
+			<section className={`prov-detail${isCustom && !creating ? " prov-detail-split" : ""}`}>
 				{editingModel && current ? (
 					<ModelEditor
 						key={`${current.provider}/${editingModel}`}

@@ -100,12 +100,17 @@
 	min-width: 0;
 	min-height: 0;
 	padding: 10px 12px;
-	/* 整体不滚：表单自己滚，模型区固定在下方（否则「批量测试」被表单一脚踹到屏幕外） */
+	overflow: auto;
+}
+
+/* 只有「表单 + 模型表」两段式时才拆滚动：表单自己滚、模型区钉在下方。
+   内置 provider 没有表单，整块自然滚动即可（否则模型列表会被压成一条缝）。 */
+.prov-detail-split {
 	overflow: hidden;
 }
 
 /* 表单区：占据剩余空间，自己滚 */
-.prov-detail > .side-panel {
+.prov-detail-split > .side-panel {
 	flex: 1 1 auto;
 	min-height: 96px;
 	overflow: auto;
@@ -118,9 +123,12 @@
 	border-top: 1px solid var(--border);
 	padding-top: 8px;
 	min-height: 0;
-	/* 固定在下方：表头（模型 / 批量测试 / 导入模型）永远可见 */
 	flex: 0 0 auto;
-	max-height: 46%;
+}
+
+/* 两段式里才限制高度并钉在下方：表头（模型 / 批量测试 / 导入模型）永远可见 */
+.prov-detail-split .prov-models {
+	flex: 0 0 auto;
 	max-height: min(46%, 420px);
 }
 
@@ -182,13 +190,8 @@
 	}
 }
 
-/* 详情区里表单与模型表各占各的高度，别让 .side-panel 的 flex:1 把模型表顶出去 */
-.prov-detail > * {
-	flex: 0 0 auto;
-}
-
+/* 详情区里的面板去掉外框（弹窗里不再套一层卡片） */
 .prov-detail .side-panel {
-	flex: 0 0 auto;
 	padding: 0;
 	border: none;
 	background: none;
