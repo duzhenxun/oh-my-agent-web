@@ -18,7 +18,6 @@ export function App() {
 	// 文件面板（M4）：跟着当前会话的工作区走
 	// 侧栏：可收起 + 可拖宽（状态存 localStorage，刷新后保持）
 	const [collapsed, setCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1");
-	const [pendingPanel, setPendingPanel] = useState<"models" | "skills" | "settings" | null>(null);
 	const [previewVisible, setPreviewVisible] = useState(true);
 	const [sideWidth, setSideWidth] = useState(() => readStoredWidth(localStorage.getItem(SIDEBAR_WIDTH_KEY)));
 	const dragging = useRef(false);
