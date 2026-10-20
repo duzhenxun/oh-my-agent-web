@@ -91,7 +91,7 @@ export function StatusBar({
 				onClick={onToggleSidebar}
 				title={sidebarOpen ? "隐藏左侧栏" : "显示左侧栏"}
 			>
-				{sidebarOpen ? "◀ 左侧" : "▶ 左侧"}
+				<span className="status-toggle-icon">{sidebarOpen ? "◂" : "▸"}</span> 左侧
 			</button>
 			<button
 				type="button"
@@ -99,7 +99,7 @@ export function StatusBar({
 				onClick={onToggleAppbar}
 				title={appbarHidden ? "显示顶部栏" : "隐藏顶部栏"}
 			>
-				{appbarHidden ? "▾ 顶部" : "▴ 顶部"}
+				<span className="status-toggle-icon">{appbarHidden ? "▾" : "▴"}</span> 顶部
 			</button>
 			<span className="status-item status-path" title={snapshot?.files?.root ?? ""}>
 				📁 {snapshot?.files?.root?.split("/").filter(Boolean).pop() ?? "—"}

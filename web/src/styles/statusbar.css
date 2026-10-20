@@ -33,6 +33,21 @@
 	cursor: pointer;
 }
 
+/* 两个开关的箭头用同一套小三角字符，并给固定宽度 —— 否则 ◀ 比 ▴ 明显大一圈 */
+.status-toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+}
+
+.status-toggle-icon {
+	display: inline-block;
+	width: 10px;
+	text-align: center;
+	font-size: 11px;
+	line-height: 1;
+}
+
 .status-toggle:hover {
 	color: var(--text);
 	border-color: var(--accent-dim);
