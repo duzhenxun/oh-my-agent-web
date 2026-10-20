@@ -3,6 +3,26 @@
  */
 import { describe, expect, it } from "vitest";
 import { harness } from "./helpers/runtime-harness.js";
+import { createFakeEngine } from "../../server/engine/fake.js";
+import { createMemoryRuleStore } from "../../server/approval/rules.js";
+import { createRuntime } from "../../server/session/runtime.js";
+
+/** 一个能被观测到「预热顺序」的 runtime（预热 → 取模型表 → 读 provider） */
+function createRuntimeWithWarm(hooks: { onPrewarm: () => void; onLoad: () => void }) {
+	const engine = createFakeEngine({ chunkDelayMs: 0, slowChunkDelayMs: 5 });
+	engine.prewarm = async () => hooks.onPrewarm();
+	return createRuntime({
+		engine,
+		rules: createMemoryRuleStore(),
+		piSessions: async () => [],
+		loadProviders: async () => {
+			hooks.onLoad();
+			return [];
+		},
+		workspace: "/tmp/agent-web-test",
+		emit: { snapshot: () => {}, event: () => {} },
+	});
+}
 
 const custom = (name: string) => ({
 	provider: name,
@@ -35,5 +55,24 @@ describe("provider 列表进快照", () => {
 		const { runtime } = harness();
 		await runtime.init();
 		expect(runtime.snapshot().providers).toEqual([]);
+	});
+});
+
+describe("启动预热（没打开任何会话也要列全 provider）", () => {
+	it("init 会先预热引擎、把模型表放进快照，再读 provider 列表", async () => {
+		let prewarmed = 0;
+		let listedAfterPrewarm = false;
+		const runtime = createRuntimeWithWarm({
+			onPrewarm: () => {
+				prewarmed += 1;
+			},
+			onLoad: () => {
+				listedAfterPrewarm = prewarmed > 0;
+			},
+		});
+		await runtime.init();
+		expect(prewarmed).toBe(1);
+		expect(listedAfterPrewarm).toBe(true); // 顺序很重要：先预热，provider 才拿得到内置分组
+		expect(runtime.snapshot().models.length).toBeGreaterThan(0);
 	});
 });

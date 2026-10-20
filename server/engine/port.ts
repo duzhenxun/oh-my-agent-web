@@ -83,6 +83,11 @@ export type EnginePort = {
 	setApprovalHandler(handler: ApprovalHandler): void;
 	/** 可用模型列表（ADR-0020 §P2）：`provider/modelId` + 给人看的标签 */
 	listModels?(sessionId?: string): Promise<EngineModelInfo[]>;
+	/**
+	 * 预热：有的引擎要「有一个会话」才拿得到模型表（pi 的 modelRuntime 挂在会话上）。
+	 * 调一次之后 `listModels()` 在**没打开任何会话**时也能给结果，界面启动即可列全 provider。
+	 */
+	prewarm?(): Promise<void>;
 	/** 切换某个会话的模型（写进会话文件，续聊时模型不变） */
 	switchModel?(sessionId: string, modelId: string): Promise<boolean>;
 	/** 这个会话可选的思考强度（模型不支持推理时返回空数组 → 界面隐藏该控件） */

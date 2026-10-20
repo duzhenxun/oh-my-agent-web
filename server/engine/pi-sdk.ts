@@ -9,7 +9,6 @@
  *     —— 会话转录的**事实源是我们自己的 JSONL**（ADR-0005），所以告诉 SDK 不要落盘；
  *   - 事件：`session.subscribe(listener)` → `message_update`（正文增量）/ `tool_execution_start|end`
  *     / `agent_end` / `agent_settled`（判断是否被中断）；
- *   - 中断：`session.abort()`；
  *   - 读转录：`session.messages`；
  *   - **审批**：`DefaultResourceLoader({ extensionFactories: [...] })` 挂一个 inline 扩展，
  *     监听 `tool_call` 事件并 `await` 宿主的决定；拒绝时返回 `{ block: true, reason }`
@@ -161,7 +160,21 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 		return handle;
 	}
 
+	const PREWARM_ID = "__prewarm__";
 	return {
+		/** 预热模型注册表（内存会话，不落盘）：pi 的 modelRuntime 挂在会话上，没会话就列不出模型 */
+		async prewarm() {
+			if (sessions.has(PREWARM_ID)) return;
+			try {
+				await startSession(PREWARM_ID, process.cwd(), SessionManager.inMemory());
+			} catch (error) {
+				options.onNotice?.(
+					`模型表预热失败（内置 provider 可能列表不全）：${error instanceof Error ? error.message : String(error)}`,
+					"warn",
+				);
+			}
+		},
+
 		async createSession(sessionOptions: EngineSessionOptions) {
 			// ADR-0021 §2：新建会话就落在 **pi 的会话存储**里（不再用 inMemory + 自建 jsonl），
 			// 用我们的 sessionId 当 SDK 的会话 id → 两边 id 空间完全一致。

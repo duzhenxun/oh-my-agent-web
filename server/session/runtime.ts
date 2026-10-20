@@ -3,7 +3,6 @@
  *
  * 遵守的规则（都已由 ADR 定死）：
  *   - 回合进行中再发消息：默认引导、可选排队（这轮结束自动发）；
- *   - 快照只在**结构性变化**时推：正文靠 message_delta 增量（ADR-0004 §3）；
  */
 import { createMarkerStreamFilter } from "../markers/actions.js";
 import { createRuntimeServices } from "./runtime-services.js";
@@ -49,7 +48,6 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 	};
 	const turns = new Map<string, TurnState>();
 
-	// 回合看门狗（ADR-0023）：按会话计时（ADR-0030 ①），A 卡住不影响 B
 	/** sendMessage 自引用：队列排空时要能再次调用自己（对象字面量还没构建完成 → 用 ref） */
 	let apiRef: Runtime | null = null;
 
@@ -69,7 +67,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		onError: (message) => notice(message, "warn"),
 	});
 
-	// 提示牌 / 审批桥 / 看门狗（ADR-0013 / ADR-0006 / ADR-0023）：装配一次，见 runtime-services.ts
+	// 提示牌 / 审批桥 / 看门狗：装配一次，见 runtime-services.ts
 	const services = createRuntimeServices({
 		options,
 		now,
@@ -199,6 +197,10 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			const ruleCount = await approval.loadRules();
 			if (ruleCount > 0) options.onStartupInfo?.(`已装载 ${ruleCount} 条审批规则（这些操作不会再询问）`);
 			state.settings = settings ? await settings.load() : defaultSettings();
+			// 预热模型表：pi 要有会话才给得出模型
+			await options.engine.prewarm?.();
+			const warmed = (await options.engine.listModels?.()) ?? [];
+			if (warmed.length > 0) state.models = warmed;
 			await piRefresher.refresh(true);
 			if (options.loadProviders) state.providers = await options.loadProviders();
 			pushSnapshot();
@@ -216,7 +218,6 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		},
 
 		refreshPiSessions: (force?: boolean) => piRefresher.refresh(force),
-
 		refreshProviders: async () => {
 			if (options.loadProviders) state.providers = await options.loadProviders();
 		},
