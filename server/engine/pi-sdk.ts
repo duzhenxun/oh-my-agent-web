@@ -170,7 +170,7 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 			}
 		},
 
-		reloadModels: () => reloadModelRegistry(sessions, PREWARM_ID, () => warmUp()),
+		reloadModels: () => reloadModelRegistry(sessions, PREWARM_ID, warmUp, options.agentDir ?? getAgentDir()),
 
 		async createSession(sessionOptions: EngineSessionOptions) {
 			// ADR-0021 §2：新建会话就落在 **pi 的会话存储**里（不再用 inMemory + 自建 jsonl），
