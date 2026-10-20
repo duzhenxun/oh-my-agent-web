@@ -30,6 +30,18 @@ export function App() {
 		localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sideWidth));
 	}, [sideWidth]);
 
+	// 顶栏真实高度写进 CSS 变量：手机抽屉要靠它贴合，写死数字会留一条缝
+	useEffect(() => {
+		const bar = document.querySelector(".appbar");
+		if (!bar) return;
+		const apply = () =>
+			document.documentElement.style.setProperty("--appbar-h", `${(bar as HTMLElement).offsetHeight}px`);
+		apply();
+		const observer = new ResizeObserver(apply);
+		observer.observe(bar);
+		return () => observer.disconnect();
+	}, []);
+
 	// 拖拽：pointer 事件挂在 document 上，鼠标移出侧栏边缘也不会中断
 	const startResize = (event: React.PointerEvent<HTMLDivElement>) => {
 		event.preventDefault();

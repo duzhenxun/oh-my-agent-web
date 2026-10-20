@@ -143,8 +143,8 @@
 	.side-host {
 		top: 0;
 		height: 100dvh;
-		/* 顶栏压在抽屉之上，这里给它让出位置，免得「项目 (14)」标题被盖住 */
-		padding-top: 52px;
+		/* 顶栏压在抽屉之上：按它的**真实高度**让位（写死 52px 会多出一条空隙） */
+		padding-top: var(--appbar-h, 46px);
 		/* 手机上抽屉占满宽度：会话行右侧的按钮（置顶/归档/…）之前被 320px 掐掉 */
 		width: 100vw !important;
 		max-width: 100vw;
