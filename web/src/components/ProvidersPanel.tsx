@@ -76,7 +76,7 @@ export function ProvidersPanel() {
 												className="prov-inline-row"
 												title={model.id}
 												onClick={() => {
-													if (provider.source !== "custom") return;
+													// 内置 provider 也能点：右侧同样给模型详情（保存时会落成自定义条目）
 													setImporting(false);
 													setEditingModel(model.id);
 												}}
@@ -108,7 +108,14 @@ export function ProvidersPanel() {
 			</aside>
 
 			<section className="prov-detail">
-				{current?.source === "builtin" && !creating ? (
+				{editingModel && current ? (
+					<ModelEditor
+						key={`${current.provider}/${editingModel}`}
+						provider={current}
+						modelId={editingModel}
+						onClose={() => setEditingModel(null)}
+					/>
+				) : current?.source === "builtin" && !creating ? (
 					<div className="side-panel">
 						<div className="side-panel-head">
 							<strong>{current.provider}</strong>
@@ -142,13 +149,6 @@ export function ProvidersPanel() {
 							</div>
 						</div>
 					</div>
-				) : editingModel && current ? (
-					<ModelEditor
-						key={`${current.provider}/${editingModel}`}
-						provider={current}
-						modelId={editingModel}
-						onClose={() => setEditingModel(null)}
-					/>
 				) : importing && current ? (
 					<ImportModels provider={current} onClose={() => setImporting(false)} onImported={() => setImporting(false)} />
 				) : (

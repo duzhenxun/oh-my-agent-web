@@ -301,7 +301,13 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 				?.modelRuntime;
 			if (!runtime?.getAvailable) return [];
 			try {
-				const models = (await runtime.getAvailable()) as Array<{ provider?: string; id?: string; name?: string }>;
+				const models = (await runtime.getAvailable()) as Array<{
+					provider?: string;
+					id?: string;
+					name?: string;
+					baseUrl?: string;
+					api?: string;
+				}>;
 				const current = await this.currentModel?.(sessionId ?? "");
 				return models
 					.map((model) => {
@@ -309,6 +315,8 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 						return {
 							id,
 							label: String(model.name ?? model.id ?? id),
+							...(typeof model.baseUrl === "string" ? { baseUrl: model.baseUrl } : {}),
+							...(typeof model.api === "string" ? { api: model.api } : {}),
 							current: current ? id === `${current.provider}/${current.model}` : false,
 						};
 					})

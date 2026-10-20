@@ -29,8 +29,19 @@ type ModelDefinition = {
 type ModelsStore = Record<string, { models?: ModelDefinition[]; lastModified?: number; [key: string]: unknown }>;
 type AuthStore = Record<string, { type?: string; key?: string; [key: string]: unknown }>;
 
+/**
+ * 把内置 provider「落成自定义条目」时用的种子（pi 的目录里本来就有这些模型）。
+ * 只有整表照抄，才不会因为覆盖而丢掉内置的其它模型。
+ */
+export type ProviderSeed = { baseUrl: string; api: string; models: { id: string; name: string }[] };
+
 /** 引擎报上来的内置 provider（pi 自己的目录，不在 models-store.json 里） */
-export type BuiltinProvider = { provider: string; models: { id: string; name: string }[] };
+export type BuiltinProvider = {
+	provider: string;
+	models: { id: string; name: string }[];
+	baseUrl?: string;
+	api?: string;
+};
 
 export type ProviderStore = {
 	/**
@@ -48,7 +59,11 @@ export type ProviderStore = {
 	 * 写回单个模型的规格（ADR-0026 A 期）：能力 / 上下文窗口 / 最大输出 / 价格。
 	 * 只覆盖这几个字段，其余（compat / headers 等）原样保留。
 	 */
-	updateModel: (provider: string, spec: ModelSpec) => Promise<{ ok: true } | { ok: false; error: string }>;
+	updateModel: (
+		provider: string,
+		spec: ModelSpec,
+		seed?: ProviderSeed,
+	) => Promise<{ ok: true } | { ok: false; error: string }>;
 	/**
 	 * 批量导入模型（ADR-0026 B 期）：只追加**不存在**的 id，已有的跳过（不覆盖用户填过的规格）。
 	 * api / baseUrl 沿用该 provider 现有条目；一个都没有时要求调用方先做一次 provider 级保存。
@@ -58,7 +73,11 @@ export type ProviderStore = {
 		ids: string[],
 	) => Promise<{ ok: true; added: string[]; skipped: string[] } | { ok: false; error: string }>;
 	/** 从 provider 下移除一个模型（模型表里的条目，不动凭证） */
-	removeModel: (provider: string, modelId: string) => Promise<{ ok: true } | { ok: false; error: string }>;
+	removeModel: (
+		provider: string,
+		modelId: string,
+		seed?: ProviderSeed,
+	) => Promise<{ ok: true } | { ok: false; error: string }>;
 	/**
 	 * 读明文 key —— **只给服务端内部用**（例如连通性测试发请求）。
 	 * 绝不能挂到任何返回给前端的路径上；协议里没有、也不会有对应字段。
@@ -85,6 +104,20 @@ async function writeJsonPrivate(path: string, value: unknown): Promise<void> {
 	await writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
 	await rename(temporary, path);
 	await chmod(path, 0o600);
+}
+
+/** 内置 provider → 可写条目（整表照抄，避免覆盖时丢掉别的模型） */
+function materialize(provider: string, seed?: ProviderSeed): { models: ModelDefinition[] } | null {
+	if (!seed || seed.models.length === 0) return null;
+	return {
+		models: seed.models.map((model) => ({
+			id: model.id,
+			name: model.name,
+			api: seed.api,
+			baseUrl: seed.baseUrl,
+			provider,
+		})),
+	};
 }
 
 export function createProviderStore(options: { agentDir: string; now: () => number }): ProviderStore {
@@ -129,8 +162,8 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 					return {
 						provider: item.provider,
 						source: "builtin" as const,
-						baseUrl: "",
-						api: "",
+						baseUrl: item.baseUrl ?? "",
+						api: item.api ?? "",
 						hasKey: typeof key === "string" && key !== "",
 						keyHint: maskKey(typeof key === "string" ? key : undefined),
 						models: item.models,
@@ -145,9 +178,9 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 			return typeof key === "string" && key !== "" ? key : null;
 		},
 
-		async removeModel(provider, modelId) {
+		async removeModel(provider, modelId, seed) {
 			const models = await readJson<ModelsStore>(modelsPath, {});
-			const entry = models[provider];
+			const entry = models[provider] ?? materialize(provider, seed);
 			if (!entry) return { ok: false, error: `没有这个 provider：${provider}` };
 			const list = Array.isArray(entry.models) ? entry.models : [];
 			const next = list.filter((model) => model.id !== modelId);
@@ -168,9 +201,9 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 			return all.find((view) => view.provider === provider) ?? null;
 		},
 
-		async updateModel(provider, spec) {
+		async updateModel(provider, spec, seed) {
 			const models = await readJson<ModelsStore>(modelsPath, {});
-			const entry = models[provider];
+			const entry = models[provider] ?? materialize(provider, seed);
 			if (!entry) return { ok: false, error: `没有这个 provider：${provider}` };
 			const list = Array.isArray(entry.models) ? entry.models : [];
 			const index = list.findIndex((model) => model.id === spec.id);

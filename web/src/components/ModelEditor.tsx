@@ -131,7 +131,12 @@ export function ModelEditor({
 					className="btn btn-tiny btn-danger"
 					onClick={() => {
 						// 只移出模型表，不动 api key：误删了重新导入即可
-						if (!window.confirm(`从「${provider.provider}」移除模型 ${form.id}？`)) return;
+						// 内置 provider 会因此落成自定义条目（覆盖 pi 的目录）
+						const extra =
+							provider.source === "builtin"
+								? "\n（这是 pi 内置 provider，移除后会写一份自定义条目来覆盖它的模型表）"
+								: "";
+						if (!window.confirm(`从「${provider.provider}」移除模型 ${form.id}？${extra}`)) return;
 						removeModel(provider.provider, form.id);
 						onClose();
 					}}
@@ -261,6 +266,9 @@ export function ModelEditor({
 				<div className={testing.startsWith("✅") ? "side-ok" : "side-panel-hint side-error"}>{testing}</div>
 			) : null}
 			{sent ? <div className="side-ok">已提交，模型表会自动热重载</div> : null}
+			{provider.source === "builtin" ? (
+				<div className="side-panel-hint">当前是 pi 内置 provider：保存会写一份自定义条目覆盖它的模型表</div>
+			) : null}
 			<button type="button" className="btn btn-tiny" onClick={save}>
 				保存模型信息
 			</button>

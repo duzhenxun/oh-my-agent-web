@@ -5,13 +5,12 @@
 
 export const PROTOCOL_VERSION = 1;
 
-/** 快照里携带的最近消息条数（ADR-0012：N=100，前后端共用这一个常量） */
+/** 快照携带的最近消息条数（ADR-0012：N=100，前后端共用） */
 export const SNAPSHOT_MESSAGE_LIMIT = 100;
 
-/** WS 单条消息载荷上限（ADR-0004 §5）；超过一律截断并打标记 */
+/** WS 单条消息上限 */
 export const MAX_FRAME_BYTES = 64 * 1024;
-
-/** 工具输出在界面上保留的摘录字符数（超出标 truncated） */
+/** 工具输出摘录上限 */
 export const TOOL_EXCERPT_CHARS = 2000;
 
 export type TextBlock = { kind: "text"; text: string };
@@ -107,8 +106,12 @@ export type AttachmentRef = {
 	bytes: number;
 };
 
-/** 可选模型（ADR-0020 §P2）：id 是 `provider/modelId`，label 给人看 */
-export type ModelOption = { id: string; label: string };
+export type ModelOption = {
+	id: string;
+	label: string;
+	/** 引擎报上来的端点（内置 provider 测试用） */ baseUrl?: string;
+	api?: string;
+};
 
 /** provider 配置视图（ADR-0025 §2）：**永远不含明文 key**，只给 hasKey 与尾 4 位。 */
 export type ModelSpecView = {
@@ -126,7 +129,6 @@ export type ProviderView = {
 	/**
 	 * custom = 我们（用户）在 models-store.json 里配的，可以编辑/删除；
 	 * builtin = pi 内置目录里的 provider（nexita / nexita-anthropic / …），
-	 *           只读展示 —— 它的 baseUrl 与模型表由 pi 自己管，我们改它只会写坏配置。
 	 */
 	source: "custom" | "builtin";
 	baseUrl: string;
@@ -295,8 +297,6 @@ export type SetSettingsRequest = {
 
 /**
  * 审批模式（P4 第一件）：
- *   - `ask`（默认）：危险操作照旧弹窗；
- *   - `allow`：**本会话**放行所有需要审批的操作（不弹窗）。
  * 刻意**只存在内存**、不落盘：重启即回到 `ask`，避免"某天永久静默放行"这种事故。
  */
 export type ApprovalMode = "ask" | "allow";

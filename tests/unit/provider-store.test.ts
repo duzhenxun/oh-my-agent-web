@@ -276,3 +276,55 @@ describe("list 带逐模型规格（编辑器预填）", () => {
 		expect(model?.cost).toBeUndefined();
 	});
 });
+
+describe("内置 provider 落成自定义条目（seed）", () => {
+	const seed = {
+		baseUrl: "https://codeapi.nexita.net",
+		api: "openai-completions",
+		models: [
+			{ id: "m1", name: "M1" },
+			{ id: "m2", name: "M2" },
+		],
+	};
+
+	it("没有 seed 时拒绝写（不能凭空造 provider）", async () => {
+		const result = await store().updateModel("builtin-x", {
+			id: "m1",
+			name: "M1",
+			reasoning: false,
+			imageInput: false,
+			contextWindow: null,
+			maxTokens: null,
+			cost: null,
+		});
+		expect(result.ok).toBe(false);
+	});
+
+	it("有 seed 时整表照抄再改这一个（别的模型不丢）", async () => {
+		const result = await store().updateModel(
+			"builtin-x",
+			{
+				id: "m1",
+				name: "M1 改名",
+				reasoning: true,
+				imageInput: false,
+				contextWindow: 128000,
+				maxTokens: 4096,
+				cost: null,
+			},
+			seed,
+		);
+		expect(result.ok).toBe(true);
+		const entry = JSON.parse(readFileSync(join(agentDir, MODELS_STORE_FILE), "utf8"))["builtin-x"];
+		expect(entry.models.map((model: { id: string }) => model.id)).toEqual(["m1", "m2"]);
+		expect(entry.models[0]).toMatchObject({ name: "M1 改名", baseUrl: seed.baseUrl, api: seed.api });
+		expect(statSync(join(agentDir, MODELS_STORE_FILE)).mode & 0o777).toBe(0o600);
+	});
+
+	it("移除也走 seed：只掉这一个，其它照旧", async () => {
+		const result = await store().removeModel("builtin-y", "m1", seed);
+		expect(result.ok).toBe(true);
+		const entry = JSON.parse(readFileSync(join(agentDir, MODELS_STORE_FILE), "utf8"))["builtin-y"];
+		expect(entry.models.map((model: { id: string }) => model.id)).toEqual(["m2"]);
+	});
+});

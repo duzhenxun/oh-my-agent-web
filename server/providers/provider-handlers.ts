@@ -66,7 +66,12 @@ export async function handleProviderRequest(
 			deps.notify(`模型信息有问题：${message}`, "error");
 			return { ok: false, error: { code: "model.invalid", message } };
 		}
-		const result = await deps.store.updateModel(payload.provider, parsed.value);
+		const view = await deps.store.get(payload.provider);
+		const seed =
+			view?.source === "builtin"
+				? { baseUrl: view.baseUrl, api: view.api, models: view.models.map((m) => ({ id: m.id, name: m.name })) }
+				: undefined;
+		const result = await deps.store.updateModel(payload.provider, parsed.value, seed);
 		if (!result.ok) {
 			deps.notify(`保存模型失败：${result.error}`, "error");
 			return { ok: false, error: { code: "model.update_failed", message: result.error } };
@@ -77,7 +82,12 @@ export async function handleProviderRequest(
 
 	if (request.type === "remove_model") {
 		const payload = (request as unknown as { payload: { provider: string; modelId: string } }).payload;
-		const result = await deps.store.removeModel(payload.provider, payload.modelId);
+		const view = await deps.store.get(payload.provider);
+		const seed =
+			view?.source === "builtin"
+				? { baseUrl: view.baseUrl, api: view.api, models: view.models.map((m) => ({ id: m.id, name: m.name })) }
+				: undefined;
+		const result = await deps.store.removeModel(payload.provider, payload.modelId, seed);
 		if (!result.ok) {
 			deps.notify(`移除模型失败：${result.error}`, "error");
 			return { ok: false, error: { code: "model.remove_failed", message: result.error } };
@@ -171,15 +181,25 @@ export function createProviderRunner(options: {
 }
 
 /** 引擎报上来的模型按 provider 前缀分组（`provider/modelId`）→「内置 provider」列表 */
-export function builtinProviderGroups(models: { id: string; label: string }[]): BuiltinProvider[] {
+export function builtinProviderGroups(
+	models: { id: string; label: string; baseUrl?: string; api?: string }[],
+): BuiltinProvider[] {
 	const groups = new Map<string, { id: string; name: string }[]>();
+	const endpoint = new Map<string, { baseUrl?: string; api?: string }>();
 	for (const model of models) {
 		const slash = model.id.indexOf("/");
 		if (slash <= 0) continue;
 		const provider = model.id.slice(0, slash);
 		groups.set(provider, [...(groups.get(provider) ?? []), { id: model.id.slice(slash + 1), name: model.label }]);
+		// 引擎知道内置 provider 的真实端点；没有它，「测试」按钮对内 provider 就是死的
+		if (!endpoint.has(provider) && (model.baseUrl || model.api)) {
+			endpoint.set(provider, {
+				...(model.baseUrl ? { baseUrl: model.baseUrl } : {}),
+				...(model.api ? { api: model.api } : {}),
+			});
+		}
 	}
-	return [...groups].map(([provider, list]) => ({ provider, models: list }));
+	return [...groups].map(([provider, list]) => ({ provider, models: list, ...(endpoint.get(provider) ?? {}) }));
 }
 
 /**
