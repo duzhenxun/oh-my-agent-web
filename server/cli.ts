@@ -9,6 +9,7 @@
  *   -p, --port <n>        AGENT_WEB_PORT       默认 25257
  *   -H, --host <addr>     AGENT_WEB_HOST       默认 127.0.0.1
  *   -P, --password <pwd>  AGENT_WEB_PASSWORD   非本机访问时的登录密码
+ *       --allow-host <h>  AGENT_WEB_ALLOWED_HOSTS  额外允许的域名（可重复）
  *       --data-dir <dir>  AGENT_WEB_DATA_DIR   默认 ~/.agent-web
  */
 import { homedir } from "node:os";
@@ -26,6 +27,7 @@ const USAGE = `用法: agent-web [start|stop|restart] [选项]
   -p, --port <n>       监听端口            AGENT_WEB_PORT（默认 25257）
   -H, --host <addr>    监听地址            AGENT_WEB_HOST（默认 127.0.0.1）
   -P, --password <pwd> 访问密码            AGENT_WEB_PASSWORD
+      --allow-host <h> 额外允许的域名      AGENT_WEB_ALLOWED_HOSTS（可多次 / 逗号分隔）
       --data-dir <dir> 数据目录            AGENT_WEB_DATA_DIR（默认 ~/.agent-web）
   -h, --help           显示本帮助`;
 
@@ -49,7 +51,10 @@ export function parseArgs(argv: string[]): ParsedArgs {
 		else if (arg === "-p" || arg === "--port") env.AGENT_WEB_PORT = takeValue();
 		else if (arg === "-H" || arg === "--host") env.AGENT_WEB_HOST = takeValue();
 		else if (arg === "-P" || arg === "--password") env.AGENT_WEB_PASSWORD = takeValue();
-		else if (arg === "--data-dir") env.AGENT_WEB_DATA_DIR = resolve(takeValue());
+		else if (arg === "--allow-host") {
+			const value = takeValue();
+			env.AGENT_WEB_ALLOWED_HOSTS = [env.AGENT_WEB_ALLOWED_HOSTS, value].filter(Boolean).join(",");
+		} else if (arg === "--data-dir") env.AGENT_WEB_DATA_DIR = resolve(takeValue());
 		else if (arg.startsWith("-")) throw new Error(`未知选项：${arg}`);
 		else throw new Error(`未知命令：${arg}`);
 	}

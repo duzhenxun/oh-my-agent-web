@@ -7,7 +7,7 @@
  * 启动顺序：环境自检 → 数据目录可写 → **抢单实例锁** → 装填会话索引 → 监听端口。
  * 顺序有意义：锁要在读/写任何会话数据**之前**拿到，否则两个进程可能同时建索引。
  */
-import { homedir } from "node:os";
+import { homedir, networkInterfaces } from "node:os";
 import { createServer, type IncomingMessage } from "node:http";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -65,7 +65,20 @@ const logger = createLogger({
 		fileSink?.write(line);
 	},
 });
-const policy = { port: config.port, devPorts: [DEV_WEB_PORT] };
+/**
+ * 本机的局域网地址自动放行：用户「用别的设备访问本机 IP」是最常见场景，
+ * 不该还要先配一遍 `AGENT_WEB_ALLOWED_HOSTS`。域名仍要显式配（DNS rebinding 防护靠它）。
+ */
+const localAddresses = Object.values(networkInterfaces())
+	.flat()
+	.filter((item): item is NonNullable<typeof item> => Boolean(item) && item?.internal === false)
+	.map((item) => item.address);
+
+const policy = {
+	port: config.port,
+	devPorts: [DEV_WEB_PORT],
+	extraHosts: [...new Set([...localAddresses, ...config.allowedHosts])],
+};
 
 const sockets = new Set<WebSocket>();
 let shuttingDown = false;
@@ -231,6 +244,7 @@ httpServer.on("upgrade", (request: IncomingMessage, socket, head) => {
 			typeof forwarded === "string" ? forwarded : undefined,
 		),
 		authorization: request.headers.authorization,
+		cookie: request.headers.cookie,
 	});
 	if (auth !== "allow") {
 		socket.write(

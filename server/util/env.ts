@@ -7,6 +7,7 @@
  *   AGENT_WEB_DATA_DIR   默认 ~/.agent-web
  *   AGENT_WEB_HOST       默认 127.0.0.1（对外监听需要它）
  *   AGENT_WEB_PASSWORD   远程访问密码（不设 = 只允许本机）
+ *   AGENT_WEB_ALLOWED_HOSTS  额外允许的域名（逗号分隔，默认只认 loopback）
  *   AGENT_WEB_TOKEN      占位：v1 不实现鉴权（ADR-0006），只留开关位
  * 外加一个日志级别：AGENT_WEB_LOG（debug|info|warn|error，默认 info）
  *
@@ -35,6 +36,8 @@ export type Config = {
 	token: string | null;
 	/** 非本机访问时要求的密码（明文只存在进程内存里）；空 = 只允许本机访问 */
 	password: string | null;
+	/** 额外允许的主机名（域名 / 局域网 IP）：用自己的域名访问时要配它 */
+	allowedHosts: string[];
 };
 
 export const DEFAULT_PORT = 25257;
@@ -42,6 +45,8 @@ export const DEFAULT_PORT = 25257;
 export const DEFAULT_HOST = "127.0.0.1";
 export const HOST_ENV = "AGENT_WEB_HOST";
 export const PASSWORD_ENV = "AGENT_WEB_PASSWORD";
+/** 额外允许的主机名（逗号分隔）：用自己的域名 / 局域网 IP 访问时配它 */
+export const ALLOWED_HOSTS_ENV = "AGENT_WEB_ALLOWED_HOSTS";
 /** 回合看门狗默认超时：20 分钟（与参考实现同口径） */
 export const DEFAULT_TURN_TIMEOUT_MS = 20 * 60 * 1000;
 export const DEFAULT_DATA_DIR_NAME = ".agent-web";
@@ -103,6 +108,10 @@ export function readConfig(env: EnvLike, options: ReadConfigOptions): ConfigResu
 	const rawHost = env[`${HOST_ENV}`];
 	if (rawHost !== undefined && rawHost !== "") host = rawHost.trim();
 	const password = env[`${PASSWORD_ENV}`] && env[`${PASSWORD_ENV}`] !== "" ? String(env[`${PASSWORD_ENV}`]) : null;
+	const allowedHosts = (env[ALLOWED_HOSTS_ENV] ?? "")
+		.split(",")
+		.map((item) => item.trim())
+		.filter((item) => item !== "");
 	return {
 		config: {
 			port,
@@ -117,6 +126,7 @@ export function readConfig(env: EnvLike, options: ReadConfigOptions): ConfigResu
 			turnTimeoutMs,
 			token: env.AGENT_WEB_TOKEN && env.AGENT_WEB_TOKEN !== "" ? env.AGENT_WEB_TOKEN : null,
 			password,
+			allowedHosts,
 		},
 		problems,
 	};
