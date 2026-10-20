@@ -222,7 +222,7 @@ export function ProviderForm({
 							type="button"
 							className="msg-action"
 							onClick={() => setAll(true)}
-							disabled={modelRows.every((row) => row.on) || modelRows.length === 0}
+							disabled={modelRows.every((row) => row.on)}
 							title="全部勾上（保存时全部写进 provider）"
 						>
 							全选
@@ -231,7 +231,7 @@ export function ProviderForm({
 							type="button"
 							className="msg-action"
 							onClick={() => setAll(false)}
-							disabled={modelRows.every((row) => !row.on) || modelRows.length === 0}
+							disabled={modelRows.every((row) => !row.on)}
 							title="全部不勾（保存时一个模型都不写）"
 						>
 							全不选
