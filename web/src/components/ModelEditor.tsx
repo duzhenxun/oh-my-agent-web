@@ -58,44 +58,54 @@ export function ModelEditor({
 	const [testBusy, setTestBusy] = useState(false);
 	// 结果用布尔存成功与否：靠文案前缀判断会错（改一次文案就全变红）
 	const [testResult, setTestResult] = useState<{ ok: boolean; text: string } | null>(null);
+	/** 「填入模型信息」进行中：按钮显示进度，填完恢复原样 */
+	const [filling, setFilling] = useState(false);
 	const set = <K extends keyof ModelSpecForm>(key: K, value: ModelSpecForm[K]) =>
 		setForm((current) => ({ ...current, [key]: value }));
 
 	/** 从 models.dev 预填（查不到就明确说"没查到"，不猜） */
 	const fillFromCatalog = async () => {
+		const started = Date.now();
+		setFilling(true);
 		setCatalog(null);
-		const response = await fetch(
-			`/api/providers/${encodeURIComponent(provider.provider)}/catalog?model=${encodeURIComponent(form.id)}`,
-		);
-		const body = (await response.json()) as {
-			spec?: {
-				name: string;
-				contextWindow: number | null;
-				maxTokens: number | null;
-				reasoning: boolean;
-				imageInput: boolean;
-				cost: Record<string, number> | null;
+		try {
+			const response = await fetch(
+				`/api/providers/${encodeURIComponent(provider.provider)}/catalog?model=${encodeURIComponent(form.id)}`,
+			);
+			const body = (await response.json()) as {
+				spec?: {
+					name: string;
+					contextWindow: number | null;
+					maxTokens: number | null;
+					reasoning: boolean;
+					imageInput: boolean;
+					cost: Record<string, number> | null;
+				};
+				error?: { message?: string };
 			};
-			error?: { message?: string };
-		};
-		if (!response.ok || !body.spec) {
-			setCatalog("models.dev 里没查到，请手动填写");
-			return;
+			if (!response.ok || !body.spec) {
+				setCatalog("models.dev 里没查到，请手动填写");
+				return;
+			}
+			const spec = body.spec;
+			setForm((current) => ({
+				...current,
+				name: spec.name || current.name,
+				reasoning: spec.reasoning,
+				imageInput: spec.imageInput,
+				contextWindow: spec.contextWindow === null ? "" : String(spec.contextWindow),
+				maxTokens: spec.maxTokens === null ? "" : String(spec.maxTokens),
+				input: spec.cost ? String(spec.cost.input ?? "") : "",
+				output: spec.cost ? String(spec.cost.output ?? "") : "",
+				cacheRead: spec.cost ? String(spec.cost.cacheRead ?? "") : "",
+				cacheWrite: spec.cost ? String(spec.cost.cacheWrite ?? "") : "",
+			}));
+			setCatalog("已填入");
+		} finally {
+			// 请求常常几十毫秒就回来了，直接复位会「闪一下什么都看不见」；
+			// 保证进度态至少停留 400ms，用户能确认「点了、在填」。
+			setTimeout(() => setFilling(false), Math.max(0, 400 - (Date.now() - started)));
 		}
-		const spec = body.spec;
-		setForm((current) => ({
-			...current,
-			name: spec.name || current.name,
-			reasoning: spec.reasoning,
-			imageInput: spec.imageInput,
-			contextWindow: spec.contextWindow === null ? "" : String(spec.contextWindow),
-			maxTokens: spec.maxTokens === null ? "" : String(spec.maxTokens),
-			input: spec.cost ? String(spec.cost.input ?? "") : "",
-			output: spec.cost ? String(spec.cost.output ?? "") : "",
-			cacheRead: spec.cost ? String(spec.cost.cacheRead ?? "") : "",
-			cacheWrite: spec.cost ? String(spec.cost.cacheWrite ?? "") : "",
-		}));
-		setCatalog("已填入");
 	};
 
 	const runTest = async () => {
@@ -272,8 +282,9 @@ export function ModelEditor({
 					className="btn btn-tiny"
 					title="从 models.dev 查这个模型的公开规格（只作建议值，会覆盖当前已填的规格）"
 					onClick={() => void fillFromCatalog()}
+					disabled={filling}
 				>
-					填入模型信息
+					{filling ? "填充中…" : "填入模型信息"}
 				</button>
 			</div>
 			{catalog ? (
@@ -281,7 +292,9 @@ export function ModelEditor({
 			) : null}
 			{sent ? <div className="side-ok">已提交，模型表会自动热重载</div> : null}
 			{provider.source === "builtin" ? (
-				<div className="side-panel-hint">当前是 pi 内置 provider：保存会写一份自定义条目覆盖它的模型表</div>
+				<div className="side-panel-hint">
+					当前是 pi 内置 provider：保存会直接写回 <span className="mono">~/.pi/agent/models.json</span>
+				</div>
 			) : null}
 			<button type="button" className="btn btn-tiny" onClick={save}>
 				保存模型信息
