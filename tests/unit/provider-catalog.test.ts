@@ -83,3 +83,31 @@ describe("内置 provider 的「导入模型」", () => {
 		expect(after.providers.nexita.api).toBe("openai-responses"); // 其它字段不动
 	});
 });
+
+describe("删除 provider：三处都要清", () => {
+	const catalog = {
+		providers: { dup: { api: "openai-completions", baseUrl: "https://x", apiKey: "sk-a", models: [{ id: "m1" }] } },
+	};
+
+	it("两份文件里都有时，两处都要删掉（否则刷新后又冒出来 = 删不掉）", async () => {
+		writeFileSync(join(agentDir, "models.json"), JSON.stringify(catalog));
+		writeFileSync(join(agentDir, MODELS_STORE_FILE), JSON.stringify({ dup: { models: [{ id: "m1" }] } }));
+		writeFileSync(join(agentDir, "auth.json"), JSON.stringify({ dup: { type: "api_key", key: "sk-a" } }));
+
+		const result = await store().remove("dup");
+		expect(result).toEqual({ ok: true, removed: true });
+		expect(JSON.parse(readFileSync(join(agentDir, "models.json"), "utf8")).providers.dup).toBeUndefined();
+		expect(JSON.parse(readFileSync(join(agentDir, MODELS_STORE_FILE), "utf8")).dup).toBeUndefined();
+		expect(JSON.parse(readFileSync(join(agentDir, "auth.json"), "utf8")).dup).toBeUndefined();
+	});
+
+	it("只在 auth.json 里有（历史上留下的孤儿 key）也能删干净", async () => {
+		writeFileSync(join(agentDir, "auth.json"), JSON.stringify({ orphan: { type: "api_key", key: "sk-b" } }));
+		expect(await store().remove("orphan")).toEqual({ ok: true, removed: true });
+		expect(JSON.parse(readFileSync(join(agentDir, "auth.json"), "utf8")).orphan).toBeUndefined();
+	});
+
+	it("三处都没有 → removed:false（界面据此提示「可能是插件注册的」）", async () => {
+		expect(await store().remove("ghost")).toEqual({ ok: true, removed: false });
+	});
+});

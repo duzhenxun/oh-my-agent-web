@@ -138,7 +138,9 @@ export async function handleProviderRequest(
 		}
 		deps.logInfo("provider 已删除", { provider, removed: result.removed });
 		deps.notify(
-			result.removed ? `provider「${provider}」已删除` : `没有这个 provider：${provider}`,
+			result.removed
+				? `provider「${provider}」已删除`
+				: `provider「${provider}」不在这两份配置文件里（可能是插件注册的），无法从这里删除`,
 			result.removed ? "info" : "warn",
 		);
 		return { ok: true, result: { removed: result.removed } };

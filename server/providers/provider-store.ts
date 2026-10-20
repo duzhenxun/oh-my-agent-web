@@ -1,8 +1,6 @@
 /**
  * provider 配置的读写（ADR-0025 §1）：**复用 pi 自己的两个文件**，不另存一份 key。
  *
- *   ~/.pi/agent/models-store.json   { [provider]: { models: ModelDefinition[], lastModified } }
- *   ~/.pi/agent/auth.json           { [provider]: { type, key } }
  *
  * 纪律：原子写 + 0600；**key 不出服务端**（只给 hasKey + 尾 4 位）。
  * models.json 里的 provider 也在这里读写 —— 改它就等于改 pi 的配置。
@@ -35,9 +33,7 @@ type ModelsCatalog = {
 	>;
 };
 
-/**
- * 把内置 provider「落成自定义条目」时用的种子（整表照抄，才不会丢掉内置的其它模型）。
- */
+/** 把内置 provider「落成自定义条目」时用的种子（整表照抄，不丢内置的其它模型） */
 export type ProviderSeed = { baseUrl: string; api: string; models: { id: string; name: string }[] };
 
 /** 引擎报上来的内置 provider（pi 自己的目录，不在 models-store.json 里） */
@@ -69,7 +65,7 @@ export type ProviderStore = {
 		spec: ModelSpec,
 		seed?: ProviderSeed,
 	) => Promise<{ ok: true } | { ok: false; error: string }>;
-	/** 批量导入模型：只追加不存在的 id（不覆盖用户填过的规格） */
+	/** 批量导入模型：只追加不存在的 id */
 	addModels: (
 		provider: string,
 		ids: string[],
@@ -305,20 +301,24 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 			return { ok: true, added, skipped };
 		},
 
+		// 删 provider：models-store / models.json / auth 三处都要清（只清一处会「删了又出现」）
 		async remove(provider) {
 			if (!/^[a-z0-9][a-z0-9-]{1,30}$/.test(provider)) return { ok: false, error: "provider 名字不合法" };
-			// 目录里的 provider：删的是 pi 的 models.json 条目
-			if (!(provider in (await readJson<ModelsStore>(modelsPath, {}))) && (await inCatalog(provider)))
-				return { ok: true, removed: await removeFromCatalog(options.agentDir, provider) };
 			const models = await readJson<ModelsStore>(modelsPath, {});
 			const auth = await readJson<AuthStore>(authPath, {});
-			const existed = provider in models || provider in auth;
-			if (!existed) return { ok: true, removed: false };
-			delete models[provider];
-			delete auth[provider];
-			await writeJsonPrivate(modelsPath, models);
-			await writeJsonPrivate(authPath, auth);
-			return { ok: true, removed: true };
+			let removed = false;
+			if (provider in models) {
+				delete models[provider];
+				removed = true;
+			}
+			if (removed) await writeJsonPrivate(modelsPath, models);
+			if (await inCatalog(provider)) removed = (await removeFromCatalog(options.agentDir, provider)) || removed;
+			if (provider in auth) {
+				delete auth[provider];
+				await writeJsonPrivate(authPath, auth);
+				removed = true;
+			}
+			return { ok: true, removed };
 		},
 
 		async upsert(input) {
