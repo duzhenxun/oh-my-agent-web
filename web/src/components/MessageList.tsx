@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { setDraft } from "../store.ts";
+import { setDraft, useAppState } from "../store.ts";
 import type { ActionItem, EngineName, UiMessage } from "../types.ts";
 import type { QueuedView } from "../pending-sends.ts";
 import { ActionSuggestions } from "./ActionSuggestions.tsx";
@@ -31,6 +31,11 @@ function ThinkingBlockView({ text }: { text: string }) {
 }
 
 function MessageView({ message }: { message: UiMessage }) {
+	// 助手消息的抬头：当前 Agent（引擎）+ 当前模型（模型名用蓝色，见 .msg-model）
+	const { snapshot } = useAppState();
+	const agentLabel = snapshot?.engine === "fake" ? "FAKE" : "PI";
+	// 只显示模型 id：`provider/model` 去掉前缀（前缀在下面的模型选择器里能看到）
+	const modelLabel = snapshot?.model ? snapshot.model.split("/").slice(1).join("/") || snapshot.model : "";
 	const text = textOfMessage(message);
 	// 工具调用默认折叠：只把"最终处理好的回答"露出来，想看过程再展开
 	const toolBlocks = message.blocks.filter((block) => block.kind === "tool");
@@ -38,7 +43,12 @@ function MessageView({ message }: { message: UiMessage }) {
 	return (
 		<article className={`msg msg-${message.role}`} id={`msg-${message.id}`}>
 			<header className="msg-head">
-				<span className="msg-role">{message.role === "user" ? "我" : "助手"}</span>
+				<span className="msg-role">{message.role === "user" ? "我" : agentLabel}</span>
+				{message.role === "assistant" && modelLabel !== "" ? (
+					<span className="msg-model" title="这条会话当前使用的模型">
+						{modelLabel}
+					</span>
+				) : null}
 				<span className="msg-time">{new Date(message.ts).toLocaleTimeString()}</span>
 				{/* 鼠标悬浮才出现的操作（用户消息还额外支持「从此处编辑」） */}
 				<div className="msg-actions">

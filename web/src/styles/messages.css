@@ -28,6 +28,17 @@
 	font-weight: 600;
 }
 
+/* 助手抬头里的模型名：蓝色，和 Agent 名区分开（"PI  deepseek-v4.1-flash"） */
+.msg-model {
+	color: var(--accent);
+	font-weight: 600;
+	font-size: 12px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	max-width: 60%;
+}
+
 .msg-body {
 	min-width: 0;
 	display: flex;
