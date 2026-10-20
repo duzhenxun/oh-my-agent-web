@@ -22,15 +22,16 @@ export function ProviderForm({
 	const [api, setApi] = useState(initial?.api || "openai-completions");
 	const [apiKey, setApiKey] = useState("");
 	const [headersText, setHeadersText] = useState("");
-	const [modelsText, setModelsText] = useState((initial?.models ?? []).map((model) => model.id).join(" "));
+	/** 模型列表：一行一个，勾上才保存（不再用空格分隔的文本框） */
+	const [modelRows, setModelRows] = useState<{ id: string; on: boolean }[]>(
+		(initial?.models ?? []).map((model) => ({ id: model.id, on: true })),
+	);
+	const [manualId, setManualId] = useState("");
 	const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
 	const [verifying, setVerifying] = useState(false);
 	const [fetching, setFetching] = useState(false);
 	const [fetchError, setFetchError] = useState<string | null>(null);
-	/** 探测结果做成可勾选的列表（像导入模型那样），而不是直接灌进文本框 */
-	const [remote, setRemote] = useState<{ id: string }[] | null>(null);
-	const [picked, setPicked] = useState<Set<string>>(new Set());
-	const [filter, setFilter] = useState("");
+	const [fetchedCount, setFetchedCount] = useState(0);
 
 	/**
 	 * 从厂家接口拉模型清单，填进「模型 id」。
@@ -57,10 +58,13 @@ export function ProviderForm({
 				setFetchError(body.error?.message ?? "这个地址没有返回可用的模型");
 				return;
 			}
-			setRemote(ids.map((id) => ({ id })));
-			setPicked(new Set());
-			setFilter("");
-			setMessage({ kind: "ok", text: `已获取 ${ids.length} 个模型，请勾选要添加的` });
+			setModelRows((current) => {
+				const known = new Set(current.map((row) => row.id));
+				// 已有的保持原样；新拉到的默认**不勾**（要用户自己确认哪些进 pi）
+				return [...current, ...ids.filter((id) => !known.has(id)).map((id) => ({ id, on: false }))];
+			});
+			setFetchedCount(ids.length);
+			setMessage({ kind: "ok", text: `已获取 ${ids.length} 个模型：勾选要用的，再保存` });
 		} catch (cause) {
 			setFetchError(cause instanceof Error ? cause.message : String(cause));
 		} finally {
@@ -68,10 +72,20 @@ export function ProviderForm({
 		}
 	};
 
-	const modelIds = modelsText
-		.split(/[\s,]+/)
-		.map((item) => item.trim())
-		.filter(Boolean);
+	const modelIds = modelRows.filter((row) => row.on).map((row) => row.id);
+	const toggleRow = (id: string, on: boolean) =>
+		setModelRows((current) => current.map((row) => (row.id === id ? { ...row, on } : row)));
+	const removeRow = (id: string) => setModelRows((current) => current.filter((row) => row.id !== id));
+	const addManual = () => {
+		const id = manualId.trim();
+		if (id === "" || modelRows.some((row) => row.id === id)) {
+			setManualId("");
+			return;
+		}
+		setModelRows((current) => [...current, { id, on: true }]);
+		setManualId("");
+	};
+
 	const headers = Object.fromEntries(
 		headersText
 			.split("\n")
@@ -79,20 +93,6 @@ export function ProviderForm({
 			.filter(([name, value]) => Boolean(name?.trim() && value?.trim()))
 			.map(([name, value]) => [name.trim(), value.trim()]),
 	);
-
-	/** 已经在「模型 id」里的（列表里置灰标「已添加」） */
-	const existing = new Set(modelsText.split(/[\s,]+/).filter(Boolean));
-	const visibleRemote = (remote ?? []).filter(
-		(model) => filter.trim() === "" || model.id.toLowerCase().includes(filter.trim().toLowerCase()),
-	);
-	const addable = visibleRemote.filter((model) => !existing.has(model.id));
-
-	const applyPicked = () => {
-		const merged = [...new Set([...existing, ...picked])];
-		setModelsText(merged.join(" "));
-		setRemote(null);
-		setPicked(new Set());
-	};
 
 	const payload = () => ({
 		provider,
@@ -210,95 +210,68 @@ export function ProviderForm({
 					}
 				/>
 			</label>
-			<label className="side-field">
+			<div className="side-field">
 				<span className="prov-field-head">
-					模型 id（空格或换行分隔）
+					模型（勾选的才保存）
+					<span className="side-panel-count">
+						{modelIds.length}/{modelRows.length}
+					</span>
 					<button
 						type="button"
 						className="btn btn-tiny"
 						style={{ marginLeft: "auto" }}
 						onClick={() => void fetchModelIds()}
 						disabled={fetching || baseUrl.trim() === ""}
-						title="调一次 GET {baseUrl}/models，把返回的模型 id 填进来（需要上面先填好地址与 key）"
+						title="调一次 GET {baseUrl}/models 把可用模型拉回来，勾选要用的那些"
 					>
 						{fetching ? "获取中…" : "⬇️ 从 API 获取"}
 					</button>
 				</span>
-				<textarea
-					rows={3}
-					value={modelsText}
-					onChange={(event) => setModelsText(event.target.value)}
-					placeholder="deepseek-chat deepseek-reasoner"
-				/>
-			</label>
-			{fetchError ? <div className="side-panel-hint side-error">获取失败：{fetchError}</div> : null}
 
-			{remote ? (
-				<div className="import-models prov-picker">
-					<input
-						className="prov-picker-filter"
-						value={filter}
-						onChange={(event) => setFilter(event.target.value)}
-						placeholder={`筛选 ${remote.length} 个模型…`}
-					/>
-					<div className="import-list">
-						<label className="import-row import-row-head">
-							<input
-								type="checkbox"
-								checked={addable.length > 0 && addable.every((model) => picked.has(model.id))}
-								onChange={() =>
-									setPicked((current) => {
-										const next = new Set(current);
-										const allPicked = addable.length > 0 && addable.every((model) => next.has(model.id));
-										for (const model of addable) {
-											if (allPicked) next.delete(model.id);
-											else next.add(model.id);
-										}
-										return next;
-									})
-								}
-							/>
-							<span>选择当前结果</span>
-						</label>
-						{visibleRemote.length === 0 ? <div className="side-panel-hint">没有匹配的模型</div> : null}
-						{visibleRemote.map((model) => {
-							const added = existing.has(model.id);
-							return (
-								<label className={`import-row${added ? " import-row-done" : ""}`} key={model.id}>
+				{modelRows.length === 0 ? (
+					<div className="side-panel-hint">还没有模型：点「从 API 获取」，或在下面手填一个 id</div>
+				) : (
+					<div className="prov-checklist">
+						{modelRows.map((row) => (
+							<div className={`prov-check-row${row.on ? " prov-check-on" : ""}`} key={row.id}>
+								<label className="prov-check-label">
 									<input
 										type="checkbox"
-										disabled={added}
-										checked={added || picked.has(model.id)}
-										onChange={() =>
-											setPicked((current) => {
-												const next = new Set(current);
-												if (next.has(model.id)) next.delete(model.id);
-												else next.add(model.id);
-												return next;
-											})
-										}
+										checked={row.on}
+										onChange={(event) => toggleRow(row.id, event.target.checked)}
 									/>
-									<span className="import-id mono">{model.id}</span>
-									{added ? <span className="side-panel-count">已添加</span> : null}
+									<span className="mono">{row.id}</span>
 								</label>
-							);
-						})}
+								<button
+									type="button"
+									className="msg-action"
+									title="从列表里删掉这一行"
+									onClick={() => removeRow(row.id)}
+								>
+									移除
+								</button>
+							</div>
+						))}
 					</div>
-					<div className="import-foot">
-						<button type="button" className="btn btn-tiny" onClick={() => setRemote(null)}>
-							取消
-						</button>
-						<span className="topbar-spacer" />
-						<button
-							type="button"
-							className="btn btn-tiny btn-primary"
-							onClick={applyPicked}
-							disabled={picked.size === 0}
-						>
-							加入 {picked.size} 个
-						</button>
-					</div>
+				)}
+
+				<div className="prov-add-row">
+					<input
+						value={manualId}
+						onChange={(event) => setManualId(event.target.value)}
+						onKeyDown={(event) => {
+							if (event.key === "Enter") addManual();
+						}}
+						placeholder="手动加一个模型 id，回车添加"
+					/>
+					<button type="button" className="btn btn-tiny" onClick={addManual} disabled={manualId.trim() === ""}>
+						添加
+					</button>
 				</div>
+			</div>
+			{fetchError ? <div className="side-panel-hint side-error">获取失败：{fetchError}</div> : null}
+			{fetchedCount > 0 ? (
+				<div className="side-panel-hint">已从接口取回 {fetchedCount} 个模型：勾上要用的，再保存</div>
 			) : null}
 			{message ? (
 				<div className={message.kind === "ok" ? "side-ok" : "side-panel-hint side-error"}>{message.text}</div>
