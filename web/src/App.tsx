@@ -268,6 +268,8 @@ export function App() {
 				snapshot={snapshot}
 				appbarHidden={appbarHidden}
 				onToggleAppbar={() => setAppbarHidden((value) => !value)}
+				sidebarOpen={!collapsed}
+				onToggleSidebar={() => setCollapsed((value) => !value)}
 			/>
 
 			{snapshot?.pendingApproval ? <ApprovalDialog approval={snapshot.pendingApproval} /> : null}
