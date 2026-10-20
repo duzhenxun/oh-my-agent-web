@@ -1,0 +1,114 @@
+/* 模型测试的反馈色块：结果胶囊 + 批量测试的耗时胶囊 */
+/* 模型测试结果：贴在「测试」按钮左边的胶囊 */
+.prov-test-pill {
+	font-size: 11px;
+	line-height: 1;
+	padding: 5px 8px;
+	border-radius: 999px;
+	border: 1px solid var(--border);
+	white-space: nowrap;
+	max-width: 340px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.prov-test-ok {
+	color: #1a7f43;
+	background: color-mix(in srgb, #34c759 16%, transparent);
+	border-color: color-mix(in srgb, #34c759 40%, transparent);
+}
+
+.prov-test-fail {
+	color: #b3261e;
+	background: color-mix(in srgb, #ff3b30 14%, transparent);
+	border-color: color-mix(in srgb, #ff3b30 38%, transparent);
+}
+
+/* 批量测试的耗时列（放在「已启用」前面） */
+.prov-latency {
+	font-size: 10.5px;
+	font-variant-numeric: tabular-nums;
+	padding: 1px 6px;
+	border-radius: 999px;
+	white-space: nowrap;
+	justify-self: end;
+	max-width: 92px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	text-align: center;
+}
+
+.prov-latency-idle {
+	color: var(--text-faint);
+}
+
+.prov-latency-ok {
+	color: #1a7f43;
+	background: color-mix(in srgb, #34c759 14%, transparent);
+}
+
+.prov-latency-fail {
+	color: #b3261e;
+	background: color-mix(in srgb, #ff3b30 14%, transparent);
+}
+
+/* 右栏 Tab：配置 / 模型 */
+.prov-tabs {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	border-bottom: 1px solid var(--border);
+	padding-bottom: 6px;
+	flex: 0 0 auto;
+}
+
+.prov-tab {
+	border: none;
+	background: none;
+	color: var(--text-faint);
+	font-size: 12.5px;
+	padding: 4px 10px;
+	border-radius: 7px;
+	cursor: pointer;
+}
+
+.prov-tab:hover {
+	background: var(--bg-soft);
+	color: var(--text);
+}
+
+.prov-tab-on {
+	background: var(--bg-soft);
+	color: var(--text);
+	font-weight: 600;
+	box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+/* 模型名本身可点开详情 */
+.prov-model-open {
+	border: none;
+	background: none;
+	color: inherit;
+	text-align: left;
+	padding: 0;
+	cursor: pointer;
+	max-width: 100%;
+}
+
+.prov-model-open:hover {
+	color: var(--accent);
+}
+
+/* 左栏与详情之间的分隔条（可拖宽） */
+.prov-resizer {
+	cursor: col-resize;
+	background: var(--border);
+	opacity: 0.5;
+	transition: opacity 120ms ease;
+}
+
+.prov-resizer:hover,
+.prov-resizer:active {
+	opacity: 1;
+	background: var(--accent);
+}

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAppState } from "../store.ts";
 import type { ProviderView } from "../types.ts";
 import { ImportModels } from "./ImportModels.tsx";
@@ -29,6 +29,33 @@ export function ProvidersPanel() {
 	/** 批量测试结果：modelId → 耗时 / 失败原因 */
 	const [latency, setLatency] = useState<Record<string, { ok: boolean; text: string }>>({});
 	const [batchBusy, setBatchBusy] = useState(false);
+	/** 左栏宽度（可拖，存 localStorage —— 纯界面偏好，不该进快照） */
+	const [listWidth, setListWidth] = useState(() => {
+		const stored = Number(localStorage.getItem("agent-web:provider-list-width"));
+		return Number.isFinite(stored) && stored >= 140 && stored <= 420 ? stored : 190;
+	});
+	useEffect(() => {
+		localStorage.setItem("agent-web:provider-list-width", String(listWidth));
+	}, [listWidth]);
+	const dragging = useRef(false);
+
+	const startResize = (event: React.PointerEvent<HTMLDivElement>) => {
+		event.preventDefault();
+		dragging.current = true;
+		const startX = event.clientX;
+		const startWidth = listWidth;
+		const onMove = (moveEvent: PointerEvent) => {
+			if (!dragging.current) return;
+			setListWidth(Math.min(420, Math.max(140, startWidth + (moveEvent.clientX - startX))));
+		};
+		const onUp = () => {
+			dragging.current = false;
+			document.removeEventListener("pointermove", onMove);
+			document.removeEventListener("pointerup", onUp);
+		};
+		document.addEventListener("pointermove", onMove);
+		document.addEventListener("pointerup", onUp);
+	};
 
 	/** 逐个测（顺序执行：并发打容易把网关打出 429，也会让耗时失真） */
 	const batchTest = async (provider: ProviderView) => {
@@ -65,7 +92,7 @@ export function ProvidersPanel() {
 		provider.models.filter((model) => enabled.has(`${provider.provider}/${model.id}`)).length;
 
 	return (
-		<div className="prov-shell">
+		<div className="prov-shell" style={{ gridTemplateColumns: `minmax(140px, ${listWidth}px) 6px minmax(0, 1fr)` }}>
 			<aside className="prov-list">
 				<div className="prov-list-head">
 					<span>Provider</span>
@@ -139,6 +166,16 @@ export function ProvidersPanel() {
 					＋ 添加 Provider
 				</button>
 			</aside>
+
+			{/* 分隔条：拖动改左栏宽度（双击复位） */}
+			<div
+				className="prov-resizer"
+				role="separator"
+				aria-orientation="vertical"
+				title="拖动调整宽度（双击复位）"
+				onPointerDown={startResize}
+				onDoubleClick={() => setListWidth(190)}
+			/>
 
 			<section className={`prov-detail${isCustom && !creating ? " prov-detail-split" : ""}`}>
 				{editingModel && current ? (

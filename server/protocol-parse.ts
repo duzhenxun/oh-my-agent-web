@@ -6,7 +6,7 @@ import type { ApprovalDecision, AttachmentRef, ClientRequest, ClientRequestType,
 
 // ---------------------------------------------------------------------------
 
-const REQUEST_TYPES: ClientRequestType[] = [
+export const REQUEST_TYPES: ClientRequestType[] = [
 	"send_message",
 	"interrupt",
 	"approve",
@@ -22,6 +22,8 @@ const REQUEST_TYPES: ClientRequestType[] = [
 	"test_provider",
 	"set_thinking_level",
 	"update_model",
+	"remove_model",
+	"cancel_queued",
 ];
 const DECISIONS: ApprovalDecision[] = ["once", "always", "deny"];
 
