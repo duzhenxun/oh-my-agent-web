@@ -1,12 +1,15 @@
 /**
- * WS 客户端（ADR-0004）。
+ * 实时通道客户端（ADR-0032）：**纯 HTTP**，不用 WebSocket。
  *
- * 三件事：
- *   1. 连上就发 `get_state` 拉一份权威快照（刷新/重连后状态自动正确）；
- *   2. 快照**整体替换**本地状态（服务端是唯一事实源；乐观更新只能做视觉临时态）；
- *   3. 正文靠 `message_delta` 就地追加，避免每字一次全量。
+ * 两条腿：
+ *   - `GET /api/events`（SSE）：服务端 → 浏览器，快照 / 事件 / 增量都走它；
+ *   - `POST /api/rpc`：浏览器 → 服务端，一次请求一个 ClientRequest，回包顺手处理。
  *
- * 断线重连：指数退避（0.5s → 8s 封顶）。服务端在断线期间继续干活（ADR-0004 §6）。
+ * 为什么换成 HTTP：WS 要 Upgrade 头 + 自己的 Origin/Host 白名单，配域名、走反代、
+ * 上 https 时处处要额外交代（Basic 凭据在握手阶段还未必带得上）。HTTP 没这些坑，
+ * 只要代理能转发普通请求就能用。协议本身一点没改。
+ *
+ * 断线重连：SSE 自带重连，这里再叠一层指数退避（0.5s → 8s 封顶）。
  */
 import { getAppState, setAppState } from "./store.ts";
 import type {
@@ -27,21 +30,16 @@ import { sessionUrlFor } from "./session-url.ts";
 const MAX_BACKOFF_MS = 8000;
 const BASE_BACKOFF_MS = 500;
 
-let socket: WebSocket | null = null;
+let source: EventSource | null = null;
 let attempt = 0;
 let seq = 0;
 
-function wsUrl(): string {
-	const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-	return `${protocol}//${location.host}/ws`;
-}
-
 export function connect(): void {
-	if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
+	if (source && source.readyState !== EventSource.CLOSED) return;
 
 	setAppState({ connection: "connecting" });
-	const next = new WebSocket(wsUrl());
-	socket = next;
+	const next = new EventSource("/api/events");
+	source = next;
 
 	next.addEventListener("open", () => {
 		attempt = 0;
@@ -59,16 +57,17 @@ export function connect(): void {
 		handle(parsed);
 	});
 
-	next.addEventListener("close", () => {
-		setAppState({ connection: "closed" });
-		socket = null;
-		const delay = Math.min(BASE_BACKOFF_MS * 2 ** attempt, MAX_BACKOFF_MS);
-		attempt += 1;
-		setTimeout(connect, delay);
-	});
-
 	next.addEventListener("error", () => {
-		setAppState({ lastError: "连接出错，正在重试…" });
+		setAppState({ connection: "closed" });
+		// EventSource 自己会重连，但间隔由浏览器定（可能很久）；这里再兜一层
+		if (next.readyState === EventSource.CLOSED) {
+			source = null;
+			const delay = Math.min(BASE_BACKOFF_MS * 2 ** attempt, MAX_BACKOFF_MS);
+			attempt += 1;
+			setTimeout(connect, delay);
+		} else {
+			setAppState({ connection: "connecting" });
+		}
 	});
 }
 
@@ -79,11 +78,30 @@ export function request(type: ClientRequestType): string {
 }
 
 export function send(requestMessage: ClientRequest): void {
-	if (!socket || socket.readyState !== WebSocket.OPEN) {
-		setAppState({ lastError: "连接尚未就绪，稍后再试" });
-		return;
-	}
-	socket.send(JSON.stringify(requestMessage));
+	void (async () => {
+		try {
+			const response = await fetch("/api/rpc", {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify(requestMessage),
+			});
+			if (!response.ok) {
+				setAppState({ lastError: `请求失败：HTTP ${response.status}` });
+				return;
+			}
+			const body = (await response.json()) as { frames?: string[] };
+			// 同步产生的帧（reply / notice）在这里消费；异步事件走 SSE
+			for (const frame of body.frames ?? []) {
+				try {
+					handle(JSON.parse(frame) as ServerMessage);
+				} catch {
+					// 单帧坏掉不影响其它帧
+				}
+			}
+		} catch {
+			setAppState({ lastError: "连接尚未就绪，稍后再试" });
+		}
+	})();
 }
 
 /** 取消一条排队消息（真删服务端队列） */

@@ -1,11 +1,7 @@
 /**
- * 入口（ADR-0004：一个 HTTP 端口 + 一条 WS；ADR-0006：只绑 loopback + 握手校验；ADR-0007：单实例锁）。
- *
- * 引擎默认是**真实 pi SDK**（ADR-0003 的端口实现）；`AGENT_WEB_ENGINE=fake` 切到假引擎
- * （ADR-0009 的测试通道：零 token 跑全链路）。换引擎只换 `server/engine/` 里的实现。
- *
- * 启动顺序：环境自检 → 数据目录可写 → **抢单实例锁** → 装填会话索引 → 监听端口。
- * 顺序有意义：锁要在读/写任何会话数据**之前**拿到，否则两个进程可能同时建索引。
+ * 入口：一个 HTTP 端口 + 实时通道（WS 或 SSE/RPC，ADR-0032）。
+ * 启动顺序：环境自检 → 数据目录可写 → 抢单实例锁 → 装填会话索引 → 监听端口
+ * （锁必须在读写会话数据之前拿到，否则两个进程可能同时建索引）。
  */
 import { homedir, networkInterfaces } from "node:os";
 import { createServer, type IncomingMessage } from "node:http";
@@ -41,13 +37,11 @@ import { createRotatingFileSink, logFileName, type RotatingFileSink } from "./ut
 import { describePolicy, isAllowedHost, isAllowedOrigin } from "./util/origin.js";
 import { pickExisting, webDistCandidates } from "./util/paths.js";
 import { authMiddleware, decide, effectiveAddress, AUTH_REALM } from "./http/auth.js";
+import { registerLiveRoutes, type Sink } from "./http/live-routes.js";
 import { checkDataDirWritable, describeListenError } from "./util/startup.js";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
-/**
- * 开发态「用户访问的那个端口」（Vite）。生产态不需要（同一个端口由后端提供）。
- * 现在统一是 25257；dev 脚本会把后端放到内部端口，再用这个变量告诉后端可信来源。
- */
+/** 开发态对外端口（Vite）；dev 脚本用它告诉后端可信来源 */
 const DEV_WEB_PORT = Number(process.env.AGENT_WEB_DEV_PORT ?? 25257);
 /** 快照节流窗口（ADR-0004 §3） */
 const SNAPSHOT_WINDOW_MS = 60;
@@ -65,10 +59,7 @@ const logger = createLogger({
 		fileSink?.write(line);
 	},
 });
-/**
- * 本机的局域网地址自动放行：用户「用别的设备访问本机 IP」是最常见场景，
- * 不该还要先配一遍 `AGENT_WEB_ALLOWED_HOSTS`。域名仍要显式配（DNS rebinding 防护靠它）。
- */
+/** 本机局域网地址自动放行（用别的设备访问本机 IP 是常态）；域名仍要显式配 */
 const localAddresses = Object.values(networkInterfaces())
 	.flat()
 	.filter((item): item is NonNullable<typeof item> => Boolean(item) && item?.internal === false)
@@ -180,10 +171,25 @@ const runtime = createRuntime({
 
 runtimeRef.current = runtime;
 
+/** SSE 连接（纯 HTTP 通道）—— 与 WS 并行存在，界面用哪条都行 */
+const sinks = new Set<Sink>();
+
 function broadcast(payload: string): void {
 	for (const socket of sockets) {
 		if (socket.readyState === socket.OPEN) socket.send(payload);
 	}
+	for (const sink of sinks) sink(payload);
+}
+
+/** WS 与 SSE/RPC 共用同一个分发器：请求处理逻辑只写一遍 */
+async function dispatchRequest(socket: WebSocket, raw: string): Promise<void> {
+	await handleMessage(socket, raw, {
+		runtime,
+		reply,
+		sender,
+		logger,
+		runProviderRequest: (request, respond) => runProviderRequest(request, (result) => respond(result)),
+	});
 }
 
 function reply(
@@ -213,6 +219,15 @@ registerAuxRoutes(app, {
 	workspaceOf,
 	projects: () => runtime.state().piProjects,
 	onChange: () => void runProviderRequest({ type: "list_providers" }, () => {}),
+});
+
+registerLiveRoutes(app, {
+	sinks,
+	snapshot: () => runtime.snapshot(),
+	logger,
+	handleMessage: async (shim, raw) => {
+		await dispatchRequest(shim as unknown as WebSocket, raw);
+	},
 });
 
 registerHealthAndStatic(app, {
@@ -275,13 +290,7 @@ wss.on("connection", (socket: WebSocket) => {
 	sender.flush(Date.now());
 
 	socket.on("message", (raw) => {
-		void handleMessage(socket, raw.toString(), {
-			runtime,
-			reply,
-			sender,
-			logger,
-			runProviderRequest: (request, respond) => runProviderRequest(request, (result) => respond(result)),
-		});
+		void dispatchRequest(socket, raw.toString());
 	});
 
 	socket.on("close", () => {
