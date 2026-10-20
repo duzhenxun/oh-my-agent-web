@@ -99,7 +99,7 @@
 	gap: 10px;
 	min-width: 0;
 	min-height: 0;
-	padding: 10px 12px;
+	padding: 10px 12px 18px;
 	overflow: auto;
 }
 
@@ -199,6 +199,8 @@
 
 .prov-detail .import-foot {
 	position: static;
+	/* 按钮别贴着容器底边 */
+	margin-bottom: 6px;
 }
 
 /* 左栏：provider 块（选中时把模型摊在下面） */
