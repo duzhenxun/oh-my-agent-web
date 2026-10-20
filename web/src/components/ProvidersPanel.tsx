@@ -12,7 +12,7 @@ import { ProviderForm } from "./ProviderForm.tsx";
  * 右栏是它的配置。之前只列自定义的，用户会以为 nexita / nexita-anthropic 之类「丢了」。
  *
  * 内置 provider 由 pi 自己的目录管理（baseUrl / 模型表都是 pi 给的），
- * 这里只展示 + 说明，不给编辑入口 —— 改了会写坏 pi 的配置。
+ * 它们是可以改的：写回 pi 的 models.json（不是另建覆盖条目），见 catalog-store.ts。
  */
 export function ProvidersPanel() {
 	const { snapshot } = useAppState();
@@ -156,9 +156,9 @@ export function ProvidersPanel() {
 							</span>
 						</div>
 						<div className="side-panel-hint">
-							它由 pi 内置目录管理：baseUrl 与模型表都来自 pi 自己
-							{current.hasKey ? `，key ${current.keyHint ?? ""}` : "，目前没有 key"}。 要改它请用 pi
-							的配置文件，这里只做展示（改这里会写坏 pi 的目录）。
+							来自 pi 的 provider 目录（<span className="mono">~/.pi/agent/models.json</span>）
+							{current.hasKey ? `，key ${current.keyHint ?? ""}` : "，目前没有 key"}。 这里的修改会直接写回那份配置 ——
+							点模型即可编辑，删掉也会从目录里移除。
 						</div>
 						<div className="prov-models">
 							<div className="prov-models-head">

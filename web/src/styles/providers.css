@@ -129,7 +129,9 @@
 }
 
 .prov-model-row {
-	display: flex;
+	/* 固定列：名称 / 耗时 / 状态 / 操作 —— 耗时那列必须对齐，不能随名字长短漂移 */
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 92px auto auto;
 	align-items: center;
 	gap: 8px;
 	padding: 5px 6px;
@@ -152,8 +154,8 @@
 .prov-model-spec {
 	font-size: 10.5px;
 	color: var(--text-faint);
-	margin-left: auto;
 	white-space: nowrap;
+	justify-self: end;
 }
 
 @media (max-width: 720px) {
@@ -304,11 +306,12 @@
 	font-variant-numeric: tabular-nums;
 	padding: 1px 6px;
 	border-radius: 999px;
-	margin-left: auto;
 	white-space: nowrap;
-	max-width: 140px;
+	justify-self: end;
+	max-width: 92px;
 	overflow: hidden;
 	text-overflow: ellipsis;
+	text-align: center;
 }
 
 .prov-latency-idle {
