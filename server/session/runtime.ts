@@ -1,4 +1,4 @@
-/** 会话运行时（宿主侧）：把引擎事件翻译成 UI 状态 / 协议事件，并落盘转录。规则见 ADR。 */
+/** 会话运行时：引擎事件 → UI 状态 / 协议事件，并把转录落盘。规则见 ADR。 */
 import { createMarkerStreamFilter } from "../markers/actions.js";
 import { createRuntimeServices } from "./runtime-services.js";
 import { createStatsRefresher } from "./stats-refresher.js";
@@ -6,6 +6,7 @@ import { createThrottle } from "./throttle.js";
 import { awaitTurnPersisted, createTurnFinisher, setRunning, settleWith } from "./turn-finish.js";
 import { cancelQueuedWith, createTurnPlumbing } from "./turn-queue.js";
 import { createConversationFactory } from "./conversation-create.js";
+import { createClientView } from "./client-view.js";
 import { resolveAttachments } from "./attachment-resolve.js";
 import { createModelController } from "./model-controller.js";
 import { createPiSessionOpener } from "./pi-opener.js";
@@ -42,6 +43,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		finish?: Promise<void>;
 	};
 	const turns = new Map<string, TurnState>();
+	const clientView = createClientView(); // 每客户端在看哪个会话（ADR-0033）
 
 	/** sendMessage 自引用：队列排空时要能再次调用自己（对象字面量还没构建完成 → 用 ref） */
 	let apiRef: Runtime | null = null;
@@ -62,7 +64,6 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		onError: (message) => notice(message, "warn"),
 	});
 
-	// 提示牌 / 审批桥 / 看门狗：装配一次，见 runtime-services.ts
 	const services = createRuntimeServices({
 		options,
 		now,
@@ -209,7 +210,6 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		},
 
 		refreshPiSessions: (force?: boolean) => piRefresher.refresh(force),
-		// 先让引擎重读模型表：否则外部改过 models.json 时界面是新的、引擎还是旧的
 		refreshProviders: async () => {
 			// pi 的模型表挂在会话上：先保证有会话，再让它重读配置
 			await options.engine.prewarm?.();
@@ -223,6 +223,8 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		snapshot() {
 			return buildSnapshot(state);
 		},
+
+		snapshotFor: (clientId) => buildSnapshot(state, undefined, clientView.activeFor(clientId, state.activeId)),
 
 		state() {
 			return state;
@@ -362,14 +364,14 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			}
 		},
 
-		async switchConversation(conversationId) {
+		async switchConversation(conversationId, clientId) {
+			if (clientId) clientView.setActive(clientId, conversationId);
 			const mine = state.conversations.some((conversation) => conversation.id === conversationId);
 			const fromPi = piOpener.infoOf(conversationId);
 			if (!mine && !fromPi) {
 				return { ok: false, error: { code: "session.not_found", message: `会话不存在：${conversationId}` } };
 			}
 
-			// pi 已有的会话：打开它的文件、读回转录（ADR-0021 §2）
 			if (!mine && fromPi) {
 				if (state.activeId !== conversationId || !state.messages[conversationId]) {
 					const messages = await piOpener.open(conversationId, (force) => piRefresher.refresh(force));

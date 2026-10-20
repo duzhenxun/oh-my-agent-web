@@ -113,3 +113,20 @@ describe("运行时用的最小消息形状", () => {
 		expect(Object.keys(message).sort()).toEqual(["blocks", "id", "role", "ts"]);
 	});
 });
+
+describe("buildSnapshot：按客户端覆盖当前会话（ADR-0033）", () => {
+	it("同一份 state，两个客户端拿到各自的 active", () => {
+		const state = createServerState("/tmp/ws");
+		state.activeId = "conv-a";
+		state.messages["conv-a"] = [{ id: "m1", role: "user", ts: 1, blocks: [{ kind: "text", text: "A" }] }];
+		state.messages["conv-b"] = [{ id: "m2", role: "user", ts: 2, blocks: [{ kind: "text", text: "B" }] }];
+
+		const forA = buildSnapshot(state, undefined, "conv-a");
+		const forB = buildSnapshot(state, undefined, "conv-b");
+		expect(forA.active.conversationId).toBe("conv-a");
+		expect(forB.active.conversationId).toBe("conv-b");
+		expect(forB.active.messages[0]?.id).toBe("m2");
+		// 不传覆盖值时仍用全局 activeId（老行为不变）
+		expect(buildSnapshot(state).active.conversationId).toBe("conv-a");
+	});
+});

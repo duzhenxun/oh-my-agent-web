@@ -38,6 +38,7 @@ import { describePolicy, isAllowedHost, isAllowedOrigin } from "./util/origin.js
 import { pickExisting, webDistCandidates } from "./util/paths.js";
 import { authMiddleware, decide, effectiveAddress, AUTH_REALM } from "./http/auth.js";
 import { registerLiveRoutes, type Sink } from "./http/live-routes.js";
+import { fanOutSnapshot } from "./snapshot/fan-out.js";
 import { checkDataDirWritable, describeListenError } from "./util/startup.js";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
@@ -59,7 +60,7 @@ const logger = createLogger({
 		fileSink?.write(line);
 	},
 });
-/** 本机局域网地址自动放行（用别的设备访问本机 IP 是常态）；域名仍要显式配 */
+/** 局域网地址自动放行；域名仍要显式配 */
 const localAddresses = Object.values(networkInterfaces())
 	.flat()
 	.filter((item): item is NonNullable<typeof item> => Boolean(item) && item?.internal === false)
@@ -77,9 +78,7 @@ let shuttingDown = false;
 const sender = createSender({
 	windowMs: SNAPSHOT_WINDOW_MS,
 	send: (frame: OutFrame) => {
-		if (frame.kind === "snapshot") {
-			broadcast(JSON.stringify({ type: "event", event: "snapshot", snapshot: frame.snapshot }));
-		}
+		if (frame.kind === "snapshot") fanOut(frame.snapshot);
 	},
 });
 
@@ -171,20 +170,23 @@ const runtime = createRuntime({
 
 runtimeRef.current = runtime;
 
-/** SSE 连接（纯 HTTP 通道）—— 与 WS 并行存在，界面用哪条都行 */
-const sinks = new Set<Sink>();
+/** SSE 连接（纯 HTTP 通道）：clientId → 写入函数（每客户端一份快照，ADR-0033） */
+const sinks = new Map<string, Sink>();
+
+const fanOut = (snapshot: Parameters<typeof fanOutSnapshot>[0]) =>
+	fanOutSnapshot(snapshot, { sockets, sinks, snapshotFor: (id) => runtime.snapshotFor(id) });
 
 function broadcast(payload: string): void {
 	for (const socket of sockets) {
 		if (socket.readyState === socket.OPEN) socket.send(payload);
 	}
-	for (const sink of sinks) sink(payload);
+	for (const sink of sinks.values()) sink(payload);
 }
 
-/** WS 与 SSE/RPC 共用同一个分发器：请求处理逻辑只写一遍 */
-async function dispatchRequest(socket: WebSocket, raw: string): Promise<void> {
+async function dispatchRequest(socket: WebSocket, raw: string, clientId?: string): Promise<void> {
 	await handleMessage(socket, raw, {
 		runtime,
+		...(clientId ? { clientId } : {}),
 		reply,
 		sender,
 		logger,
@@ -223,10 +225,10 @@ registerAuxRoutes(app, {
 
 registerLiveRoutes(app, {
 	sinks,
-	snapshot: () => runtime.snapshot(),
+	snapshotFor: (clientId) => runtime.snapshotFor(clientId),
 	logger,
-	handleMessage: async (shim, raw) => {
-		await dispatchRequest(shim as unknown as WebSocket, raw);
+	handleMessage: async (clientId, shim, raw) => {
+		await dispatchRequest(shim as unknown as WebSocket, raw, clientId);
 	},
 });
 

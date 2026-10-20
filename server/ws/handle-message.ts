@@ -11,6 +11,8 @@ import type { Runtime } from "../session/runtime-types.js";
 
 export type HandleDeps = {
 	runtime: Runtime;
+	/** 哪个客户端发的（ADR-0033：会话视图按它区分） */
+	clientId?: string;
 	reply: (socket: WebSocket, id: string, result: { ok: true } | { ok: false; error: ProtocolError }) => void;
 	sender: { pushSnapshot: (snapshot: Snapshot) => void; flush: (now: number) => void };
 	logger: Logger;
@@ -62,7 +64,11 @@ export async function handleMessage(socket: WebSocket, raw: string, deps: Handle
 				deps.reply(socket, request.id, await deps.runtime.newConversation(request.payload?.workspace));
 				return;
 			case "switch_conversation":
-				deps.reply(socket, request.id, await deps.runtime.switchConversation(request.payload.conversationId));
+				deps.reply(
+					socket,
+					request.id,
+					await deps.runtime.switchConversation(request.payload.conversationId, deps.clientId),
+				);
 				return;
 			case "list_providers":
 			case "upsert_provider":

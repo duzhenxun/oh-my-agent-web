@@ -27,6 +27,8 @@ export type Result = { ok: true } | { ok: false; error: ProtocolError };
 export type Runtime = {
 	init(): Promise<void>;
 	snapshot(): Snapshot;
+	/** 按客户端生成快照：`active` 用这个客户端自己选中的会话（ADR-0033） */
+	snapshotFor(clientId: string | undefined): Snapshot;
 	state(): ServerState;
 	sendMessage(
 		text: string,
@@ -51,7 +53,7 @@ export type Runtime = {
 	cancelQueued(queueId: string): Result;
 	/** 审批模式（P4）：只在本会话内存里生效，重启回到 ask */
 	setApprovalMode(mode: ApprovalMode): Result;
-	switchConversation(conversationId: string): Promise<Result>;
+	switchConversation(conversationId: string, clientId?: string): Promise<Result>;
 	/** 重新读 provider 配置（models-store.json 可能被外部改动；页面刷新时顺手更新） */
 	refreshProviders(): Promise<void>;
 	/** 重新扫 pi 已有的项目/会话（ADR-0021 §1）；带最小间隔，避免每次刷新都扫盘 */

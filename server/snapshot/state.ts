@@ -111,8 +111,17 @@ export function createConversation(input: {
 }
 
 /** 只取最近 limit 条（ADR-0012：N=100），更早的靠 hasMoreBefore 提示按需拉 */
-export function buildSnapshot(state: ServerState, limit = SNAPSHOT_MESSAGE_LIMIT): Snapshot {
-	const all = state.activeId ? (state.messages[state.activeId] ?? []) : [];
+/**
+ * @param activeIdOverride 该客户端自己选中的会话（ADR-0033）：
+ *   多标签 / 多设备各自看各自的会话，不再跟着服务端那个全局 activeId 跑。
+ */
+export function buildSnapshot(
+	state: ServerState,
+	limit = SNAPSHOT_MESSAGE_LIMIT,
+	activeIdOverride?: string | null,
+): Snapshot {
+	const activeId = activeIdOverride === undefined ? state.activeId : activeIdOverride;
+	const all = activeId ? (state.messages[activeId] ?? []) : [];
 	const messages = all.length > limit ? all.slice(all.length - limit) : all;
 	return {
 		protocolVersion: PROTOCOL_VERSION,
@@ -150,7 +159,7 @@ export function buildSnapshot(state: ServerState, limit = SNAPSHOT_MESSAGE_LIMIT
 		})),
 		conversations: state.conversations.map((conversation) => ({ ...conversation })),
 		active: {
-			conversationId: state.activeId,
+			conversationId: activeId,
 			messages: messages.map((message) => ({ ...message, blocks: message.blocks.map((block) => ({ ...block })) })),
 			hasMoreBefore: all.length > messages.length,
 		},
