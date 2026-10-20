@@ -11,14 +11,8 @@ import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { ProviderView } from "../protocol.js";
 import { maskKey, type ModelSpec, type ProviderInput } from "./validate.js";
-import {
-	MODELS_FILE,
-	patchCatalogModel,
-	readCatalog,
-	specToCatalog,
-	writeCatalog,
-	type CatalogEntry,
-} from "./catalog-store.js";
+import { writeCatalogModelPatch, writeCatalogUpsert } from "./catalog-writes.js";
+import { MODELS_FILE, readCatalog } from "./catalog-store.js";
 
 export const MODELS_STORE_FILE = "models-store.json";
 export const AUTH_FILE = "auth.json";
@@ -152,16 +146,6 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 
 	const inCatalog = async (provider: string) => Boolean((await readCatalog(options.agentDir)).providers?.[provider]);
 
-	/** 只改目标 provider 的条目；不存在就不写（避免凭空造 provider） */
-	const patchCatalog = async (provider: string, patch: (entry: CatalogEntry) => CatalogEntry) => {
-		const catalog = await readCatalog(options.agentDir);
-		const entry = catalog.providers?.[provider];
-		if (!entry) return false; // 不存在就不写（别凭空造 provider）
-		catalog.providers = { ...catalog.providers, [provider]: patch(entry) };
-		await writeCatalog(options.agentDir, catalog);
-		return true;
-	};
-
 	return {
 		async list(builtin = []) {
 			const [models, auth] = await Promise.all([
@@ -230,7 +214,7 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 		async removeModel(provider, modelId, seed) {
 			const models = await readJson<ModelsStore>(modelsPath, {});
 			if (!models[provider] && (await inCatalog(provider))) {
-				await patchCatalog(provider, (entry) => patchCatalogModel(entry, modelId, () => null));
+				await writeCatalogModelPatch(options.agentDir, provider, modelId, null);
 				return { ok: true };
 			}
 			const entry = models[provider] ?? materialize(provider, seed);
@@ -261,9 +245,7 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 			const models = await readJson<ModelsStore>(modelsPath, {});
 			// 目录里的 provider（nexita 之类）：直接改 pi 的 models.json，不另建覆盖条目
 			if (!models[provider] && (await inCatalog(provider))) {
-				await patchCatalog(provider, (entry) =>
-					patchCatalogModel(entry, spec.id, (current) => ({ ...current, ...specToCatalog(spec) })),
-				);
+				await writeCatalogModelPatch(options.agentDir, provider, spec.id, spec);
 				return { ok: true };
 			}
 			const entry = models[provider] ?? materialize(provider, seed);
@@ -344,6 +326,24 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 				readJson<ModelsStore>(modelsPath, {}),
 				readJson<AuthStore>(authPath, {}),
 			]);
+			if (!models[input.provider] && (await inCatalog(input.provider))) {
+				const { models: written } = await writeCatalogUpsert(options.agentDir, input);
+				const key = input.apiKey ?? (await readCatalog(options.agentDir)).providers?.[input.provider]?.apiKey;
+				return {
+					ok: true,
+					view: {
+						provider: input.provider,
+						source: "builtin" as const,
+						baseUrl: input.baseUrl,
+						api: input.api,
+						hasKey: typeof key === "string" && key !== "",
+						keyHint: maskKey(key),
+						...(input.headers ? { headerNames: Object.keys(input.headers) } : {}),
+						models: written.map((model) => specView(model as never)),
+					},
+				};
+			}
+
 			const existing = models[input.provider];
 			if (!existing && input.apiKey === undefined && auth[input.provider]?.key === undefined) {
 				return { ok: false, error: "新增 provider 必须填 api key（否则模型调不通）" };

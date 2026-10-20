@@ -24,6 +24,8 @@ export function ProvidersPanel() {
 	const [creating, setCreating] = useState(false);
 	const [importing, setImporting] = useState(false);
 	const [editingModel, setEditingModel] = useState<string | null>(null);
+	/** 右栏两个 Tab：配置 / 模型（内置 provider 也能改配置，所以两者对谁都可用） */
+	const [tab, setTab] = useState<"config" | "models">("config");
 	/** 批量测试结果：modelId → 耗时 / 失败原因 */
 	const [latency, setLatency] = useState<Record<string, { ok: boolean; text: string }>>({});
 	const [batchBusy, setBatchBusy] = useState(false);
@@ -83,6 +85,7 @@ export function ProvidersPanel() {
 										setImporting(false);
 										setEditingModel(null);
 										setSelected(provider.provider);
+										setTab("config");
 									}}
 								>
 									<span className="prov-item-name">
@@ -145,61 +148,38 @@ export function ProvidersPanel() {
 						modelId={editingModel}
 						onClose={() => setEditingModel(null)}
 					/>
-				) : current?.source === "builtin" && !creating ? (
-					<div className="side-panel">
-						<div className="side-panel-head">
-							<strong>{current.provider}</strong>
-							<span className="side-provider-badge">内置</span>
-							<span className="topbar-spacer" />
-							<span className="side-panel-count">
-								{enabledCount(current)}/{current.models.length} 启用
-							</span>
-						</div>
-						<div className="side-panel-hint">
-							来自 pi 的 provider 目录（<span className="mono">~/.pi/agent/models.json</span>）
-							{current.hasKey ? `，key ${current.keyHint ?? ""}` : "，目前没有 key"}。 这里的修改会直接写回那份配置 ——
-							点模型即可编辑，删掉也会从目录里移除。
-						</div>
-						<div className="prov-models">
-							<div className="prov-models-head">
-								<span>模型</span>
-								<span className="side-panel-count">{current.models.length}</span>
-								<span className="topbar-spacer" />
-								<button
-									type="button"
-									className="btn btn-tiny"
-									onClick={() => void batchTest(current)}
-									disabled={batchBusy || current.models.length === 0}
-									title="逐个发一次最小请求，量出每个模型的响应时间（会消耗与模型数相同的请求数）"
-								>
-									{batchBusy ? "测试中…" : "⏱ 批量测试"}
-								</button>
-							</div>
-							<div className="prov-models-scroll">
-								{current.models.map((model) => (
-									<div className="prov-model-row" key={model.id}>
-										<span className="prov-model-name" title={model.id}>
-											{model.name}
-										</span>
-										<LatencyCell result={latency[model.id]} />
-										<span className="prov-model-spec">
-											{enabled.has(`${current.provider}/${model.id}`) ? "已启用" : "未启用"}
-										</span>
-									</div>
-								))}
-							</div>
-						</div>
-					</div>
 				) : importing && current ? (
 					<ImportModels provider={current} onClose={() => setImporting(false)} onImported={() => setImporting(false)} />
 				) : (
 					<>
-						<ProviderForm
-							key={showForm ? "new" : current?.provider}
-							initial={showForm ? null : current}
-							onClose={() => setCreating(false)}
-						/>
-						{isCustom && current && !creating ? (
+						{current && !creating ? (
+							<div className="prov-tabs">
+								{(current ? ["config", "models"] : []).map((key) => (
+									<button
+										type="button"
+										key={key}
+										className={`prov-tab${tab === key ? " prov-tab-on" : ""}`}
+										onClick={() => setTab(key as "config" | "models")}
+									>
+										{key === "config" ? "配置" : `模型 ${current.models.length}`}
+									</button>
+								))}
+								<span className="topbar-spacer" />
+								<span className="side-panel-count">
+									{enabledCount(current)}/{current.models.length} 启用
+								</span>
+							</div>
+						) : null}
+
+						{showForm || tab === "config" ? (
+							<ProviderForm
+								key={showForm ? "new" : current?.provider}
+								initial={showForm ? null : current}
+								onClose={() => setCreating(false)}
+							/>
+						) : null}
+
+						{current && !creating && tab === "models" ? (
 							<div className="prov-models">
 								<div className="prov-models-head">
 									<span>模型</span>
@@ -225,31 +205,23 @@ export function ProvidersPanel() {
 								</div>
 								<div className="prov-models-scroll">
 									{current.models.length === 0 ? (
-										<div className="side-panel-hint">
-											这个 provider 下还没有模型：可以导入，或在上面的「模型 id」里手填
-										</div>
+										<div className="side-panel-hint">这个 provider 下还没有模型：可以导入，或在「配置」里手填</div>
 									) : null}
 									{current.models.map((model) => (
 										<div className="prov-model-row" key={model.id}>
-											<span className="prov-model-name" title={model.id}>
-												{model.name}
-											</span>
-											<LatencyCell result={latency[model.id]} />
-											<span className="prov-model-spec">
-												{[
-													model.contextWindow ? `${model.contextWindow} ctx` : null,
-													model.reasoning ? "思考" : null,
-													model.imageInput ? "图片" : null,
-												]
-													.filter(Boolean)
-													.join(" · ") || "规格未填"}
-											</span>
 											<button
 												type="button"
-												className="msg-action"
+												className="prov-model-name prov-model-open"
+												title={model.id}
 												onClick={() => setEditingModel(model.id)}
-												title="编辑这个模型的能力 / 规格 / 价格，或从 provider 下移除"
 											>
+												{model.name}
+											</button>
+											<LatencyCell result={latency[model.id]} />
+											<span className="prov-model-spec">
+												{enabled.has(`${current.provider}/${model.id}`) ? "已启用" : "未启用"}
+											</span>
+											<button type="button" className="msg-action" onClick={() => setEditingModel(model.id)}>
 												编辑
 											</button>
 										</div>
