@@ -76,6 +76,7 @@ export function ProviderForm({
 	const toggleRow = (id: string, on: boolean) =>
 		setModelRows((current) => current.map((row) => (row.id === id ? { ...row, on } : row)));
 	const removeRow = (id: string) => setModelRows((current) => current.filter((row) => row.id !== id));
+	const setAll = (on: boolean) => setModelRows((current) => current.map((row) => ({ ...row, on })));
 	const addManual = () => {
 		const id = manualId.trim();
 		if (id === "" || modelRows.some((row) => row.id === id)) {
@@ -215,6 +216,26 @@ export function ProviderForm({
 					模型（勾选的才保存）
 					<span className="side-panel-count">
 						{modelIds.length}/{modelRows.length}
+					</span>
+					<span className="prov-check-actions">
+						<button
+							type="button"
+							className="msg-action"
+							onClick={() => setAll(true)}
+							disabled={modelRows.every((row) => row.on) || modelRows.length === 0}
+							title="全部勾上（保存时全部写进 provider）"
+						>
+							全选
+						</button>
+						<button
+							type="button"
+							className="msg-action"
+							onClick={() => setAll(false)}
+							disabled={modelRows.every((row) => !row.on) || modelRows.length === 0}
+							title="全部不勾（保存时一个模型都不写）"
+						>
+							全不选
+						</button>
 					</span>
 					<button
 						type="button"

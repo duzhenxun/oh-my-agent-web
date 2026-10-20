@@ -72,3 +72,15 @@
 	color: var(--text);
 	font-size: 12.5px;
 }
+
+/* 全选 / 全不选 */
+.prov-check-actions {
+	display: flex;
+	gap: 2px;
+	align-items: center;
+}
+
+.prov-check-actions .msg-action:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
