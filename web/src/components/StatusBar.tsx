@@ -50,7 +50,8 @@ export function StatusBar({
 			<span className="status-item status-queued">⏳ 排队 {snapshot?.queued.length ?? 0}</span>
 			{stats ? (
 				<span className="status-item status-usage" title="本会话累计输入 / 输出 / 当前上下文占用">
-					↑ {formatTokens(stats.inputTokens)} ↓ {formatTokens(stats.outputTokens)} · 上下文{" "}
+					<span className="tok-in">↑ {formatTokens(stats.inputTokens)}</span>{" "}
+					<span className="tok-out">↓ {formatTokens(stats.outputTokens)}</span> · 上下文{" "}
 					{formatTokens(stats.contextTokens)}
 				</span>
 			) : null}
