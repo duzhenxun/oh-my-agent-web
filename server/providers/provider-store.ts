@@ -4,14 +4,14 @@
  *   ~/.pi/agent/models-store.json   { [provider]: { models: ModelDefinition[], lastModified } }
  *   ~/.pi/agent/auth.json           { [provider]: { type, key } }
  *
- * 纪律：原子写 + 0600（文件里有凭证）；**key 不出服务端**（只给 hasKey + 尾 4 位）。
- * 目录文件（models.json）里的 provider 也在这里读写 —— 改它就等于改 pi 的配置。
+ * 纪律：原子写 + 0600；**key 不出服务端**（只给 hasKey + 尾 4 位）。
+ * models.json 里的 provider 也在这里读写 —— 改它就等于改 pi 的配置。
  */
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { ProviderView } from "../protocol.js";
 import { maskKey, type ModelSpec, type ProviderInput } from "./validate.js";
-import { writeCatalogModelPatch, writeCatalogUpsert } from "./catalog-writes.js";
+import { addCatalogModels, writeCatalogModelPatch, writeCatalogUpsert } from "./catalog-writes.js";
 import { MODELS_FILE, readCatalog } from "./catalog-store.js";
 
 export const MODELS_STORE_FILE = "models-store.json";
@@ -276,6 +276,7 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 
 		async addModels(provider, ids) {
 			const models = await readJson<ModelsStore>(modelsPath, {});
+			if (!models[provider] && (await inCatalog(provider))) return addCatalogModels(options.agentDir, provider, ids);
 			const entry = models[provider];
 			if (!entry) return { ok: false, error: `没有这个 provider：${provider}` };
 			const list = Array.isArray(entry.models) ? entry.models : [];

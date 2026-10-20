@@ -66,3 +66,20 @@ describe("目录里的 provider 也能改（写回 models.json，不另建覆盖
 		expect(after.providers.nexita.models.map((model: { id: string }) => model.id)).toEqual(["gpt-6-luna"]);
 	});
 });
+
+describe("内置 provider 的「导入模型」", () => {
+	const catalog = {
+		providers: {
+			nexita: { api: "openai-responses", baseUrl: "https://x/v1", models: [{ id: "m1", name: "M1" }] },
+		},
+	};
+
+	it("追加到 models.json：只加不存在的，已有的跳过", async () => {
+		writeFileSync(join(agentDir, "models.json"), JSON.stringify(catalog));
+		const result = await store().addModels("nexita", ["m1", "m2"]);
+		expect(result).toEqual({ ok: true, added: ["m2"], skipped: ["m1"] });
+		const after = JSON.parse(readFileSync(join(agentDir, "models.json"), "utf8"));
+		expect(after.providers.nexita.models.map((model: { id: string }) => model.id)).toEqual(["m1", "m2"]);
+		expect(after.providers.nexita.api).toBe("openai-responses"); // 其它字段不动
+	});
+});

@@ -49,3 +49,33 @@ export async function writeCatalogModelPatch(
 	await writeCatalog(agentDir, catalog);
 	return true;
 }
+
+/** 往目录里的 provider 追加模型：只加不存在的 id，已有的跳过（不覆盖用户填过的规格） */
+export async function addCatalogModels(
+	agentDir: string,
+	provider: string,
+	ids: string[],
+): Promise<{ ok: true; added: string[]; skipped: string[] } | { ok: false; error: string }> {
+	const catalog = await readCatalog(agentDir);
+	const entry = catalog.providers?.[provider];
+	if (!entry) return { ok: false, error: `没有这个 provider：${provider}` };
+	const list = entry.models ?? [];
+	const existing = new Set(list.map((model) => model.id));
+	const added: string[] = [];
+	const skipped: string[] = [];
+	const next = [...list];
+	for (const id of ids) {
+		if (existing.has(id)) {
+			skipped.push(id);
+			continue;
+		}
+		existing.add(id);
+		added.push(id);
+		next.push({ id, name: id });
+	}
+	if (added.length > 0) {
+		catalog.providers = { ...catalog.providers, [provider]: { ...entry, models: next } };
+		await writeCatalog(agentDir, catalog);
+	}
+	return { ok: true, added, skipped };
+}

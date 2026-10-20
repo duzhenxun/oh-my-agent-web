@@ -19,12 +19,6 @@ export function registerImportRoutes(app: Express, options: { store: ProviderSto
 			response.status(404).json({ error: { code: "provider.not_found", message: "没有这个 provider" } });
 			return;
 		}
-		if (view.source === "builtin") {
-			response
-				.status(400)
-				.json({ error: { code: "provider.builtin", message: "内置 provider 由 pi 管理，不能导入模型" } });
-			return;
-		}
 		const apiKey = await options.store.readKey(provider);
 		if (!apiKey) {
 			response.status(400).json({ error: { code: "provider.no_key", message: "这个 provider 还没有 api key" } });
