@@ -115,6 +115,29 @@ export function createConversation(input: {
  * @param activeIdOverride 该客户端自己选中的会话（ADR-0033）：
  *   多标签 / 多设备各自看各自的会话，不再跟着服务端那个全局 activeId 跑。
  */
+
+/**
+ * 这个客户端看到的「运行状态」。
+ *
+ * - 没传 activeIdOverride（老路径）：直接用全局 running；
+ * - 传了且正好是全局那个会话：也用全局（它带着流式正文与工具信息）；
+ * - 传了但是别的会话：从 runningByConversation 里取它自己的状态，
+ *   流式正文/工具不属于这条会话，留空。
+ */
+function runningForClient(state: ServerState, activeId: string | null, override?: string | null) {
+	if (override === undefined || override === state.running.conversationId) {
+		return { ...state.running, activeTool: state.running.activeTool ? { ...state.running.activeTool } : null };
+	}
+	const own = activeId ? state.runningByConversation[activeId] : undefined;
+	return {
+		status: own?.status ?? "idle",
+		conversationId: activeId,
+		turnStartedAt: own?.turnStartedAt ?? null,
+		streamingText: "",
+		activeTool: null,
+	};
+}
+
 export function buildSnapshot(
 	state: ServerState,
 	limit = SNAPSHOT_MESSAGE_LIMIT,
@@ -163,7 +186,9 @@ export function buildSnapshot(
 			messages: messages.map((message) => ({ ...message, blocks: message.blocks.map((block) => ({ ...block })) })),
 			hasMoreBefore: all.length > messages.length,
 		},
-		running: { ...state.running, activeTool: state.running.activeTool ? { ...state.running.activeTool } : null },
+		// running 也要按客户端的会话算：否则别人在跑时，你在看的会话既不出「引导/排队」，
+		// 也看不到 agent 在工作（但状态栏又显示「工作中」）—— A 方案落地后的连带问题
+		running: runningForClient(state, activeId, activeIdOverride),
 		queued: state.queued.map((item) => ({ ...item })),
 		enabledModels: [...state.enabledModels],
 		runningByConversation: { ...state.runningByConversation },

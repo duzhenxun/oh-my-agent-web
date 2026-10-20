@@ -64,3 +64,13 @@
 		display: none;
 	}
 }
+
+/* 手机：会话数 / 工作中 / 排队 / token 胶囊都不显示 —— 状态栏只留连接、开关与入口 */
+@media (max-width: 900px) {
+	.statusbar .status-conv,
+	.statusbar .status-running,
+	.statusbar .status-queued,
+	.statusbar .status-usage {
+		display: none;
+	}
+}

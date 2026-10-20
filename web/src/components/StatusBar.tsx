@@ -45,9 +45,9 @@ export function StatusBar({
 			<span className={`status-dot status-dot-${connection}`} aria-hidden="true" />
 			<span className="status-item">{CONNECTION[connection] ?? connection}</span>
 			<span className="status-item">🧠 {snapshot?.engine ?? "—"}</span>
-			<span className="status-item">💬 {conversations} 个对话</span>
-			<span className="status-item">⚙ 工作中 {running}</span>
-			<span className="status-item">⏳ 排队 {snapshot?.queued.length ?? 0}</span>
+			<span className="status-item status-conv">💬 {conversations} 个对话</span>
+			<span className="status-item status-running">⚙ 工作中 {running}</span>
+			<span className="status-item status-queued">⏳ 排队 {snapshot?.queued.length ?? 0}</span>
 			{stats ? (
 				<span className="status-item status-usage" title="本会话累计输入 / 输出 / 当前上下文占用">
 					↑ {formatTokens(stats.inputTokens)} ↓ {formatTokens(stats.outputTokens)} · 上下文{" "}
