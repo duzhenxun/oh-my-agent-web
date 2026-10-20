@@ -1,5 +1,8 @@
 const PW = process.env.PW;
-const headers = (client) => ({ authorization: "Basic " + Buffer.from("x:" + PW).toString("base64"), cookie: `agent-web-client=${client}` });
+const headers = (client) => ({
+	authorization: "Basic " + Buffer.from("x:" + PW).toString("base64"),
+	cookie: `agent-web-client=${client}`,
+});
 async function openSse(client, sink) {
 	const res = await fetch("http://127.0.0.1:25257/api/events", { headers: headers(client) });
 	const reader = res.body.getReader();
@@ -16,22 +19,38 @@ async function openSse(client, sink) {
 		}
 	})();
 }
-const convs = await (await fetch("http://127.0.0.1:25257/api/rpc", {
-	method: "POST", headers: { ...headers("tabA"), "content-type": "application/json" },
-	body: JSON.stringify({ id: "r0", type: "get_state" }),
-})).json().catch(() => ({}));
-const state = await (await fetch("http://127.0.0.1:25257/api/events", { headers: headers("tabA") })).text().catch(() => "");
-let aLatest = null, bLatest = null;
-await openSse("tabA", (id) => { aLatest = id; });
-await openSse("tabB", (id) => { bLatest = id; });
+const convs = await (
+	await fetch("http://127.0.0.1:25257/api/rpc", {
+		method: "POST",
+		headers: { ...headers("tabA"), "content-type": "application/json" },
+		body: JSON.stringify({ id: "r0", type: "get_state" }),
+	})
+)
+	.json()
+	.catch(() => ({}));
+const state = await (
+	await fetch("http://127.0.0.1:25257/api/events", { headers: headers("tabA") })
+)
+	.text()
+	.catch(() => "");
+let aLatest = null,
+	bLatest = null;
+await openSse("tabA", (id) => {
+	aLatest = id;
+});
+await openSse("tabB", (id) => {
+	bLatest = id;
+});
 await new Promise((r) => setTimeout(r, 1500));
 console.log("初始  A:", aLatest, " B:", bLatest);
 // 用 A 的身份切会话
-const others = JSON.parse((state.match(/data: (\{.*\})/) ?? [])[1] ?? "{}")?.snapshot?.conversations?.map((c) => c.id) ?? [];
+const others =
+	JSON.parse((state.match(/data: (\{.*\})/) ?? [])[1] ?? "{}")?.snapshot?.conversations?.map((c) => c.id) ?? [];
 const target = others.find((id) => id !== aLatest) ?? others[0];
 if (target) {
 	await fetch("http://127.0.0.1:25257/api/rpc", {
-		method: "POST", headers: { ...headers("tabA"), "content-type": "application/json" },
+		method: "POST",
+		headers: { ...headers("tabA"), "content-type": "application/json" },
 		body: JSON.stringify({ id: "r1", type: "switch_conversation", payload: { conversationId: target } }),
 	});
 	await new Promise((r) => setTimeout(r, 2000));
