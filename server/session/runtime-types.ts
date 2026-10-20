@@ -27,7 +27,12 @@ export type Runtime = {
 	init(): Promise<void>;
 	snapshot(): Snapshot;
 	state(): ServerState;
-	sendMessage(text: string, attachments?: AttachmentRef[], mode?: SendMode): Promise<Result>;
+	sendMessage(
+		text: string,
+		attachments?: AttachmentRef[],
+		mode?: SendMode,
+		targetConversationId?: string,
+	): Promise<Result>;
 	interrupt(): Promise<Result>;
 	approve(requestId: string, decision: ApprovalDecision): Result;
 	newConversation(workspace?: string): Promise<Result>;

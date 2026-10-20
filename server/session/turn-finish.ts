@@ -19,7 +19,7 @@ export function createTurnFinisher(deps: {
 	state: ServerState;
 	turns: Map<string, TurnLike>;
 	shiftQueued: (conversationId: string) => QueuedMessage | null;
-	sendNext: (message: QueuedMessage) => void;
+	sendNext: (message: QueuedMessage, conversationId: string) => void;
 	cancelPending: () => void;
 	settle: (input: { conversationId: string; messageId: string; rawText: string }) => void;
 	touchConversation: (conversationId: string) => void;
@@ -39,7 +39,7 @@ export function createTurnFinisher(deps: {
 		}
 		deps.refreshStats();
 		const next = deps.shiftQueued(conversationId);
-		if (next) deps.sendNext(next);
+		if (next) deps.sendNext(next, conversationId);
 		deps.state.pendingApproval = null;
 		deps.cancelPending();
 		if (turn) deps.settle({ conversationId, messageId: turn.messageId, rawText: turn.rawText });

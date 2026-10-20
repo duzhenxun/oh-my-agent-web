@@ -2,12 +2,9 @@
  * 会话运行时（宿主侧）：把引擎事件翻译成 UI 状态 / 协议事件，并把转录落盘（M2）。
  *
  * 遵守的规则（都已由 ADR 定死）：
- *   - 回合进行中再发消息：默认**引导**（插进当前轮）、可选**排队**（这轮结束自动发）；
- *   - 切换会话**不中断**在跑的回合（ADR-0005）；
- *   - 危险操作走审批三态（ADR-0006）：允许一次 / 总是允许这类 / 拒绝；
+ *   - 回合进行中再发消息：默认引导、可选排队（这轮结束自动发）；
  *   - 快照只在**结构性变化**时推：正文靠 message_delta 增量（ADR-0004 §3）；
  *   - 转录**追加写**：用户消息发出时落盘；助手消息**在回合结束时**落盘（整条，不留半条）。
- *     代价写清楚：进程在回合计中被杀 → 这一轮的助手输出丢失（用户消息还在）。
  */
 import { createMarkerStreamFilter } from "../markers/actions.js";
 import { createRuntimeServices } from "./runtime-services.js";
@@ -40,7 +37,6 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 
 	const state = createServerState(options.workspace, options.engineName ?? "pi");
 	if (options.engineCapabilities) state.engineCapabilities = { ...options.engineCapabilities };
-	// 工作区根是已知事实（ADR-0012 的 files 元数据；文件树内容在 M4）
 	state.files = { root: options.workspace, treeVersion: 0 };
 
 	// 默认真实运行用全局唯一 id（ADR-0019）；测试注入确定性 id
@@ -69,9 +65,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		pushSnapshot: () => pushSnapshot(),
 	});
 	/** sendMessage 自引用：队列排空时要能再次调用自己（对象字面量还没构建完成 → 用 ref） */
-	let apiRef: {
-		sendMessage: (text: string, attachments?: AttachmentRef[], mode?: SendMode) => Promise<unknown>;
-	} | null = null;
+	let apiRef: Runtime | null = null;
 
 	const pushSnapshot = () => options.emit.snapshot(buildSnapshot(state));
 
@@ -189,7 +183,8 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		state,
 		turns,
 		shiftQueued: (conversationId) => dequeueWith(state, turnQueue, conversationId),
-		sendNext: (message) => setTimeout(() => void apiRef?.sendMessage(message.text, message.attachments, "now"), 0),
+		sendNext: (message, conversationId) =>
+			setTimeout(() => void apiRef?.sendMessage(message.text, message.attachments, "now", conversationId), 0),
 		cancelPending: () => approval.cancelPending(),
 		settle: settleWith(state, nextId),
 		touchConversation: (conversationId) => touchConversation(conversationId),
@@ -238,7 +233,12 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			notice(text, level);
 		},
 
-		async sendMessage(text: string, attachments?: AttachmentRef[], mode: SendMode = "steer") {
+		async sendMessage(
+			text: string,
+			attachments?: AttachmentRef[],
+			mode: SendMode = "steer",
+			targetConversationId?: string,
+		) {
 			// 附件解析（ADR-0020 §P3）
 			const resolved = await resolveAttachments(text, attachments, options.uploadStore);
 			for (const name of resolved.missing) notice(`附件已失效（可能过期被清理）：${name}`, "warn");
@@ -253,7 +253,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			let conversationId: string | null = null;
 			try {
 				// 没有活动会话才新建（否则复用当前会话 —— 这里曾经写成「每轮都新建」）
-				conversationId = state.activeId ?? (await conversations.create(text));
+				conversationId = targetConversationId ?? state.activeId ?? (await conversations.create(text));
 				const conv = conversationId; // 非空别名（TS 收窄）
 				if (!piOpener.isOpen(conv)) {
 					const opened = await piOpener.open(conv, (force) => piRefresher.refresh(force));
