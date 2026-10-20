@@ -23,7 +23,7 @@ export function StatusBar({ connection, snapshot }: { connection: string; snapsh
 			<span className="status-item">🧠 {snapshot?.engine ?? "—"}</span>
 			<span className="status-item">💬 {snapshot?.conversations.length ?? 0} 个对话</span>
 			<span className="status-item">⚙ 工作中 {running}</span>
-			<span className="status-item">⏳ 排队 {snapshot?.queuedCount ?? 0}</span>
+			<span className="status-item">⏳ 排队 {snapshot?.queued.length ?? 0}</span>
 			<span className="status-spacer" />
 			<span className="status-item" title="本会话累计 token">
 				Σ {formatTokens(tokens)}

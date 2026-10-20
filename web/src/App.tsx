@@ -2,9 +2,8 @@ import { useStickToBottom } from "./stick-to-bottom.ts";
 import { useEffect, useRef, useState } from "react";
 import { clampSidebarWidth, readStoredWidth, SIDEBAR_COLLAPSED_KEY, SIDEBAR_WIDTH_KEY } from "./sidebar-layout.ts";
 import { setDraft, useAppState } from "./store.ts";
-import { sortPendingSends, type PendingSend } from "./pending-sends.ts";
 import { sessionIdFromUrl, sessionUrlFor } from "./session-url.ts";
-import { newChat, switchConversation } from "./ws.ts";
+import { cancelQueued, newChat, switchConversation } from "./ws.ts";
 import { ApprovalDialog, NoticeBar } from "./components/ApprovalDialog.tsx";
 import { Composer } from "./components/Composer.tsx";
 import { MessageList } from "./components/MessageList.tsx";
@@ -21,8 +20,6 @@ export function App() {
 	const [collapsed, setCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1");
 	const [pendingPanel, setPendingPanel] = useState<"models" | "skills" | "settings" | null>(null);
 	const [previewVisible, setPreviewVisible] = useState(true);
-	// 「插队 / 排队」待发消息（本地展示用；服务端逐条内容不下发）
-	const [pendingSends, setPendingSends] = useState<PendingSend[]>([]);
 	const [sideWidth, setSideWidth] = useState(() => readStoredWidth(localStorage.getItem(SIDEBAR_WIDTH_KEY)));
 	const dragging = useRef(false);
 
@@ -69,27 +66,19 @@ export function App() {
 	}, [state.connection]);
 	useEffect(() => {
 		if (!snapshot) return;
-		// 地址栏里指定的会话还没打开时先别改地址，否则会被"默认会话"覆盖掉
-		if (urlSession.current !== null && snapshot.active.conversationId !== urlSession.current) return;
+		// 只有地址栏仍保持初始值时才等待初始会话；用户点击侧栏后 ws.ts 已先改了地址，不能继续被旧值卡住。
+		if (
+			urlSession.current !== null &&
+			sessionIdFromUrl(window.location.search) === urlSession.current &&
+			snapshot.active.conversationId !== urlSession.current
+		)
+			return;
 		urlSession.current = null;
 		const href = sessionUrlFor(window.location.href, snapshot.active.conversationId);
 		if (href !== `${window.location.pathname}${window.location.search}${window.location.hash}`) {
 			window.history.replaceState(null, "", href);
 		}
 	}, [snapshot?.active.conversationId]);
-
-	// 待发条目"投递完成就移除"：最后一条用户消息的正文与某条待发相同时，把它从列表里去掉
-	useEffect(() => {
-		const lastUser = [...messages].reverse().find((message) => message.role === "user");
-		if (!lastUser) return;
-		const text = lastUser.blocks
-			.filter((block) => block.kind === "text")
-			.map((block) => (block.kind === "text" ? block.text : ""))
-			.join("")
-			.trim();
-		if (text === "") return;
-		setPendingSends((current) => current.filter((item) => item.text.trim() !== text));
-	}, [messages]);
 
 	// 粘底滚动：条数、末条正文长度、流式文本任一变化都算「内容更新」
 	const lastTextLength =
@@ -210,15 +199,15 @@ export function App() {
 								hasMoreBefore={snapshot.active.hasMoreBefore}
 								engine={snapshot.engine}
 								actions={snapshot.actions}
-								pending={pendingSends}
-								onRecallPending={(id: number) => {
-									const item = pendingSends.find((entry) => entry.id === id);
+								pending={(snapshot.queued ?? []).filter(
+									(item) => item.conversationId === snapshot.active.conversationId,
+								)}
+								onRecallPending={(queueId: string) => {
+									const item = snapshot.queued.find((entry) => entry.id === queueId);
 									if (item) setDraft(item.text);
-									setPendingSends((current) => current.filter((entry) => entry.id !== id));
+									cancelQueued(queueId);
 								}}
-								onCancelPending={(id: number) =>
-									setPendingSends((current) => current.filter((entry) => entry.id !== id))
-								}
+								onCancelPending={(queueId: string) => cancelQueued(queueId)}
 								running={
 									snapshot?.running.status !== "idle" &&
 									snapshot?.running.conversationId === snapshot?.active.conversationId
@@ -243,7 +232,6 @@ export function App() {
 							snapshot?.running.conversationId === (snapshot?.active.conversationId ?? null)
 						}
 						conversationId={snapshot?.active.conversationId ?? null}
-						onQueued={(entry) => setPendingSends((current) => sortPendingSends([...current, entry]))}
 					/>
 				</div>
 

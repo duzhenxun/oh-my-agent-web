@@ -75,6 +75,9 @@ export async function handleMessage(socket: WebSocket, raw: string, deps: Handle
 				deps.reply(socket, request.id, deps.runtime.setApprovalMode(request.payload.mode));
 				return;
 			}
+			case "cancel_queued":
+				deps.reply(socket, request.id, deps.runtime.cancelQueued(request.payload.queueId));
+				return;
 			case "set_thinking_level":
 				deps.reply(socket, request.id, await deps.runtime.setThinkingLevel(request.payload.level));
 				return;

@@ -121,6 +121,11 @@ export function parseClientRequest(raw: unknown): ClientRequest | null {
 		return { id, type: "update_model", payload: { provider, model } };
 	}
 
+	if (type === "cancel_queued") {
+		const queueId = typeof payload?.queueId === "string" ? payload.queueId.trim() : "";
+		return queueId === "" ? null : { id, type: "cancel_queued", payload: { queueId } };
+	}
+
 	if (type === "set_thinking_level") {
 		const level = typeof payload?.level === "string" ? payload.level.trim() : "";
 		return level === "" ? null : { id, type: "set_thinking_level", payload: { level } };

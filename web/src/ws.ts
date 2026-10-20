@@ -22,6 +22,7 @@ import type {
 	Snapshot,
 } from "./types.ts";
 import { appendTextToMessage } from "./lib/delta.ts";
+import { sessionUrlFor } from "./session-url.ts";
 
 const MAX_BACKOFF_MS = 8000;
 const BASE_BACKOFF_MS = 500;
@@ -85,6 +86,11 @@ export function send(requestMessage: ClientRequest): void {
 	socket.send(JSON.stringify(requestMessage));
 }
 
+/** 取消一条排队消息（真删服务端队列） */
+export function cancelQueued(queueId: string): void {
+	send({ id: `req-${++seq}`, type: "cancel_queued", payload: { queueId } });
+}
+
 /** 拉一次权威快照（服务端会顺带重扫 pi 会话列表） */
 export function requestState(): void {
 	send({ id: `req-${++seq}`, type: "get_state" });
@@ -117,6 +123,11 @@ export function newChat(workspace?: string): void {
 }
 
 export function switchConversation(conversationId: string): void {
+	// 先同步地址栏：点击侧栏后地址应立即跟随目标会话；服务端快照随后会校正状态。
+	if (typeof window !== "undefined") {
+		const href = sessionUrlFor(window.location.href, conversationId);
+		window.history.replaceState(null, "", href);
+	}
 	send({ id: `req-${++seq}`, type: "switch_conversation", payload: { conversationId } });
 }
 

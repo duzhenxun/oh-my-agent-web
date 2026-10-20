@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { setDraft } from "../store.ts";
 import type { ActionItem, EngineName, UiMessage } from "../types.ts";
-import type { PendingSend } from "../pending-sends.ts";
+import type { QueuedView } from "../pending-sends.ts";
 import { ActionSuggestions } from "./ActionSuggestions.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { ToolCard } from "./ToolCard.tsx";
@@ -156,9 +156,9 @@ export function MessageList({
 	actions: ActionItem[];
 	running: boolean;
 	/** 「插队 / 排队」中、还没真正发出的消息 */
-	pending?: PendingSend[];
-	onRecallPending?: (id: number) => void;
-	onCancelPending?: (id: number) => void;
+	pending?: QueuedView[];
+	onRecallPending?: (id: string) => void;
+	onCancelPending?: (id: string) => void;
 }) {
 	if (messages.length === 0) return <EmptyState engine={engine} />;
 
@@ -172,10 +172,10 @@ export function MessageList({
 			{pending.length > 0 ? (
 				<div className="pending-sends">
 					{pending.map((item) => (
-						<article className={`msg msg-user pending-item pending-${item.mode}`} key={item.id}>
+						<article className="msg msg-user pending-item pending-queue" key={item.id}>
 							<header className="msg-head">
 								<span className="msg-role">我</span>
-								<span className={`sent-tag sent-tag-${item.mode}`}>{item.mode === "steer" ? "插队" : "排队"}</span>
+								<span className="sent-tag sent-tag-queue">排队</span>
 								<span className="topbar-spacer" />
 								<button
 									type="button"

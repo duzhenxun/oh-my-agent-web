@@ -237,8 +237,8 @@ export type Snapshot = {
 	engineCapabilities: EngineCapabilities;
 	/** 已配置的 provider（ADR-0025 B 期）：**不含明文 key**，只给 hasKey/尾 4 位 */
 	providers: ProviderView[];
-	/** 排队中的后续消息条数（所有会话合计，底部状态栏用） */
-	queuedCount: number;
+	/** 排队中的后续消息（逐条下发，界面上的 × 才能真取消） */
+	queued: { id: string; conversationId: string; text: string }[];
 	runningByConversation: Record<string, { status: RunningState["status"]; turnStartedAt: number }>;
 	/** 会话统计（顶部会话信息）：消息数 / 工具调用 / token 与上下文占用 */
 	sessionStats: SessionStats | null;
@@ -336,6 +336,7 @@ export type UpdateModelRequest = {
 	payload: { provider: string; model: Record<string, unknown> };
 };
 
+export type CancelQueuedRequest = { id: string; type: "cancel_queued"; payload: { queueId: string } };
 /** 设置思考强度（P4）：档位由引擎给（off/minimal/low/medium/high/xhigh/max） */
 export type SetThinkingLevelRequest = { id: string; type: "set_thinking_level"; payload: { level: string } };
 
@@ -355,6 +356,7 @@ export type ClientRequest =
 	| DeleteProviderRequest
 	| TestProviderRequest
 	| SetThinkingLevelRequest
+	| CancelQueuedRequest
 	| UpdateModelRequest
 	| NewChatRequest
 	| SwitchConversationRequest;
@@ -371,10 +373,6 @@ export type SwitchConversationRequest = {
 };
 
 export type ClientRequestType = ClientRequest["type"];
-
-// ---------------------------------------------------------------------------
-// 下行：应答与事件
-// ---------------------------------------------------------------------------
 
 export type ProtocolError = { code: string; message: string };
 

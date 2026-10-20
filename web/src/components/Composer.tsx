@@ -20,16 +20,7 @@ function formatBytes(bytes: number): string {
  * 发送时把 `AttachmentRef` 交给服务端（图片做视觉注入），并把 markdown 图片引用写进正文，
  * 这样**刷新之后图片仍然显示**（引用随会话文件落盘）。
  */
-export function Composer({
-	running,
-	conversationId,
-	onQueued,
-}: {
-	running: boolean;
-	conversationId: string | null;
-	/** 发出「引导 / 排队」消息时回调（上层记成待发条目，显示在对话里） */
-	onQueued: (entry: { id: number; mode: "steer" | "queue"; text: string }) => void;
-}) {
+export function Composer({ running, conversationId }: { running: boolean; conversationId: string | null }) {
 	const { draft, snapshot } = useAppState();
 	const [pending, setPending] = useState<AttachmentRef[]>([]);
 	const [uploading, setUploading] = useState(false);
@@ -79,7 +70,6 @@ export function Composer({
 		if (running && mode === "now") return;
 		// 图片引用写进正文（刷新后仍显示）；附件本体走 references
 		sendMessage(value + imagesMarkdown(pending), pending.length > 0 ? pending : undefined, mode);
-		if (mode !== "now") onQueued({ id: Date.now() + Math.random(), mode, text: value });
 		setDraft("");
 		if (inputRef.current) inputRef.current.style.height = "auto";
 		setPending([]);

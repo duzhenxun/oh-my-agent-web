@@ -11,7 +11,7 @@ import { createRuntimeServices } from "./runtime-services.js";
 import { createStatsRefresher } from "./stats-refresher.js";
 import { createThrottle } from "./throttle.js";
 import { awaitTurnPersisted, createTurnFinisher, setRunning, settleWith } from "./turn-finish.js";
-import { createBusyHandler, createTurnQueue, dequeueWith, enqueueWith } from "./turn-queue.js";
+import { createTurnPlumbing } from "./turn-queue.js";
 import { createConversationFactory } from "./conversation-create.js";
 import { resolveAttachments } from "./attachment-resolve.js";
 import { createModelController } from "./model-controller.js";
@@ -51,19 +51,6 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 	const turns = new Map<string, TurnState>();
 
 	// 回合看门狗（ADR-0023）：按会话计时（ADR-0030 ①），A 卡住不影响 B
-	const turnQueue = createTurnQueue();
-	const busy = createBusyHandler({
-		activeId: () => state.activeId,
-		steer: (id, prompt) => options.engine.sendMessage(id, prompt, () => undefined, { streamingBehavior: "steer" }),
-		queue: (id, message) => enqueueWith(state, turnQueue, id, message),
-		appendUser: (id, value) =>
-			void (state.messages[id] = [
-				...(state.messages[id] ?? []),
-				appendText(createMessage(nextId("msg"), "user", now()), value),
-			]),
-		notice: (text, level) => notice(text, level),
-		pushSnapshot: () => pushSnapshot(),
-	});
 	/** sendMessage 自引用：队列排空时要能再次调用自己（对象字面量还没构建完成 → 用 ref） */
 	let apiRef: Runtime | null = null;
 
@@ -179,10 +166,23 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		onChanged: pushSnapshot,
 	});
 
+	const { queue, busy } = createTurnPlumbing({
+		state,
+		engine: options.engine,
+		nextId,
+		appendUser: (id, value) =>
+			void (state.messages[id] = [
+				...(state.messages[id] ?? []),
+				appendText(createMessage(nextId("msg"), "user", now()), value),
+			]),
+		notice: (text, level) => notice(text, level),
+		pushSnapshot,
+	});
+
 	const finishTurn = createTurnFinisher({
 		state,
 		turns,
-		shiftQueued: (conversationId) => dequeueWith(state, turnQueue, conversationId),
+		shiftQueued: (conversationId) => queue.shift(conversationId),
 		sendNext: (message, conversationId) =>
 			setTimeout(() => void apiRef?.sendMessage(message.text, message.attachments, "now", conversationId), 0),
 		cancelPending: () => approval.cancelPending(),
@@ -244,15 +244,12 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			for (const name of resolved.missing) notice(`附件已失效（可能过期被清理）：${name}`, "warn");
 			if (resolved.images.length > 0) notice(`已附加 ${resolved.images.length} 张图片（走视觉注入）`, "info");
 
-			// 只有**同一个会话**在跑才需要判定引导/排队；别的会话各跑各的（ADR-0030 §3）
 			if (state.activeId !== null && turns.has(state.activeId)) {
 				const handled = await busy(mode, text, resolved.promptText, resolved.images, attachments);
 				if (handled) return handled;
 			}
-			// 会话 id 要在 catch/finally 里也能用（watchdog / 落盘 / 清理都按会话）
 			let conversationId: string | null = null;
 			try {
-				// 没有活动会话才新建（否则复用当前会话 —— 这里曾经写成「每轮都新建」）
 				conversationId = targetConversationId ?? state.activeId ?? (await conversations.create(text));
 				const conv = conversationId; // 非空别名（TS 收窄）
 				if (!piOpener.isOpen(conv)) {
@@ -266,14 +263,12 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 				const userMessage = appendText(createMessage(nextId("msg"), "user", ts), text);
 				const assistantMessage = createMessage(nextId("msg"), "assistant", ts);
 
-				// 首条用户消息决定标题
 				const isFirstMessage = (state.messages[conv] ?? []).length === 0;
 				if (isFirstMessage) {
 					touchConversation(conv, { title: text.replace(/\s+/g, " ").trim().slice(0, titleChars) });
 				}
 
 				state.messages[conv] = [...(state.messages[conv] ?? []), userMessage, assistantMessage];
-				// state.running 只反映当前会话；别的会话并行时不覆盖它（ADR-0030 §2）
 				if (conv === state.activeId) {
 					state.running = {
 						status: "streaming",
@@ -321,7 +316,6 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		},
 
 		async interrupt() {
-			// 优先中断当前会话；它没在跑就中断任意一个在飞的（可以切走再停）
 			const fallback = state.activeId !== null && turns.has(state.activeId) ? state.activeId : [...turns.keys()][0];
 			const target = fallback ?? null;
 			if (!target) {
@@ -342,13 +336,19 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		setThinkingLevel: (level) => models.setThinking(state.activeId, level),
 		reloadModels: () => models.reload(state.activeId),
 
+		cancelQueued(queueId) {
+			if (!queue.cancel(queueId))
+				return { ok: false, error: { code: "queue.not_found", message: "这条排队消息已经不在了" } };
+			notice("已取消排队", "info");
+			return { ok: true };
+		},
+
 		pushSnapshot, // 供 provider 等模块「只推帧、不造提示」
 
 		setApprovalMode(mode) {
 			approval.setMode(mode);
 			state.approvalMode = mode;
 			pushSnapshot();
-			// 不再推提示：输入区的审批芯片已经显示当前模式（状态类提示不该占对话空间）
 			return { ok: true };
 		},
 
