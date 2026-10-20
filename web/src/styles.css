@@ -15,6 +15,7 @@
 @import "./styles/providers.css";
 @import "./styles/provider-feedback.css";
 @import "./styles/provider-checklist.css";
+@import "./styles/provider-switch.css";
 @import "./styles/app-bar.css";
 @import "./styles/terminal.css";
 @import "./styles/skills.css";
