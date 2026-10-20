@@ -18,7 +18,9 @@ export type ProviderHandlerDeps = {
 	readKey: (provider: string) => Promise<string | null>;
 	probe: (options: {
 		baseUrl: string;
+		api?: string;
 		apiKey: string;
+		headers?: Record<string, string>;
 	}) => Promise<{ ok: boolean; status?: number; latencyMs?: number; message?: string }>;
 };
 
@@ -100,7 +102,12 @@ export async function handleProviderRequest(
 			deps.notify(`provider「${provider}」还没有 api key，无法测试`, "warn");
 			return { ok: false, error: { code: "provider.no_key", message: "没有 api key" } };
 		}
-		const result = await deps.probe({ baseUrl: view.baseUrl, apiKey });
+		const result = await deps.probe({
+			baseUrl: view.baseUrl,
+			api: view.api,
+			apiKey,
+			headers: await deps.store.readHeaders(provider),
+		});
 		deps.notify(
 			result.ok
 				? `provider「${provider}」连通正常（HTTP ${result.status}，${result.latencyMs}ms）`

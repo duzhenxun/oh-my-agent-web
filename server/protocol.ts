@@ -22,10 +22,6 @@ export const MAX_FRAME_BYTES = 64 * 1024;
 /** 工具输出在界面上保留的摘录字符数（超出标 truncated） */
 export const TOOL_EXCERPT_CHARS = 2000;
 
-// ---------------------------------------------------------------------------
-// 下行：快照（ADR-0012 的字段清单，前端渲染的唯一事实源）
-// ---------------------------------------------------------------------------
-
 export type TextBlock = { kind: "text"; text: string };
 export type ThinkingBlock = { kind: "thinking"; text: string }; // 思考过程：默认折叠
 
@@ -140,6 +136,8 @@ export type ProviderView = {
 	api: string;
 	hasKey: boolean;
 	keyHint: string | null;
+	/** 自定义 header 只回传名称，不回传值 */
+	headerNames?: string[];
 	models: { id: string; name: string }[];
 };
 
@@ -319,6 +317,7 @@ export type UpsertProviderRequest = {
 		baseUrl: string;
 		api?: string;
 		apiKey?: string;
+		headers?: Record<string, string>;
 		models: { id: string; name?: string; contextWindow?: number }[];
 	};
 };

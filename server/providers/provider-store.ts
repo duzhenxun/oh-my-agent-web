@@ -23,6 +23,7 @@ type ModelDefinition = {
 	baseUrl?: string;
 	provider?: string;
 	contextWindow?: number;
+	headers?: Record<string, string>;
 	[key: string]: unknown;
 };
 type ModelsStore = Record<string, { models?: ModelDefinition[]; lastModified?: number; [key: string]: unknown }>;
@@ -61,6 +62,7 @@ export type ProviderStore = {
 	 * 绝不能挂到任何返回给前端的路径上；协议里没有、也不会有对应字段。
 	 */
 	readKey: (provider: string) => Promise<string | null>;
+	readHeaders: (provider: string) => Promise<Record<string, string>>;
 };
 
 async function readJson<T>(path: string, fallback: T): Promise<T> {
@@ -96,6 +98,7 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 			const custom = Object.entries(models).map(([provider, entry]) => {
 				const list = Array.isArray(entry.models) ? entry.models : [];
 				const key = auth[provider]?.key;
+				const headers = list.find((model) => model.headers)?.headers;
 				return {
 					provider,
 					source: "custom" as const,
@@ -103,6 +106,7 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 					api: list.find((model) => typeof model.api === "string")?.api ?? "",
 					hasKey: typeof key === "string" && key !== "",
 					keyHint: maskKey(typeof key === "string" ? key : undefined),
+					...(headers ? { headerNames: Object.keys(headers) } : {}),
 					models: list.map((model) => ({ id: model.id, name: model.name ?? model.id })),
 				};
 			});
@@ -129,6 +133,12 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 			const auth = await readJson<AuthStore>(authPath, {});
 			const key = auth[provider]?.key;
 			return typeof key === "string" && key !== "" ? key : null;
+		},
+
+		async readHeaders(provider) {
+			const models = await readJson<ModelsStore>(modelsPath, {});
+			const headers = models[provider]?.models?.find((model) => model.headers)?.headers;
+			return headers ? { ...headers } : {};
 		},
 
 		async get(provider) {
@@ -183,7 +193,14 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 				}
 				existing.add(id);
 				added.push(id);
-				nextList.push({ id, name: id, api: template.api, baseUrl: template.baseUrl, provider });
+				nextList.push({
+					id,
+					name: id,
+					api: template.api,
+					baseUrl: template.baseUrl,
+					provider,
+					...(template.headers ? { headers: template.headers } : {}),
+				});
 			}
 			if (added.length === 0) return { ok: true, added, skipped };
 			models[provider] = { ...entry, models: nextList, lastModified: options.now() };
@@ -225,6 +242,7 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 					api: input.api,
 					baseUrl: input.baseUrl,
 					provider: input.provider,
+					...(input.headers ? { headers: input.headers } : base.headers ? { headers: base.headers } : {}),
 					...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
 				};
 			});
@@ -253,6 +271,7 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 					api: input.api,
 					hasKey: typeof key === "string" && key !== "",
 					keyHint: maskKey(typeof key === "string" ? key : undefined),
+					...(input.headers ? { headerNames: Object.keys(input.headers) } : {}),
 					models: nextModels.map((model) => ({ id: model.id, name: model.name ?? model.id })),
 				},
 			};

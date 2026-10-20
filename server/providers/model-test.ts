@@ -7,6 +7,8 @@
  *   - 只判「有没有正常返回」，不解析内容；
  *   - 失败只给状态码 / 类型，**不回显 key 与完整请求体**。
  */
+import { providerHeaders } from "./request-headers.js";
+
 export type ModelTestResult = { ok: true; status: number; latencyMs: number } | { ok: false; message: string };
 
 export async function testModel(options: {
@@ -14,6 +16,7 @@ export async function testModel(options: {
 	apiKey: string;
 	modelId: string;
 	api?: string;
+	headers?: Record<string, string>;
 	timeoutMs?: number;
 	fetchImpl?: typeof fetch;
 }): Promise<ModelTestResult> {
@@ -32,7 +35,10 @@ export async function testModel(options: {
 	try {
 		const response = await doFetch(url.toString(), {
 			method: "POST",
-			headers: { authorization: `Bearer ${options.apiKey}`, "content-type": "application/json" },
+			headers: {
+				...providerHeaders(options.api ?? "openai-completions", options.apiKey, options.headers),
+				"content-type": "application/json",
+			},
 			body: JSON.stringify({ model: options.modelId, max_tokens: 1, messages: [{ role: "user", content: "ping" }] }),
 			signal: controller.signal,
 		});

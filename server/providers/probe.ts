@@ -12,9 +12,13 @@
  */
 export type ProbeResult = { ok: true; status: number; latencyMs: number } | { ok: false; message: string };
 
+import { providerHeaders } from "./request-headers.js";
+
 export async function probeProvider(options: {
 	baseUrl: string;
+	api?: string;
 	apiKey: string;
+	headers?: Record<string, string>;
 	timeoutMs?: number;
 	fetchImpl?: typeof fetch;
 }): Promise<ProbeResult> {
@@ -33,7 +37,7 @@ export async function probeProvider(options: {
 	try {
 		const response = await doFetch(url.toString(), {
 			method: "GET",
-			headers: { authorization: `Bearer ${options.apiKey}` },
+			headers: providerHeaders(options.api ?? "openai-completions", options.apiKey, options.headers),
 			signal: controller.signal,
 		});
 		const latencyMs = Date.now() - started;

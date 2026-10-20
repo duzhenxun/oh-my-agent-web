@@ -104,6 +104,13 @@ export function parseClientRequest(raw: unknown): ClientRequest | null {
 				baseUrl: String(payload.baseUrl ?? ""),
 				...(typeof payload.api === "string" ? { api: payload.api } : {}),
 				...(typeof payload.apiKey === "string" ? { apiKey: payload.apiKey } : {}),
+				...(isRecord(payload.headers)
+					? {
+							headers: Object.fromEntries(
+								Object.entries(payload.headers).filter(([, value]) => typeof value === "string"),
+							) as Record<string, string>,
+						}
+					: {}),
 				models: models.map((item) =>
 					isRecord(item)
 						? { id: String(item.id ?? ""), ...(typeof item.name === "string" ? { name: item.name } : {}) }

@@ -166,6 +166,9 @@ export function SidebarMenu({
 															</div>
 															{provider.source === "custom" ? (
 																<div className="side-provider-actions">
+																	<button type="button" className="msg-action" onClick={() => setImporting(provider)}>
+																		⬇️ 导入模型
+																	</button>
 																	<button
 																		type="button"
 																		className="msg-action"

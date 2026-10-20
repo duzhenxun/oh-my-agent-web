@@ -19,6 +19,8 @@ export const MAX_PROVIDER_ID_CHARS = 32;
 export const MAX_MODELS_PER_PROVIDER = 50;
 export const MAX_API_KEY_CHARS = 512;
 export const MIN_API_KEY_CHARS = 8;
+export const MAX_HEADERS = 32;
+export const MAX_HEADER_CHARS = 256;
 
 export type ProviderModelInput = { id: string; name?: string; contextWindow?: number };
 
@@ -28,6 +30,8 @@ export type ProviderInput = {
 	api: string;
 	/** 不传 = 不改动已有的 key（ADR-0025 §2：留空即不修改） */
 	apiKey?: string;
+	/** 自定义请求头；不传 = 保留已有值 */
+	headers?: Record<string, string>;
 	models: ProviderModelInput[];
 };
 
@@ -54,6 +58,26 @@ export function validateBaseUrl(raw: unknown): { ok: true; value: string } | { o
 }
 
 /** 纯函数：api key 只做形态校验（长度 / 不许换行），不验真伪 */
+export function validateHeaders(
+	raw: unknown,
+): { ok: true; value: Record<string, string> | undefined } | { ok: false; error: string } {
+	if (raw === undefined || raw === null || raw === "") return { ok: true, value: undefined };
+	if (typeof raw !== "object" || Array.isArray(raw)) return { ok: false, error: "headers 必须是 JSON 对象" };
+	const headers: Record<string, string> = {};
+	for (const [rawName, rawValue] of Object.entries(raw as Record<string, unknown>)) {
+		const name = rawName.trim();
+		const value = typeof rawValue === "string" ? rawValue.trim() : "";
+		if (name === "" || value === "") continue;
+		if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name)) return { ok: false, error: `header 名称不合法：${name}` };
+		if (name.length > MAX_HEADER_CHARS || value.length > MAX_HEADER_CHARS)
+			return { ok: false, error: "header 名称和值不能超过 256 个字符" };
+		if (/[\r\n]/.test(value)) return { ok: false, error: `header 值不能包含换行：${name}` };
+		headers[name] = value;
+		if (Object.keys(headers).length > MAX_HEADERS) return { ok: false, error: `最多配置 ${MAX_HEADERS} 个 header` };
+	}
+	return { ok: true, value: Object.keys(headers).length > 0 ? headers : undefined };
+}
+
 export function validateApiKey(raw: unknown): { ok: true; value: string | undefined } | { ok: false; error: string } {
 	if (raw === undefined || raw === null || raw === "") return { ok: true, value: undefined };
 	if (typeof raw !== "string") return { ok: false, error: "apiKey 必须是字符串" };
@@ -89,6 +113,8 @@ export function validateProviderInput(input: unknown): ProviderValidation {
 
 	const keyResult = validateApiKey(record.apiKey);
 	if (!keyResult.ok) errors.push(keyResult.error);
+	const headersResult = validateHeaders(record.headers);
+	if (!headersResult.ok) errors.push(headersResult.error);
 
 	const models: ProviderModelInput[] = [];
 	const rawModels = Array.isArray(record.models) ? record.models : [];
@@ -129,6 +155,7 @@ export function validateProviderInput(input: unknown): ProviderValidation {
 			baseUrl: baseUrlResult.ok ? baseUrlResult.value : "",
 			api,
 			...(keyResult.ok && keyResult.value ? { apiKey: keyResult.value } : {}),
+			...(headersResult.ok && headersResult.value ? { headers: headersResult.value } : {}),
 			models,
 		},
 	};

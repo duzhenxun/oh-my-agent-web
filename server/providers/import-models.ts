@@ -4,12 +4,16 @@
  * 约束与 probe 一致（安全同一套）：只允许 http(s)、8 秒超时、错误信息不含 key。
  * 刻意**只读**：这里不写任何配置，写盘由用户勾选后走 addModels。
  */
+import { providerHeaders } from "./request-headers.js";
+
 export type RemoteModel = { id: string; ownedBy: string | null };
 export type RemoteListResult = { ok: true; models: RemoteModel[] } | { ok: false; message: string };
 
 export async function listRemoteModels(options: {
 	baseUrl: string;
+	api?: string;
 	apiKey: string;
+	headers?: Record<string, string>;
 	timeoutMs?: number;
 	fetchImpl?: typeof fetch;
 }): Promise<RemoteListResult> {
@@ -27,7 +31,7 @@ export async function listRemoteModels(options: {
 	try {
 		const response = await doFetch(url.toString(), {
 			method: "GET",
-			headers: { authorization: `Bearer ${options.apiKey}` },
+			headers: providerHeaders(options.api ?? "openai-completions", options.apiKey, options.headers),
 			signal: controller.signal,
 		});
 		if (!response.ok) {

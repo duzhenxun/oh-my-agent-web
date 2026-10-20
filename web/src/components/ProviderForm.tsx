@@ -12,6 +12,7 @@ export function ProviderForm({ initial, onClose }: { initial?: ProviderView | nu
 	const [baseUrl, setBaseUrl] = useState(initial?.baseUrl ?? "");
 	const [api, setApi] = useState(initial?.api || "openai-completions");
 	const [apiKey, setApiKey] = useState("");
+	const [headersText, setHeadersText] = useState("");
 	const [modelsText, setModelsText] = useState((initial?.models ?? []).map((model) => model.id).join(" "));
 	const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
 
@@ -21,11 +22,19 @@ export function ProviderForm({ initial, onClose }: { initial?: ProviderView | nu
 			.map((item) => item.trim())
 			.filter(Boolean)
 			.map((id) => ({ id }));
+		const headers = Object.fromEntries(
+			headersText
+				.split("\n")
+				.map((line) => line.split(/:(.*)/s))
+				.filter(([name, value]) => Boolean(name?.trim() && value?.trim()))
+				.map(([name, value]) => [name.trim(), value.trim()]),
+		);
 		upsertProvider({
 			provider,
 			baseUrl,
 			api,
 			...(apiKey.trim() === "" ? {} : { apiKey: apiKey.trim() }),
+			...(Object.keys(headers).length > 0 ? { headers } : {}),
 			models,
 		});
 		// 校验与写盘都在服务端；结果用提示条回传（前端没有 request/response 配对机制）
@@ -59,18 +68,31 @@ export function ProviderForm({ initial, onClose }: { initial?: ProviderView | nu
 					<option value="openai-completions">openai-completions</option>
 					<option value="openai-responses">openai-responses</option>
 					<option value="anthropic-messages">anthropic-messages</option>
+					<option value="openai-codex-responses">openai-codex-responses</option>
+					<option value="typesafe-system-one">typesafe-system-one</option>
 				</select>
 			</label>
 			<label className="side-field">
-				<span>
-					api key（{initial?.hasKey ? `已有 ${initial.keyHint ?? ""}，留空即不修改` : "留空 = 不修改已有 key"}）
-				</span>
+				<span>API Key（{initial?.hasKey ? `已有 ${initial.keyHint ?? ""}，留空即不修改` : "新增 provider 必填"}）</span>
 				<input
 					type="password"
 					value={apiKey}
 					onChange={(event) => setApiKey(event.target.value)}
 					placeholder="sk-…"
 					autoComplete="off"
+				/>
+			</label>
+			<label className="side-field">
+				<span>自定义 Headers（每行 Name: Value）</span>
+				<textarea
+					rows={3}
+					value={headersText}
+					onChange={(event) => setHeadersText(event.target.value)}
+					placeholder={
+						initial?.headerNames?.length
+							? `已有：${initial.headerNames.join(", ")}；留空保持不变`
+							: "X-Client: agent-web"
+					}
 				/>
 			</label>
 			<label className="side-field">

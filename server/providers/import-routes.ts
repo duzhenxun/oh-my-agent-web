@@ -29,7 +29,12 @@ export function registerImportRoutes(app: Express, options: { store: ProviderSto
 			response.status(400).json({ error: { code: "provider.no_key", message: "这个 provider 还没有 api key" } });
 			return;
 		}
-		const result = await listRemoteModels({ baseUrl: view.baseUrl, apiKey });
+		const result = await listRemoteModels({
+			baseUrl: view.baseUrl,
+			api: view.api,
+			apiKey,
+			headers: await options.store.readHeaders(provider),
+		});
 		if (!result.ok) {
 			response.status(502).json({ error: { code: "provider.remote_failed", message: result.message } });
 			return;
@@ -64,7 +69,13 @@ export function registerCatalogRoutes(
 	options: {
 		store: ProviderStore;
 		catalog: (modelId: string) => Promise<unknown>;
-		testModel: (input: { baseUrl: string; apiKey: string; modelId: string }) => Promise<unknown>;
+		testModel: (input: {
+			baseUrl: string;
+			api?: string;
+			apiKey: string;
+			modelId: string;
+			headers?: Record<string, string>;
+		}) => Promise<unknown>;
 	},
 ): void {
 	app.get("/api/providers/:provider/catalog", async (request, response) => {
@@ -94,7 +105,13 @@ export function registerCatalogRoutes(
 			response.status(400).json({ error: { code: "provider.no_key", message: "这个 provider 还没有 api key" } });
 			return;
 		}
-		const result = await options.testModel({ baseUrl: view.baseUrl, apiKey, modelId: request.params.modelId });
+		const result = await options.testModel({
+			baseUrl: view.baseUrl,
+			api: view.api,
+			apiKey,
+			modelId: request.params.modelId,
+			headers: await options.store.readHeaders(request.params.provider),
+		});
 		response.json(result);
 	});
 }
