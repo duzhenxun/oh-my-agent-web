@@ -55,7 +55,9 @@ export function ModelEditor({
 	const [form, setForm] = useState<ModelSpecForm>(() => initialForm(provider, modelId));
 	const [sent, setSent] = useState(false);
 	const [catalog, setCatalog] = useState<string | null>(null);
-	const [testing, setTesting] = useState<string | null>(null);
+	const [testBusy, setTestBusy] = useState(false);
+	// 结果用布尔存成功与否：靠文案前缀判断会错（改一次文案就全变红）
+	const [testResult, setTestResult] = useState<{ ok: boolean; text: string } | null>(null);
 	const set = <K extends keyof ModelSpecForm>(key: K, value: ModelSpecForm[K]) =>
 		setForm((current) => ({ ...current, [key]: value }));
 
@@ -97,11 +99,14 @@ export function ModelEditor({
 	};
 
 	const runTest = async () => {
-		setTesting("测试中…");
+		setTestBusy(true);
+		setTestResult(null);
 		const result = await testModel(provider.provider, form.id);
-		setTesting(
-			result.ok ? `✅ 响应正常：${result.latencyMs}ms（HTTP ${result.status}）` : `❌ 没通：${result.message}`,
-		);
+		setTestResult({
+			ok: result.ok,
+			text: result.ok ? `已连接 · ${result.latencyMs}ms · HTTP ${result.status}` : `未连接 · ${result.message}`,
+		});
+		setTestBusy(false);
 	};
 
 	const save = () => {
@@ -123,8 +128,20 @@ export function ModelEditor({
 				<strong>模型</strong>
 				<span className="side-panel-count mono">{provider.provider}</span>
 				<span className="topbar-spacer" />
-				<button type="button" className="btn btn-tiny" onClick={() => void runTest()} disabled={testing !== null}>
-					测试
+				{testResult ? (
+					<span className={`prov-test-pill${testResult.ok ? " prov-test-ok" : " prov-test-fail"}`}>
+						{testResult.text}
+					</span>
+				) : null}
+				<button
+					type="button"
+					// 出结果后按钮变亮（下次还能直接点）；测试中禁用并显示进度
+					className={`btn btn-tiny${testResult ? " btn-primary" : ""}`}
+					onClick={() => void runTest()}
+					disabled={testBusy}
+					title="发送一次最小 chat 请求（max_tokens=1）"
+				>
+					{testBusy ? "测试中…" : "测试"}
 				</button>
 				<button
 					type="button"
@@ -261,9 +278,6 @@ export function ModelEditor({
 			</div>
 			{catalog ? (
 				<div className={catalog.startsWith("已填入") ? "side-ok" : "side-panel-hint side-error"}>{catalog}</div>
-			) : null}
-			{testing ? (
-				<div className={testing.startsWith("✅") ? "side-ok" : "side-panel-hint side-error"}>{testing}</div>
 			) : null}
 			{sent ? <div className="side-ok">已提交，模型表会自动热重载</div> : null}
 			{provider.source === "builtin" ? (
