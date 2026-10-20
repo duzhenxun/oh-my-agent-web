@@ -1,0 +1,66 @@
+/* 底部状态栏（开关 + 工具入口 + token 胶囊）*/
+/* 状态栏里的「模型 / 技能 / 设置」入口（从顶栏挪下来） */
+.statusbar-tools {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.statusbar-tools .appbar-menu {
+	display: flex;
+	gap: 4px;
+}
+
+.statusbar-tools .side-foot-btn {
+	font-size: 11px;
+	padding: 1px 7px;
+	border-radius: 6px;
+}
+
+.statusbar-tools .side-foot-icon {
+	font-size: 11px;
+}
+
+/* 底部状态栏里的开关（左侧 / 顶部） */
+.status-toggle {
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--bg-elev);
+	color: var(--text-faint);
+	font: inherit;
+	font-size: 11px;
+	padding: 1px 6px;
+	cursor: pointer;
+}
+
+.status-toggle:hover {
+	color: var(--text);
+	border-color: var(--accent-dim);
+}
+
+/* 手机上状态栏会很宽：让它横向可滚动，别把布局撑破 */
+@media (max-width: 900px) {
+	.statusbar {
+		overflow-x: auto;
+		scrollbar-width: none;
+		white-space: nowrap;
+	}
+
+	.statusbar::-webkit-scrollbar {
+		display: none;
+	}
+
+	/* 手机上「模型 / 技能 / 设置」收成纯图标，省一半宽度 */
+	.statusbar-tools .side-foot-btn {
+		gap: 0;
+		font-size: 0;
+	}
+
+	.statusbar-tools .side-foot-icon {
+		font-size: 13px;
+	}
+
+	.statusbar-tools .status-usage {
+		display: none;
+	}
+}

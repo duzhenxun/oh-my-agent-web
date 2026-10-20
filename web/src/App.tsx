@@ -127,7 +127,6 @@ export function App() {
 				</button>
 				{/* 预留区：以后放全局搜索 / 命令面板 */}
 				<span className="appbar-slot" />
-				<SidebarMenu variant="full" placement="appbar" />
 				{panelItems.length > 0 ? (
 					<button
 						type="button"
@@ -268,7 +267,9 @@ export function App() {
 				onToggleAppbar={() => setAppbarHidden((value) => !value)}
 				sidebarOpen={!collapsed}
 				onToggleSidebar={() => setCollapsed((value) => !value)}
-			/>
+			>
+				<SidebarMenu variant="full" placement="appbar" />
+			</StatusBar>
 
 			{snapshot?.pendingApproval ? <ApprovalDialog approval={snapshot.pendingApproval} /> : null}
 		</div>

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { Snapshot } from "../types.ts";
 
 const CONNECTION: Record<string, string> = { connecting: "连接中", open: "已连接", closed: "已断开" };
@@ -20,6 +21,7 @@ export function StatusBar({
 	onToggleAppbar,
 	sidebarOpen,
 	onToggleSidebar,
+	children,
 }: {
 	connection: string;
 	snapshot: Snapshot | null;
@@ -29,6 +31,8 @@ export function StatusBar({
 	/** 左侧栏是否展开 */
 	sidebarOpen: boolean;
 	onToggleSidebar: () => void;
+	/** 右侧工具入口（模型 / 技能 / 设置），从顶栏挪下来的 */
+	children?: ReactNode;
 }) {
 	const running = Object.keys(snapshot?.runningByConversation ?? {}).length;
 	const stats = snapshot?.sessionStats ?? null;
@@ -47,6 +51,7 @@ export function StatusBar({
 				</span>
 			) : null}
 			<span className="status-spacer" />
+			{children ? <span className="statusbar-tools">{children}</span> : null}
 			<button
 				type="button"
 				className="status-toggle"
