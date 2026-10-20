@@ -114,6 +114,8 @@
 	flex: 1 1 auto;
 	min-height: 96px;
 	overflow: auto;
+	/* 右侧留出滚动条的位置，否则内容（含「关闭」按钮）会被滚动条压住 */
+	padding: 0 14px 16px 0;
 }
 
 .prov-models {
