@@ -5,14 +5,6 @@
  * 业务代码只见 `port.ts` 里的类型。
  *
  * 与 SDK 的对接方式（M3 侦察结论）：
- *   - 建会话：`createAgentSession({ cwd, resourceLoader, sessionManager: SessionManager.inMemory() })`
- *     —— 会话转录的**事实源是我们自己的 JSONL**（ADR-0005），所以告诉 SDK 不要落盘；
- *   - 事件：`session.subscribe(listener)` → `message_update`（正文增量）/ `tool_execution_start|end`
- *     / `agent_end` / `agent_settled`（判断是否被中断）；
- *   - 读转录：`session.messages`；
- *   - **审批**：`DefaultResourceLoader({ extensionFactories: [...] })` 挂一个 inline 扩展，
- *     监听 `tool_call` 事件并 `await` 宿主的决定；拒绝时返回 `{ block: true, reason }`
- *     —— 这是 SDK 公开的拦截点，不需要改私有字段（对比参考实现的做法，这里选了更稳的路）。
  */
 import {
 	DefaultResourceLoader,
@@ -72,14 +64,10 @@ function asRecord(value: unknown): AnyRecord {
  * 刻意写得短：这段每次请求都要付 token，而细节交给解析器（它容忍各种畸形写法）。
  * 不写进 SDK 的工具提示词里 —— 与工具无关，是「回复的排版约定」。
  */
-export const SUGGESTION_GUIDANCE = [
-	"## Suggested next actions",
-	"When the user must choose what to do next, end the reply with at most 3 lines of:",
-	"[[action:suggest:<button text>]]",
-	"Clicking a button sends that text as the next user message.",
-	"Use [[action:suggest:<short label>,prompt=<text to send>]] when the label should differ from the sent text.",
-	"Put them on their own lines at the very end, and never mention this syntax in prose.",
-].join("\n");
+import { reloadModelRegistry } from "./model-registry-reload.js";
+import { SUGGESTION_GUIDANCE } from "./suggestion-guidance.js";
+
+export { SUGGESTION_GUIDANCE };
 
 import { createPiThinking } from "./pi-thinking.js";
 
@@ -161,19 +149,28 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 	}
 
 	const PREWARM_ID = "__prewarm__";
+
+	async function warmUp() {
+		if (sessions.has(PREWARM_ID)) return;
+		try {
+			await startSession(PREWARM_ID, process.cwd(), SessionManager.inMemory());
+		} catch (error) {
+			options.onNotice?.(`模型表预热失败：${error instanceof Error ? error.message : String(error)}`, "warn");
+		}
+	}
+
 	return {
-		/** 预热模型注册表（内存会话，不落盘）：pi 的 modelRuntime 挂在会话上，没会话就列不出模型 */
+		/** 预热：pi 的 modelRuntime 挂在会话上，没会话就列不出模型（内存会话，不落盘） */
 		async prewarm() {
 			if (sessions.has(PREWARM_ID)) return;
 			try {
 				await startSession(PREWARM_ID, process.cwd(), SessionManager.inMemory());
 			} catch (error) {
-				options.onNotice?.(
-					`模型表预热失败（内置 provider 可能列表不全）：${error instanceof Error ? error.message : String(error)}`,
-					"warn",
-				);
+				options.onNotice?.(`模型表预热失败：${error instanceof Error ? error.message : String(error)}`, "warn");
 			}
 		},
+
+		reloadModels: () => reloadModelRegistry(sessions, PREWARM_ID, () => warmUp()),
 
 		async createSession(sessionOptions: EngineSessionOptions) {
 			// ADR-0021 §2：新建会话就落在 **pi 的会话存储**里（不再用 inMemory + 自建 jsonl），

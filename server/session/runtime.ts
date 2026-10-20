@@ -2,7 +2,6 @@
  * 会话运行时（宿主侧）：把引擎事件翻译成 UI 状态 / 协议事件，并把转录落盘（M2）。
  *
  * 遵守的规则（都已由 ADR 定死）：
- *   - 回合进行中再发消息：默认引导、可选排队（这轮结束自动发）；
  */
 import { createMarkerStreamFilter } from "../markers/actions.js";
 import { createRuntimeServices } from "./runtime-services.js";
@@ -197,7 +196,6 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			const ruleCount = await approval.loadRules();
 			if (ruleCount > 0) options.onStartupInfo?.(`已装载 ${ruleCount} 条审批规则（这些操作不会再询问）`);
 			state.settings = settings ? await settings.load() : defaultSettings();
-			// 预热模型表：pi 要有会话才给得出模型
 			await options.engine.prewarm?.();
 			const warmed = (await options.engine.listModels?.()) ?? [];
 			if (warmed.length > 0) state.models = warmed;
@@ -218,7 +216,9 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		},
 
 		refreshPiSessions: (force?: boolean) => piRefresher.refresh(force),
+		// 先让引擎重读模型表：否则外部改过 models.json 时界面是新的、引擎还是旧的
 		refreshProviders: async () => {
+			await options.engine.reloadModels?.();
 			if (options.loadProviders) state.providers = await options.loadProviders();
 		},
 
