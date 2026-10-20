@@ -151,34 +151,7 @@ export function App() {
 				) : null}
 			</div>
 			<div className="app-main">
-				{collapsed ? (
-					<aside className="activity-bar">
-						<button type="button" className="activity-btn" onClick={() => setCollapsed(false)} title="展开侧栏">
-							›
-						</button>
-						<button type="button" className="activity-btn" onClick={() => setCollapsed(false)} title="会话">
-							💬
-						</button>
-						<button type="button" className="activity-btn" onClick={() => setPendingPanel("models")} title="模型">
-							🤖
-						</button>
-						<button type="button" className="activity-btn" onClick={() => setPendingPanel("skills")} title="技能">
-							🧰
-						</button>
-						<button type="button" className="activity-btn" onClick={() => setPendingPanel("settings")} title="设置">
-							⚙
-						</button>
-						<button
-							type="button"
-							className="activity-btn"
-							onClick={() => setCollapsed(false)}
-							title="文件（在侧栏下方）"
-						>
-							📁
-						</button>
-						{pendingPanel ? <SidebarMenu key={pendingPanel} initialPanel={pendingPanel} variant="modal" /> : null}
-					</aside>
-				) : (
+				{collapsed ? null : (
 					<>
 						{/* 手机端：抽屉外的遮罩，点一下收起（桌面态 CSS 里 display:none） */}
 						<div className="side-backdrop" onClick={() => setCollapsed(true)} aria-hidden="true" />

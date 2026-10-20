@@ -293,7 +293,7 @@
  * ------------------------------------------------------------------------- */
 
 @media (max-width: 900px) {
-	/* 左侧竖排图标栏隐藏（入口改成顶栏的 ☰） */
+	/* 活动栏已整体移除（桌面同款），这里只是兜底 */
 	.activity-bar {
 		display: none;
 	}
@@ -332,9 +332,9 @@
 	}
 }
 
-/* 抽屉开关：桌面态不显示（桌面有常驻侧栏） */
+/* 抽屉开关：所有宽度都显示 —— 收起侧栏后没有别的入口了（活动栏已去掉） */
 .appbar-drawer {
-	display: none;
+	display: inline-flex;
 	border: 1px solid var(--border);
 	background: var(--bg-elev);
 	color: var(--text);
@@ -347,7 +347,6 @@
 
 @media (max-width: 900px) {
 	.appbar-drawer {
-		display: inline-flex;
 		align-items: center;
 	}
 }
