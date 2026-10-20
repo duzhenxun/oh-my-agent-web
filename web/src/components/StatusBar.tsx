@@ -34,14 +34,18 @@ export function StatusBar({
 	/** 右侧工具入口（模型 / 技能 / 设置），从顶栏挪下来的 */
 	children?: ReactNode;
 }) {
-	const running = Object.keys(snapshot?.runningByConversation ?? {}).length;
+	// 正在进行中的回合数：runningByConversation 里即使 idle 也会留条目，不能直接数 keys
+	const running = Object.values(snapshot?.runningByConversation ?? {}).filter((item) => item.status !== "idle").length;
+	// 对话数：pi 的会话列表才是全量（我们自己新建的会话也落在 pi 存储里）
+	const piSessions = (snapshot?.piProjects ?? []).reduce((sum, project) => sum + project.sessions.length, 0);
+	const conversations = piSessions > 0 ? piSessions : (snapshot?.conversations.length ?? 0);
 	const stats = snapshot?.sessionStats ?? null;
 	return (
 		<footer className="statusbar">
 			<span className={`status-dot status-dot-${connection}`} aria-hidden="true" />
 			<span className="status-item">{CONNECTION[connection] ?? connection}</span>
 			<span className="status-item">🧠 {snapshot?.engine ?? "—"}</span>
-			<span className="status-item">💬 {snapshot?.conversations.length ?? 0} 个对话</span>
+			<span className="status-item">💬 {conversations} 个对话</span>
 			<span className="status-item">⚙ 工作中 {running}</span>
 			<span className="status-item">⏳ 排队 {snapshot?.queued.length ?? 0}</span>
 			{stats ? (
