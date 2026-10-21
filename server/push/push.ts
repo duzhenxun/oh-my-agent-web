@@ -65,8 +65,10 @@ export function createPushStore(options: { dataDir: string; now: () => number })
 		list: read,
 		async add(subscription) {
 			const list = await read();
-			// endpoint 相同视为同一订阅：更新而不是重复追加
-			const next = [...list.filter((item) => item.endpoint !== subscription.endpoint), subscription];
+			// endpoint 相同视为同一订阅：更新，但**保留用户改过的名字**
+			const previous = list.find((item) => item.endpoint === subscription.endpoint);
+			const merged = { ...subscription, ...(previous?.name ? { name: previous.name } : {}) };
+			const next = [...list.filter((item) => item.endpoint !== subscription.endpoint), merged];
 			await write(next);
 			return { ok: true, total: next.length };
 		},

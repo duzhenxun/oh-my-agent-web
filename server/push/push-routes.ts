@@ -15,6 +15,13 @@ type Body = {
 	clientId?: unknown;
 };
 
+/** 没有别名的老订阅：按推送网关猜一个（Apple / Chrome-FCM），总比一串域名好认 */
+function defaultName(host: string): string {
+	if (host.includes("push.apple.com")) return "Apple 设备（Safari）";
+	if (host.includes("googleapis.com") || host.includes("fcm")) return "Chrome 设备";
+	return host;
+}
+
 export function registerPushRoutes(app: Express, options: { store: PushStore }): void {
 	app.get("/api/push/key", (_request, response) => {
 		response.json({ publicKey: VAPID_PUBLIC_KEY });
@@ -34,6 +41,14 @@ export function registerPushRoutes(app: Express, options: { store: PushStore }):
 				? { keys: { p256dh: keys.p256dh, auth: keys.auth } }
 				: {}),
 			...(typeof body?.clientId === "string" ? { clientId: body.clientId } : {}),
+			...(typeof (body as { name?: unknown })?.name === "string" &&
+			String((body as { name: string }).name).trim() !== ""
+				? {
+						name: String((body as { name: string }).name)
+							.trim()
+							.slice(0, 40),
+					}
+				: {}),
 			createdAt: Date.now(),
 		});
 		response.json(result);
@@ -64,7 +79,8 @@ export function registerPushRoutes(app: Express, options: { store: PushStore }):
 				return {
 					endpoint: item.endpoint,
 					host,
-					name: item.name ?? host,
+					// 老订阅没存名字：按推送服务商推一个像人话的默认名（用户可再改名）
+					name: item.name ?? defaultName(host),
 					createdAt: item.createdAt,
 					lastSentAt: item.lastSentAt ?? null,
 					lastStatus: item.lastStatus ?? null,

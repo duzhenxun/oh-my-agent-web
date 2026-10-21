@@ -14,6 +14,25 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
 	return out;
 }
 
+/**
+ * 设备别名：用浏览器自报的平台 + 浏览器名，尽量像人话（"iPhone PWA"、"Android · Chrome"）。
+ * 用户之后可以在推送面板里改名，这个名字只是默认值。
+ */
+export function deviceName(): string {
+	const ua = navigator.userAgent;
+	const standalone = window.matchMedia?.("(display-mode: standalone)").matches ? " PWA" : "";
+	if (/iPhone/i.test(ua)) return `iPhone${standalone || " · Safari"}`;
+	if (/iPad/i.test(ua)) return `iPad${standalone || " · Safari"}`;
+	if (/Android/i.test(ua)) {
+		const browser = /EdgA/.test(ua) ? "Edge" : /Firefox/.test(ua) ? "Firefox" : "Chrome";
+		return `Android · ${browser}`;
+	}
+	if (/Macintosh/i.test(ua))
+		return `Mac${standalone} · ${/Firefox/.test(ua) ? "Firefox" : /Edg/.test(ua) ? "Edge" : "Chrome"}`;
+	if (/Windows/i.test(ua)) return `Windows · ${/Edg/.test(ua) ? "Edge" : "Chrome"}`;
+	return "未知设备";
+}
+
 export function pushSupported(): boolean {
 	return "serviceWorker" in navigator && "PushManager" in window;
 }
@@ -51,7 +70,7 @@ export async function subscribePush(): Promise<{ ok: true } | { ok: false; messa
 	const response = await fetch("/api/push/subscribe", {
 		method: "POST",
 		headers: { "content-type": "application/json", "x-agent-client": sessionStorage.getItem("agent-web-client") ?? "" },
-		body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys }),
+		body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys, name: deviceName() }),
 	});
 	if (!response.ok) return { ok: false, message: `订阅保存失败：HTTP ${response.status}` };
 	return { ok: true };
