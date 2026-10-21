@@ -1,51 +1,49 @@
 /* 手机顶栏：文案显示全 + 一排塞得下（从 app-bar.css 拆出：400 行护栏，ADR-0010） */
 /* 手机：文案显示全（品牌 + 新会话），靠收紧间距 + 入口只留图标腾地方 */
-@media (max-width: 900px), (pointer: coarse) and (max-width: 1366px) {
-	.appbar {
-		gap: 6px;
-		padding: 6px 8px;
-	}
+.is-mobile-shell .appbar {
+	gap: 6px;
+	padding: 6px 8px;
+}
 
-	.appbar .brand {
-		gap: 4px;
-	}
+.is-mobile-shell .appbar .brand {
+	gap: 4px;
+}
 
-	.appbar .brand-name {
-		font-size: 13px;
-	}
+.is-mobile-shell .appbar .brand-name {
+	font-size: 13px;
+}
 
-	.appbar .brand-icon {
-		width: 18px;
-	}
+.is-mobile-shell .appbar .brand-icon {
+	width: 18px;
+}
 
-	/* 「新会话」只留文字：💬 气泡在窄屏上很占地方，文字已经说清楚了 */
-	.appbar .appbar-new-icon {
-		display: none;
-	}
+/* 「新会话」只留文字：💬 气泡在窄屏上很占地方，文字已经说清楚了 */
+.is-mobile-shell .appbar .appbar-new-icon {
+	display: none;
+}
 
-	.appbar .appbar-new {
-		padding: 4px 10px;
-		font-size: 12.5px;
-		gap: 4px;
-	}
+.is-mobile-shell .appbar .appbar-new {
+	padding: 4px 10px;
+	font-size: 12.5px;
+	gap: 4px;
+}
 
-	/* 四个入口（模型/技能/推送/设置）只留图标 */
-	.appbar .appbar-menu .side-foot-label {
-		display: none;
-	}
+/* 四个入口（模型/技能/推送/设置）只留图标 */
+.is-mobile-shell .appbar .appbar-menu .side-foot-label {
+	display: none;
+}
 
-	.appbar .appbar-menu .side-foot-row {
-		gap: 2px;
-	}
+.is-mobile-shell .appbar .appbar-menu .side-foot-row {
+	gap: 2px;
+}
 
-	.appbar .appbar-menu .side-foot-btn {
-		padding: 3px 4px;
-	}
+.is-mobile-shell .appbar .appbar-menu .side-foot-btn {
+	padding: 3px 4px;
+}
 
-	.appbar .appbar-menu .side-foot-icon {
-		width: 15px;
-		height: 15px;
-	}
+.is-mobile-shell .appbar .appbar-menu .side-foot-icon {
+	width: 15px;
+	height: 15px;
 }
 
 /* 超窄屏（≤340px，老机型/分屏）：文案保住「新会话」，品牌退回只留图标，

@@ -23,6 +23,7 @@ function makeSnapshot(tag: number): Snapshot {
 			templates: [],
 			projectPrefs: { order: [], pinned: [], aliases: {} },
 			sessionPrefs: { pinned: [], archived: [] },
+			defaultModels: {},
 		},
 		conversations: [],
 		active: { conversationId: null, messages: [], hasMoreBefore: false },

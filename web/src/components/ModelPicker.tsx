@@ -13,10 +13,16 @@ export function ModelPicker({
 	models,
 	current,
 	disabled,
+	defaultModel,
+	onSetDefault,
 }: {
 	models: ModelOption[];
 	current: string | null;
 	disabled?: boolean;
+	/** 本项目当前设的默认模型（新会话按它起步）；null = 没设过 */
+	defaultModel?: string | null;
+	/** 点行尾的图钉：设成默认；再点一次取消（null） */
+	onSetDefault?: (modelId: string | null) => void;
 }) {
 	const [open, setOpen] = useState(false);
 	const [filter, setFilter] = useState("");
@@ -76,23 +82,38 @@ export function ModelPicker({
 						{groups.map((group) => (
 							<div className="model-group" key={group.provider}>
 								<div className="model-group-title">{group.provider.toUpperCase()}</div>
-								{group.models.map((model) => (
-									<button
-										type="button"
-										key={model.id}
-										className={`model-item${model.id === current ? " model-item-on" : ""}`}
-										onClick={() => {
-											setModel(model.id);
-											setOpen(false);
-										}}
-										title={model.id}
-									>
-										<span className="model-check" aria-hidden="true">
-											{model.id === current ? "✓" : ""}
-										</span>
-										<span className="model-label">{model.label}</span>
-									</button>
-								))}
+								{group.models.map((model) => {
+									const isDefault = model.id === defaultModel;
+									return (
+										<div className="model-row" key={model.id}>
+											<button
+												type="button"
+												className={`model-item${model.id === current ? " model-item-on" : ""}`}
+												onClick={() => {
+													setModel(model.id);
+													setOpen(false);
+												}}
+												title={model.id}
+											>
+												<span className="model-check" aria-hidden="true">
+													{model.id === current ? "✓" : ""}
+												</span>
+												<span className="model-label">{model.label}</span>
+											</button>
+											{onSetDefault ? (
+												<button
+													type="button"
+													className={`model-pin${isDefault ? " model-pin-on" : ""}`}
+													onClick={() => onSetDefault(isDefault ? null : model.id)}
+													title={isDefault ? "取消本项目的默认模型" : "设为本项目的默认模型（新会话用它起步）"}
+													aria-pressed={isDefault}
+												>
+													{isDefault ? "📌" : "📍"}
+												</button>
+											) : null}
+										</div>
+									);
+								})}
 							</div>
 						))}
 					</div>

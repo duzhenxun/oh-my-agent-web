@@ -126,8 +126,9 @@
 	margin: 0;
 	overflow: auto;
 	background: var(--bg);
-	border: 1px solid var(--border);
-	border-radius: 8px;
+	/* 内容区不再描边：面板本身就没有边框，这里再来一圈会在右边多出一条竖线 */
+	border: none;
+	border-radius: 0;
 	padding: 8px 10px;
 	font-size: 14.5px;
 	line-height: 1.55;
@@ -253,8 +254,8 @@
 	overflow: auto;
 	padding: 4px 8px 12px;
 	background: var(--bg);
-	border: 1px solid var(--border);
-	border-radius: 8px;
+	border: none;
+	border-radius: 0;
 }
 
 .preview-mode {

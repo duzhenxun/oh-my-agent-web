@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { notifyTurnFinished, projectNameOf, type PushPayload, type PushStore } from "../../server/push/push.js";
+import { BRAND_NAME } from "../../server/brand.js";
 
 function fakeStore() {
 	const sent: PushPayload[] = [];
@@ -43,13 +44,13 @@ describe("回合结束的推送内容", () => {
 		const { store, sent } = fakeStore();
 		notifyTurnFinished(store, { conversationId: "conv-3", title: "   " });
 		await Promise.resolve();
-		expect(sent[0]?.title).toBe("Agent Web");
+		expect(sent[0]?.title).toBe(BRAND_NAME);
 		expect(sent[0]?.body).toBe("会话");
 	});
 
 	it("projectNameOf 取最后一段，忽略尾部斜杠", () => {
 		expect(projectNameOf("/a/b/c/")).toBe("c");
-		expect(projectNameOf("")).toBe("Agent Web");
-		expect(projectNameOf(undefined)).toBe("Agent Web");
+		expect(projectNameOf("")).toBe(BRAND_NAME);
+		expect(projectNameOf(undefined)).toBe(BRAND_NAME);
 	});
 });

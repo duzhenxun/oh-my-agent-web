@@ -1,9 +1,24 @@
 /**
- * 「手机壳」判定（与 CSS 里的断点、媒体查询保持一致）。
+ * 「手机壳」（单栏）判定。
  *
- * 窄屏（≤900px）算手机壳 —— 三栏挤不下；
- * **触摸设备（pointer: coarse）也算**，即使宽度到 iPad 横屏的 1024/1180：
- * iPad 上三栏 + 悬浮侧栏体验很差，抽屉式更适合手指。
- * 上限 1366px 是为了不把触摸屏笔记本（>1366）也当成手机。
+ * 命中任意一条就整站切单栏：**左边的侧栏占满整屏**（抽屉式），对话在它下面单独一屏。
+ *   1. **浏览器 UA 说是手机**（iPhone / Android Mobile / Windows Phone …）——
+ *      手机横屏能到 900px，纯看宽度会把「手机」判成双栏，所以先看 UA；
+ *   2. 宽度 ≤400px（桌面上把窗口拉得很窄时也一样切单栏）。
+ *
+ * 判定结果写在 `<html class="is-mobile-shell">` 上，CSS 只认这个类
+ * （媒体查询做不到「UA 是手机但宽度 900」这种情况）。main.tsx 在首帧前就同步一次。
  */
-export const MOBILE_SHELL_QUERY = "(max-width: 900px), (pointer: coarse) and (max-width: 1366px)";
+export const MOBILE_SHELL_MAX_WIDTH = 400;
+
+/** 手机 UA：桌面浏览器一个都不匹配（iPad 的 UA 也带 Mobile，按手机处理没问题） */
+const PHONE_UA = /iPhone|iPod|Android.*Mobile|Windows Phone|IEMobile|BlackBerry|Opera Mini|HarmonyOS|\bMobile\b/i;
+
+export function isPhoneUA(userAgent: string): boolean {
+	return PHONE_UA.test(userAgent);
+}
+
+/** 纯函数：手机 UA 或窄屏 → 单栏 */
+export function isMobileShell(input: { width: number; userAgent: string }): boolean {
+	return input.width <= MOBILE_SHELL_MAX_WIDTH || isPhoneUA(input.userAgent);
+}

@@ -9,6 +9,8 @@
 import { createReadStream, realpathSync, statSync } from "node:fs";
 import type { Express } from "express";
 import { listDirectory, parseRange, readPreview, readRaw, resolveMediaFile } from "./file-service.js";
+import { searchFiles } from "./file-search.js";
+import { readGitInfo } from "./git-info.js";
 
 export function registerFileRoutes(app: Express, options: { workspaceOf: () => string | null }): void {
 	app.get("/api/files/list", async (request, response) => {
@@ -20,7 +22,8 @@ export function registerFileRoutes(app: Express, options: { workspaceOf: () => s
 			return;
 		}
 		const relPath = typeof request.query.path === "string" ? request.query.path : "";
-		const result = await listDirectory(root, relPath);
+		// 隐藏文件由界面的「眼睛」按钮显式打开（?hidden=1）
+		const result = await listDirectory(root, relPath, { showHidden: request.query.hidden === "1" });
 		if (!result.ok) {
 			response.status(400).json({ error: { code: "files.list_failed", message: result.error } });
 			return;
@@ -84,6 +87,34 @@ export function registerFileRoutes(app: Express, options: { workspaceOf: () => s
 		createReadStream(file.path, range ? { start: range.start, end: range.end } : undefined)
 			.on("error", () => response.destroy())
 			.pipe(response);
+	});
+
+	/** 文件名搜索（放大镜）：只匹配名字，不做内容搜索 */
+	app.get("/api/files/search", async (request, response) => {
+		const root = rootOf(request.query.root, options.workspaceOf());
+		if (!root) {
+			response
+				.status(409)
+				.json({ error: { code: "files.no_workspace", message: "还没有打开会话（不知道是哪个项目）" } });
+			return;
+		}
+		const query = typeof request.query.q === "string" ? request.query.q : "";
+		const result = await searchFiles(root, query);
+		if (!result.ok) {
+			response.status(400).json({ error: { code: "files.search_failed", message: result.error } });
+			return;
+		}
+		response.json(result);
+	});
+
+	/** 当前项目的 git 信息（分支名；不是仓库就 isRepo=false） */
+	app.get("/api/files/git", async (request, response) => {
+		const root = rootOf(request.query.root, options.workspaceOf());
+		if (!root) {
+			response.json({ isRepo: false, branch: null });
+			return;
+		}
+		response.json(await readGitInfo(root));
 	});
 
 	app.get("/api/files/read", async (request, response) => {

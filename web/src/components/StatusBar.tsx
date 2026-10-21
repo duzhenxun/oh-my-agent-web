@@ -61,16 +61,13 @@ export function StatusBar({
 			<span className="status-item status-path" title={snapshot?.files?.root ?? ""}>
 				📁 {snapshot?.files?.root?.split("/").filter(Boolean).pop() ?? "—"}
 			</span>
-			<span className="status-item status-engine">
-				<span className="status-ico">🧠</span> {snapshot?.engine ?? "—"}
+			<span className="status-item status-queued">
+				<span className="status-ico">⏳</span> 排队 {snapshot?.queued.length ?? 0}
 			</span>
 			<span className={`status-item status-running${running > 0 ? " is-working" : ""}`}>
 				{/* 有回合在跑时转起来（没跑就是个静止的小环） */}
 				<span className="status-spinner" aria-hidden="true" />
 				工作中 {running}
-			</span>
-			<span className="status-item status-queued">
-				<span className="status-ico">⏳</span> 排队 {snapshot?.queued.length ?? 0}
 			</span>
 			<span className="status-context-wrap">
 				<button

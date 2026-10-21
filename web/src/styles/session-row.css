@@ -1,4 +1,4 @@
-/* ---- 会话行：右侧「⋯」菜单 ---- */
+/* ---- 会话行：右键菜单 / 行尾「⋯」（两者弹的是同一张菜单） ---- */
 .pi-row-wrap {
 	position: relative;
 	display: flex;
@@ -11,7 +11,7 @@
 	min-width: 0;
 }
 
-/* 行内按钮（⋯ / 归档）。
+/* 行内按钮（快速归档 🗄 + 更多 ⋯）。
    两条硬要求，互相拉扯：
    ① 不能靠 `display` 切换 —— 指针落下的那一帧重排，手机上 click 会落到刚冒出来的按钮上
       （「点一下没反应」就是这么来的）；
@@ -47,11 +47,18 @@
 	font-size: 13px;
 }
 
+.pi-more:hover,
+.pi-archive:hover {
+	background: var(--bg-elev-2);
+	color: var(--text);
+}
+
 /* 桌面（真的能悬停）：时间那一格固定宽度，按钮绝对定位盖上去 */
 @media (hover: hover) {
 	.pi-row-time {
 		flex: none;
-		min-width: 44px;
+		/* 只保底这么宽，够 "1天" 就行；"7小时" 这种自己会被内容撑开 */
+		min-width: 30px;
 		text-align: right;
 	}
 
@@ -78,23 +85,19 @@
 		opacity: 1;
 	}
 
-	/* 悬停时时间让位：同一块地方换成按钮（行宽不变，不闪不抖） */
+	/* 悬停时时间让位：整格缩到只够放下「🗄 ⋯」两个按钮，
+	   省下的宽度直接给标题 —— 否则中间会空出一大块白。
+	   按钮是绝对定位的，缩小这一格不会让它跳位置（不会点错）。 */
 	.pi-row-wrap:hover .pi-row-time,
 	.pi-row-wrap:focus-within .pi-row-time {
 		visibility: hidden;
+		/* 44px = 两枚按钮（20 + 2 间隙）× 2 中的右边那半 + 余量 */
+		min-width: 46px;
 	}
 }
 
-.pi-more:hover {
-	background: var(--bg-elev-2);
-	color: var(--text);
-}
-
+/* 会话右键菜单：只管外观；定位走 .proj-menu-floating（portal 到 body + fixed） */
 .pi-menu {
-	position: absolute;
-	top: 100%;
-	right: 4px;
-	z-index: 20;
 	width: 210px;
 	display: flex;
 	flex-direction: column;
@@ -173,33 +176,30 @@
 	color: var(--accent);
 }
 
-/* 触摸屏（手机 / 平板）：**没有「悬停」这一步**。
-   按钮必须在手指落下之前就看得见、并且点得准；否则第一下总是被「刚冒出来的按钮」吃掉。
-   快速归档（🗄）在手机上一按就没，而「已归档」入口在窄屏是隐藏的（找不回来），
-   所以手机上只保留「⋯」菜单（归档在菜单里，多一步但可反悔）。 */
-@media (hover: none), (pointer: coarse) {
-	.pi-row-wrap .pi-more {
-		visibility: visible;
-		opacity: 1;
-		width: 36px;
-		height: 36px;
-		font-size: 18px;
-		margin-right: 0;
-	}
+/* 手机模式（单栏 `is-mobile-shell`）：**没有「悬停」这一步**，按钮必须一直看得见。
+   - 「🗄 快速归档」不再显示：一是手指容易点错，二是「已归档」入口在单栏里本来就没有，
+     归档照旧在「⋯」菜单里（多一步但可反悔）。
+   - 「⋯」给足 36px 的点击区。 */
+.is-mobile-shell .pi-archive {
+	display: none;
+}
 
-	.pi-row-wrap .pi-archive {
-		display: none;
-	}
+.is-mobile-shell .pi-more {
+	visibility: visible;
+	opacity: 1;
+	width: 36px;
+	height: 36px;
+	font-size: 18px;
+	right: 0;
+}
 
-	/* 会话行给手指留够高度（原来 28px 太窄，容易点到隔壁行） */
-	.pi-row-wrap,
-	.pi-row {
-		min-height: 40px;
-	}
+.is-mobile-shell .pi-row-wrap,
+.is-mobile-shell .pi-row {
+	min-height: 40px;
+}
 
-	.pi-row {
-		align-items: center;
-	}
+.is-mobile-shell .pi-row {
+	align-items: center;
 }
 
 /* 切会话的等待提示：点下去立刻有反馈。
@@ -232,4 +232,20 @@
 	to {
 		opacity: 1;
 	}
+}
+
+/* 就地改名的输入框：和标题同一行同一字号，看起来像「标题变成了可编辑的」 */
+.pi-row-title-input {
+	flex: 1 1 auto;
+	min-width: 0;
+	border: none;
+	border-bottom: 1px solid var(--accent);
+	border-radius: 0;
+	background: transparent;
+	color: var(--text);
+	font: inherit;
+	font-size: 12.5px;
+	line-height: 1.2;
+	padding: 0 0 1px;
+	outline: none;
 }

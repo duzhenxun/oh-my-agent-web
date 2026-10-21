@@ -21,15 +21,41 @@
 	flex: none;
 }
 
+/* 标题本身是开关（点一下收起/展开下面所有项目）：长得像文字，但可点。
+   尺寸/亮度与「文件管理」标题保持一致（见 project-menu.css 的 .side-files-title）：
+   两处都是 14.5px / 600 / --text-dim —— 改一边记得改另一边。 */
 .sidebar-title {
-	flex: 1 1 auto;
+	flex: 0 1 auto;
+	font: inherit;
+	font-size: 14.5px;
 	font-weight: 600;
 	min-width: 0;
+	border: none;
+	background: none;
+	color: var(--text-dim);
+	text-align: left;
+	padding: 0;
+	cursor: pointer;
 }
 
+.sidebar-title:hover {
+	color: var(--accent);
+}
+
+/* 「＋ 新建项目」：紧跟标题，不要外框，当一枚图标按钮用（悬浮才给底色） */
 .btn-new {
-	padding: 4px 10px;
-	font-size: 14.5px;
+	padding: 1px 6px;
+	font-size: 17px;
+	font-weight: 500;
+	border: none;
+	background: none;
+	border-radius: 6px;
+	line-height: 1;
+}
+
+.btn-new:hover:not(:disabled) {
+	border-color: transparent;
+	background: var(--bg-elev-2);
 }
 
 .sidebar-list {
@@ -145,6 +171,20 @@
 	white-space: nowrap;
 }
 
+/* 项目名就地改名：边框只留一条下划线，看着仍像文字，但能看出“在编辑” */
+.proj-name-input {
+	height: 20px;
+	border: none;
+	border-bottom: 1px solid var(--accent-dim);
+	background: var(--bg-elev);
+	color: var(--text);
+	font: inherit;
+	font-weight: 600;
+	padding: 0 2px;
+	outline: none;
+	cursor: text;
+}
+
 .proj-count {
 	flex: none;
 	color: var(--text-faint);
@@ -209,20 +249,26 @@
 	border-color: var(--accent-dim);
 }
 
-/* 项目行上的「+」：在这个项目下新建会话（ADR-0021 §2） */
-.proj-new {
+/* 项目行上的「⋯」：弹项目菜单（新建会话 / 重命名 / 定位…） */
+.proj-more {
 	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 20px;
+	height: 20px;
 	background: transparent;
 	border: 1px solid var(--border);
 	color: var(--text-dim);
 	border-radius: 6px;
 	cursor: pointer;
+	font: inherit;
 	font-size: 14px;
 	line-height: 1;
-	padding: 1px 6px;
+	padding: 0;
 }
 
-.proj-new:hover {
+.proj-more:hover {
 	border-color: var(--accent-dim);
 	color: var(--accent);
 }

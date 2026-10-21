@@ -35,7 +35,9 @@ export type EngineEvent =
 			exitCode?: number;
 	  }
 	/** 这条 assistant 消息的 token 用量（SDK 在 message_update 里带上来时解析出来） */
-	| { type: "usage"; input: number; output: number; cacheRead: number; cacheWrite: number }
+	| { type: "usage"; input: number; output: number; cacheRead: number; cacheWrite: number; cost?: number }
+	/** 这条回复用的模型（`provider/model`）：界面按它显示，别用「当前选择的模型」 */
+	| { type: "model"; model: string }
 	| { type: "turn_end"; reason: "done" | "interrupted" | "error" }
 	| { type: "error"; code: string; message: string };
 
@@ -109,4 +111,6 @@ export type EnginePort = {
 	setThinkingLevel?(sessionId: string, level: string): Promise<boolean>;
 	/** 当前模型（用于界面显示；取不到返回 null） */
 	currentModel?(sessionId: string): Promise<{ provider: string; model: string } | null>;
+	/** 会话**持久化**的模型（会话文件里最后一次 model_change）：续聊、历史会话都以它为准 */
+	sessionModel?(sessionId: string): Promise<{ provider: string; model: string } | null>;
 };

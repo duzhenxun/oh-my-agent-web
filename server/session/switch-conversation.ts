@@ -80,6 +80,11 @@ export function createSwitchConversation(deps: SwitchDeps) {
 			if (workspace && state.files?.root !== workspace) {
 				state.files = { root: workspace, treeVersion: (state.files?.treeVersion ?? 0) + 1 };
 			}
+			// 模型选择器是全局一份，切会话必须把「这个会话当前用哪个模型」读回来，
+			// 否则会一直显示上一个会话的模型（看着就像「选的模型没生效」）。
+			const tModels2 = Date.now();
+			await deps.refreshModels(conversationId);
+			lap("models", tModels2);
 		}
 		const tStats2 = Date.now();
 		deps.refreshStats();

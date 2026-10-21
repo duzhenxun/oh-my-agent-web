@@ -112,6 +112,8 @@ export type FakeEngine = EnginePort & {
 
 	/** 测试钩子：会话表（含 createSession 收到的历史与累积转录） */
 	sessions(): Map<string, { workspace: string; transcript: EngineMessage[]; sessionPath: string | null }>;
+	/** 测试钩子：`switchModel` 的调用记录（断言「新会话用了哪个模型」） */
+	switchedModels(): Array<{ sessionId: string; modelId: string }>;
 	/** 测试用：清掉所有会话 */
 	reset(): void;
 };
@@ -130,6 +132,8 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
 	const models = new Map<string, string>();
 	/** 测试钩子：宿主交给引擎的图片（ADR-0020 §P3） */
 	const receivedImages: Array<{ data: string; mimeType: string }> = [];
+	/** switchModel 的调用记录：断言「新会话按项目的默认模型起步」 */
+	const switchedModels: Array<{ sessionId: string; modelId: string }> = [];
 	let approvalHandler: ApprovalHandler | null = null;
 	let toolCallSeq = 0;
 
@@ -267,8 +271,9 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
 			];
 		},
 
-		async switchModel(_sessionId: string, modelId: string) {
+		async switchModel(sessionId: string, modelId: string) {
 			models.set("current", modelId);
+			switchedModels.push({ sessionId, modelId });
 			return true;
 		},
 
@@ -298,10 +303,13 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
 			return sessions;
 		},
 
+		switchedModels: () => [...switchedModels],
+
 		reset() {
 			sessions.clear();
 			interrupted.clear();
 			approvalHandler = null;
+			switchedModels.length = 0;
 		},
 	};
 }

@@ -17,6 +17,8 @@ export type PiSessionOpener = {
 	isOpen: (conversationId: string) => boolean;
 	infoOf: (conversationId: string) => PiSessionInfo | null;
 	pathOf: (conversationId: string) => string | null;
+	/** 这个项目**最近用过**的模型（新会话拿它当默认；没有会话就 null） */
+	projectModel: (workspace: string) => string | null;
 	/** 打开并读回转录；打不开返回 null（调用方负责给用户错误） */
 	open: (conversationId: string, refresh: (force?: boolean) => Promise<void>) => Promise<UiMessage[] | null>;
 };
@@ -32,6 +34,31 @@ export function createPiSessionOpener(options: PiSessionOpenerOptions): PiSessio
 	const pathById = new Map<string, string>();
 	const infoById = new Map<string, PiSessionInfo>();
 	const opened = new Set<string>();
+	/** workspace → 该项目最近一个会话用的模型（remember 时按 updatedAt 更新） */
+	const modelByWorkspace = new Map<string, { updatedAt: number; model: string }>();
+
+	/**
+	 * 告诉界面「这个会话现在用哪个模型」。
+	 * 优先用**这个会话最后一条助手消息**上的模型：那是真的用过的；
+	 * `currentModel` 只是进程默认模型（历史会话几乎都对不上，会显示成别的模型）。
+	 */
+	const announceModel = async (conversationId: string, messages: UiMessage[]): Promise<void> => {
+		// ① 会话文件里的最后一次 model_change：用户在选择器上切过也写在这里，最准
+		const saved = (await options.engine.sessionModel?.(conversationId)) ?? null;
+		if (saved) {
+			options.onModel(`${saved.provider}/${saved.model}`);
+			return;
+		}
+		// ② 退一步用最后一条助手消息上的模型（它至少是真的用过）
+		const used = [...messages].reverse().find((message) => message.role === "assistant" && message.model)?.model;
+		if (used) {
+			options.onModel(used);
+			return;
+		}
+		// 新会话还没有回复：这时进程默认模型就是它接下来要用的
+		const current = (await options.engine.currentModel?.(conversationId)) ?? null;
+		if (current) options.onModel(`${current.provider}/${current.model}`);
+	};
 
 	return {
 		register(input) {
@@ -43,11 +70,19 @@ export function createPiSessionOpener(options: PiSessionOpenerOptions): PiSessio
 		remember(projects) {
 			for (const project of projects) {
 				for (const session of project.sessions) {
+					const workspace = session.cwd || project.cwd;
 					pathById.set(session.id, session.sessionPath);
-					infoById.set(session.id, { title: session.title, workspace: session.cwd || project.cwd });
+					infoById.set(session.id, { title: session.title, workspace });
+					if (!session.model) continue;
+					// 只记「这个项目里最新那个会话」的模型：它就是项目的当前口味
+					const known = modelByWorkspace.get(workspace);
+					if (known && known.updatedAt >= session.updatedAt) continue;
+					modelByWorkspace.set(workspace, { updatedAt: session.updatedAt, model: session.model });
 				}
 			}
 		},
+
+		projectModel: (workspace) => modelByWorkspace.get(workspace)?.model ?? null,
 
 		isOpen: (conversationId) => opened.has(conversationId),
 
@@ -57,7 +92,13 @@ export function createPiSessionOpener(options: PiSessionOpenerOptions): PiSessio
 		pathOf: (conversationId: string) => pathById.get(conversationId) ?? null,
 
 		async open(conversationId, refresh) {
-			if (opened.has(conversationId)) return options.engine.readUiMessages(conversationId);
+			if (opened.has(conversationId)) {
+				// 已经打开过也不能跳过「当前模型」：state.model 是全局一份，
+				// 切回来时不重读就会停留在别的会话的模型上（选择器显示错乱）。
+				const messages = await options.engine.readUiMessages(conversationId);
+				await announceModel(conversationId, messages);
+				return messages;
+			}
 
 			let sessionPath = pathById.get(conversationId) ?? "";
 			if (sessionPath === "") {
@@ -74,8 +115,7 @@ export function createPiSessionOpener(options: PiSessionOpenerOptions): PiSessio
 			}
 			opened.add(conversationId);
 			const messages = await options.engine.readUiMessages(conversationId);
-			const model = (await options.engine.currentModel?.(conversationId)) ?? null;
-			if (model) options.onModel(`${model.provider}/${model.model}`);
+			await announceModel(conversationId, messages);
 			return messages;
 		},
 	};

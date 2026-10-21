@@ -1,4 +1,6 @@
+import { useEffect, useRef, useState } from "react";
 import type { PiSessionSummary } from "../types.ts";
+import { ProjectMenuPopover, type MenuPoint } from "./ProjectMenuPopover.tsx";
 
 /** 相对时间（与 Sidebar 里那份一致；抽出来避免循环依赖 */
 function relativeTime(ts: number, now = Date.now()): string {
@@ -14,11 +16,16 @@ function relativeTime(ts: number, now = Date.now()): string {
 }
 
 /**
- * 一条会话 + 右侧「⋯」菜单（从 Sidebar 抽出来：400 行护栏）。
+ * 一条会话 + 菜单（从 Sidebar 抽出来：400 行护栏）。
  *
- * 已实现：置顶 / 重命名 / 归档（都存在 settings.sessionPrefs）。
- * 未实现但保留入口的：分叉、标为未读、删除 —— 都明确禁用并写清原因，
- * 不做"点了没反应"的假按钮。
+ * 两种打开方式共用同一张菜单：行上**点右键**，或点行尾那个 **⋯**；
+ * 点别处自动收（portal + outside click）。
+ *
+ * 重命名是**就地编辑**：双击标题（或菜单里的「重命名」）这一行变成输入框，
+ * 回车保存 / Esc 取消 / 点外面也保存 —— 不弹系统 prompt（那个窗口既丑又挡视线）。
+ * 名字写进 pi 的会话文件（session_info），由外层负责发请求。
+ *
+ * 未实现但保留入口的：分叉、标为未读 —— 都明确禁用并写清原因，不做假按钮。
  */
 export function SessionRow({
 	session,
@@ -26,8 +33,8 @@ export function SessionRow({
 	running,
 	title,
 	pinned,
-	menuOpen,
-	onToggleMenu,
+	menuPoint,
+	onOpenMenu,
 	onSwitch,
 	onPin,
 	onRename,
@@ -41,31 +48,94 @@ export function SessionRow({
 	running: boolean;
 	title: string;
 	pinned: boolean;
-	menuOpen: boolean;
-	onToggleMenu: () => void;
+	/** 非空时菜单就浮在这个位置（右键点出来的地方） */
+	menuPoint: MenuPoint | null;
+	/** 右键这一行：把菜单弹在鼠标处 */
+	onOpenMenu: (point: MenuPoint) => void;
 	onSwitch: () => void;
 	onPin: () => void;
-	onRename: () => void;
+	/** 提交新名字（就地编辑保存时调用） */
+	onRename: (title: string) => void;
 	onArchive: () => void;
 	onDelete: () => void;
 	/** 在新标签页打开这条会话（多开几个标签对照着看时用） */
 	onOpenInNewTab: () => void;
 	onCloseMenu: () => void;
 }) {
+	// 就地编辑：打开输入框 / 草稿 / 提交
+	const [editing, setEditing] = useState(false);
+	const [draft, setDraft] = useState(title);
+	const inputRef = useRef<HTMLInputElement>(null);
+
+	useEffect(() => {
+		if (!editing) return;
+		setDraft(title);
+		// 打开就全选，直接打字替换（不用先删）
+		requestAnimationFrame(() => {
+			inputRef.current?.focus();
+			inputRef.current?.select();
+		});
+	}, [editing, title]);
+
+	const commit = () => {
+		const next = draft.replace(/\s+/g, " ").trim().slice(0, 60);
+		setEditing(false);
+		if (next !== "" && next !== title) onRename(next);
+	};
+
 	const act = (fn: () => void) => () => {
 		fn();
 		onCloseMenu();
 	};
 
 	return (
-		<div className="pi-row-wrap">
+		<div
+			className="pi-row-wrap"
+			onContextMenu={(event) => {
+				// 右键 = 菜单（原来那个「⋯」按钮的位置）
+				event.preventDefault();
+				onOpenMenu({ x: event.clientX, y: event.clientY });
+			}}
+		>
 			<button
 				type="button"
 				className={`pi-row${active ? " pi-row-active" : ""}`}
 				onClick={onSwitch}
 				title={`${session.cwd}\n${session.id}`}
 			>
-				<span className="pi-row-title">{title}</span>
+				{editing ? (
+					<input
+						ref={inputRef}
+						className="pi-row-title pi-row-title-input"
+						value={draft}
+						onChange={(event) => setDraft(event.target.value)}
+						onClick={(event) => event.stopPropagation()}
+						onDoubleClick={(event) => event.stopPropagation()}
+						onKeyDown={(event) => {
+							if (event.key === "Enter") {
+								event.preventDefault();
+								commit();
+							} else if (event.key === "Escape") {
+								event.preventDefault();
+								setEditing(false);
+							}
+						}}
+						onBlur={commit}
+					/>
+				) : (
+					<span
+						className="pi-row-title"
+						// 双击标题 = 就地改名（单击仍然是切会话，别抢它的语义）
+						onDoubleClick={(event) => {
+							event.preventDefault();
+							event.stopPropagation();
+							setEditing(true);
+						}}
+						title="双击改名"
+					>
+						{title}
+					</span>
+				)}
 				{running ? (
 					<span className="pi-running" title="这个会话正在运行">
 						<span className="pi-ring" aria-hidden="true" />
@@ -86,15 +156,32 @@ export function SessionRow({
 			>
 				🗄
 			</button>
-			<button type="button" className="pi-more" title="更多操作" onClick={onToggleMenu}>
+			<button
+				type="button"
+				className="pi-more"
+				title="更多操作（置顶 / 重命名 / 归档…）"
+				onClick={(event) => {
+					// 点「⋯」= 和右键同一张菜单，只是从按钮下面弹出来
+					event.stopPropagation();
+					const rect = event.currentTarget.getBoundingClientRect();
+					onOpenMenu({ x: rect.left, y: rect.bottom + 2 });
+				}}
+			>
 				⋯
 			</button>
-			{menuOpen ? (
-				<div className="pi-menu" role="menu">
+			{menuPoint ? (
+				<ProjectMenuPopover point={menuPoint} className="pi-menu" onClose={onCloseMenu}>
 					<button type="button" className="proj-menu-item" onClick={act(onPin)}>
 						📌 {pinned ? "取消置顶" : "置顶"}
 					</button>
-					<button type="button" className="proj-menu-item" onClick={act(onRename)}>
+					<button
+						type="button"
+						className="proj-menu-item"
+						onClick={() => {
+							onCloseMenu();
+							setEditing(true);
+						}}
+					>
 						✏️ 重命名
 					</button>
 					<button
@@ -122,7 +209,7 @@ export function SessionRow({
 					>
 						🗑 删除
 					</button>
-				</div>
+				</ProjectMenuPopover>
 			) : null}
 		</div>
 	);

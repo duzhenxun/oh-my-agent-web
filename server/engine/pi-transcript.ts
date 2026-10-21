@@ -58,6 +58,10 @@ function mapMessage(entryId: string, message: unknown, order: number): UiMessage
 
 	if (role === "assistant") {
 		const usage = parseUsage(record.usage);
+		// 这条消息自己用的模型（历史按当时的模型显示，不跟当前选择变）
+		const provider = typeof record.provider === "string" ? record.provider : "";
+		const modelId = typeof record.model === "string" ? record.model : "";
+		const model = modelId ? (provider ? `${provider}/${modelId}` : modelId) : undefined;
 		const blocks: MessageBlock[] = [];
 		const content = Array.isArray(record.content) ? record.content : [];
 		for (const part of content) {
@@ -82,7 +86,7 @@ function mapMessage(entryId: string, message: unknown, order: number): UiMessage
 			// thinking 等其它部件不进界面（v1 不展示思考过程）
 		}
 		if (blocks.length === 0) return null;
-		return { id: entryId, role: "assistant", ts, blocks, ...(usage ? { usage } : {}) };
+		return { id: entryId, role: "assistant", ts, blocks, ...(usage ? { usage } : {}), ...(model ? { model } : {}) };
 	}
 
 	return null; // system / toolResult 单独处理

@@ -7,6 +7,7 @@
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import webpush from "web-push";
+import { BRAND_NAME } from "../brand.js";
 
 export const VAPID_PUBLIC_KEY =
 	process.env.VAPID_PUBLIC_KEY ??
@@ -134,7 +135,7 @@ export function createPushStore(options: { dataDir: string; now: () => number })
 /** 项目名 = 工作区路径的最后一段（拿不到就回落应用名，别把通知的抬头留空） */
 export function projectNameOf(workspace: string | undefined): string {
 	const name = (workspace ?? "").split("/").filter(Boolean).pop();
-	return name && name !== "" ? name : "Agent Web";
+	return name && name !== "" ? name : BRAND_NAME;
 }
 
 /**

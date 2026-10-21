@@ -15,18 +15,15 @@ import {
 import type { ExtensionAPI, ToolCallEventResult } from "@earendil-works/pi-coding-agent";
 import { classifyScope } from "../approval/scope.js";
 import { mapSessionEvent } from "./pi-events.js";
+import { readSessionModel } from "./pi-session-model.js";
 import { entriesToUiMessages } from "./pi-transcript.js";
 import type { ApprovalHandler, EngineEvent, EngineMessage, EnginePort, EngineSessionOptions } from "./port.js";
 
 export type PiSdkEngineOptions = {
 	/** 引擎 SDK 的全局配置目录（默认 ~/.pi/agent，模型与凭据都在那里） */
 	agentDir?: string;
-	/**
-	 * 会话存储目录（默认由 SDK 决定：`~/.pi/agent/sessions/<编码后的 cwd>/`）。
-	 *
-	 * **测试必须显式传临时目录** —— 否则会写进用户的真实会话存储。
-	 * （真实教训：一次探针就直接落到了 `~/.pi/agent/sessions/` 里。）
-	 */
+	/** 会话存储目录（默认 `~/.pi/agent/sessions/<编码后的 cwd>/`）。
+	 * **测试必须显式传临时目录**：否则会写进用户的真实会话存储（踩过）。 */
 	sessionDir?: string;
 	/** 出问题时给宿主看的提示（不抛给用户，避免把一轮对话打死） */
 	onNotice?: (text: string, level: "info" | "warn" | "error") => void;
@@ -370,6 +367,8 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 			if (!model) return null;
 			return { provider: String(model.provider ?? "?"), model: String(model.id ?? "?") };
 		},
+
+		sessionModel: async (sessionId) => readSessionModel(sessions.get(sessionId)),
 
 		async closeSession(sessionId: string) {
 			const handle = sessions.get(sessionId);

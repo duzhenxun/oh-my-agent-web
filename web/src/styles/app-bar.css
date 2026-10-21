@@ -16,11 +16,11 @@
 	min-width: 0;
 	display: flex;
 	gap: 8px;
-	/* 底部不留白：状态栏贴在窗口底边（它只占右列的宽度） */
+	/* 底部不留白：状态栏是最下面那条横贯全窗的栏（和顶栏对称） */
 	padding: 8px 8px 0;
 }
 
-/* 右侧一列：上边是「对话 + 右侧面板」，下边是状态栏（只在右列宽度内） */
+/* 右侧一列：上边是「对话 + 右侧面板」（状态栏已经挪到 .app 底下一层，横贯全宽） */
 .right-col {
 	flex: 1 1 auto;
 	display: flex;
@@ -32,7 +32,8 @@
 .right-upper {
 	flex: 1 1 auto;
 	display: flex;
-	gap: 8px;
+	/* 对话区与右侧面板之间不留缝：靠各自的 1px 边框分隔 */
+	gap: 0;
 	min-width: 0;
 	min-height: 0;
 }
@@ -144,10 +145,6 @@
 
 .workspace .main {
 	padding: 4px 0 0;
-}
-
-.workspace .composer-wrap {
-	padding-top: 6px;
 }
 
 /* 对话区（含 workspace 背景）整体用白底 */

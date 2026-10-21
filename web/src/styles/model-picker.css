@@ -148,51 +148,98 @@
 	display: none;
 }
 
-@media (max-width: 900px), (pointer: coarse) and (max-width: 1366px) {
-	/* 模型菜单在手机上：整宽底部抽屉，而不是向上弹出的小浮层 */
-	.model-sheet-backdrop {
-		display: block;
-		position: fixed;
-		inset: 0;
-		z-index: 30;
-		background: rgb(0 0 0 / 45%);
-	}
+/* 模型菜单在手机上：整宽底部抽屉，而不是向上弹出的小浮层 */
+.is-mobile-shell .model-sheet-backdrop {
+	display: block;
+	position: fixed;
+	inset: 0;
+	z-index: 30;
+	background: rgb(0 0 0 / 45%);
+}
 
-	.model-menu {
-		position: fixed;
-		left: 0;
-		right: 0;
-		bottom: 0;
-		top: auto;
-		width: 100vw;
-		max-height: 72dvh;
-		border-radius: 14px 14px 0 0;
-		border: none;
-		border-top: 1px solid var(--border-strong, var(--border));
-		padding: 10px 12px calc(12px + env(safe-area-inset-bottom, 0px));
-		z-index: 31;
-		box-shadow: 0 -12px 40px rgb(0 0 0 / 45%);
-	}
+.is-mobile-shell .model-menu {
+	position: fixed;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	top: auto;
+	width: 100vw;
+	max-height: 72dvh;
+	border-radius: 14px 14px 0 0;
+	border: none;
+	border-top: 1px solid var(--border-strong, var(--border));
+	padding: 10px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+	z-index: 31;
+	box-shadow: 0 -12px 40px rgb(0 0 0 / 45%);
+}
 
-	.model-sheet-close {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: 6px;
-		align-self: flex-end;
-		border: 1px solid var(--border);
-		background: var(--bg-soft);
-		color: var(--text);
-		border-radius: 999px;
-		padding: 6px 14px;
-		font-size: 15px;
-		cursor: pointer;
-	}
+.is-mobile-shell .model-sheet-close {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	align-self: flex-end;
+	border: 1px solid var(--border);
+	background: var(--bg-soft);
+	color: var(--text);
+	border-radius: 999px;
+	padding: 6px 14px;
+	font-size: 15px;
+	cursor: pointer;
+}
 
-	/* 每条模型行加大点击高度，手机上更好点 */
-	.model-item {
-		padding-top: 11px;
-		padding-bottom: 11px;
-		font-size: 17px;
-	}
+/* 每条模型行加大点击高度，手机上更好点 */
+.is-mobile-shell .model-item {
+	padding-top: 11px;
+	padding-bottom: 11px;
+	font-size: 17px;
+}
+
+/* 一行 = 「模型按钮 + 图钉」：图钉只在悬浮时出现，钉住的常亮 */
+.model-row {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	min-width: 0;
+}
+
+.model-row .model-item {
+	flex: 1;
+	min-width: 0;
+}
+
+.model-pin {
+	flex: none;
+	background: none;
+	border: none;
+	border-radius: 6px;
+	font: inherit;
+	font-size: 12px;
+	line-height: 1;
+	padding: 4px 4px;
+	cursor: pointer;
+	opacity: 0;
+	filter: grayscale(1);
+	transition: opacity 0.12s ease;
+}
+
+.model-row:hover .model-pin,
+.model-pin:focus-visible {
+	opacity: 0.7;
+}
+
+.model-pin-on {
+	opacity: 1;
+	filter: none;
+}
+
+.model-pin:hover {
+	opacity: 1;
+}
+
+/* 触屏没有 hover：图钉一直亮着，否则「设默认」这个功能在手机上点不到 */
+.is-mobile-shell .model-pin {
+	opacity: 0.55;
+	font-size: 14px;
+	padding: 6px;
 }

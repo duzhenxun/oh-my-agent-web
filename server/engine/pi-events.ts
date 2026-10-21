@@ -53,6 +53,7 @@ export function mapSessionEvent(event: unknown): EngineEvent | null {
 	const type = record.type;
 
 	if (type === "message_update") {
+		const message = asRecord(record.message);
 		const assistantEvent = asRecord(record.assistantMessageEvent);
 		// ⚠️ 正文 / 思考的增量**必须优先**：SDK 的 message_update 里一旦带上 usage，
 		// 之前那种「先看 usage 就 return」会把后面的每一个正文增量全吞掉 ——
@@ -73,9 +74,25 @@ export function mapSessionEvent(event: unknown): EngineEvent | null {
 			return { type: "thinking_delta", text: assistantEvent.delta };
 		}
 		// 用量：SDK 的 message 上带 usage（各 provider 字段名不一样，统一解析）
-		const usage = parseUsage(asRecord(record.message).usage);
+		const usage = parseUsage(message.usage);
 		if (usage) return { type: "usage", ...usage };
+		// 模型：**放最后**。有的 provider 每一帧 message 上都带 provider/model，
+		// 一旦先返回它，后面的正文增量就全被吞了 —— 表现就是「助手不回复，只有用量」。
+		if (typeof message.model === "string" && message.model !== "") {
+			const provider = typeof message.provider === "string" ? message.provider : "";
+			return { type: "model", model: provider ? `${provider}/${message.model}` : message.model };
+		}
 		return null; // tool_use 等：v1 不展示
+	}
+
+	// 一条消息开始：这一帧上带着 provider/model（拿它当「当前模型」的来源之一）
+	if (type === "message_start") {
+		const message = asRecord(record.message);
+		if (typeof message.model === "string" && message.model !== "") {
+			const provider = typeof message.provider === "string" ? message.provider : "";
+			return { type: "model", model: provider ? `${provider}/${message.model}` : message.model };
+		}
+		return null;
 	}
 
 	// 一条消息结束：**最终**用量在这里（output 才统计全），同一条 message_update 上的是过程值

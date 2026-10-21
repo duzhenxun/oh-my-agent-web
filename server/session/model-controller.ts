@@ -38,8 +38,9 @@ export function createModelController(options: {
 			// （用户看到的就是「刚才还有，怎么又不见了」）。
 			try {
 				const list = (await options.engine.listModels?.(conversationId ?? undefined)) ?? [];
-				if (list.length === 0 && options.state.models.length > 0) return;
-				options.state.models = list.map((model) => ({ id: model.id, label: model.label }));
+				if (list.length > 0 || options.state.models.length === 0) {
+					options.state.models = list.map((model) => ({ id: model.id, label: model.label }));
+				}
 			} catch {
 				// 保留旧值：下次刷新成功自然会更新
 			}

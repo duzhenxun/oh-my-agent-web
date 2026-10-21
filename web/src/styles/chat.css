@@ -8,10 +8,8 @@
 	padding-top: 32px;
 }
 
-@media (max-width: 900px), (pointer: coarse) and (max-width: 1366px) {
-	.messages {
-		padding-top: 24px;
-	}
+.is-mobile-shell .messages {
+	padding-top: 24px;
 }
 
 .more-before {
@@ -174,9 +172,9 @@
 	color: var(--text-dim);
 	border: 1px solid var(--border);
 	border-radius: 999px;
-	padding: 4px 12px;
+	padding: 3px 10px;
 	font: inherit;
-	font-size: 14.5px;
+	font-size: 13px;
 	cursor: pointer;
 	overflow: hidden;
 	text-overflow: ellipsis;

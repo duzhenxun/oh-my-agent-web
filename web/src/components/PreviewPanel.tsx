@@ -27,15 +27,25 @@ export function PreviewPanel({
 	onActivate,
 	onCloseItem,
 	onCloseAll,
+	onWideChange,
 }: {
 	items: PanelItem[];
 	activeId: string;
 	onActivate: (id: string) => void;
 	onCloseItem: (id: string) => void;
 	onCloseAll: () => void;
+	/** 「铺开」状态变化：外层据此把对话区让出来（只让中间两个区，左侧栏不动） */
+	onWideChange?: (wide: boolean) => void;
 }) {
 	const [width, setWidth] = useState(readWidth);
 	const [fullscreen, setFullscreen] = useState(false);
+	/** 铺开：占满「对话 + 预览」两块区域（左侧栏仍然在），区别于整窗全屏 */
+	const [wide, setWide] = useState(false);
+
+	const setWideMode = (next: boolean) => {
+		setWide(next);
+		onWideChange?.(next);
+	};
 	const dragging = useRef(false);
 
 	// 拖拽改宽：pointer 事件挂 document，鼠标移出面板也能继续
@@ -70,8 +80,8 @@ export function PreviewPanel({
 
 	return (
 		<aside
-			className={`preview-panel${fullscreen ? " preview-panel-full" : ""}`}
-			style={fullscreen ? undefined : { width }}
+			className={`preview-panel${fullscreen ? " preview-panel-full" : ""}${wide && !fullscreen ? " preview-panel-wide" : ""}`}
+			style={fullscreen || wide ? undefined : { width }}
 		>
 			{fullscreen ? null : <div className="preview-resizer" onPointerDown={startResize} title="拖动调整宽度" />}
 			<div className="preview-tabs">
@@ -110,8 +120,43 @@ export function PreviewPanel({
 				<span className="topbar-spacer" />
 				<button
 					type="button"
+					className={`btn btn-tiny${wide ? " btn-wide-on" : ""}`}
+					onClick={() => {
+						setFullscreen(false);
+						setWideMode(!wide);
+					}}
+					title={wide ? "收回右侧（恢复对话区）" : "铺开：占满对话 + 预览两块区域（左侧栏保留）"}
+					aria-pressed={wide}
+				>
+					{/* 两侧箭头 + 竖线：表示「把中间两块铺满」 */}
+					<svg className="preview-wide-icon" viewBox="0 0 16 16" aria-hidden="true">
+						<path d="M2 4.4v7.2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+						<path d="M6 8H13" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+						<path
+							d="m10.6 5.6 2.6 2.4-2.6 2.4"
+							stroke="currentColor"
+							strokeWidth="1.4"
+							fill="none"
+							strokeLinecap="round"
+							strokeLinejoin="round"
+						/>
+						<path
+							d="m7.4 5.6-2.6 2.4 2.6 2.4"
+							stroke="currentColor"
+							strokeWidth="1.4"
+							fill="none"
+							strokeLinecap="round"
+							strokeLinejoin="round"
+						/>
+					</svg>
+				</button>
+				<button
+					type="button"
 					className="btn btn-tiny"
-					onClick={() => setFullscreen((value) => !value)}
+					onClick={() => {
+						setFullscreen((value) => !value);
+						if (!fullscreen) setWideMode(false);
+					}}
 					title={fullscreen ? "退出全屏" : "全屏"}
 				>
 					{fullscreen ? "⤡" : "⛶"}

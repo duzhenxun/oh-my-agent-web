@@ -62,21 +62,31 @@ export function parseSessionHeader(line: string): { id: string; cwd: string; sta
 	};
 }
 
-/** 纯函数：从会话内容行里抠出标题、模型（不解析全文件，只看开头这几十行） */
-export function extractListMeta(lines: string[]): { title: string; model: string | null } {
+/**
+ * 纯函数：从会话内容行里抠出标题与模型。
+ *
+ * 标题只看开头（`headLimit` 行）：首条消息就够了，全量扫会慢。
+ * 模型**从末尾倒着找**最后一条 `model_change`：追加式文件里那就是「现在用哪个」，
+ * 只扫开头会把「中途换过模型」的会话报成最初那个（切回去时选择器就显示错了）。
+ */
+export function extractListMeta(lines: string[], headLimit = lines.length): { title: string; model: string | null } {
 	/** pi 自己的会话名（session_info.name）：有它就以它为准，首条消息只当兜底 */
 	let name = "";
 	let title = "";
 	let model: string | null = null;
 
-	for (const line of lines) {
+	for (const [index, line] of lines.entries()) {
+		// 标题/名字只扫开头；模型那一段继续扫到底（下面单独倒着找，这里先跳过）
+		if (index >= headLimit) break;
 		let record: Record<string, unknown>;
 		try {
 			record = JSON.parse(line) as Record<string, unknown>;
 		} catch {
 			continue;
 		}
-		if (!model && record.type === "model_change" && typeof record.modelId === "string") {
+		if (record.type === "model_change" && typeof record.modelId === "string") {
+			// 追加式文件：后来的 model_change 覆盖先前的 —— 会话中途换过模型就要取最后一次，
+			// 否则切回这个会话时选择器显示的还是它最初那个模型
 			const provider = typeof record.provider === "string" ? record.provider : "";
 			model = provider ? `${provider}/${record.modelId}` : record.modelId;
 		}
@@ -89,6 +99,22 @@ export function extractListMeta(lines: string[]): { title: string; model: string
 		const message = record.message as Record<string, unknown> | undefined;
 		if (!message || message.role !== "user") continue;
 		title = textOfMessageContent(message.content);
+	}
+
+	// 模型：倒着找最后一条 model_change（只解析含关键字的行，避免整文件 JSON.parse）
+	for (let index = lines.length - 1; index >= 0; index -= 1) {
+		const line = lines[index] ?? "";
+		if (!line.includes("model_change")) continue;
+		let record: Record<string, unknown>;
+		try {
+			record = JSON.parse(line) as Record<string, unknown>;
+		} catch {
+			continue;
+		}
+		if (record.type !== "model_change" || typeof record.modelId !== "string" || record.modelId === "") continue;
+		const provider = typeof record.provider === "string" ? record.provider : "";
+		model = provider ? `${provider}/${record.modelId}` : record.modelId;
+		break;
 	}
 
 	// 列表只显示一行：折叠换行/连续空白（首条消息常是多行任务描述）
@@ -240,7 +266,10 @@ export async function scanPiSessions(options: ScanOptions): Promise<ScanResult> 
 			const header = parseSessionHeader(lines[0] ?? "");
 			if (!header) continue; // 不是会话文件
 
-			const meta = extractListMeta(lines.slice(1, maxLines));
+			const meta = extractListMeta(
+				lines.filter((line, index) => index > 0),
+				maxLines - 1,
+			);
 			const row: PiSessionRow = {
 				id: header.id || name,
 				path,

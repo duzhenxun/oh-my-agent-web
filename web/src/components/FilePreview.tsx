@@ -13,17 +13,17 @@ import typescript from "highlight.js/lib/languages/typescript";
 import xml from "highlight.js/lib/languages/xml";
 import yaml from "highlight.js/lib/languages/yaml";
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
 	computeFolds,
 	describeRange,
 	languageOf,
-	MAX_HIGHLIGHT_LINES,
 	normalizeRange,
 	referenceFor,
 	type FoldRange,
 	type LineRange,
 } from "../file-preview.ts";
+import { useProgressiveHighlight } from "../progressive-highlight.ts";
 import { setDraft } from "../store.ts";
 import { Markdown } from "./Markdown.tsx";
 
@@ -137,18 +137,20 @@ export function FileViewer({ path, root, toolbar }: { path: string; root?: strin
 	const lines = state && !state.binary && !state.error ? state.text.split("\n") : [];
 	const range: LineRange | null = anchor === null || focus === null ? null : normalizeRange(anchor, focus);
 
-	// 逐行高亮（多行结构如块注释中间的几行颜色可能不准，但绝不会破坏 HTML/结构）
-	const highlighted = useMemo(() => {
-		if (lines.length === 0) return [] as string[];
-		if (lines.length > MAX_HIGHLIGHT_LINES || language === "" || !hljs.getLanguage(language)) return [] as string[];
-		return lines.map((line) => {
-			try {
-				return hljs.highlight(line, { language, ignoreIllegals: true }).value;
-			} catch {
-				return "";
-			}
-		});
-	}, [lines, language]);
+	// 逐行高亮：**分批上色**（大文件也能有颜色，不再整篇黑白）
+	// 多行结构（块注释中间的几行）颜色可能不准，但绝不会破坏 HTML/结构
+	const highlightLine = useCallback((line: string, lang: string) => {
+		try {
+			return hljs.highlight(line, { language: lang, ignoreIllegals: true }).value;
+		} catch {
+			return "";
+		}
+	}, []);
+	const {
+		html: highlighted,
+		done: highlightDone,
+		total: highlightTotal,
+	} = useProgressiveHighlight(lines, language !== "" && hljs.getLanguage(language) ? language : "", highlightLine);
 
 	const addToConversation = () => {
 		setDraft(`${referenceFor(path, range)} `);
@@ -308,8 +310,10 @@ export function FileViewer({ path, root, toolbar }: { path: string; root?: strin
 					})()}
 				</pre>
 			) : null}
-			{lines.length > MAX_HIGHLIGHT_LINES && language !== "" ? (
-				<div className="file-preview-hint">文件较大（{lines.length} 行），已关闭语法高亮以保证流畅</div>
+			{!highlightDone && highlightTotal > 0 ? (
+				<div className="file-preview-hint">
+					文件较大（{highlightTotal.toLocaleString()} 行），正在分批上色…（可以边看边滚，不影响滚动）
+				</div>
 			) : null}
 		</div>
 	);

@@ -37,11 +37,12 @@
 	color: var(--text);
 }
 
-.proj-new {
+.proj-more {
 	opacity: 0;
 }
 
-.proj-head:hover .proj-new {
+.proj-head:hover .proj-more,
+.proj-head:focus-within .proj-more {
 	opacity: 1;
 }
 

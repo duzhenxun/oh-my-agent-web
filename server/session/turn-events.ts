@@ -78,10 +78,21 @@ export function applyEngineEvent(context: TurnEventContext, input: TurnEventInpu
 			context.onThinkingDelta?.(conversationId);
 			return;
 		}
+		case "model": {
+			// 每条回复记下自己用的模型（历史/对照时不受「当前选择」影响）
+			patch((message) => ({ ...message, model: event.model }));
+			return;
+		}
 		case "usage": {
 			patch((message) => ({
 				...message,
-				usage: { input: event.input, output: event.output, cacheRead: event.cacheRead, cacheWrite: event.cacheWrite },
+				usage: {
+					input: event.input,
+					output: event.output,
+					cacheRead: event.cacheRead,
+					cacheWrite: event.cacheWrite,
+					...(event.cost === undefined ? {} : { cost: event.cost }),
+				},
 			}));
 			return;
 		}

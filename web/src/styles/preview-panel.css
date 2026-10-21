@@ -5,8 +5,8 @@
 	display: flex;
 	flex-direction: column;
 	min-height: 0;
-	border: 1px solid var(--border);
-	/* 右侧面板（终端 / 预览）一律直角：终端里套圆角显得「浮」在页面上 */
+	/* 不要边框：和对话区之间由 workspace 的右边框分隔，避免出现双线 */
+	border: none;
 	border-radius: 0;
 	background: var(--bg-elev);
 	padding: 6px;
@@ -138,7 +138,7 @@
 	margin-top: 6px;
 	width: 34px;
 	height: 34px;
-	border-radius: var(--radius);
+	border-radius: 0;
 }
 
 /* 每个标签一个槽位：非激活的只隐藏、不卸载（终端 PTY 靠这个活着） */
@@ -194,8 +194,9 @@
 	align-items: center;
 	justify-content: center;
 	padding: 8px;
-	border: 1px solid var(--border);
-	border-radius: 8px;
+	/* 图片区也不要描边（面板已经贴边，再多一圈就是多出来的竖线） */
+	border: none;
+	border-radius: 0;
 	background-color: #0d1117;
 	background-image:
 		linear-gradient(45deg, #161b22 25%, transparent 25%), linear-gradient(-45deg, #161b22 25%, transparent 25%),
@@ -212,7 +213,7 @@
 	max-width: 100%;
 	max-height: 100%;
 	object-fit: contain;
-	border-radius: 4px;
+	border-radius: 0;
 }
 
 /* 右侧竖列：收起箭头 + 对话大纲（对齐参考实现，两者在同一列） */
@@ -252,4 +253,24 @@
 .preview-panel,
 .preview-rail {
 	background: var(--bg) !important;
+}
+
+/* 「铺开」：占满「对话 + 预览」两块区域（左侧栏保留、状态栏保留） */
+.preview-panel-wide {
+	flex: 1 1 auto;
+	width: auto !important;
+	min-width: 0;
+}
+
+/* 铺开按钮激活时的强调（和普通 btn-tiny 区分） */
+.btn-wide-on {
+	border-color: var(--accent-dim);
+	color: var(--accent);
+	background: var(--bg-elev-2);
+}
+
+.preview-wide-icon {
+	width: 13px;
+	height: 13px;
+	display: block;
 }

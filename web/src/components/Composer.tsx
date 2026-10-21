@@ -5,7 +5,7 @@ import { ThinkingPicker } from "./ThinkingPicker.tsx";
 import { TemplateEditor, TemplateGallery } from "./TemplateModals.tsx";
 import { setDraft, useAppState } from "../store.ts";
 import type { AttachmentRef, PromptTemplate } from "../types.ts";
-import { interrupt, sendMessage, setApprovalMode } from "../ws.ts";
+import { interrupt, sendMessage, setApprovalMode, setSettings } from "../ws.ts";
 
 function formatBytes(bytes: number): string {
 	if (bytes < 1024) return `${bytes}B`;
@@ -42,6 +42,19 @@ export function Composer({ running, conversationId }: { running: boolean; conver
 		inputRef.current.focus();
 	}, [creating]);
 
+	// 当前项目 = 当前会话的工作区（新会话还没落盘时退回文件树根）；「项目默认模型」按它存
+	const activeWorkspace =
+		snapshot?.conversations.find((item) => item.id === snapshot.active.conversationId)?.workspace ??
+		snapshot?.files?.root ??
+		"";
+	const defaultModels = snapshot?.settings.defaultModels ?? {};
+	const setProjectDefault = (modelId: string | null) => {
+		if (!activeWorkspace) return;
+		const next = { ...defaultModels };
+		if (modelId) next[activeWorkspace] = modelId;
+		else delete next[activeWorkspace];
+		setSettings({ defaultModels: next });
+	};
 	const quickPhrases = snapshot?.settings.quickPhrasesEnabled ? (snapshot?.settings.quickPhrases ?? []) : [];
 	const templates = snapshot?.settings.templates ?? [];
 	// 模板库 / 模板编辑两个弹窗（P5）
@@ -108,7 +121,12 @@ export function Composer({ running, conversationId }: { running: boolean; conver
 					{/* 模型槽位**永远在**：列表没到 / 引擎暂时取不到时显示占位，
 				    免得用户以为功能坏了（"怎么又不见了" 就是清空列表造成的） */}
 					{snapshot && snapshot.models.length > 0 && snapshot.engineCapabilities.modelSwitch ? (
-						<ModelPicker models={snapshot.models} current={snapshot.model} />
+						<ModelPicker
+							models={snapshot.models}
+							current={snapshot.model}
+							defaultModel={defaultModels[activeWorkspace] ?? null}
+							onSetDefault={setProjectDefault}
+						/>
 					) : (
 						<span
 							className="tool-chip tool-static mono"

@@ -1,8 +1,9 @@
 import { memo, useState } from "react";
 import { setDraft } from "../store.ts";
-import type { ActionItem, EngineName, UiMessage } from "../types.ts";
+import type { ActionItem, UiMessage } from "../types.ts";
 import type { QueuedView } from "../pending-sends.ts";
 import { ActionSuggestions } from "./ActionSuggestions.tsx";
+import { CopyButton } from "./CopyButton.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { ToolCard } from "./ToolCard.tsx";
 
@@ -65,15 +66,7 @@ function ThinkingGroup({ texts, durationMs }: { texts: string[]; durationMs?: nu
 	);
 }
 
-function MessageViewInner({
-	message,
-	agentLabel,
-	modelLabel,
-}: {
-	message: UiMessage;
-	agentLabel: string;
-	modelLabel: string;
-}) {
+function MessageViewInner({ message, modelLabel }: { message: UiMessage; modelLabel: string }) {
 	const text = textOfMessage(message);
 	// 工具调用默认折叠：只把"最终处理好的回答"露出来，想看过程再展开
 	const toolBlocks = message.blocks.filter((block) => block.kind === "tool");
@@ -85,68 +78,73 @@ function MessageViewInner({
 	);
 	const [showTools, setShowTools] = useState(false);
 	return (
-		<article className={`msg msg-${message.role}`} id={`msg-${message.id}`}>
-			<header className="msg-head">
-				<span className="msg-role">{message.role === "user" ? "我" : agentLabel}</span>
-				{message.steer ? <span className="sent-tag sent-tag-steer">引导</span> : null}
-				{message.role === "assistant" && modelLabel !== "" ? (
-					<span className="msg-model" title="这条会话当前使用的模型">
-						{modelLabel}
-					</span>
-				) : null}
-				<span className="msg-time">{new Date(message.ts).toLocaleTimeString()}</span>
-				{/* 鼠标悬浮才出现的操作（用户消息还额外支持「从此处编辑」） */}
-				<div className="msg-actions">
+		// msg-split：用户消息的气泡只包住正文，操作/时间那行落在气泡**外面**
+		<article
+			className={`msg msg-${message.role}${message.role === "user" ? " msg-split" : ""}`}
+			id={`msg-${message.id}`}
+		>
+			{/* 助手抬头：模型 + 时间。
+			    用户消息**不要抬头**（气泡里只有自己说的话），时间与操作放到气泡下面那行。 */}
+			{message.role === "assistant" || message.steer ? (
+				<header className="msg-head">
+					{message.role === "assistant" && modelLabel !== "" ? (
+						<span className="msg-model" title="这条消息生成时用的模型">
+							{modelLabel}
+						</span>
+					) : null}
+					{message.steer ? <span className="sent-tag sent-tag-steer">引导</span> : null}
+					{message.role === "assistant" ? (
+						<span className="msg-time">{new Date(message.ts).toLocaleTimeString()}</span>
+					) : null}
+				</header>
+			) : null}
+			<div className="msg-bubble">
+				<div className="msg-body">
+					{toolBlocks.length > 0 ? (
+						<button type="button" className="msg-tools-toggle" onClick={() => setShowTools((value) => !value)}>
+							<span className={`msg-tools-caret${showTools ? " msg-tools-caret-open" : ""}`} aria-hidden="true" />
+							{toolBlocks.length} 次工具调用{showTools ? "（点击收起）" : "（点击查看过程）"}
+							{toolDurationMs > 0 ? ` · 耗时 ${formatDuration(toolDurationMs)}` : ""}
+						</button>
+					) : null}
+					{message.blocks.map((block, index) => {
+						if (block.kind === "thinking") {
+							// 收成一块：只在第一个思考块的位置渲染，后续思考块跳过
+							const firstThinking = message.blocks.findIndex((item) => item.kind === "thinking") === index;
+							return firstThinking ? (
+								<ThinkingGroup key="thinking" texts={thinkingTexts} durationMs={message.thinkingMs} />
+							) : null;
+						}
+						if (block.kind === "text") {
+							return block.text.trim() ? <Markdown key={index} text={block.text} /> : null;
+						}
+						if (block.kind === "tool") {
+							return showTools ? <ToolCard key={block.toolCallId} block={block} /> : null;
+						}
+						return (
+							<div key={index} className="block-error">
+								<span className="block-error-code">{block.code}</span>
+								<span className="block-error-text">{block.message}</span>
+							</div>
+						);
+					})}
+				</div>
+			</div>
+			{message.role === "user" ? (
+				<footer className="msg-user-foot">
+					<CopyButton text={text} title="复制这条消息" />
 					<button
 						type="button"
 						className="msg-action"
-						onClick={() => void navigator.clipboard?.writeText(text)}
-						title="复制这条消息"
+						onClick={() => setDraft(text)}
+						title="把这条消息放回输入框，改完再发"
 					>
-						⧉ 复制
+						↳ 从此处编辑
 					</button>
-					{message.role === "user" ? (
-						<button
-							type="button"
-							className="msg-action"
-							onClick={() => setDraft(text)}
-							title="把这条消息放回输入框，改完再发"
-						>
-							↳ 从此处编辑
-						</button>
-					) : null}
-				</div>
-			</header>
-			<div className="msg-body">
-				{toolBlocks.length > 0 ? (
-					<button type="button" className="msg-tools-toggle" onClick={() => setShowTools((value) => !value)}>
-						<span className={`msg-tools-caret${showTools ? " msg-tools-caret-open" : ""}`} aria-hidden="true" />
-						{toolBlocks.length} 次工具调用{showTools ? "（点击收起）" : "（点击查看过程）"}
-						{toolDurationMs > 0 ? ` · 耗时 ${formatDuration(toolDurationMs)}` : ""}
-					</button>
-				) : null}
-				{message.blocks.map((block, index) => {
-					if (block.kind === "thinking") {
-						// 收成一块：只在第一个思考块的位置渲染，后续思考块跳过
-						const firstThinking = message.blocks.findIndex((item) => item.kind === "thinking") === index;
-						return firstThinking ? (
-							<ThinkingGroup key="thinking" texts={thinkingTexts} durationMs={message.thinkingMs} />
-						) : null;
-					}
-					if (block.kind === "text") {
-						return block.text.trim() ? <Markdown key={index} text={block.text} /> : null;
-					}
-					if (block.kind === "tool") {
-						return showTools ? <ToolCard key={block.toolCallId} block={block} /> : null;
-					}
-					return (
-						<div key={index} className="block-error">
-							<span className="block-error-code">{block.code}</span>
-							<span className="block-error-text">{block.message}</span>
-						</div>
-					);
-				})}
-			</div>
+					<span className="topbar-spacer" />
+					<span className="msg-foot-stamp">{stampOf(message.ts)}</span>
+				</footer>
+			) : null}
 			{message.role === "assistant" ? (
 				<footer className="msg-foot">
 					{message.usage ? (
@@ -154,16 +152,11 @@ function MessageViewInner({
 							{withThousands(message.usage.input)} in · {withThousands(message.usage.output)} out
 							{message.usage.cacheRead > 0 ? ` · ${withThousands(message.usage.cacheRead)} cache R` : ""}
 							{message.usage.cacheWrite > 0 ? ` · ${withThousands(message.usage.cacheWrite)} cache W` : ""}
+							{/* 本次花费：pi 只在 provider 配了价格时给（拿不到就不显示，不编 0） */}
+							{message.usage.cost ? ` · ${formatCost(message.usage.cost)}` : ""}
 						</span>
 					) : null}
-					<button
-						type="button"
-						className="msg-foot-copy"
-						title="复制这条回复"
-						onClick={() => void navigator.clipboard?.writeText(text)}
-					>
-						⧉ 复制
-					</button>
+					<CopyButton text={text} className="msg-foot-copy" title="复制这条回复" />
 					<span className="topbar-spacer" />
 					<span className="msg-foot-stamp">{stampOf(message.ts)}</span>
 				</footer>
@@ -172,11 +165,16 @@ function MessageViewInner({
 	);
 }
 
+/** 花费：小额（<1 分）多给两位小数，否则「$0.00」会看不出差别 */
+function formatCost(cost: number): string {
+	return `$${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(2)}`;
+}
+
 /** 一条消息：抬头（引擎 / 模型）+ 可折叠的工具调用 + markdown 正文。
  *
  * memo 是手机端卡顿的关键：以前每条消息都自己 `useAppState()`，而 store 是
  * 「整份快照 + 草稿」一个对象 —— 在输入框里打**一个字**、或流式来一个 delta，
- * 全篇消息都会重渲染，markdown 得重新解析一遍。现在引擎/模型由外层算好传进来，
+ * 全篇消息都会重渲染，markdown 得重新解析一遍。现在模型名由外层算好传进来，
  * 内容没变的消息直接跳过。
  */
 const MessageView = memo(MessageViewInner);
@@ -184,8 +182,7 @@ const MessageView = memo(MessageViewInner);
 export function MessageList({
 	messages,
 	hasMoreBefore,
-	engine,
-	modelLabel: modelLabelProp,
+	modelLabels,
 	actions,
 	running,
 	pending = [],
@@ -194,9 +191,8 @@ export function MessageList({
 }: {
 	messages: UiMessage[];
 	hasMoreBefore: boolean;
-	engine: EngineName;
-	/** 当前模型的显示名（与底部模型选择器里那个名字**完全一致**），每条消息的抬头用 */
-	modelLabel?: string;
+	/** 模型 id → 显示名（取自快照的模型表，和底部选择器同一份数据） */
+	modelLabels?: Record<string, string>;
 	actions: ActionItem[];
 	running: boolean;
 	/** 「插队 / 排队」中、还没真正发出的消息 */
@@ -204,10 +200,15 @@ export function MessageList({
 	onRecallPending?: (id: string) => void;
 	onCancelPending?: (id: string) => void;
 }) {
-	// 抬头上的两个标签只算一次（以前是每条消息各自从 store 里拿）
-	const agentLabel = engine === "fake" ? "FAKE" : "PI";
-	// 抬头显示的名字由外层算好（取快照里 models 的 label），保证和底部选择器一字不差
-	const modelLabel = modelLabelProp ?? "";
+	// 抬头的模型名只算一次（以前是每条消息各自从 store 里拿）
+	/** 一条消息抬头显示什么模型：**用它自己生成时的模型**（历史不会跟当前选择变） */
+	const labelOf = (model: string | undefined): string => {
+		if (!model) return "";
+		const mapped = modelLabels?.[model];
+		if (mapped) return mapped;
+		// 模型表里没有（旧记录 / 已删除的 provider）：退化成去掉 provider 前缀的 id
+		return model.split("/").slice(1).join("/") || model;
+	};
 	// 空会话（新会话）什么都不画：标题/引导在输入框上方那块（NewChatMeta），这里留白
 	if (messages.length === 0) return null;
 
@@ -215,7 +216,7 @@ export function MessageList({
 		<div className="messages">
 			{hasMoreBefore ? <div className="more-before">更早的消息未在本页（分页在 M6）</div> : null}
 			{messages.map((message) => (
-				<MessageView key={message.id} message={message} agentLabel={agentLabel} modelLabel={modelLabel} />
+				<MessageView key={message.id} message={message} modelLabel={labelOf(message.model)} />
 			))}
 			{/* 建议操作紧跟在最后一条消息之后（ADR-0022）：它是「针对这一轮」的下一步 */}
 			{pending.length > 0 ? (

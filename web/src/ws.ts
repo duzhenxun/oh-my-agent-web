@@ -318,6 +318,8 @@ export function setSettings(payload: {
 	projectPrefs?: ProjectPrefs;
 	/** 会话级偏好：置顶 / 重命名 / 归档 */
 	sessionPrefs?: SessionPrefs;
+	/** 每个项目的默认模型（workspace → `provider/model`）：整表覆盖 */
+	defaultModels?: Record<string, string>;
 }): void {
 	send({ id: `req-${++seq}`, type: "set_settings", payload });
 }

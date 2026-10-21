@@ -40,7 +40,18 @@ export function looksBinary(bytes: Uint8Array, name: string): boolean {
 	return false;
 }
 
-export async function listDirectory(root: string, relPath: string): Promise<ListResult> {
+/**
+ * 列一层目录。
+ *
+ * `showHidden` 控制**点开头的隐藏文件**（.env / .github 之类）：默认只放行 .gitignore 与 .env.example
+ * （它们是项目说明的一部分），需要时由界面的「眼睛」按钮显式打开。
+ * `node_modules` / `dist` 这类永远不列（ADR：依赖与构建产物不该占满文件树）。
+ */
+export async function listDirectory(
+	root: string,
+	relPath: string,
+	options: { showHidden?: boolean } = {},
+): Promise<ListResult> {
 	const target = relPath === "" ? root : join(root, relPath);
 	const safe = resolveInsideRoot(root, target, realpathSync);
 	if (!safe.ok) return { ok: false, error: safe.reason };
@@ -49,7 +60,13 @@ export async function listDirectory(root: string, relPath: string): Promise<List
 		const items = await readdir(safe.path, { withFileTypes: true });
 		const entries: FileEntry[] = items
 			.filter((item) => !IGNORED_ENTRIES.has(item.name))
-			.filter((item) => !item.name.startsWith(".") || item.name === ".gitignore" || item.name === ".env.example")
+			.filter(
+				(item) =>
+					options.showHidden === true ||
+					!item.name.startsWith(".") ||
+					item.name === ".gitignore" ||
+					item.name === ".env.example",
+			)
 			.map((item) => ({ name: item.name, path: join(relPath, item.name), isDir: item.isDirectory() }));
 		return {
 			ok: true,

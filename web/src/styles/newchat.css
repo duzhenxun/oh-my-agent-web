@@ -69,13 +69,11 @@
 	text-align: center;
 }
 
-@media (max-width: 900px), (pointer: coarse) and (max-width: 1366px) {
-	.newchat-hero {
-		gap: 14px;
-		padding: 16px 8px;
-	}
+.is-mobile-shell .newchat-hero {
+	gap: 14px;
+	padding: 16px 8px;
+}
 
-	.newchat-hello {
-		font-size: 21px;
-	}
+.is-mobile-shell .newchat-hello {
+	font-size: 21px;
 }

@@ -11,8 +11,9 @@
  *   4. 其它 → 401 + `WWW-Authenticate`，浏览器弹窗
  */
 import { createHash, timingSafeEqual } from "node:crypto";
+import { BRAND_NAME } from "../brand.js";
 
-export const AUTH_REALM = "Agent Web";
+export const AUTH_REALM = BRAND_NAME;
 
 /**
  * 登录成功后下发的 cookie 值：`sha256(密码)`，不含明文密码。

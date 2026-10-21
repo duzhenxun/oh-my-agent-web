@@ -29,6 +29,7 @@
 @import "./styles/sent-queue.css";
 @import "./styles/messages.css";
 @import "./styles/files.css";
+@import "./styles/files-toolbar.css";
 @import "./styles/preview-panel.css";
 @import "./styles/overlay.css";
 @import "./styles/templates.css";
@@ -36,4 +37,3 @@
 @import "./styles/highlight.css";
 @import "./styles/markdown.css";
 @import "./styles/responsive.css";
-@import "./styles/tablet.css";

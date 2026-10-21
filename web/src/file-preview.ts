@@ -68,9 +68,6 @@ export function describeRange(range: LineRange | null): string {
 	return range.start === range.end ? `第 ${range.start} 行` : `第 ${range.start}–${range.end} 行`;
 }
 
-/** 高亮行数上限：再大就退化成纯文本（避免几千行一起跑词法分析） */
-export const MAX_HIGHLIGHT_LINES = 800;
-
 /** 可折叠区间（行号 0-based，闭区间）：`{ … }` / `[ … ]` 这种块 */
 export type FoldRange = { start: number; end: number };
 

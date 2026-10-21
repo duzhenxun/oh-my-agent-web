@@ -1,16 +1,19 @@
 /**
- * 项目「⋯」菜单的内容（贴顶/移动/重命名/定位/终端/Finder）。
+ * 项目菜单的内容（新建会话/贴顶/移动/重命名/定位/终端/Finder）。
+ * 两种打开方式共用这一张菜单：项目名上**点右键**，或点行尾那个 **＋**。
  *
  * 单独成文件的原因：菜单项有 7 个，塞回 Sidebar 会破 400 行护栏（ADR-0010）；
  * 定位（portal + fixed）在 ProjectMenuPopover 里，这里只管按钮与回调。
  */
-import { ProjectMenuPopover } from "./ProjectMenuPopover.tsx";
+import { ProjectMenuPopover, type MenuPoint } from "./ProjectMenuPopover.tsx";
 
 export function ProjectMenu({
-	anchor,
+	point,
 	onClose,
 	pinned,
 	onTogglePin,
+	/** 在这个项目下新建会话（菜单第二项，紧跟置顶） */
+	onNewSession,
 	onMoveUp,
 	onMoveDown,
 	onRename,
@@ -20,10 +23,12 @@ export function ProjectMenu({
 	onDeleteAll,
 	sessionCount,
 }: {
-	anchor: HTMLElement | null;
+	/** 右键位置：菜单从鼠标处弹出 */
+	point: MenuPoint | null;
 	onClose: () => void;
 	pinned: boolean;
 	onTogglePin: () => void;
+	onNewSession: () => void;
 	onMoveUp: () => void;
 	onMoveDown: () => void;
 	onRename: () => void;
@@ -42,9 +47,12 @@ export function ProjectMenu({
 	};
 
 	return (
-		<ProjectMenuPopover anchor={anchor} onClose={onClose}>
+		<ProjectMenuPopover point={point} onClose={onClose}>
 			<button type="button" className="proj-menu-item" onClick={act(onTogglePin)}>
 				{pinned ? "📌 取消置顶" : "📌 置顶项目"}
+			</button>
+			<button type="button" className="proj-menu-item" title="在这个项目下开一条新会话" onClick={act(onNewSession)}>
+				💬 新建会话
 			</button>
 			<button type="button" className="proj-menu-item" title="在同组内上移一格" onClick={act(onMoveUp)}>
 				↑ 上移

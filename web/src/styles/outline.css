@@ -92,15 +92,17 @@
 	font-size: 13px;
 }
 
-/* 文件区：默认收起时只有一行标题；展开后下拉单独一行 */
+/* 文件区：默认收起时只有一行标题；展开后「下拉 + 分支」单独一行、搜索框再单独一行 */
 .side-files-closed {
 	flex: none;
 	min-height: 0;
 }
 
+/* 下拉框要在这一行里让位给右边的分支标签，所以宽度自适应而不是 100% */
 .side-files .side-files-select {
-	width: 100%;
-	flex: none;
+	flex: 1 1 auto;
+	width: auto;
+	min-width: 0;
 }
 
 /* 侧栏标题不要换行（「最近项目（13）」曾被挤成竖排） */
@@ -137,8 +139,6 @@
 	padding-right: 26px;
 }
 
-@media (max-width: 900px), (pointer: coarse) and (max-width: 1366px) {
-	.workspace .messages {
-		padding-right: 8px;
-	}
+.is-mobile-shell .workspace .messages {
+	padding-right: 8px;
 }

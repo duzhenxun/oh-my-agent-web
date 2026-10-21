@@ -3,7 +3,7 @@ self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
 
 self.addEventListener("push", (event) => {
-	let data = { title: "Agent Web", body: "有新的消息", url: "/" };
+	let data = { title: "oh-my-agent-web", body: "有新的消息", url: "/" };
 	try {
 		if (event.data) data = { ...data, ...event.data.json() };
 	} catch {

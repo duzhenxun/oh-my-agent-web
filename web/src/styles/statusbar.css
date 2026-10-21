@@ -32,24 +32,19 @@
 }
 
 /* 手机上状态栏会很宽：让它横向可滚动，别把布局撑破 */
-@media (max-width: 900px), (pointer: coarse) and (max-width: 1366px) {
-	.statusbar {
-		/* 只占右列宽度（左边栏一路到底） */
-		overflow-x: auto;
-		scrollbar-width: none;
-		white-space: nowrap;
-	}
+.is-mobile-shell .statusbar {
+	overflow-x: auto;
+	scrollbar-width: none;
+	white-space: nowrap;
+}
 
-	.statusbar::-webkit-scrollbar {
-		display: none;
-	}
+.is-mobile-shell .statusbar::-webkit-scrollbar {
+	display: none;
 }
 
 /* 手机：只藏「对话数」（其余：项目 / 引擎 / 工作中 / 排队 / 上下文 都留着） */
-@media (max-width: 900px), (pointer: coarse) and (max-width: 1366px) {
-	.statusbar .status-conv {
-		display: none;
-	}
+.is-mobile-shell .statusbar .status-conv {
+	display: none;
 }
 
 /* 上下文胶囊：点一下从**上方**弹出会话信息（浮层挂在它自己身上，手机也点得开） */
@@ -104,42 +99,40 @@
  * 其余（连接、引擎、对话数、工作中、排队、token）全部收起来 ——
  * 模型 / 技能 / 推送 / 设置 都在顶栏右上角；左侧栏用顶栏的 ☰ 开合。
  * ------------------------------------------------------------------------- */
-@media (max-width: 900px), (pointer: coarse) and (max-width: 1366px) {
-	.statusbar {
-		position: relative;
-		justify-content: center;
-		gap: 4px;
-		/* 右边给「顶部」按钮留出位置（它是绝对定位贴右边的） */
-		padding-left: 6px;
-		padding-right: 58px;
-	}
+.is-mobile-shell .statusbar {
+	position: relative;
+	justify-content: center;
+	gap: 4px;
+	/* 右边给「顶部」按钮留出位置（它是绝对定位贴右边的） */
+	padding-left: 6px;
+	padding-right: 58px;
+}
 
-	/* 「顶部」固定在右下角最右边（手机上也一样），中间那组仍然居中 */
-	.statusbar > .status-toggle {
-		position: absolute;
-		right: 6px;
-		top: 50%;
-		transform: translateY(-50%);
-	}
+/* 「顶部」固定在右下角最右边（手机上也一样），中间那组仍然居中 */
+.is-mobile-shell .statusbar > .status-toggle {
+	position: absolute;
+	right: 6px;
+	top: 50%;
+	transform: translateY(-50%);
+}
 
-	.statusbar > .status-spacer {
-		display: none;
-	}
+.is-mobile-shell .statusbar > .status-spacer {
+	display: none;
+}
 
-	/* 手机上把这几项的 emoji 收起来，省出宽度给文字（图标在小屏上是纯占位） */
-	.statusbar .status-ico {
-		display: none;
-	}
+/* 手机上把这几项的 emoji 收起来，省出宽度给文字（图标在小屏上是纯占位） */
+.is-mobile-shell .statusbar .status-ico {
+	display: none;
+}
 
-	/* 项目名会很长（比如「活动消耗查询」），窄屏上要能自己缩，别把整排顶出屏幕 */
-	.statusbar > .status-path {
-		flex: 0 1 auto;
-		min-width: 0;
-		max-width: 20vw;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
+/* 项目名会很长（比如「活动消耗查询」），窄屏上要能自己缩，别把整排顶出屏幕 */
+.is-mobile-shell .statusbar > .status-path {
+	flex: 0 1 auto;
+	min-width: 0;
+	max-width: 20vw;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 /* 「工作中」左边的小环：有回合在跑就转，蓝圈；闲着就是个淡灰静止环 */
@@ -232,11 +225,9 @@
 }
 
 /* 手机：状态栏只剩四项 + 这一颗，圆环稍微收一点 */
-@media (max-width: 900px), (pointer: coarse) and (max-width: 1366px) {
-	.status-context {
-		padding: 2px 7px 2px 5px;
-		font-size: 11px;
-	}
+.is-mobile-shell .status-context {
+	padding: 2px 7px 2px 5px;
+	font-size: 11px;
 }
 
 /* 超窄屏（≤380px）：顶部开关只留箭头图标；上下文只留「已用」，把位置让出来 */

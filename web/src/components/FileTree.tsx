@@ -13,10 +13,16 @@ type Node = {
 	error: string | null;
 };
 
-async function fetchList(path: string, root: string | null): Promise<{ entries?: FileEntry[]; error?: string }> {
+async function fetchList(
+	path: string,
+	root: string | null,
+	showHidden = false,
+): Promise<{ entries?: FileEntry[]; error?: string }> {
 	try {
 		const response = await fetch(
-			`/api/files/list?path=${encodeURIComponent(path)}${root ? `&root=${encodeURIComponent(root)}` : ""}`,
+			`/api/files/list?path=${encodeURIComponent(path)}${root ? `&root=${encodeURIComponent(root)}` : ""}${
+				showHidden ? "&hidden=1" : ""
+			}`,
 		);
 		const body = (await response.json()) as { entries?: FileEntry[]; error?: { message?: string } };
 		if (!response.ok) return { error: body.error?.message ?? `HTTP ${response.status}` };
@@ -30,7 +36,16 @@ async function fetchList(path: string, root: string | null): Promise<{ entries?:
  * 文件列表（M4）：当前项目（= 当前会话的工作区）的目录树，**懒加载**（点开才列下一层）。
  * 点文件 → 打开预览（`FilePreview`）；点目录 → 展开/收起。
  */
-export function FileTree({ root, onOpenFile }: { root: string | null; onOpenFile: (path: string) => void }) {
+export function FileTree({
+	root,
+	showHidden = false,
+	onOpenFile,
+}: {
+	root: string | null;
+	/** 「眼睛」开关：是否列出点开头的隐藏文件 */
+	showHidden?: boolean;
+	onOpenFile: (path: string) => void;
+}) {
 	const [nodes, setNodes] = useState<Node[]>([]);
 	const [error, setError] = useState<string | null>(null);
 
@@ -38,7 +53,7 @@ export function FileTree({ root, onOpenFile }: { root: string | null; onOpenFile
 		setNodes([]);
 		setError(null);
 		if (!root) return;
-		void fetchList("", root).then(({ entries, error: failure }) => {
+		void fetchList("", root, showHidden).then(({ entries, error: failure }) => {
 			if (failure) {
 				setError(failure);
 				return;
@@ -54,7 +69,7 @@ export function FileTree({ root, onOpenFile }: { root: string | null; onOpenFile
 				})),
 			);
 		});
-	}, [root]);
+	}, [root, showHidden]);
 
 	const toggleDir = async (index: number) => {
 		const node = nodes[index];
@@ -64,7 +79,7 @@ export function FileTree({ root, onOpenFile }: { root: string | null; onOpenFile
 			return;
 		}
 		setNodes((current) => current.map((item, i) => (i === index ? { ...item, expanded: true, loading: true } : item)));
-		const { entries, error: failure } = await fetchList(node.entry.path, root);
+		const { entries, error: failure } = await fetchList(node.entry.path, root, showHidden);
 		setNodes((current) => {
 			const next: Node[] = [];
 			current.forEach((item, i) => {

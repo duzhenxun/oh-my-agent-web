@@ -14,6 +14,7 @@ import {
 	MAX_QUICK_PHRASES,
 	MAX_QUICK_PHRASE_CHARS,
 	mergeSettings,
+	normalizeDefaultModels,
 	normalizeQuickPhrases,
 	parseSettings,
 	settingsPath,
@@ -59,6 +60,32 @@ describe("normalizeQuickPhrases", () => {
 	});
 });
 
+describe("normalizeDefaultModels（项目默认模型）", () => {
+	it("只收绝对路径键 + `provider/model` 形式的值", () => {
+		expect(
+			normalizeDefaultModels({
+				"/repo/a": "p/x",
+				"relative/path": "p/y", // 键不是绝对路径 → 丢
+				"/repo/b": "只有模型名没有厂家", // 切不了 → 丢
+				"/repo/c": "   ",
+				"/repo/d": 7,
+			}),
+		).toEqual({ "/repo/a": "p/x" });
+	});
+
+	it("非对象输入回空表（坏 settings.json 不致命）", () => {
+		expect(normalizeDefaultModels(null)).toEqual({});
+		expect(normalizeDefaultModels(["/repo/a"])).toEqual({});
+	});
+
+	it("mergeSettings 合并后能读回来（sets/clear 都走它）", () => {
+		const merged = mergeSettings(defaultSettings(), { defaultModels: { "/repo/a": "p/x" } });
+		expect(merged.defaultModels).toEqual({ "/repo/a": "p/x" });
+		// 传空表 = 全清（判断是「有没有这个键」，不是「值真不真」）
+		expect(mergeSettings(merged, { defaultModels: {} }).defaultModels).toEqual({});
+	});
+});
+
 describe("mergeSettings", () => {
 	it("只改给出的字段", () => {
 		const current = defaultSettings();
@@ -68,6 +95,7 @@ describe("mergeSettings", () => {
 				templates: [],
 				projectPrefs: { order: [], pinned: [], aliases: {} },
 				sessionPrefs: { pinned: [], archived: [] },
+				defaultModels: {},
 			}).quickPhrasesEnabled,
 		).toBe(false);
 		expect(
@@ -76,6 +104,7 @@ describe("mergeSettings", () => {
 				templates: [],
 				projectPrefs: { order: [], pinned: [], aliases: {} },
 				sessionPrefs: { pinned: [], archived: [] },
+				defaultModels: {},
 			}).quickPhrases,
 		).toEqual(current.quickPhrases);
 	});
@@ -107,6 +136,7 @@ describe("parseSettings", () => {
 				templates: [],
 				projectPrefs: { order: [], pinned: [], aliases: {} },
 				sessionPrefs: { pinned: [], archived: [] },
+				defaultModels: {},
 			}),
 		);
 		expect(parsed).toEqual({
@@ -115,6 +145,7 @@ describe("parseSettings", () => {
 			templates: [],
 			projectPrefs: { order: [], pinned: [], aliases: {} },
 			sessionPrefs: { pinned: [], archived: [] },
+			defaultModels: {},
 		});
 	});
 });
@@ -128,6 +159,7 @@ describe("文件存储", () => {
 			templates: [],
 			projectPrefs: { order: [], pinned: [], aliases: {} },
 			sessionPrefs: { pinned: [], archived: [] },
+			defaultModels: {},
 		});
 		expect(existsSync(settingsPath(dir))).toBe(true);
 		expect(existsSync(`${settingsPath(dir)}.tmp`)).toBe(false);
@@ -137,6 +169,7 @@ describe("文件存储", () => {
 			templates: [],
 			projectPrefs: { order: [], pinned: [], aliases: {} },
 			sessionPrefs: { pinned: [], archived: [] },
+			defaultModels: {},
 		});
 	});
 
@@ -156,6 +189,7 @@ describe("文件存储", () => {
 			templates: [],
 			projectPrefs: { order: [], pinned: [], aliases: {} },
 			sessionPrefs: { pinned: [], archived: [] },
+			defaultModels: {},
 		});
 		const parsed = JSON.parse(readFileSync(settingsPath(dir), "utf8"));
 		expect(parsed.v).toBe(1);
@@ -176,6 +210,7 @@ describe("内存存储", () => {
 			templates: [],
 			projectPrefs: { order: [], pinned: [], aliases: {} },
 			sessionPrefs: { pinned: [], archived: [] },
+			defaultModels: {},
 		});
 		expect(await store.load()).toEqual({
 			quickPhrases: ["a"],
@@ -183,6 +218,7 @@ describe("内存存储", () => {
 			templates: [],
 			projectPrefs: { order: [], pinned: [], aliases: {} },
 			sessionPrefs: { pinned: [], archived: [] },
+			defaultModels: {},
 		});
 		await store.save({
 			quickPhrases: ["b"],
@@ -190,6 +226,7 @@ describe("内存存储", () => {
 			templates: [],
 			projectPrefs: { order: [], pinned: [], aliases: {} },
 			sessionPrefs: { pinned: [], archived: [] },
+			defaultModels: {},
 		});
 		expect((await store.load()).quickPhrases).toEqual(["b"]);
 	});

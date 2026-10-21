@@ -8,6 +8,7 @@
  */
 import type { Express } from "express";
 import { VAPID_PUBLIC_KEY, type PushStore } from "./push.js";
+import { BRAND_NAME } from "../brand.js";
 
 type Body = {
 	endpoint?: unknown;
@@ -97,7 +98,7 @@ export function registerPushRoutes(app: Express, options: { store: PushStore }):
 			: undefined;
 		const result = await options.store.send(
 			{
-				title: "Agent Web 测试推送",
+				title: `${BRAND_NAME} 测试推送`,
 				body: "如果你看到这条，说明订阅与推送链路都通了。",
 				url: "/",
 				tag: "agent-web-test",

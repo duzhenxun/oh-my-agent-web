@@ -20,6 +20,8 @@ export function createConversationFactory(options: {
 		conversations: ConversationMeta[];
 		messages: Record<string, UiMessage[]>;
 		activeId: string | null;
+		/** 界面上当前选中的模型（新会话要沿用它，否则选择器显示的和实际跑的不是一个） */
+		model: string | null;
 		workspace: string;
 		files: { root: string; treeVersion: number } | null;
 	};
@@ -28,6 +30,8 @@ export function createConversationFactory(options: {
 	nextId: (prefix: string) => string;
 	now: () => number;
 	titleChars: number;
+	/** 这个项目该用哪个模型起头（runtime 给：显式默认 → 该项目最近用过的） */
+	defaultModelFor?: (workspace: string) => string | null;
 	/** 新会话就绪后回调（runtime 用它拉模型列表） */
 	onReady?: (conversationId: string) => Promise<void> | void;
 }): ConversationFactory {
@@ -44,6 +48,19 @@ export function createConversationFactory(options: {
 			const title = seedText.replace(/\s+/g, " ").trim().slice(0, options.titleChars) || "新对话";
 
 			const { sessionPath } = await options.engine.createSession({ sessionId: id, workspace });
+			// SDK 建会话时用的是**引擎默认模型**，必须显式切一下，否则就是「选的 A、跑的 B」。
+			// 优先级：本项目的默认模型（用户设过）> 本项目最近一个会话用的 > 界面上选着的
+			const wanted = options.defaultModelFor?.(workspace) ?? state.model;
+			if (wanted) {
+				const switched = (await options.engine.switchModel?.(id, wanted)) ?? false;
+				if (switched)
+					state.model = wanted; // 选择器跟着真值走
+				else {
+					// 切不过去（模型被删/没鉴权）：让选择器回到真实值，别继续骗人
+					const current = (await options.engine.currentModel?.(id)) ?? null;
+					state.model = current ? `${current.provider}/${current.model}` : null;
+				}
+			}
 			options.opener.register({ id, sessionPath, title, workspace });
 			state.messages[id] = [];
 			state.conversations = [

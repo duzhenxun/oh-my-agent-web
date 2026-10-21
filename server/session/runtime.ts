@@ -124,6 +124,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		nextId,
 		now,
 		titleChars,
+		defaultModelFor: (workspace) => state.settings.defaultModels[workspace] ?? piOpener.projectModel(workspace), // 项目默认 > 该项目最近会话，见 conversation-create
 		onReady: (id) => {
 			void models.refresh(id);
 			void refreshStats();
@@ -242,10 +243,10 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 
 		refreshPiSessions: (force?: boolean) => piRefresher.refresh(force),
 		refreshProviders: async () => {
-			// pi 的模型表挂在会话上：先保证有会话，再让它重读配置
+			// pi 的模型表挂在会话上：先保证有会话，再重读配置；模型表也一起更新
+			// （provider 面板里的「内置」分组就是从它推出来的）
 			await options.engine.prewarm?.();
 			await options.engine.reloadModels?.();
-			// 模型表也要跟着更新：provider 列表里的「内置」分组是从它推出来的
 			const models = (await options.engine.listModels?.()) ?? [];
 			if (models.length > 0) state.models = models;
 			if (options.loadProviders) state.providers = await options.loadProviders();

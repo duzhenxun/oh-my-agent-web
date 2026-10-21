@@ -129,7 +129,27 @@ export type ClientSettings = {
 	projectPrefs: ProjectPrefs;
 	/** 会话级偏好：置顶 / 重命名 / 归档 */
 	sessionPrefs: SessionPrefs;
+	/** 每个项目的默认模型（workspace → `provider/model`）：新会话按它起步 */
+	defaultModels: Record<string, string>;
 };
+
+export const MAX_DEFAULT_MODELS = 200;
+
+/** 纯函数：归一化「项目默认模型」——只收绝对路径键与非空模型 id，超出上限就截断 */
+export function normalizeDefaultModels(input: unknown): Record<string, string> {
+	const out: Record<string, string> = {};
+	if (typeof input !== "object" || input === null) return out;
+	for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
+		if (!key.startsWith("/")) continue;
+		if (typeof value !== "string") continue;
+		const modelId = value.trim();
+		// 必须是 `provider/model`：只写一半的话服务端没法切
+		if (modelId === "" || !modelId.includes("/")) continue;
+		out[key] = modelId;
+		if (Object.keys(out).length >= MAX_DEFAULT_MODELS) break;
+	}
+	return out;
+}
 
 export const MAX_PROJECT_PREFS = 500;
 export const MAX_ALIAS_CHARS = 40;
@@ -187,6 +207,7 @@ export function defaultSettings(): ClientSettings {
 		templates: DEFAULT_TEMPLATES.map((template) => ({ ...template })),
 		projectPrefs: { order: [], pinned: [], aliases: {} },
 		sessionPrefs: { pinned: [], archived: [] },
+		defaultModels: {},
 	};
 }
 
@@ -259,6 +280,7 @@ export function mergeSettings(current: ClientSettings, patch: unknown): ClientSe
 	else if ("templates" in record) next.templates = normalizeTemplates(record.templates);
 	if ("projectPrefs" in record) next.projectPrefs = normalizeProjectPrefs(record.projectPrefs);
 	if ("sessionPrefs" in record) next.sessionPrefs = normalizeSessionPrefs(record.sessionPrefs);
+	if ("defaultModels" in record) next.defaultModels = normalizeDefaultModels(record.defaultModels);
 	return next;
 }
 

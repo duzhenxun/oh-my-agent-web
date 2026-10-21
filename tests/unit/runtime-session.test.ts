@@ -154,6 +154,7 @@ describe("M3.5-P1：客户端设置（ADR-0020）", () => {
 			templates: [],
 			projectPrefs: { order: [], pinned: [], aliases: {} },
 			sessionPrefs: { pinned: [], archived: [] },
+			defaultModels: {},
 		});
 		const { runtime } = harness(createMemoryRuleStore(), { settings: store });
 		await runtime.init();
@@ -165,6 +166,7 @@ describe("M3.5-P1：客户端设置（ADR-0020）", () => {
 			templates: [],
 			projectPrefs: { order: [], pinned: [], aliases: {} },
 			sessionPrefs: { pinned: [], archived: [] },
+			defaultModels: {},
 		});
 		expect(result.ok).toBe(true);
 		expect(runtime.snapshot().settings).toEqual({
@@ -173,6 +175,7 @@ describe("M3.5-P1：客户端设置（ADR-0020）", () => {
 			templates: [],
 			projectPrefs: { order: [], pinned: [], aliases: {} },
 			sessionPrefs: { pinned: [], archived: [] },
+			defaultModels: {},
 		});
 		// 真的落盘了
 		expect(await store.load()).toEqual({
@@ -181,6 +184,7 @@ describe("M3.5-P1：客户端设置（ADR-0020）", () => {
 			templates: [],
 			projectPrefs: { order: [], pinned: [], aliases: {} },
 			sessionPrefs: { pinned: [], archived: [] },
+			defaultModels: {},
 		});
 	});
 
@@ -191,6 +195,7 @@ describe("M3.5-P1：客户端设置（ADR-0020）", () => {
 			templates: [],
 			projectPrefs: { order: [], pinned: [], aliases: {} },
 			sessionPrefs: { pinned: [], archived: [] },
+			defaultModels: {},
 		});
 		const { runtime } = harness(createMemoryRuleStore(), { settings: store });
 		await runtime.init();

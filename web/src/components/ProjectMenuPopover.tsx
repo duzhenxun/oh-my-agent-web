@@ -1,20 +1,28 @@
 /**
- * 项目行的「⋯」菜单（浮窗）。
+ * 项目 / 会话的菜单（浮窗）。
  *
  * 为什么要 portal + fixed：菜单原来直接放在 `details` 里，而侧栏列表是 `overflow: auto`，
  * 菜单一旦比剩余高度长就被**裁掉**（截图里那次只剩三项，下面被「文件管理」挡住）。
- * 现在用 portal 挂到 body、按锚点按钮的位置算坐标，并自动夹进视口，永远浮在最上层。
+ * 现在用 portal 挂到 body、按锚点按钮（或右键位置）算坐标，并自动夹进视口，永远浮在最上层。
  */
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+export type MenuPoint = { x: number; y: number };
+
 export function ProjectMenuPopover({
 	anchor,
+	point,
+	className,
 	onClose,
 	children,
 }: {
 	/** 触发它的按钮（用来定位） */
-	anchor: HTMLElement | null;
+	anchor?: HTMLElement | null;
+	/** 右键位置（优先于 anchor）：菜单就从鼠标那儿弹出来 */
+	point?: MenuPoint | null;
+	/** 额外的样式类（会话菜单用 `.pi-menu` 的配色，定位仍走 `.proj-menu-floating`） */
+	className?: string;
 	onClose: () => void;
 	children: React.ReactNode;
 }) {
@@ -25,19 +33,31 @@ export function ProjectMenuPopover({
 		visible: false,
 	});
 
-	// 打开后量一次：贴按钮右下，超出视口就往上/往左翻
+	// 打开后量一次：右键就给鼠标位置，按钮就贴它右下；贴边时往上/往左翻
 	useLayoutEffect(() => {
 		const box = boxRef.current;
-		if (!anchor || !box) return;
-		const a = anchor.getBoundingClientRect();
+		if (!box) return;
+		if (!point && !anchor) return;
 		const size = box.getBoundingClientRect();
 		const margin = 8;
-		let left = a.right - size.width;
-		if (left < margin) left = a.left;
-		let top = a.bottom + 4;
-		if (top + size.height > window.innerHeight - margin) top = Math.max(margin, a.top - size.height - 4);
-		setPos({ left: Math.min(left, window.innerWidth - size.width - margin), top, visible: true });
-	}, [anchor]);
+		let left: number;
+		let top: number;
+		if (point) {
+			left = point.x;
+			top = point.y;
+		} else {
+			const a = (anchor as HTMLElement).getBoundingClientRect();
+			left = a.right - size.width;
+			top = a.bottom + 4;
+		}
+		if (left + size.width > window.innerWidth - margin) left = window.innerWidth - size.width - margin;
+		if (left < margin) left = margin;
+		if (top + size.height > window.innerHeight - margin) {
+			top = point ? point.y - size.height : (anchor as HTMLElement).getBoundingClientRect().top - size.height - 4;
+		}
+		if (top < margin) top = margin;
+		setPos({ left, top, visible: true });
+	}, [anchor, point]);
 
 	// 点外面 / 按 Esc 关掉；滚动或窗口尺寸变化也关（否则菜单会飘在错的位置）
 	useEffect(() => {
@@ -66,7 +86,7 @@ export function ProjectMenuPopover({
 	return createPortal(
 		<div
 			ref={boxRef}
-			className="proj-menu proj-menu-floating"
+			className={`${className ?? "proj-menu"} proj-menu-floating`}
 			role="menu"
 			style={{ left: pos.left, top: pos.top, visibility: pos.visible ? "visible" : "hidden" }}
 			onContextMenu={(event) => event.preventDefault()}

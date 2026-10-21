@@ -127,31 +127,6 @@
 	font-size: 13px;
 }
 
-/* 项目标题前的「全部展开/收起」箭头 */
-.project-collapse-all {
-	flex: none;
-	width: 20px;
-	height: 20px;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	border: 1px solid var(--border);
-	border-radius: 6px;
-	background: var(--bg-elev);
-	color: var(--text-dim);
-	font: inherit;
-	font-size: 14px;
-	line-height: 1;
-	cursor: pointer;
-	padding: 0;
-	margin-right: 2px;
-}
-
-.project-collapse-all:hover {
-	color: var(--accent);
-	border-color: var(--accent-dim);
-}
-
 /* 归档视图打开时，项目列表整块让位（连空壳也不占 flex 空间） */
 .sidebar-list-hidden {
 	display: none;

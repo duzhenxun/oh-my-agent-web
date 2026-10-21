@@ -1,107 +1,114 @@
 /*
- * 手机 / 窄屏适配（最后加载，专门覆盖前面的固定尺寸）。
+ * 单栏（手机）适配（最后加载，专门覆盖前面的固定尺寸）。
  *
- * 三栏在手机上放不下，所以按"抽屉 + 整屏"的思路收缩：
- *   - 左栏（项目/文件树）变成覆盖式抽屉，宽度 86vw 封顶 320px；
+ * 开关是 `<html class="is-mobile-shell">`，由 `web/src/mobile-shell.ts` 判定：
+ *   **手机 UA**（iPhone / Android Mobile…，横屏 900px 也算）或 **宽度 ≤400px**。
+ * 不用媒体查询的原因：媒体查询只能看宽度，判断不了「这是手机」。
+ * 这段负责单栏时的形态：
+ *   - 左栏（项目/文件树）变成覆盖式抽屉，**占满整屏**；
  *   - 右侧预览/终端变成整屏（它是"第二个页面"的性质）；
  *   - 顶栏允许换行、底部状态栏隐藏次要信息；
  *   - 输入区与消息的左右内边距收窄。
- * 断点取 900px：再窄三栏就必然挤成一团，再宽笔记本仍用桌面布局。
  */
 
-@media (max-width: 900px), (pointer: coarse) and (max-width: 1366px) {
-	/* 顶栏：允许换行，缩小间距 */
-	.appbar {
-		flex-wrap: wrap;
-		gap: 6px;
-		padding: 6px 8px;
-	}
+/* 顶栏：允许换行，缩小间距 */
+.is-mobile-shell .appbar {
+	flex-wrap: wrap;
+	gap: 6px;
+	padding: 6px 8px;
+}
 
-	.appbar .brand {
-		font-size: 16px;
-	}
+.is-mobile-shell .appbar .brand {
+	font-size: 16px;
+}
 
-	/* 左栏：变成覆盖抽屉（不再占据文档流宽度） */
+/* 左栏：变成覆盖抽屉（不再占据文档流宽度） */
+.is-mobile-shell .side-host {
+	position: fixed;
+	top: 0;
+	left: 0;
+	bottom: 0;
+	z-index: 40;
+	width: min(86vw, 320px) !important;
+	border-radius: 0;
+	box-shadow: 0 0 0 100vmax rgb(0 0 0 / 35%);
+}
+
+/* 收起态的竖条仍然留在文档流里，方便点开 */
+.is-mobile-shell .activity-bar {
+	width: 40px;
+}
+
+/* 右侧预览 / 终端：整屏（相当于第二个页面） */
+.is-mobile-shell .preview-panel {
+	position: fixed;
+	inset: 0;
+	width: 100% !important;
+	z-index: 30;
+	border-radius: 0;
+	border: none;
+}
+
+.is-mobile-shell .preview-resizer,
+.is-mobile-shell .preview-rail {
+	display: none;
+}
+
+/* 对话区：收窄内边距，去掉左侧 20px 的"留白" */
+.is-mobile-shell .workspace {
+	padding: 0 8px 8px;
+}
+
+.is-mobile-shell .workspace .main {
+	padding: 0 4px;
+}
+
+/* 输入区：允许换行（横向滚动会出现孤立的分隔线），分隔线在换行后没意义 → 隐藏 */
+.is-mobile-shell .composer-topbar {
+	flex-wrap: wrap;
+}
+
+.is-mobile-shell .composer-topbar .tool-sep {
+	display: none;
+}
+
+.is-mobile-shell .composer-input {
+	padding-right: 92px;
+}
+
+/* 状态栏：高度固定 24px、字 10px（跟桌面一致） */
+.is-mobile-shell .statusbar {
+	gap: 6px;
+	height: 26px;
+	padding: 0 8px;
+	font-size: 12px;
+}
+
+/* 手机上用户消息同样整行（与桌面一致，别再单独限宽） */
+.is-mobile-shell .msg-user {
+	max-width: none;
+}
+
+/* 提示词模板 / 技能等大弹窗：整屏 */
+.is-mobile-shell .modal.big-modal,
+.is-mobile-shell .modal.tpl-modal,
+.is-mobile-shell .modal.new-project,
+.is-mobile-shell .modal.file-preview {
+	width: 100vw;
+	height: 100vh;
+	max-height: none;
+	border-radius: 0;
+}
+
+/* 大纲窄条在手机上没必要（点不动、还挡内容） */
+.is-mobile-shell .outline {
+	display: none;
+}
+
+/* 400~600：还是双栏（侧栏 + 对话并排），但窗口很窄 —— 侧栏别吃掉一半以上 */
+@media (min-width: 401px) and (max-width: 600px) {
 	.side-host {
-		position: fixed;
-		top: 0;
-		left: 0;
-		bottom: 0;
-		z-index: 40;
-		width: min(86vw, 320px) !important;
-		border-radius: 0;
-		box-shadow: 0 0 0 100vmax rgb(0 0 0 / 35%);
-	}
-
-	/* 收起态的竖条仍然留在文档流里，方便点开 */
-	.activity-bar {
-		width: 40px;
-	}
-
-	/* 右侧预览 / 终端：整屏（相当于第二个页面） */
-	.preview-panel {
-		position: fixed;
-		inset: 0;
-		width: 100% !important;
-		z-index: 30;
-		border-radius: 0;
-		border: none;
-	}
-
-	.preview-resizer,
-	.preview-rail {
-		display: none;
-	}
-
-	/* 对话区：收窄内边距，去掉左侧 20px 的"留白" */
-	.workspace {
-		padding: 0 8px 8px;
-	}
-
-	.workspace .main {
-		padding: 0 4px;
-	}
-
-	/* 输入区：允许换行（横向滚动会出现孤立的分隔线），分隔线在换行后没意义 → 隐藏 */
-	.composer-topbar {
-		flex-wrap: wrap;
-	}
-
-	.composer-topbar .tool-sep {
-		display: none;
-	}
-
-	.composer-input {
-		padding-right: 92px;
-	}
-
-	/* 状态栏：高度固定 24px、字 10px（跟桌面一致） */
-	.statusbar {
-		gap: 6px;
-		height: 26px;
-		padding: 0 8px;
-		font-size: 12px;
-	}
-
-	/* 手机上用户消息同样整行（与桌面一致，别再单独限宽） */
-	.msg-user {
-		max-width: none;
-	}
-
-	/* 提示词模板 / 技能等大弹窗：整屏 */
-	.modal.big-modal,
-	.modal.tpl-modal,
-	.modal.new-project,
-	.modal.file-preview {
-		width: 100vw;
-		height: 100vh;
-		max-height: none;
-		border-radius: 0;
-	}
-
-	/* 大纲窄条在手机上没必要（点不动、还挡内容） */
-	.outline {
-		display: none;
+		max-width: 42vw;
 	}
 }
 
@@ -119,7 +126,7 @@
 }
 
 /* ---------------------------------------------------------------------------
- * 手机端细节（≤900px）：抽屉 / 弹窗 / 输入区
+ * 单栏时的细节（`.is-mobile-shell`）：抽屉 / 弹窗 / 输入区
  * 上面那段解决「三栏放不下」，这段解决「换上 HTTP 与模型面板之后」的具体挤压。
  * ------------------------------------------------------------------------- */
 
@@ -127,154 +134,141 @@
 	display: none;
 }
 
-@media (max-width: 900px), (pointer: coarse) and (max-width: 1366px) {
-	/* 手机抽屉：占满整屏并自己滚动；**不再给侧栏设 max-height**
+/* 手机抽屉：占满整屏并自己滚动；**不再给侧栏设 max-height**
 	   （旧规则里 `max-height: 30vh` 会让项目列表只露三行，剩下全是空白） */
-	.side-host > .sidebar {
-		max-height: none;
-		height: auto;
-	}
-
-	.side-host {
-		top: 0;
-		height: 100dvh;
-		/* 顶栏压在抽屉之上：按它的**真实高度**让位（写死 52px 会多出一条空隙） */
-		padding-top: var(--appbar-h, 46px);
-		/* 手机上抽屉占满宽度：会话行右侧的按钮（置顶/归档/…）之前被 320px 掐掉 */
-		width: 100vw !important;
-		max-width: 100vw;
-		left: 0;
-		right: 0;
-		overflow-y: auto;
-		overscroll-behavior: contain;
-		box-shadow: none;
-		/* 抽屉自己要有底色：否则下半截透出消息内容，看着像两块叠在一起 */
-		background: var(--bg);
-	}
-
-	/* 顶栏要压在抽屉之上：否则抽屉盖住 ☰ 与「新会话」，手机上无法收起 */
-	.appbar {
-		position: relative;
-		z-index: 45;
-	}
-
-	/* 遮罩：点一下收起抽屉（之前只能点侧栏里的「‹」，手机上很难找） */
-	.side-backdrop {
-		display: block;
-		position: fixed;
-		inset: 0;
-		z-index: 39;
-		background: rgb(0 0 0 / 40%);
-	}
-
-	/* 侧栏里的拖宽手柄在手机上没意义，还会误触 */
-	.side-resizer {
-		display: none;
-	}
-
-	/* 弹窗（模型 / 技能 / 推送 / 设置）在手机上占满可用区域（顶栏让位后剩下的） */
-	.modal.big-modal {
-		width: 100vw;
-		height: auto;
-		max-height: calc(100dvh - var(--appbar-h, 46px) - 16px);
-		border-radius: 0;
-	}
-
-	.big-modal-body {
-		padding: 8px;
-	}
-
-	/* 输入区：快捷短语太占地，手机上先收起来；发送按钮不再挤成两行 */
-	.quick-row {
-		flex-wrap: nowrap;
-		overflow-x: auto;
-		scrollbar-width: none;
-	}
-
-	.quick-row::-webkit-scrollbar {
-		display: none;
-	}
-
-	.quick-chip {
-		flex: none;
-	}
-
-	/* 底部状态栏在手机上只留关键两项 */
-	.status-bar .status-item-optional {
-		display: none;
-	}
-
-	/* 模型面板：左栏收窄，模型行把「耗时」列缩一点，避免挤掉状态开关 */
-	.prov-detail {
-		padding: 8px 8px 16px;
-	}
-
-	.prov-model-row {
-		grid-template-columns: minmax(0, 1fr) 66px auto auto;
-		gap: 6px;
-	}
-
-	.prov-global-bar {
-		flex-wrap: wrap;
-		gap: 6px;
-	}
+.is-mobile-shell .side-host > .sidebar {
+	max-height: none;
+	height: auto;
 }
 
-@media (max-width: 600px) {
-	/* 输入框与消息的左右内边距再收一档 */
-	.composer-wrap {
-		padding: 6px 8px 8px;
-	}
-
-	/* 文件管理区在手机上默认折叠（它太占地，需要时再点开） */
-	.side-host .side-files {
-		max-height: 34vh;
-	}
+.is-mobile-shell .side-host {
+	top: 0;
+	height: 100dvh;
+	/* 顶栏压在抽屉之上：按它的**真实高度**让位（写死 52px 会多出一条空隙） */
+	padding-top: var(--appbar-h, 46px);
+	/* 手机上抽屉占满宽度：会话行右侧的按钮（置顶/归档/…）之前被 320px 掐掉 */
+	width: 100vw !important;
+	max-width: 100vw;
+	left: 0;
+	right: 0;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	box-shadow: none;
+	/* 抽屉自己要有底色：否则下半截透出消息内容，看着像两块叠在一起 */
+	background: var(--bg);
 }
 
-@media (max-width: 600px) {
-	/* 输入框：手机上「发送」按钮不要在框内压住文字，
+/* 顶栏要压在抽屉之上：否则抽屉盖住 ☰ 与「新会话」，手机上无法收起 */
+.is-mobile-shell .appbar {
+	position: relative;
+	z-index: 45;
+}
+
+/* 遮罩：点一下收起抽屉（之前只能点侧栏里的「‹」，手机上很难找） */
+.is-mobile-shell .side-backdrop {
+	display: block;
+	position: fixed;
+	inset: 0;
+	z-index: 39;
+	background: rgb(0 0 0 / 40%);
+}
+
+/* 侧栏里的拖宽手柄在手机上没意义，还会误触 */
+.is-mobile-shell .side-resizer {
+	display: none;
+}
+
+/* 弹窗（模型 / 技能 / 推送 / 设置）在手机上占满可用区域（顶栏让位后剩下的） */
+.is-mobile-shell .modal.big-modal {
+	width: 100vw;
+	height: auto;
+	max-height: calc(100dvh - var(--appbar-h, 46px) - 16px);
+	border-radius: 0;
+}
+
+.is-mobile-shell .big-modal-body {
+	padding: 8px;
+}
+
+/* 输入区：快捷短语太占地，手机上先收起来；发送按钮不再挤成两行 */
+.is-mobile-shell .quick-row {
+	flex-wrap: nowrap;
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+
+.is-mobile-shell .quick-row::-webkit-scrollbar {
+	display: none;
+}
+
+.is-mobile-shell .quick-chip {
+	flex: none;
+}
+
+/* 模型面板：左栏收窄，模型行把「耗时」列缩一点，避免挤掉状态开关 */
+.is-mobile-shell .prov-detail {
+	padding: 8px 8px 16px;
+}
+
+.is-mobile-shell .prov-model-row {
+	grid-template-columns: minmax(0, 1fr) 66px auto auto;
+	gap: 6px;
+}
+
+.is-mobile-shell .prov-global-bar {
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+/* 输入框与消息的左右内边距再收一档（单栏时才收） */
+.is-mobile-shell .composer-wrap {
+	padding: 6px 8px 8px;
+}
+
+/* 文件管理区在手机上默认折叠（它太占地，需要时再点开） */
+.is-mobile-shell .side-host .side-files {
+	max-height: 34vh;
+}
+
+/* 输入框：单栏时「发送」按钮不要在框内压住文字，
 	   改成输入框 + 下方操作条（参考聊天类 App 的习惯） */
-	.composer {
-		flex-direction: column;
-		align-items: stretch;
-		gap: 6px;
-	}
-
-	.composer-input {
-		padding: 10px 12px;
-		min-height: 52px;
-		/* iOS 上小于 16px 会触发「聚焦自动放大」 */
-		font-size: 18px;
-		line-height: 1.45;
-	}
-
-	.composer-actions {
-		position: static;
-		transform: none;
-		justify-content: flex-end;
-	}
-
-	.btn.btn-send {
-		padding: 8px 16px;
-		font-size: 16px;
-	}
-
-	/* 建议按钮：一行一个更好点（手机上手指粗，挤两列容易点错） */
-	.action-row {
-		flex-wrap: wrap;
-		gap: 6px;
-	}
+.is-mobile-shell .composer {
+	flex-direction: column;
+	align-items: stretch;
+	gap: 6px;
 }
 
-@media (max-width: 900px), (pointer: coarse) and (max-width: 1366px) {
-	/* 手机顶栏只留「品牌 + 新会话 + 面板开关」：
+.is-mobile-shell .composer-input {
+	padding: 10px 12px;
+	min-height: 52px;
+	/* iOS 上小于 16px 会触发「聚焦自动放大」 */
+	font-size: 18px;
+	line-height: 1.45;
+}
+
+.is-mobile-shell .composer-actions {
+	position: static;
+	transform: none;
+	justify-content: flex-end;
+}
+
+.is-mobile-shell .btn.btn-send {
+	padding: 8px 16px;
+	font-size: 16px;
+}
+
+/* 建议按钮：一行一个更好点（手机上手指粗，挤两列容易点错） */
+.is-mobile-shell .action-row {
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+/* 手机顶栏只留「品牌 + 新会话 + 面板开关」：
 	   token 统计与「模型 / 技能 / 设置」这一排都收起来 ——
 	   它们在窄屏上占掉两行高度，而同样功能左侧活动栏里都有。 */
-	.appbar .session-info,
-	.appbar .appbar-slot {
-		flex: 1 1 auto;
-	}
+.is-mobile-shell .appbar .session-info,
+.is-mobile-shell .appbar .appbar-slot {
+	flex: 1 1 auto;
 }
 
 /* ---------------------------------------------------------------------------
@@ -282,49 +276,46 @@
  * 文件管理、归档、左侧竖排图标栏在窄屏上都不实用 —— 它们要么占掉半屏，
  * 要么需要精确点按；手机上打开抽屉就是为了切项目/会话。
  * ------------------------------------------------------------------------- */
+/* 活动栏已整体移除（桌面同款），这里只是兜底 */
+.is-mobile-shell .activity-bar {
+	display: none;
+}
 
-@media (max-width: 900px), (pointer: coarse) and (max-width: 1366px) {
-	/* 活动栏已整体移除（桌面同款），这里只是兜底 */
-	.activity-bar {
-		display: none;
-	}
+/* 文件管理（树 + 分隔条）与「已归档」入口都不显示 */
+.is-mobile-shell .side-host .side-files,
+.is-mobile-shell .side-host .side-split,
+.is-mobile-shell .side-host .archived-entry {
+	display: none;
+}
 
-	/* 文件管理（树 + 分隔条）与「已归档」入口都不显示 */
-	.side-host .side-files,
-	.side-host .side-split,
-	.side-host .archived-entry {
-		display: none;
-	}
+/* 抽屉顶部留一点安全区，别贴着刘海 */
+.is-mobile-shell .side-host .sidebar {
+	padding-top: env(safe-area-inset-top, 0);
+	width: 100%;
+}
 
-	/* 抽屉顶部留一点安全区，别贴着刘海 */
-	.side-host .sidebar {
-		padding-top: env(safe-area-inset-top, 0);
-		width: 100%;
-	}
-
-	/* 「项目 (N)」标题行固定在抽屉顶部：手机上列表很长，
+/* 「项目 (N)」标题行固定在抽屉顶部：手机上列表很长，
 	   滚下去之后没有大标题会失去「我在哪」的定位，也不方便点「＋ / ‹」。 */
-	.side-host .sidebar-head {
-		position: sticky;
-		top: 0;
-		z-index: 2;
-		background: var(--bg-elev);
-		/* 贴住时别露出下面滚过去的内容 */
-		margin: -10px -10px 0;
-		padding: 10px;
-		border-bottom: 1px solid var(--border);
-	}
+.is-mobile-shell .side-host .sidebar-head {
+	position: sticky;
+	top: 0;
+	z-index: 2;
+	background: var(--bg-elev);
+	/* 贴住时别露出下面滚过去的内容 */
+	margin: -10px -10px 0;
+	padding: 10px;
+	border-bottom: 1px solid var(--border);
+}
 
-	/* 会话行：左右各留一点内边距，行内按钮不再贴边被裁 */
-	.side-host .pi-row,
-	.side-host .session-row {
-		padding-right: 10px;
-		padding-left: 10px;
-	}
+/* 会话行：左右各留一点内边距，行内按钮不再贴边被裁 */
+.is-mobile-shell .side-host .pi-row,
+.is-mobile-shell .side-host .session-row {
+	padding-right: 10px;
+	padding-left: 10px;
 }
 
 /* 抽屉开关：所有宽度都显示 —— 收起侧栏后没有别的入口了（活动栏已去掉） */
-.appbar-drawer {
+.is-mobile-shell .appbar-drawer {
 	display: inline-flex;
 	border: 1px solid var(--border);
 	background: var(--bg-elev);
@@ -336,50 +327,45 @@
 	cursor: pointer;
 }
 
-@media (max-width: 900px), (pointer: coarse) and (max-width: 1366px) {
-	.appbar-drawer {
-		align-items: center;
-	}
+/* 单栏时的输入区与抽屉细化（同一条断点，别再拆成两块） */
+.is-mobile-shell .appbar-drawer {
+	align-items: center;
 }
 
-@media (max-width: 900px), (pointer: coarse) and (max-width: 1366px) {
-	/* 手机端输入区只留「模型 + 思考强度 + 快捷短语」：
+/* 单栏时输入区只留「模型 + 思考强度 + 快捷短语」：
 	   模板库与审批模式是低频入口，留着会把输入框挤成一条缝；
 	   快捷短语是常用输入手段，**保留**（横向滚动，不换行）。 */
-	.composer-template-btn,
-	.composer-approval-btn {
-		display: none;
-	}
-
-	/* 隐藏后「间隔符」也别留，否则行首/行尾多出两道竖线 */
-	.composer-tools .tool-sep {
-		display: none;
-	}
-
-	.composer-tools {
-		gap: 6px;
-	}
+.is-mobile-shell .composer-template-btn,
+.is-mobile-shell .composer-approval-btn {
+	display: none;
 }
 
-@media (max-width: 900px), (pointer: coarse) and (max-width: 1366px) {
-	/* 新建项目对话框：手机上不要撑满整屏高度（撑满后顶部会被裁掉，
+/* 隐藏后「间隔符」也别留，否则行首/行尾多出两道竖线 */
+.is-mobile-shell .composer-tools .tool-sep {
+	display: none;
+}
+
+.is-mobile-shell .composer-tools {
+	gap: 6px;
+}
+
+/* 新建项目对话框：单栏时不要撑满整屏高度（撑满后顶部会被裁掉，
 	   路径栏与「关闭」按钮看不见） */
-	.modal.new-project {
-		height: auto;
-		max-height: calc(100dvh - var(--appbar-h, 46px) - 24px);
-	}
+.is-mobile-shell .modal.new-project {
+	height: auto;
+	max-height: calc(100dvh - var(--appbar-h, 46px) - 24px);
+}
 
-	/* 弹窗必须盖在顶栏之上（顶栏在手机上是 z-index:45，否则弹窗标题被压住）；
+/* 弹窗必须盖在顶栏之上（顶栏在手机上是 z-index:45，否则弹窗标题被压住）；
 	   顶部还要**按顶栏真实高度让位**，否则标题会缩到顶栏底下看不见（新建项目就踩过） */
-	.modal-backdrop {
-		z-index: 60;
-		padding-top: calc(var(--appbar-h, 46px) + 8px);
-		padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
-		align-items: flex-start;
-	}
+.is-mobile-shell .modal-backdrop {
+	z-index: 60;
+	padding-top: calc(var(--appbar-h, 46px) + 8px);
+	padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+	align-items: flex-start;
+}
 
-	/* 目录列表在手机上至少给 40vh，否则只剩两行可点 */
-	.new-project-list {
-		min-height: 40vh;
-	}
+/* 目录列表在手机上至少给 40vh，否则只剩两行可点 */
+.is-mobile-shell .new-project-list {
+	min-height: 40vh;
 }

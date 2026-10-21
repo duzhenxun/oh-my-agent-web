@@ -69,23 +69,35 @@
 	position: relative;
 }
 
-/* 悬浮操作条：跟在时间后面（标题行内），默认隐藏 */
-.msg-actions {
+/* 用户消息：气泡（蓝色框）只包住正文。
+   操作/时间那行要落在框外面，所以框的底色与边框从 .msg 挪到 .msg-bubble 上。 */
+.msg.msg-split {
+	border: none;
+	background: none;
+	padding: 0;
+}
+
+.msg-split > .msg-bubble {
+	border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+	background: color-mix(in srgb, var(--accent) 13%, transparent);
+	border-radius: 12px;
+	padding: 10px 12px;
+}
+
+/* 用户消息：气泡下面那一行（复制 / 从此处编辑 / 右边时间），鼠标悬浮才出现 */
+.msg-user-foot {
 	display: flex;
 	align-items: center;
-	gap: 4px;
-	margin-left: 6px;
+	gap: 6px;
+	margin-top: 6px;
+	min-width: 0;
 	opacity: 0;
 	transition: opacity 0.12s ease;
 }
 
-.msg:hover .msg-actions,
-.msg-actions:focus-within {
+.msg:hover .msg-user-foot,
+.msg-user-foot:focus-within {
 	opacity: 1;
-}
-
-.msg-user .msg-actions {
-	justify-content: flex-end;
 }
 
 /* 标题行里的操作按钮更小一点，不抢消息正文的注意力 */
@@ -109,6 +121,16 @@
 .msg-action:hover {
 	color: var(--text);
 	border-color: var(--accent-dim);
+}
+
+/* 复制成功：按钮自己变一下（✓ 已复制 + 绿字），1.4s 后恢复 */
+.msg-action.is-copied,
+.msg-action.is-copied:hover,
+.msg-foot-copy.is-copied,
+.msg-foot-copy.is-copied:hover {
+	color: var(--green);
+	border-color: color-mix(in srgb, var(--green) 45%, transparent);
+	background: color-mix(in srgb, var(--green) 10%, transparent);
 }
 
 /* 提示条：文字可换行，右侧一个关闭按钮（点掉节省对话高度） */
@@ -284,10 +306,16 @@
 	background: var(--bg-elev-2);
 }
 
+/* 绝对时间（10月16日 14:18:06）：只是参考信息，比按钮/用量再小一号、再淡一档。
+   用户消息的尾注没有自己的字号/颜色（从 .msg 继承），所以这两条必须写在这里。 */
 .msg-foot-stamp {
 	flex: none;
 	font-variant-numeric: tabular-nums;
 	white-space: nowrap;
+	font-size: 11.5px;
+	color: var(--text-faint);
+	/* 再压一点亮度：11.5px 的灰字在大气泡里依然清楚，但不会抢正文 */
+	opacity: 0.72;
 }
 
 @media (max-width: 600px) {
@@ -307,5 +335,7 @@
 
 	.msg-foot-stamp {
 		margin-left: auto;
+		/* 手机上时间独占一行时也别显得比正文大 */
+		font-size: 11px;
 	}
 }

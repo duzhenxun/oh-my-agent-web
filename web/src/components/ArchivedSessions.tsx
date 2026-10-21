@@ -6,6 +6,7 @@
  */
 import { useState } from "react";
 import { deleteSessions } from "../delete-session.ts";
+import { ProjectFolderIcon } from "./ProjectFolderIcon.tsx";
 
 export function ArchivedSessions({
 	groups,
@@ -101,6 +102,8 @@ export function ArchivedSessions({
 				{groups.map((group) => (
 					<div className="archived-group" key={group.name}>
 						<div className="archived-group-title">
+							{/* 和主列表项目行同一个图标（归档组是「收起来」的项目，所以用合着的文件夹） */}
+							<ProjectFolderIcon open={false} />
 							<span className="archived-group-name">
 								{group.name} · {group.items.length}
 							</span>

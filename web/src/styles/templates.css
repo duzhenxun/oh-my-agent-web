@@ -214,12 +214,12 @@
 	align-items: center;
 	gap: 4px;
 	border: 1px solid var(--border);
-	border-radius: 8px;
+	border-radius: 7px;
 	background: var(--bg-elev);
 	color: var(--text-dim);
 	font: inherit;
-	font-size: 13.5px;
-	padding: 2px 8px;
+	font-size: 12.5px;
+	padding: 1px 7px;
 	cursor: pointer;
 }
 
@@ -236,7 +236,7 @@
 /* 工具行：模板 → 模型（右侧留思考强度/工具范围的位置） */
 .tool-sep {
 	width: 1px;
-	height: 16px;
+	height: 14px;
 	background: var(--border);
 	flex: none;
 }
@@ -250,7 +250,7 @@
 
 .tool-icon {
 	flex: none;
-	font-size: 14px;
+	font-size: 13px;
 	opacity: 0.85;
 }
 

@@ -169,3 +169,31 @@ describe("usage 不能吞掉正文（回归：只调工具不回复）", () => {
 		expect(mapSessionEvent(event)).toEqual({ type: "usage", input: 100, output: 20, cacheRead: 0, cacheWrite: 0 });
 	});
 });
+
+describe("模型事件不能吞掉正文（回归：助手「不回复」，只显示用量）", () => {
+	it("message_update 同时带 provider/model 时，正文增量照样出来", () => {
+		const event = {
+			type: "message_update",
+			message: { role: "assistant", provider: "openai-codex", model: "gpt-6.1-sol" },
+			assistantMessageEvent: { type: "text_delta", delta: "Hi!" },
+		};
+		expect(mapSessionEvent(event)).toEqual({ type: "text_delta", text: "Hi!" });
+	});
+
+	it("只有模型、没有增量时，才产出 model 事件", () => {
+		const event = {
+			type: "message_update",
+			message: { role: "assistant", provider: "openai-codex", model: "gpt-6.1-sol" },
+			assistantMessageEvent: { type: "message_start" },
+		};
+		expect(mapSessionEvent(event)).toEqual({ type: "model", model: "openai-codex/gpt-6.1-sol" });
+	});
+
+	it("message_start 也带当前模型", () => {
+		const event = {
+			type: "message_start",
+			message: { role: "assistant", provider: "deepseek", model: "deepseek-flash" },
+		};
+		expect(mapSessionEvent(event)).toEqual({ type: "model", model: "deepseek/deepseek-flash" });
+	});
+});

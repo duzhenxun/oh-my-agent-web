@@ -1,54 +1,15 @@
-/* ---- 项目行的「⋯」菜单 ---- */
-/* 和会话行一样：**始终占位、只切可见性**。
-   用 `display` 切换会让行在指针落下的那一帧重排 —— 触屏上就是「点项目名」变成
-   「点到刚冒出来的按钮」（新建会话 / 菜单），点一下像没反应。 */
-.proj-menu-btn {
-	flex: none;
-	display: inline-flex;
-	width: 20px;
-	height: 20px;
-	align-items: center;
-	justify-content: center;
-	border: 1px solid var(--border);
-	border-radius: 6px;
-	background: var(--bg-elev);
-	color: var(--text-dim);
-	font: inherit;
-	font-size: 14px;
-	line-height: 1;
-	cursor: pointer;
-	visibility: hidden;
-	opacity: 0;
-	transition: opacity 90ms linear;
-}
-
-.proj-head:hover .proj-menu-btn,
-.proj-head:focus-within .proj-menu-btn {
-	visibility: visible;
-	opacity: 1;
-}
-
-.proj-menu-btn:hover {
-	color: var(--text);
-	border-color: var(--accent-dim);
-}
+/* ---- 项目菜单 ---- */
+/* 两种打开方式：项目名上点右键（手机长按），或点行尾那个「⋯」。
+   菜单浮窗本身由 .proj-menu / .proj-menu-floating 负责。 */
 
 /* 触摸屏（手机 / 平板）：没有「悬停」，按钮必须一直看得见、并且点得准。
-   否则第一下的 click 会落到「刚冒出来的按钮」上（弹菜单 / 新建会话）。 */
+   否则第一下的 click 会落到「刚冒出来的按钮」上（弹菜单）。 */
 @media (hover: none), (pointer: coarse) {
-	.proj-head .proj-menu-btn {
-		visibility: visible;
+	.proj-head .proj-more {
 		opacity: 1;
 		width: 32px;
 		height: 32px;
-		font-size: 16px;
-	}
-
-	.proj-head .proj-new {
-		opacity: 1;
-		min-width: 32px;
-		min-height: 32px;
-		font-size: 16px;
+		font-size: 17px;
 	}
 
 	/* 菜单项给手指留够高度（现在手机上也能打开了） */
@@ -224,7 +185,8 @@
 	display: flex;
 	flex-direction: column;
 	gap: 4px;
-	/* 分隔线已经让过位置了，这里别再叠留白（否则线和标题之间空一大块） */
+	/* 这条线就是会话区与文件区之间的分隔线（拖拽手柄不占高度、不画线） */
+	border-top: 1px solid var(--border);
 	padding-top: 0;
 	margin-top: 0;
 }
@@ -232,33 +194,74 @@
 .side-files-head {
 	display: flex;
 	align-items: center;
-	gap: 8px;
+	gap: 0;
 	flex: none;
 	min-width: 0;
-	padding: 2px 0;
 }
 
+/* 文件区标题：没左侧三角了，标题本身可点（展开/收起）。
+   与侧栏「项目（N）」标题同尺寸、同亮度（14.5px / 600 / --text-dim）。 */
 .side-files-title {
 	flex: none;
-	color: var(--text);
-	font-size: 16px;
+	color: var(--text-dim);
+	font-size: 14.5px;
 	font-weight: 600;
+	border: none;
+	background: none;
+	font-family: inherit;
+	line-height: inherit;
+	padding: 0;
+	cursor: pointer;
 }
 
-/* 项目下拉：窄侧栏里要能被压缩，不能把标题挤没 */
+.side-files-title:hover {
+	color: var(--accent);
+}
+
+/* 项目下拉那一行：下拉框 + 右边的 git 分支（不是仓库时只有下拉框） */
+.side-files-select-row {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex: none;
+	width: 100%;
+	min-width: 0;
+}
+
+/* 分支标签在下拉框右边：空间不够时先压标签，别把下拉框挤没 */
+.side-files-select-row .files-branch {
+	flex: 0 1 auto;
+	min-width: 0;
+	max-width: 92px;
+}
+
+/* 分支名自己一层：省略号只对「文本元素」生效，flex 里的裸文本会被硬切掉半个字 */
+.files-branch-name {
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* 项目下拉：窄侧栏里要能被压缩，不能把标题挤没；但也不能被右边的分支挤到看不清名字 */
 .side-files-select {
 	flex: 1 1 auto;
-	min-width: 0;
+	min-width: 112px;
 	border: 1px solid var(--border);
 	border-radius: 7px;
 	background: var(--bg-elev);
 	color: var(--text-dim);
 	font: inherit;
 	font-size: 13.5px;
-	/* 文字居中 + 自绘箭头：原生箭头永远贴最右边，看着「太靠右」 */
-	text-align: center;
-	text-align-last: center;
-	padding: 3px 26px 3px 26px;
+	line-height: 1.4;
+	/* 左对齐 + 自绘箭头：原生箭头永远贴最右边，看着「太靠右」；
+	   而居中排版一旦被侧栏宽度卡住，两边同时被削，名字就从中间断（“inke.acti…”）。
+	   左对齐 + text-overflow 才能保证“看到开头 + 省略号”。 */
+	text-align: left;
+	text-align-last: left;
+	text-overflow: ellipsis;
+	padding: 3px 18px 3px 8px;
 	cursor: pointer;
 	appearance: none;
 	background-image:
@@ -274,6 +277,12 @@
 	opacity: 0.95;
 }
 
+/* 聚焦态（去掉 UA 那圈粗蓝框）统一在 base.css 的 `select:focus` 里做，这里只补一点文件区的观感 */
+.side-files-select:focus {
+	color: var(--text);
+	opacity: 1;
+}
+
 .side-files-body {
 	flex: 1 1 auto;
 	min-height: 0;
@@ -283,6 +292,12 @@
 
 .side-files-body .filetree {
 	flex: 1 1 auto;
+}
+
+/* 搜索结果列表顶替文件树时要能吃满这块高度（滚动在列表自己身上） */
+.side-files-body .files-search-list {
+	flex: 1 1 auto;
+	min-height: 0;
 }
 
 /* 文件区标题栏的终端按钮（点一下在右侧打开当前项目的终端） */
@@ -306,29 +321,39 @@
 	background: var(--bg-elev-2);
 }
 
-/* 会话区与文件区之间的分隔条：上下拖动改文件区高度 */
-/* 分隔条：常驻一条细线，鼠标移上去变粗变清晰（占位高度不变，避免抖动） */
+/* 会话区与文件区之间的拖拽手柄。
+   它**不占高度、也不自己画线** —— 那条分隔线就是「文件管理」的 border-top，
+   所以上面不会再多出一块空白（之前是 10px 手柄 + 侧栏 8px flex 间距）。 */
 .side-split {
 	position: relative;
 	flex: none;
-	/* 10px 是拖拽热区；负 margin 抵掉侧栏 8px 间距 + 多一点，
-	   让「文件管理」几乎贴着这条线（线本身只在顶端 1px，重叠不会挡住内容） */
-	height: 10px;
-	margin: 0 0 -13px;
+	height: 0;
+	/* 侧栏是 flex column + gap: 8px：前后两条间距都用负 margin 抵掉，
+	   让「文件管理」的 border-top 正好贴在会话列表下边 */
+	margin: -8px 0 -8px;
 	cursor: row-resize;
 	background: transparent;
 }
 
+/* 透明热区：以那条线为中心上下各 4px，只负责接 pointer 事件（看得见的是 border-top） */
+.side-split::before {
+	content: "";
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: -4px;
+	height: 8px;
+}
+
+/* 悬停 / 拖动时把那 1px 变成一条 3px 的强调色（不改变占位，不抽动） */
 .side-split::after {
 	content: "";
 	position: absolute;
 	left: 0;
 	right: 0;
-	/* 线压在分隔条顶端（而不是居中）：视觉上就是「文件管理」区域的上边界 */
 	top: 0;
 	height: 1px;
-	background: var(--border);
-	border-radius: 2px;
+	background: transparent;
 	transition:
 		height 0.12s ease,
 		background 0.12s ease;
@@ -336,7 +361,7 @@
 
 .side-split:hover::after,
 .side-split:active::after {
-	height: 4px;
+	height: 3px;
 	background: var(--accent-dim);
 }
 

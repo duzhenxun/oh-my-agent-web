@@ -88,6 +88,18 @@ describe("extractListMeta", () => {
 		});
 	});
 
+	it("模型取**最后一条** model_change，且不受标题行数上限影响（中途换过模型）", () => {
+		const lines = [
+			modelLine("openai-codex", "gpt-6.1-sol"),
+			userLine("很久以前的任务"),
+			modelLine("deepseek-ok", "deepseek-flash"),
+			modelLine("nexita", "deepseek-v4.1-flash"),
+		];
+		// headLimit 只限制标题扫描：模型仍要从文件末尾倒着找
+		expect(extractListMeta(lines, 1).model).toBe("nexita/deepseek-v4.1-flash");
+		expect(extractListMeta(lines).model).toBe("nexita/deepseek-v4.1-flash");
+	});
+
 	it("system 消息不当标题（role 必须是 user）", () => {
 		expect(
 			extractListMeta([JSON.stringify({ type: "message", message: { role: "system", content: "prompt" } })]).title,

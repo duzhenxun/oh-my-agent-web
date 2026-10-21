@@ -89,6 +89,7 @@ export function createServerState(workspace: string, engine: EngineName = "pi"):
 			templates: [],
 			projectPrefs: { order: [], pinned: [], aliases: {} },
 			sessionPrefs: { pinned: [], archived: [] },
+			defaultModels: {},
 		},
 		actions: [],
 		conversations: [],
@@ -211,6 +212,7 @@ export function buildSnapshot(
 				pinned: [...state.settings.projectPrefs.pinned],
 				aliases: { ...state.settings.projectPrefs.aliases },
 			},
+			defaultModels: { ...state.settings.defaultModels },
 			sessionPrefs: {
 				pinned: [...state.settings.sessionPrefs.pinned],
 				archived: [...state.settings.sessionPrefs.archived],

@@ -1,3 +1,4 @@
+import { BRAND_NAME } from "../brand.ts";
 /**
  * 新会话（还没有消息时）抬头：图标 + 名字 + 版本号 + 一句招呼，紧贴输入框上方。
  *
@@ -23,7 +24,7 @@ export function NewChatMeta({
 			<div className="newchat-brand">
 				<img className="newchat-icon" src="/favicon.svg" alt="" aria-hidden="true" />
 				<div className="newchat-brand-text">
-					<span className="newchat-name">Agent Web</span>
+					<span className="newchat-name">{BRAND_NAME}</span>
 					<span className="newchat-versions mono">
 						web v{webVersion} · {engineName}
 						{engineVersion ? ` v${engineVersion}` : ""}

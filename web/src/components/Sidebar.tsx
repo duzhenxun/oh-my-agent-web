@@ -12,7 +12,9 @@ import { deleteSession, deleteSessions } from "../delete-session.ts";
 import { sessionUrlFor } from "../session-url.ts";
 import { SessionRow } from "./SessionRow.tsx";
 import { ProjectFolderIcon } from "./ProjectFolderIcon.tsx";
+import { ProjectNameInput } from "./ProjectNameInput.tsx";
 import { ProjectMenu } from "./ProjectMenu.tsx";
+import type { MenuPoint } from "./ProjectMenuPopover.tsx";
 import { SideSplitter } from "./SideSplitter.tsx";
 import { SidebarFiles } from "./SidebarFiles.tsx";
 
@@ -32,7 +34,6 @@ export function Sidebar({
 	piProjects,
 	runningIds = [],
 	onOpenTerminal,
-	onOpenFiles,
 	onOpenFile,
 }: {
 	conversations: ConversationMeta[];
@@ -42,8 +43,6 @@ export function Sidebar({
 	runningIds?: string[];
 	/** 在指定目录打开终端（项目菜单「在终端中打开」） */
 	onOpenTerminal?: (cwd: string) => void;
-	/** 在应用内的文件面板打开这个项目 */
-	onOpenFiles?: (cwd: string) => void;
 	/** 点文件 → 打开预览（root 是该文件所属项目根） */
 	onOpenFile?: (path: string, root: string) => void;
 }) {
@@ -53,9 +52,8 @@ export function Sidebar({
 	const pinned = prefs.pinned;
 	// 受控展开：菜单里的「折叠其他项目 / 展开全部」需要它
 	const [openMap, setOpenMap] = useState<Record<string, boolean>>({});
-	const [menuFor, setMenuFor] = useState<string | null>(null);
-	/** 「⋯」菜单的定位锚点（按钮本身）：菜单走 portal，避免被侧栏滚动容器裁掉 */
-	const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+	/** 项目右键菜单：记录是哪个项目 + 从哪儿（鼠标位置）弹出来 */
+	const [projectMenu, setProjectMenu] = useState<{ cwd: string; point: MenuPoint } | null>(null);
 	const [newProjectOpen, setNewProjectOpen] = useState(false);
 	// 文件区默认收起（只有标题栏一行），点箭头展开
 	const [fileOpen, setFileOpen] = useState(false);
@@ -63,7 +61,8 @@ export function Sidebar({
 	// 文件树根：默认跟随当前会话工作区，可从下拉框切到任意项目
 	const [treeRoot, setTreeRoot] = useState<string | null>(null);
 	const sessionPrefs = snapshot?.settings.sessionPrefs ?? { pinned: [], archived: [] };
-	const [sessionMenu, setSessionMenu] = useState<string | null>(null);
+	/** 会话右键菜单：同上，记录会话 id + 鼠标位置 */
+	const [sessionMenu, setSessionMenu] = useState<{ id: string; point: MenuPoint } | null>(null);
 	const patchSessionPrefs = (patch: Partial<typeof sessionPrefs>) =>
 		setSettings({ sessionPrefs: { ...sessionPrefs, ...patch } });
 	const archivedGroups = groupArchived(piProjects, sessionPrefs);
@@ -74,10 +73,16 @@ export function Sidebar({
 	const [showAll, setShowAll] = useState<Record<string, boolean>>({});
 	// 项目显示名（别名）：只改展示，不动 pi 的会话目录（ADR-0028：身份是 cwd）
 	const aliases = prefs.aliases;
-	const renameProject = (cwd: string, current: string) => {
-		const next = window.prompt("项目显示名（只影响这里，不改目录）", current);
-		if (next === null) return;
-		setSettings({ projectPrefs: { ...prefs, aliases: { ...prefs.aliases, [cwd]: next.trim() } } });
+	/** 正在就地改名的项目（cwd + 草稿）—— 不用 window.prompt：它会被某些环境吞掉 */
+	const [renaming, setRenaming] = useState<{ cwd: string; draft: string } | null>(null);
+	const commitRename = () => {
+		if (!renaming) return;
+		const next = renaming.draft.replace(/\s+/g, " ").trim();
+		const aliasesNext = { ...prefs.aliases };
+		if (next === "") delete aliasesNext[renaming.cwd];
+		else aliasesNext[renaming.cwd] = next;
+		setSettings({ projectPrefs: { ...prefs, aliases: aliasesNext } });
+		setRenaming(null);
 	};
 
 	/** 上移/下移：置顶段改 pinned 顺序，其余改 order 顺序（ADR-0028 §5） */
@@ -137,30 +142,37 @@ export function Sidebar({
 	// 排序统一走 ADR-0028 的纯函数：置顶 → 显式顺序 → 新项目落最上面
 	groups.splice(0, groups.length, ...sortProjects(groups, prefs));
 	// 头部箭头方向：所有项目当前都展开才算"已展开"
-	const allOpen = groups.every((group, index) => isProjectOpen(group, index, openMap, activeId));
+	// 展开态只算一处：标题的「全部收起/展开」、<details open>、文件夹图标都用它（否则点一下会「看着没变」）
+	const isOpenAt = (project: PiProject, index: number) =>
+		projectMenu?.cwd === project.cwd || isProjectOpen(project, index, openMap, activeId);
+	const allOpen = groups.every((project, index) => isOpenAt(project, index));
+	/** 点「项目（N）」标题：一次把下面所有项目设成同一个开合状态 */
+	const toggleAllProjects = () => setOpenMap(Object.fromEntries(groups.map((group) => [group.cwd, !allOpen])));
 
 	return (
 		<aside className="sidebar">
 			<div className="sidebar-head">
+				{/* 标题本身就是开关：点一下收起下面所有项目，再点一下全部展开 */}
 				<button
 					type="button"
-					className="project-collapse-all"
+					className="sidebar-title"
 					title={allOpen ? "收起所有项目" : "展开所有项目"}
-					onClick={() => setOpenMap(Object.fromEntries(groups.map((group) => [group.cwd, !allOpen])))}
+					aria-expanded={allOpen}
+					onClick={toggleAllProjects}
 				>
-					{allOpen ? "⌄" : "›"}
+					项目（{groups.length}）
 				</button>
-				<span className="sidebar-title">项目（{groups.length}）</span>
-				<ArchivedEntryButton total={archivedTotal} active={archivedView} onToggle={() => setArchivedView((v) => !v)} />
-				<span className="topbar-spacer" />
+				{/* 紧跟标题的「＋」：新建项目（只留一个加号，不要文件夹图标） */}
 				<button
 					type="button"
 					className="btn btn-new"
 					title="新建项目（选择一个本地目录）"
 					onClick={() => setNewProjectOpen(true)}
 				>
-					📁＋
+					+
 				</button>
+				<ArchivedEntryButton total={archivedTotal} active={archivedView} onToggle={() => setArchivedView((v) => !v)} />
+				<span className="topbar-spacer" />
 			</div>
 
 			<div className={`sidebar-list${archivedView ? " sidebar-list-hidden" : ""}`}>
@@ -175,25 +187,45 @@ export function Sidebar({
 						.sort((a, b) => pinnedRank(b.id) - pinnedRank(a.id) || b.startedAt - a.startedAt);
 					const shown = expanded ? visibleSessions : visibleSessions.slice(0, SESSIONS_PER_PROJECT);
 					const rest = visibleSessions.length - shown.length;
-					const hasActive = project.sessions.some((session) => session.id === activeId);
-					// 展开态只算一处：<details open> 与文件夹图标都用它（避免图标和内容对不上）
-					const projectOpen = (_project: typeof project, i: number) =>
-						menuFor === project.cwd ? true : (openMap[project.cwd] ?? (i === 0 || hasActive));
 					const name = aliases[project.cwd] || project.name || "（未知项目）";
+					const projectOpen = isOpenAt(project, index);
 					void knownWorkspaces;
 					return (
 						<details
 							className="proj"
 							key={project.cwd || name}
-							open={projectOpen(project, index)}
+							open={projectOpen}
 							onToggle={(event) => {
 								const next = (event.currentTarget as HTMLDetailsElement).open;
 								setOpenMap((current) => ({ ...current, [project.cwd]: next }));
 							}}
 						>
-							<summary className="proj-head" title={`${project.cwd || "（未知项目）"}\n点「+」在这个项目下新建会话`}>
-								<ProjectFolderIcon open={projectOpen(project, index)} />
-								<span className="proj-name">{name}</span>
+							<summary
+								className="proj-head"
+								title={`${project.cwd || "（未知项目）"}\n右键：项目菜单　点「+」：在这里新建会话`}
+								onContextMenu={(event) => {
+									// 右键 = 项目菜单（原来那个「⋯」按钮已经去掉）
+									event.preventDefault();
+									event.stopPropagation();
+									setProjectMenu({ cwd: project.cwd, point: { x: event.clientX, y: event.clientY } });
+								}}
+								onClick={(event) => {
+									// 正在改名时点这一行不要展开/收起（否则输入框会被卸载）
+									if (renaming?.cwd === project.cwd) event.preventDefault();
+								}}
+							>
+								<ProjectFolderIcon open={projectOpen} />
+								{renaming?.cwd === project.cwd ? (
+									<ProjectNameInput
+										value={renaming.draft}
+										onChange={(next) => setRenaming({ cwd: project.cwd, draft: next })}
+										onCommit={commitRename}
+										onCancel={() => setRenaming(null)}
+									/>
+								) : (
+									// 不改名的话就是纯文字：项目名**没有双击改名**，改名走菜单（右键 / ＋）
+									<span className="proj-name">{name}</span>
+								)}
 								{pinned.includes(project.cwd) ? (
 									<span className="proj-pin" title="已置顶" aria-label="已置顶">
 										📌
@@ -201,44 +233,34 @@ export function Sidebar({
 								) : null}
 								<button
 									type="button"
-									className="proj-menu-btn"
-									title="更多操作"
+									className="proj-more"
+									title="项目菜单（新建会话 / 重命名 / 定位…）"
 									onClick={(event) => {
-										event.preventDefault();
+										event.preventDefault(); // 别把 details 一起展开/收起
 										event.stopPropagation();
-										const open = menuFor === project.cwd;
-										setMenuAnchor(open ? null : (event.currentTarget as HTMLElement));
-										setMenuFor(open ? null : project.cwd);
+										// 和右键同一张菜单：从这一行的右下角弹出来
+										const rect = event.currentTarget.getBoundingClientRect();
+										setProjectMenu({ cwd: project.cwd, point: { x: rect.left, y: rect.bottom + 2 } });
 									}}
 								>
 									⋯
 								</button>
-								<button
-									type="button"
-									className="proj-new"
-									title="在这个项目下新建会话"
-									onClick={(event) => {
-										event.preventDefault(); // 别把 details 一起展开/收起
-										event.stopPropagation();
-										newChat(project.cwd);
-									}}
-								>
-									+
-								</button>
 							</summary>
-							{menuFor === project.cwd ? (
+							{projectMenu?.cwd === project.cwd ? (
 								<ProjectMenu
-									anchor={menuAnchor}
-									onClose={() => {
-										setMenuFor(null);
-										setMenuAnchor(null);
-									}}
+									point={projectMenu.point}
+									onClose={() => setProjectMenu(null)}
 									pinned={pinned.includes(project.cwd)}
 									onTogglePin={() => togglePin(project.cwd)}
+									onNewSession={() => newChat(project.cwd)}
 									onMoveUp={() => moveWithin(project.cwd, -1)}
 									onMoveDown={() => moveWithin(project.cwd, 1)}
-									onRename={() => renameProject(project.cwd, name)}
-									onOpenFiles={() => onOpenFiles?.(project.cwd)}
+									onRename={() => setRenaming({ cwd: project.cwd, draft: name })}
+									onOpenFiles={() => {
+										// 定位 = 文件区打开 + 根切到这个项目（还能在下面的下拉框里再换）
+										setTreeRoot(project.cwd);
+										setFileOpen(true);
+									}}
 									onOpenTerminal={() => onOpenTerminal?.(project.cwd)}
 									onReveal={() =>
 										void fetch("/api/projects/reveal", {
@@ -265,8 +287,8 @@ export function Sidebar({
 										running={runningIds.includes(session.id)}
 										title={session.title || "（无标题）"}
 										pinned={sessionPrefs.pinned.includes(session.id)}
-										menuOpen={sessionMenu === session.id}
-										onToggleMenu={() => setSessionMenu(sessionMenu === session.id ? null : session.id)}
+										menuPoint={sessionMenu?.id === session.id ? sessionMenu.point : null}
+										onOpenMenu={(point) => setSessionMenu({ id: session.id, point })}
 										onSwitch={() => switchConversation(session.id)}
 										onPin={() =>
 											patchSessionPrefs({
@@ -275,11 +297,9 @@ export function Sidebar({
 													: [...sessionPrefs.pinned, session.id],
 											})
 										}
-										onRename={() => {
-											// 名字写进 pi 的会话文件（session_info）：pi CLI 里看到的也是它
-											const next = window.prompt("会话显示名（写入会话文件）", session.title ?? "");
-											if (next === null || next.trim() === "") return;
-											renameSession(session.id, next.trim());
+										onRename={(next) => {
+											// 就地编辑提交：名字写进 pi 的会话文件（session_info），不弹窗
+											renameSession(session.id, next);
 										}}
 										onArchive={() => patchSessionPrefs({ archived: [...sessionPrefs.archived, session.id] })}
 										onOpenInNewTab={() =>
@@ -341,6 +361,14 @@ export function Sidebar({
 						const target = treeRoot ?? currentRoot;
 						if (target) onOpenTerminal?.(target);
 					}}
+					// 在 Finder 中显示：复用项目菜单那条后端接口（只定位，不执行文件）
+					onReveal={(cwd) =>
+						void fetch("/api/projects/reveal", {
+							method: "POST",
+							headers: { "content-type": "application/json" },
+							body: JSON.stringify({ cwd }),
+						})
+					}
 				/>
 			)}
 

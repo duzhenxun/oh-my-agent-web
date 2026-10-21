@@ -11,10 +11,14 @@
  *   -P, --password <pwd>  AGENT_WEB_PASSWORD   非本机访问时的登录密码
  *       --allow-host <h>  AGENT_WEB_ALLOWED_HOSTS  额外允许的域名（可重复）
  *       --data-dir <dir>  AGENT_WEB_DATA_DIR   默认 ~/.agent-web
+ *
+ * 没给的选项会从 `<dataDir>/password`、`<dataDir>/allowed-hosts` 兜底（见 cli-config.ts）：
+ * 这样 `restart` 少带参数也不会把远程访问关掉。
  */
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import process from "node:process";
+import { applyStoredOptions } from "./cli-config.js";
 import { defaultIsAlive, readLock } from "./session/lock.js";
 
 const USAGE = `用法: agent-web [start|stop|restart] [选项]
@@ -29,7 +33,10 @@ const USAGE = `用法: agent-web [start|stop|restart] [选项]
   -P, --password <pwd> 访问密码            AGENT_WEB_PASSWORD
       --allow-host <h> 额外允许的域名      AGENT_WEB_ALLOWED_HOSTS（可多次 / 逗号分隔）
       --data-dir <dir> 数据目录            AGENT_WEB_DATA_DIR（默认 ~/.agent-web）
-  -h, --help           显示本帮助`;
+  -h, --help           显示本帮助
+
+没给 --password / --allow-host 时，会读数据目录里的 password / allowed-hosts 兜底
+（设一次就一直在，重启不必重复输入）。`;
 
 type ParsedArgs = { command: "start" | "stop" | "restart"; env: Record<string, string>; help: boolean };
 
@@ -110,6 +117,8 @@ async function main(): Promise<void> {
 		return;
 	}
 	Object.assign(process.env, parsed.env);
+	// 命令行没给的：用数据目录里存的那份补上（远程密码忘了带 = 远程直接 403，踩过）
+	await applyStoredOptions(process.env, dataDir());
 
 	if (parsed.command === "stop") {
 		await stopServer();
