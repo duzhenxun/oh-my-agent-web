@@ -13,9 +13,18 @@ export function newestSessionAt(project: SortableProject): number {
 	return project.sessions.reduce((max, session) => Math.max(max, session.startedAt), 0);
 }
 
+/** cwd → 首次出现的索引：与服务端归一化（去重保留首次）对齐，脏数据不改变相对顺序 */
+function firstIndex(list: string[]): Map<string, number> {
+	const map = new Map<string, number>();
+	list.forEach((cwd, index) => {
+		if (!map.has(cwd)) map.set(cwd, index);
+	});
+	return map;
+}
+
 export function sortProjects<T extends SortableProject>(projects: T[], prefs: ProjectPrefs): T[] {
-	const pinnedOrder = new Map(prefs.pinned.map((cwd, index) => [cwd, index]));
-	const explicitOrder = new Map(prefs.order.map((cwd, index) => [cwd, index]));
+	const pinnedOrder = firstIndex(prefs.pinned);
+	const explicitOrder = firstIndex(prefs.order);
 
 	const pinned = projects
 		.filter((project) => pinnedOrder.has(project.cwd))
