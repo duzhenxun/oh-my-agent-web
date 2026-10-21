@@ -202,6 +202,8 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		refreshThinking: (id) => models.refreshThinking(id),
 		refreshStats: () => void refreshStats(),
 		pushSnapshot,
+		// 只写日志，不进对话流：切会话慢的时候要靠它定位
+		report: (text) => options.onStartupInfo?.(text),
 	});
 
 	const api: Runtime = {

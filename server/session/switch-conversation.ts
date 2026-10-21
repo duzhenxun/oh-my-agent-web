@@ -19,15 +19,25 @@ export type SwitchDeps = {
 	refreshModels: (conversationId: string) => Promise<void>;
 	refreshThinking: (conversationId: string) => Promise<void>;
 	refreshStats: () => void;
+	/** 耗时上报（写入启动日志/文件日志，定位「切会话慢」用） */
+	report: (text: string) => void;
 	pushSnapshot: () => void;
 };
 
 type Result = { ok: true } | { ok: false; error: { code: string; message: string } };
 
+/** 耗时上报：`switch <id> 总 123ms · open=100ms models=10ms …`（只进日志，不进对话流） */
+function report(deps: SwitchDeps, conversationId: string, began: number, laps: string[]): void {
+	deps.report(`switch ${conversationId.slice(0, 12)} 总 ${Date.now() - began}ms · ${laps.join(" ")}`);
+}
+
 export function createSwitchConversation(deps: SwitchDeps) {
 	const { state, clientView } = deps;
 
 	async function switchTo(conversationId: string, clientId?: string): Promise<Result> {
+		const began = Date.now();
+		const laps: string[] = [];
+		const lap = (label: string, from: number) => laps.push(`${label}=${Date.now() - from}ms`);
 		// 每个客户端各记一份视图（互不影响）
 		if (clientId) clientView.setActive(clientId, conversationId);
 		const mine = state.conversations.some((conversation) => conversation.id === conversationId);
@@ -38,18 +48,27 @@ export function createSwitchConversation(deps: SwitchDeps) {
 
 		if (!mine && fromPi) {
 			if (state.activeId !== conversationId || !state.messages[conversationId]) {
+				const tOpen = Date.now();
 				const messages = await deps.open(conversationId, (force) => deps.refreshSessions(force));
+				lap("open", tOpen);
 				if (messages === null) {
 					return { ok: false, error: { code: "session.open_failed", message: `打开会话失败：${conversationId}` } };
 				}
 				state.messages[conversationId] = messages;
+				const tModels = Date.now();
 				await deps.refreshModels(conversationId);
+				lap("models", tModels);
+				const tThinking = Date.now();
 				await deps.refreshThinking(conversationId);
+				lap("thinking", tThinking);
 				state.activeId = conversationId;
 				state.files = { root: fromPi.workspace, treeVersion: (state.files?.treeVersion ?? 0) + 1 };
 				deps.pushSnapshot();
 			}
+			const tStats = Date.now();
 			deps.refreshStats();
+			lap("stats", tStats);
+			report(deps, conversationId, began, laps);
 			return { ok: true };
 		}
 		if (state.activeId !== conversationId) {
@@ -61,7 +80,10 @@ export function createSwitchConversation(deps: SwitchDeps) {
 			}
 			deps.pushSnapshot();
 		}
+		const tStats2 = Date.now();
 		deps.refreshStats();
+		lap("stats", tStats2);
+		report(deps, conversationId, began, laps);
 		return { ok: true };
 	}
 
