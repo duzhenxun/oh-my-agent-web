@@ -7,6 +7,7 @@ import { awaitTurnPersisted, createTurnFinisher, setRunning, settleWith } from "
 import { cancelQueuedWith, createTurnPlumbing } from "./turn-queue.js";
 import { createConversationFactory } from "./conversation-create.js";
 import { createClientView } from "./client-view.js";
+import { createSwitchConversation } from "./switch-conversation.js";
 import { resolveAttachments } from "./attachment-resolve.js";
 import { createModelController } from "./model-controller.js";
 import { createPiSessionOpener } from "./pi-opener.js";
@@ -187,6 +188,18 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		pushSnapshot,
 	});
 
+	const switchTo = createSwitchConversation({
+		state,
+		clientView,
+		infoOf: (id) => piOpener.infoOf(id),
+		open: (id, refresh) => piOpener.open(id, (force) => refresh(force ?? false)),
+		refreshSessions: (force) => piRefresher.refresh(force),
+		refreshModels: (id) => models.refresh(id),
+		refreshThinking: (id) => models.refreshThinking(id),
+		refreshStats: () => void refreshStats(),
+		pushSnapshot,
+	});
+
 	const api: Runtime = {
 		async init() {
 			// 装载的「总是允许」规则只写日志：启动信息不该占用对话流（用户明确要求过）
@@ -364,35 +377,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			}
 		},
 
-		async switchConversation(conversationId, clientId) {
-			if (clientId) clientView.setActive(clientId, conversationId);
-			const mine = state.conversations.some((conversation) => conversation.id === conversationId);
-			const fromPi = piOpener.infoOf(conversationId);
-			if (!mine && !fromPi) {
-				return { ok: false, error: { code: "session.not_found", message: `会话不存在：${conversationId}` } };
-			}
-
-			if (!mine && fromPi) {
-				if (state.activeId !== conversationId || !state.messages[conversationId]) {
-					const messages = await piOpener.open(conversationId, (force) => piRefresher.refresh(force));
-					if (messages === null) {
-						return { ok: false, error: { code: "session.open_failed", message: `打开会话失败：${conversationId}` } };
-					}
-					state.messages[conversationId] = messages;
-					await models.refresh(conversationId);
-					await models.refreshThinking(conversationId);
-					state.activeId = conversationId;
-					state.files = { root: fromPi.workspace, treeVersion: (state.files?.treeVersion ?? 0) + 1 };
-					pushSnapshot();
-				}
-				return { ok: true };
-			}
-			if (state.activeId !== conversationId) {
-				state.activeId = conversationId;
-				pushSnapshot();
-			}
-			return { ok: true };
-		},
+		switchConversation: (conversationId, clientId) => switchTo(conversationId, clientId),
 	};
 	apiRef = api; // 队列排空时要能再调 sendMessage
 	return api;
