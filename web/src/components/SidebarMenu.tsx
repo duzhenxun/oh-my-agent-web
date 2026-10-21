@@ -3,8 +3,9 @@ import { createPortal } from "react-dom";
 import { ProvidersPanel } from "./ProvidersPanel.tsx";
 import { SettingsPanel } from "./SettingsPanel.tsx";
 import { SkillsPanel } from "./SkillsPanel.tsx";
+import { PushPanel } from "./PushPanel.tsx";
 
-type Panel = "models" | "skills" | "settings" | null;
+type Panel = "models" | "skills" | "push" | "settings" | null;
 
 /**
  * 侧栏底部入口（P7）：模型 / 技能 / 设置。
@@ -47,6 +48,7 @@ export function SidebarMenu({
 				<div className="side-foot-row">
 					{item("models", "🤖", "模型")}
 					{item("skills", "🧰", "技能")}
+					{item("push", "🔔", "推送")}
 					{item("settings", "⚙", "设置")}
 				</div>
 			) : null}
@@ -56,14 +58,20 @@ export function SidebarMenu({
 						<div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="工作台面板">
 							<div className="modal big-modal">
 								<div className="big-modal-head">
-									{(["models", "skills", "settings"] as const).map((key) => (
+									{(["models", "skills", "push", "settings"] as const).map((key) => (
 										<button
 											type="button"
 											key={key}
 											className={`big-tab${panel === key ? " big-tab-on" : ""}`}
 											onClick={() => setPanel(key)}
 										>
-											{key === "models" ? "🤖 模型" : key === "skills" ? "🧰 技能" : "⚙ 设置"}
+											{key === "models"
+												? "🤖 模型"
+												: key === "skills"
+													? "🧰 技能"
+													: key === "push"
+														? "🔔 推送"
+														: "⚙ 设置"}
 										</button>
 									))}
 									<span className="topbar-spacer" />
@@ -76,6 +84,7 @@ export function SidebarMenu({
 									{panel === "models" ? <ProvidersPanel /> : null}
 
 									{panel === "skills" ? <SkillsPanel /> : null}
+									{panel === "push" ? <PushPanel /> : null}
 									{panel === "settings" ? <SettingsPanel /> : null}
 								</div>
 							</div>

@@ -20,6 +20,11 @@ export type PushSubscriptionView = {
 	/** 哪个客户端订阅的（同一浏览器多标签会重复订阅，用 endpoint 去重即可） */
 	clientId?: string;
 	createdAt: number;
+	/** 设备别名（界面上可改） */
+	name?: string;
+	/** 上次推送时间与结果，界面上展示 */
+	lastSentAt?: number;
+	lastStatus?: string;
 };
 
 export type PushPayload = { title: string; body: string; url?: string; tag?: string };
@@ -28,7 +33,10 @@ export type PushStore = {
 	list: () => Promise<PushSubscriptionView[]>;
 	add: (subscription: PushSubscriptionView) => Promise<{ ok: true; total: number }>;
 	remove: (endpoint: string) => Promise<{ ok: true; total: number }>;
-	send: (payload: PushPayload) => Promise<{ sent: number; failed: number }>;
+	send: (payload: PushPayload, endpoints?: string[]) => Promise<{ sent: number; failed: number }>;
+	rename: (endpoint: string, name: string) => Promise<{ ok: true; total: number }>;
+	removeOne: (endpoint: string) => Promise<{ ok: true; total: number }>;
+	clear: () => Promise<{ ok: true; total: 0 }>;
 	count: () => Promise<number>;
 };
 
@@ -70,11 +78,27 @@ export function createPushStore(options: { dataDir: string; now: () => number })
 		async count() {
 			return (await read()).length;
 		},
-		async send(payload) {
+		async rename(endpoint, name) {
 			const list = await read();
+			await write(list.map((item) => (item.endpoint === endpoint ? { ...item, name } : item)));
+			return { ok: true, total: (await read()).length };
+		},
+		async removeOne(endpoint) {
+			const next = (await read()).filter((item) => item.endpoint !== endpoint);
+			await write(next);
+			return { ok: true, total: next.length };
+		},
+		async clear() {
+			await write([]);
+			return { ok: true, total: 0 };
+		},
+		async send(payload, endpoints) {
+			const all = await read();
+			const list = endpoints ? all.filter((item) => endpoints.includes(item.endpoint)) : all;
 			let sent = 0;
 			let failed = 0;
 			const dead: string[] = [];
+			const status = new Map<string, string>();
 			for (const subscription of list) {
 				try {
 					await webpush.sendNotification(
@@ -82,14 +106,24 @@ export function createPushStore(options: { dataDir: string; now: () => number })
 						JSON.stringify(payload),
 					);
 					sent += 1;
+					status.set(subscription.endpoint, "成功");
 				} catch (error) {
 					failed += 1;
-					const status = (error as { statusCode?: number }).statusCode;
+					const code = (error as { statusCode?: number }).statusCode;
 					// 404/410：订阅已失效，顺手清掉，避免每次白打
-					if (status === 404 || status === 410) dead.push(subscription.endpoint);
+					if (code === 404 || code === 410) dead.push(subscription.endpoint);
+					status.set(subscription.endpoint, `失败 ${code ?? ""}`.trim());
 				}
 			}
-			if (dead.length > 0) await write(list.filter((item) => !dead.includes(item.endpoint)));
+			// 记下「上次推送」：界面要显示时间与结果
+			const stamped = all
+				.filter((item) => !dead.includes(item.endpoint))
+				.map((item) =>
+					status.has(item.endpoint)
+						? { ...item, lastSentAt: options.now(), lastStatus: status.get(item.endpoint) }
+						: item,
+				);
+			if (stamped.length !== all.length || status.size > 0) await write(stamped);
 			return { sent, failed };
 		},
 	};

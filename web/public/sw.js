@@ -28,7 +28,11 @@ self.addEventListener("notificationclick", (event) => {
 	event.waitUntil(
 		self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
 			for (const client of list) {
-				if ("focus" in client) return client.focus();
+				if (!("focus" in client)) continue;
+				// 关键：已经开着的窗口也要**导航到通知里的地址**（带上 ?session=<id>），
+				// 否则点了只是把旧页面拉到前台，停在上一个会话上。
+				client.navigate(target).catch(() => {});
+				return client.focus();
 			}
 			return self.clients.openWindow(target);
 		}),

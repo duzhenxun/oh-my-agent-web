@@ -138,3 +138,59 @@ button.status-usage {
 .status-usage-row .mono {
 	color: var(--text);
 }
+
+/* 推送面板（独立 Tab）：设备清单 */
+.push-panel {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	min-height: 0;
+}
+
+.push-head,
+.push-foot {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+.push-list {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	overflow: auto;
+	min-height: 0;
+}
+
+.push-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 10px 12px;
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	background: var(--bg);
+}
+
+.push-row-on {
+	border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+
+.push-row-main {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.push-row-name {
+	font-size: 13px;
+	font-weight: 600;
+}
+
+.push-row-meta {
+	font-size: 10.5px;
+	color: var(--text-faint);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
