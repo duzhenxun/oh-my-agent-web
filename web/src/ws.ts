@@ -158,6 +158,8 @@ export function newChat(workspace?: string): void {
 }
 
 export function switchConversation(conversationId: string): void {
+	// 先乐观高亮：外网往返几百毫秒，点下去没有反馈会以为没点上
+	setAppState({ pendingActive: conversationId });
 	// 先同步地址栏：点击侧栏后地址应立即跟随目标会话；服务端快照随后会校正状态。
 	if (typeof window !== "undefined") {
 		const href = sessionUrlFor(window.location.href, conversationId);
@@ -280,7 +282,13 @@ function handle(message: ServerMessage): void {
 	}
 
 	if (message.event === "snapshot") {
-		setAppState({ snapshot: message.snapshot, lastError: null });
+		const pending = getAppState().pendingActive;
+		setAppState({
+			snapshot: message.snapshot,
+			lastError: null,
+			// 服务端已经切过去了 → 乐观值可以退休
+			...(pending && message.snapshot.active.conversationId === pending ? { pendingActive: null } : {}),
+		});
 		return;
 	}
 

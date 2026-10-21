@@ -15,7 +15,8 @@ const TEXT_TYPE = /text|javascript|json|svg|css|xml/i;
 export function compressText() {
 	return (request: Request, response: Response, next: NextFunction): void => {
 		const accept = String(request.headers["accept-encoding"] ?? "");
-		if (!/gzip/i.test(accept)) {
+		// SSE 是流式响应：攒着压缩等于永远不发送（还会一直吃内存），必须直接放行
+		if (!/gzip/i.test(accept) || request.path === "/api/events") {
 			next();
 			return;
 		}

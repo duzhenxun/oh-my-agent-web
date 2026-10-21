@@ -15,9 +15,18 @@ export type AppState = {
 	draft: string;
 	/** 侧栏的设置面板是否展开（同理：纯客户端 UI 状态） */
 	settingsOpen: boolean;
+	/** 刚点下、还没等到快照的会话：让侧栏立刻高亮（外网切换有几百毫秒延迟） */
+	pendingActive: string | null;
 };
 
-let state: AppState = { snapshot: null, connection: "connecting", lastError: null, draft: "", settingsOpen: false };
+let state: AppState = {
+	snapshot: null,
+	connection: "connecting",
+	lastError: null,
+	draft: "",
+	settingsOpen: false,
+	pendingActive: null,
+};
 const listeners = new Set<() => void>();
 
 export function getAppState(): AppState {

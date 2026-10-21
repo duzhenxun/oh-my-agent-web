@@ -9,6 +9,7 @@
  * （否则两个标签页会互相拽着切换）。cookie 不存在时由 `/api/events` 发一个。
  */
 import { randomUUID } from "node:crypto";
+import { createGzip } from "node:zlib";
 import type { Express } from "express";
 import type { Snapshot } from "../protocol.js";
 
@@ -68,16 +69,22 @@ export function registerLiveRoutes(app: Express, deps: LiveDeps): void {
 			);
 		}
 
+		// SSE 首帧快照 ~136KB，wifi/外网下很慢；能 gzip 就流式压（不能攒，必须边压边发）
+		const gzip = /gzip/i.test(String(request.headers["accept-encoding"] ?? ""));
 		response.writeHead(200, {
 			"content-type": "text/event-stream; charset=utf-8",
 			"cache-control": "no-cache, no-transform",
 			connection: "keep-alive",
 			// nginx 默认会缓冲响应体，SSE 必须显式关掉，否则事件全卡在缓冲里
 			"x-accel-buffering": "no",
+			...(gzip ? { "content-encoding": "gzip", vary: "accept-encoding" } : {}),
 		});
 		response.flushHeaders?.();
 
-		const sink: Sink = (payload) => response.write(`data: ${payload}\n\n`);
+		const compressor = gzip ? createGzip({ level: 6 }) : null;
+		compressor?.on("data", (chunk: Buffer) => response.write(chunk));
+		const send = (text: string) => (compressor ? compressor.write(text) : response.write(text));
+		const sink: Sink = (payload) => send(`data: ${payload}\n\n`);
 		deps.sinks.set(clientId, sink);
 		deps.logger.info("SSE 已连接", { clients: deps.sinks.size });
 
@@ -85,10 +92,11 @@ export function registerLiveRoutes(app: Express, deps: LiveDeps): void {
 		sink(JSON.stringify({ type: "event", event: "snapshot", snapshot: deps.snapshotFor(clientId) }));
 
 		// 心跳：中间代理一般 60s 掐空闲连接，25s 发一次注释行足够保活
-		const beat = setInterval(() => response.write(": ping\n\n"), 25_000);
+		const beat = setInterval(() => send(": ping\n\n"), 25_000);
 
 		request.on("close", () => {
 			clearInterval(beat);
+			compressor?.end();
 			deps.sinks.delete(clientId);
 			deps.logger.info("SSE 已断开", { clients: deps.sinks.size });
 		});

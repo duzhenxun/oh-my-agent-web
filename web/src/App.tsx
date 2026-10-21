@@ -168,7 +168,7 @@ export function App() {
 						>
 							<Sidebar
 								conversations={snapshot?.conversations ?? []}
-								activeId={snapshot?.active.conversationId ?? null}
+								activeId={state.pendingActive ?? snapshot?.active.conversationId ?? null}
 								piProjects={snapshot?.piProjects ?? []}
 								onCollapse={() => setCollapsed(true)}
 								runningIds={Object.keys(snapshot?.runningByConversation ?? {})}
