@@ -135,3 +135,83 @@ export async function readRaw(root: string, relPath: string): Promise<RawResult>
 		return { ok: false, error: error instanceof Error ? error.message : String(error) };
 	}
 }
+
+// ---------------------------------------------------------------------------
+// 视频 / 音频：走「流 + Range」，不整块读进内存（大文件也能拖动进度条）
+// ---------------------------------------------------------------------------
+
+/** 允许内联播放的媒体类型（白名单之外的扩展名一律拒绝） */
+const MEDIA_MIME: Record<string, string> = {
+	mp4: "video/mp4",
+	m4v: "video/mp4",
+	webm: "video/webm",
+	ogv: "video/ogg",
+	mov: "video/quicktime",
+	mkv: "video/x-matroska",
+	mp3: "audio/mpeg",
+	m4a: "audio/mp4",
+	aac: "audio/aac",
+	wav: "audio/wav",
+	ogg: "audio/ogg",
+	opus: "audio/opus",
+	flac: "audio/flac",
+};
+
+/** 纯函数：媒体扩展名 → Content-Type（不是媒体返回空串） */
+export function mediaMimeOf(path: string): string {
+	const extension = path.split(".").pop()?.toLowerCase() ?? "";
+	return MEDIA_MIME[extension] ?? "";
+}
+
+export type MediaFile =
+	{ ok: true; path: string; size: number; mime: string } | { ok: false; error: string; tooLarge?: boolean };
+
+/**
+ * 解析一个可播放的媒体文件：校验路径（与 readRaw 同规矩）、类型白名单、大小上限。
+ * 只 stat，不读内容 —— 真正的字节由路由用 createReadStream + Range 流出去。
+ */
+export async function resolveMediaFile(root: string, relPath: string): Promise<MediaFile> {
+	const mime = mediaMimeOf(relPath);
+	if (mime === "") return { ok: false, error: `不支持的媒体类型：${relPath.split(".").pop() ?? "无扩展名"}` };
+	let safePath: string;
+	try {
+		safePath = relPath.startsWith("/") ? realpathSync(relPath) : "";
+		if (safePath === "") {
+			const safe = resolveInsideRoot(root, join(root, relPath), realpathSync);
+			if (!safe.ok) return { ok: false, error: safe.reason };
+			safePath = safe.path;
+		}
+	} catch (error) {
+		return { ok: false, error: error instanceof Error ? error.message : String(error) };
+	}
+	try {
+		const info = await stat(safePath);
+		if (info.isDirectory()) return { ok: false, error: "这是一个目录" };
+		if (info.size > MAX_MEDIA_BYTES) return { ok: false, error: "文件太大（上限 4GB）", tooLarge: true };
+		return { ok: true, path: safePath, size: info.size, mime };
+	} catch (error) {
+		return { ok: false, error: error instanceof Error ? error.message : String(error) };
+	}
+}
+
+/** 媒体文件大小上限：4GB（流式发送，不会占内存；只是别把「伪装的巨型文件」当视频播） */
+export const MAX_MEDIA_BYTES = 4 * 1024 * 1024 * 1024;
+
+/** 纯函数：解析 Range 头（只认单段 `bytes=a-b`），返回闭区间；无效返回 null（按整文件发） */
+export function parseRange(header: string | undefined, size: number): { start: number; end: number } | null {
+	if (!header) return null;
+	const match = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
+	if (!match) return null;
+	const [, rawStart, rawEnd] = match;
+	if (rawStart === "" && rawEnd === "") return null;
+	if (rawStart === "") {
+		// 后缀写法：bytes=-N → 最后 N 字节
+		const length = Number(rawEnd);
+		if (!Number.isFinite(length) || length <= 0) return null;
+		return { start: Math.max(0, size - length), end: size - 1 };
+	}
+	const start = Number(rawStart);
+	const end = rawEnd === "" ? size - 1 : Number(rawEnd);
+	if (!Number.isFinite(start) || !Number.isFinite(end) || start > end) return null;
+	return { start: Math.min(start, size - 1), end: Math.min(end, size - 1) };
+}

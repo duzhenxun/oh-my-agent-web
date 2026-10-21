@@ -12,6 +12,7 @@
  * 断线重连：SSE 自带重连，这里再叠一层指数退避（0.5s → 8s 封顶）。
  */
 import { getAppState, setAppState } from "./store.ts";
+import { readCachedMessages, writeCachedMessages } from "./session-cache.ts";
 import type {
 	ApprovalMode,
 	AttachmentRef,
@@ -23,7 +24,9 @@ import type {
 	ServerMessage,
 	SessionPrefs,
 	Snapshot,
+	UiMessage,
 } from "./types.ts";
+import { focusComposer } from "./composer-focus.ts";
 import { appendTextToMessage } from "./lib/delta.ts";
 import { sessionUrlFor } from "./session-url.ts";
 
@@ -54,8 +57,10 @@ export function connect(): void {
 	if (source && source.readyState !== EventSource.CLOSED) return;
 
 	setAppState({ connection: "connecting" });
-	// SSE 带不了自定义头，所以用查询参数把标签页标识带过去
-	const next = new EventSource(`/api/events?client=${encodeURIComponent(clientId())}`);
+	// SSE 带不了自定义头，所以用查询参数把标签页标识带过去；
+	// `slim=1` 是客户端能力协商：告诉服务端「快照里可以省掉会话清单（变了再发）」——
+	// 那份清单上百 KB，而它几乎不变，每帧都发就是手机上切会话慢的主因。
+	const next = new EventSource(`/api/events?client=${encodeURIComponent(clientId())}&slim=1`);
 	source = next;
 
 	next.addEventListener("open", () => {
@@ -150,6 +155,13 @@ export function interrupt(conversationId: string): void {
 
 /** 新建会话；传 workspace = 在这个项目下新建（项目行上的「+」） */
 export function newChat(workspace?: string): void {
+	// 光标先抢进输入框：必须在点击的**同一个任务**里做，iOS 才会弹键盘
+	// （等快照回来再 focus，光标进去了但键盘不出来 —— 手机上像没反应）
+	focusComposer();
+	// 新会话的 id 由服务端生成，客户端没法先高亮 —— 先给一条「正在新建」的反馈，
+	// 快照一到就自动跳到那个会话（服务端会把发起者自己的视图指过去）
+	setAppState({ creating: true });
+	setTimeout(() => setAppState({ creating: false }), 8000); // 兜底：建失败也别一直转
 	send(
 		workspace
 			? { id: `req-${++seq}`, type: "new_chat", payload: { workspace } }
@@ -157,15 +169,54 @@ export function newChat(workspace?: string): void {
 	);
 }
 
+/** 切会话的一次点击兜底：超过这个时间还没看到服务端确认，就补发一次（只补一次） */
+const SWITCH_RETRY_MS = 1200;
+
+/** 改会话显示名：交给服务端写进 pi 的会话文件（session_info），本地不再存一份 */
+export function renameSession(conversationId: string, title: string): void {
+	send({ id: `req-${++seq}`, type: "rename_session", payload: { conversationId, title } });
+}
+
 export function switchConversation(conversationId: string): void {
 	// 先乐观高亮：外网往返几百毫秒，点下去没有反馈会以为没点上
-	setAppState({ pendingActive: conversationId });
-	// 先同步地址栏：点击侧栏后地址应立即跟随目标会话；服务端快照随后会校正状态。
+	setAppState({ pendingActive: conversationId, preview: null });
+	// 地址栏先跟上去；服务端快照随后会校正状态。
 	if (typeof window !== "undefined") {
 		const href = sessionUrlFor(window.location.href, conversationId);
 		window.history.replaceState(null, "", href);
 	}
 	send({ id: `req-${++seq}`, type: "switch_conversation", payload: { conversationId } });
+	// 本地缓存：看过的会话先把正文铺上（首屏不等网络），服务端快照到了再覆盖。
+	void readCachedMessages(conversationId).then((messages) => {
+		// 期间用户可能又点了别的会话，或者快照已经到了
+		if (!messages || getAppState().pendingActive !== conversationId) return;
+		setAppState({ preview: { conversationId, messages } });
+	});
+	// 兜底：网络抖一下 / 那一帧请求丢了，不至于要用户再点第二下。
+	// 服务端对重复的 switch 是幂等的（已经切过去了就只重推一份快照）。
+	setTimeout(() => {
+		if (getAppState().pendingActive !== conversationId) return;
+		send({ id: `req-${++seq}`, type: "switch_conversation", payload: { conversationId } });
+		// 还是没回音就撤掉高亮：宁可回到「请再点一下」，也别让那一行一直亮着而内容没变
+		setTimeout(() => {
+			if (getAppState().pendingActive === conversationId) setAppState({ pendingActive: null });
+		}, SWITCH_RETRY_MS * 3);
+	}, SWITCH_RETRY_MS);
+}
+
+/** 写本地缓存的节流定时器（流式输出时不至于每帧都写盘） */
+let cacheTimer: ReturnType<typeof setTimeout> | null = null;
+let cacheTarget: { conversationId: string; messages: UiMessage[] } | null = null;
+
+function scheduleCacheWrite(conversationId: string, messages: UiMessage[]): void {
+	cacheTarget = { conversationId, messages };
+	if (cacheTimer) return;
+	cacheTimer = setTimeout(() => {
+		cacheTimer = null;
+		const target = cacheTarget;
+		cacheTarget = null;
+		if (target) void writeCachedMessages(target.conversationId, target.messages);
+	}, 3000);
 }
 
 /** 改客户端设置（ADR-0020 §P1）：服务端归一化后落盘，并随快照回推 */
@@ -277,18 +328,34 @@ export function approve(requestId: string, decision: "once" | "always" | "deny")
 
 function handle(message: ServerMessage): void {
 	if (message.type === "reply") {
-		if (!message.ok) setAppState({ lastError: `${message.error.code}: ${message.error.message}` });
+		if (!message.ok) {
+			// 请求被拒：乐观高亮要退回去，否则那个会话会一直亮着、看着像「点了没反应」
+			setAppState({
+				lastError: `${message.error.code}: ${message.error.message}`,
+				...(getAppState().pendingActive ? { pendingActive: null } : {}),
+			});
+		}
 		return;
 	}
 
 	if (message.event === "snapshot") {
 		const pending = getAppState().pendingActive;
+		const preview = getAppState().preview;
+		const previous = getAppState().snapshot;
+		// 服务端可以省掉 pi 会话清单（只有变了才带）：缺了就沿用上一份，不能把侧栏清空。
+		const piProjects = message.snapshot.piProjects ?? previous?.piProjects ?? [];
 		setAppState({
-			snapshot: message.snapshot,
+			snapshot: { ...message.snapshot, piProjects },
 			lastError: null,
+			creating: false,
 			// 服务端已经切过去了 → 乐观值可以退休
 			...(pending && message.snapshot.active.conversationId === pending ? { pendingActive: null } : {}),
+			// 权威快照到了 → 缓存副本不用再顶着了
+			...(preview && preview.conversationId === message.snapshot.active.conversationId ? { preview: null } : {}),
 		});
+		// 顺手把这份正文写进本地缓存（节流）：下次点开就能立刻铺上
+		const activeConversation = message.snapshot.active.conversationId;
+		if (activeConversation) scheduleCacheWrite(activeConversation, message.snapshot.active.messages);
 		return;
 	}
 

@@ -131,11 +131,26 @@ export function createPushStore(options: { dataDir: string; now: () => number })
 	};
 }
 
-/** 回合结束时的那条通知（index 里只留一行调用） */
-export function notifyTurnFinished(store: PushStore, info: { conversationId: string; title: string }): void {
+/** 项目名 = 工作区路径的最后一段（拿不到就回落应用名，别把通知的抬头留空） */
+export function projectNameOf(workspace: string | undefined): string {
+	const name = (workspace ?? "").split("/").filter(Boolean).pop();
+	return name && name !== "" ? name : "Agent Web";
+}
+
+/**
+ * 回合结束时的那条通知（index 里只留一行调用）。
+ *
+ * 排版按手机锁屏来定：**第一行（title）= 项目名，正文（body）= 会话名**。
+ * 锁屏只露两行，「哪个项目的哪个会话」一眼能认；「回合完成」这种套话不占位置
+ * （通知本身出现就代表完成了）。点开仍直达那条会话（url 带 ?session=）。
+ */
+export function notifyTurnFinished(
+	store: PushStore,
+	info: { conversationId: string; title: string; workspace?: string },
+): void {
 	void store.send({
-		title: "Agent Web · 回合完成",
-		body: `${info.title} 已回复，点开查看`,
+		title: projectNameOf(info.workspace),
+		body: info.title.trim() || "会话",
 		url: `/?session=${encodeURIComponent(info.conversationId)}`,
 		tag: `turn-${info.conversationId}`,
 	});

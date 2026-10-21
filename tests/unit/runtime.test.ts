@@ -114,6 +114,8 @@ describe("审批三态（ADR-0006）", () => {
 	 * 于是 `await startApprovalTurn()` 会一直等到回合结束 —— 而死锁就在那里（测试里踩过一次）。
 	 */
 	async function startApprovalTurn(runtime: Runtime) {
+		// 默认是「全部放行」（ADR-0034）：这里测三态，先切回「询问」
+		runtime.setApprovalMode("ask");
 		const done = runtime.sendMessage("approve please");
 		await waitFor(() => runtime.snapshot().pendingApproval !== null);
 		return { done };

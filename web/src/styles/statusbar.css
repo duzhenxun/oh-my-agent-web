@@ -1,35 +1,13 @@
-/* 底部状态栏（开关 + 工具入口 + token 胶囊）*/
-/* 状态栏里的「模型 / 技能 / 设置」入口（从顶栏挪下来） */
-.statusbar-tools {
-	display: flex;
-	align-items: center;
-	gap: 4px;
-}
-
-.statusbar-tools .appbar-menu {
-	display: flex;
-	gap: 4px;
-}
-
-.statusbar-tools .side-foot-btn {
-	font-size: 11px;
-	padding: 1px 7px;
-	border-radius: 6px;
-}
-
-.statusbar-tools .side-foot-icon {
-	font-size: 11px;
-}
-
-/* 底部状态栏里的开关（左侧 / 顶部） */
+/* 底部状态栏（连接 / 引擎 / 队列 / 上下文 / 顶部开关 / 当前项目）*/
+/* 「顶部」开关：不要边框，当普通文字用（悬浮才给一点底色） */
 .status-toggle {
-	border: 1px solid var(--border);
-	border-radius: 6px;
-	background: var(--bg-elev);
+	border: none;
+	border-radius: 5px;
+	background: none;
 	color: var(--text-faint);
 	font: inherit;
-	font-size: 11px;
-	padding: 1px 6px;
+	font-size: 10px;
+	padding: 0 3px;
 	cursor: pointer;
 }
 
@@ -50,12 +28,13 @@
 
 .status-toggle:hover {
 	color: var(--text);
-	border-color: var(--accent-dim);
+	background: var(--bg-elev-2);
 }
 
 /* 手机上状态栏会很宽：让它横向可滚动，别把布局撑破 */
-@media (max-width: 900px) {
+@media (max-width: 900px), (pointer: coarse) and (max-width: 1366px) {
 	.statusbar {
+		/* 只占右列宽度（左边栏一路到底） */
 		overflow-x: auto;
 		scrollbar-width: none;
 		white-space: nowrap;
@@ -64,51 +43,32 @@
 	.statusbar::-webkit-scrollbar {
 		display: none;
 	}
+}
 
-	/* 手机上「模型 / 技能 / 设置」收成纯图标，省一半宽度 */
-	.statusbar-tools .side-foot-btn {
-		gap: 0;
-		font-size: 0;
-	}
-
-	.statusbar-tools .side-foot-icon {
-		font-size: 13px;
-	}
-
-	.statusbar-tools .status-usage {
+/* 手机：只藏「对话数」（其余：项目 / 引擎 / 工作中 / 排队 / 上下文 都留着） */
+@media (max-width: 900px), (pointer: coarse) and (max-width: 1366px) {
+	.statusbar .status-conv {
 		display: none;
 	}
 }
 
-/* 手机：会话数 / 工作中 / 排队 / token 胶囊都不显示 —— 状态栏只留连接、开关与入口 */
-@media (max-width: 900px) {
-	.statusbar .status-conv,
-	.statusbar .status-running,
-	.statusbar .status-queued,
-	.statusbar .status-usage {
-		display: none;
-	}
-}
-
-/* token 胶囊：点一下从**上方**弹出会话信息（原来在顶栏时就是这么用的） */
-.status-usage-wrap {
+/* 上下文胶囊：点一下从**上方**弹出会话信息（浮层挂在它自己身上，手机也点得开） */
+.status-context-wrap {
 	position: relative;
 	display: inline-flex;
 }
 
-button.status-usage {
-	background: none;
-	border: none;
-	font: inherit;
-	cursor: pointer;
-}
-
+/* 弹窗用 fixed：状态栏在手机上是 overflow-x:auto（会连带裁掉纵向溢出），
+   绝对定位的浮层会被切成看不见 —— 表现就是「点了没反应」。
+   具体坐标由 JS 按触发按钮算（贴在它正上方），这里的 bottom/right 只是兜底。 */
 .status-usage-pop {
-	position: absolute;
-	bottom: calc(100% + 8px);
-	left: 0;
-	z-index: 30;
+	position: fixed;
+	bottom: 46px;
+	right: auto;
+	z-index: 60;
 	min-width: 200px;
+	/* 极窄屏也别顶出屏幕（坐标由 JS 夹过，这里兜宽度） */
+	max-width: calc(100vw - 16px);
 	display: flex;
 	flex-direction: column;
 	gap: 4px;
@@ -139,58 +99,157 @@ button.status-usage {
 	color: var(--text);
 }
 
-/* 推送面板（独立 Tab）：设备清单 */
-.push-panel {
-	display: flex;
-	flex-direction: column;
-	gap: 10px;
-	min-height: 0;
+/* ---------------------------------------------------------------------------
+ * 手机底部状态栏：只留「上下文 / 顶部 / 项目名」，并且居中。
+ * 其余（连接、引擎、对话数、工作中、排队、token）全部收起来 ——
+ * 模型 / 技能 / 推送 / 设置 都在顶栏右上角；左侧栏用顶栏的 ☰ 开合。
+ * ------------------------------------------------------------------------- */
+@media (max-width: 900px), (pointer: coarse) and (max-width: 1366px) {
+	.statusbar {
+		position: relative;
+		justify-content: center;
+		gap: 4px;
+		/* 右边给「顶部」按钮留出位置（它是绝对定位贴右边的） */
+		padding-left: 6px;
+		padding-right: 58px;
+	}
+
+	/* 「顶部」固定在右下角最右边（手机上也一样），中间那组仍然居中 */
+	.statusbar > .status-toggle {
+		position: absolute;
+		right: 6px;
+		top: 50%;
+		transform: translateY(-50%);
+	}
+
+	.statusbar > .status-spacer {
+		display: none;
+	}
+
+	/* 手机上把这几项的 emoji 收起来，省出宽度给文字（图标在小屏上是纯占位） */
+	.statusbar .status-ico {
+		display: none;
+	}
+
+	/* 项目名会很长（比如「活动消耗查询」），窄屏上要能自己缩，别把整排顶出屏幕 */
+	.statusbar > .status-path {
+		flex: 0 1 auto;
+		min-width: 0;
+		max-width: 20vw;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
 }
 
-.push-head,
-.push-foot {
-	display: flex;
+/* 「工作中」左边的小环：有回合在跑就转，蓝圈；闲着就是个淡灰静止环 */
+.status-running {
+	display: inline-flex;
 	align-items: center;
-	gap: 6px;
-	flex-wrap: wrap;
+	gap: 5px;
 }
 
-.push-list {
-	display: flex;
-	flex-direction: column;
-	gap: 8px;
-	overflow: auto;
-	min-height: 0;
+.status-spinner {
+	flex: none;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	border: 1.4px solid var(--border-strong, var(--border));
 }
 
-.push-row {
-	display: flex;
+.status-running.is-working .status-spinner {
+	border-color: color-mix(in srgb, var(--accent) 28%, transparent);
+	border-top-color: var(--accent);
+	animation: status-spin 0.8s linear infinite;
+}
+
+@keyframes status-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+/* 系统开了「减少动态效果」就不转，改成实心蓝点（避免不适） */
+@media (prefers-reduced-motion: reduce) {
+	.status-running.is-working .status-spinner {
+		animation: none;
+		border-color: var(--accent);
+	}
+}
+
+/* ---- 上下文用量胶囊：已用 / 窗口（11.8K / 1.05M）---- */
+/* 上下文胶囊：不描边、不铺底，跟着状态栏那排文字走（跟在「排队」后面） */
+.status-context {
+	display: inline-flex;
 	align-items: center;
-	gap: 10px;
-	padding: 10px 12px;
-	border: 1px solid var(--border);
-	border-radius: 10px;
-	background: var(--bg);
+	gap: 5px;
+	flex: none;
+	padding: 0 2px;
+	border: none;
+	background: none;
+	color: var(--text-dim);
+	font: inherit;
+	font-size: 12px;
+	line-height: 1.1;
+	cursor: pointer;
+	border-radius: 0;
 }
 
-.push-row-on {
-	border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+.status-context:hover {
+	color: var(--text);
 }
 
-.push-row-main {
-	flex: 1 1 auto;
-	min-width: 0;
+.status-ring {
+	width: 12px;
+	height: 12px;
+	flex: none;
+	transform: rotate(-90deg);
 }
 
-.push-row-name {
-	font-size: 13px;
-	font-weight: 600;
+.status-ring-bg {
+	fill: none;
+	stroke: var(--border);
+	stroke-width: 2.6;
 }
 
-.push-row-meta {
-	font-size: 10.5px;
+.status-ring-fg {
+	fill: none;
+	stroke: var(--accent);
+	stroke-width: 2.6;
+	stroke-linecap: round;
+	transition: stroke-dasharray 200ms ease-out;
+}
+
+.status-context-used {
+	font-weight: 650;
+	color: var(--text);
+	font-variant-numeric: tabular-nums;
+}
+
+.status-context-total {
 	color: var(--text-faint);
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
+	font-variant-numeric: tabular-nums;
+}
+
+/* 手机：状态栏只剩四项 + 这一颗，圆环稍微收一点 */
+@media (max-width: 900px), (pointer: coarse) and (max-width: 1366px) {
+	.status-context {
+		padding: 2px 7px 2px 5px;
+		font-size: 11px;
+	}
+}
+
+/* 超窄屏（≤380px）：顶部开关只留箭头图标；上下文只留「已用」，把位置让出来 */
+@media (max-width: 380px) {
+	.statusbar .status-toggle-label {
+		display: none;
+	}
+
+	.statusbar .status-context-total {
+		display: none;
+	}
+
+	.statusbar > .status-path {
+		max-width: 34vw;
+	}
 }

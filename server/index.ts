@@ -225,6 +225,7 @@ registerAuxRoutes(app, {
 registerLiveRoutes(app, {
 	sinks,
 	snapshotFor: (clientId) => runtime.snapshotFor(clientId),
+	clientTracker: { setSlim: runtime.clientView.setSlim, drop: runtime.clientView.drop },
 	logger,
 	handleMessage: async (clientId, shim, raw) => {
 		await dispatchRequest(shim as unknown as WebSocket, raw, clientId);

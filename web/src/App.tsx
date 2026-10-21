@@ -1,12 +1,21 @@
 import { useStickToBottom } from "./stick-to-bottom.ts";
 import { useEffect, useRef, useState } from "react";
-import { clampSidebarWidth, readStoredWidth, SIDEBAR_COLLAPSED_KEY, SIDEBAR_WIDTH_KEY } from "./sidebar-layout.ts";
+import {
+	clampSidebarWidth,
+	defaultCollapsed,
+	isTablet,
+	readStoredWidth,
+	SIDEBAR_COLLAPSED_KEY,
+	SIDEBAR_WIDTH_KEY,
+} from "./sidebar-layout.ts";
 import { setDraft, useAppState } from "./store.ts";
 import { sessionIdFromUrl, sessionUrlFor } from "./session-url.ts";
 import { cancelQueued, newChat, switchConversation } from "./ws.ts";
+import { MOBILE_SHELL_QUERY } from "./mobile-shell.ts";
 import { ApprovalDialog, NoticeBar } from "./components/ApprovalDialog.tsx";
 import { Composer } from "./components/Composer.tsx";
 import { MessageList } from "./components/MessageList.tsx";
+import { NewChatMeta } from "./components/NewChatMeta.tsx";
 import { ConversationOutline } from "./components/ConversationOutline.tsx";
 import { SidebarMenu } from "./components/SidebarMenu.tsx";
 import { PreviewPanel, type PanelItem } from "./components/PreviewPanel.tsx";
@@ -16,7 +25,12 @@ import { StatusBar } from "./components/StatusBar.tsx";
 export function App() {
 	// 文件面板（M4）：跟着当前会话的工作区走
 	// 侧栏：可收起 + 可拖宽（状态存 localStorage，刷新后保持）
-	const [collapsed, setCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1");
+	const [collapsed, setCollapsed] = useState(() =>
+		defaultCollapsed({
+			stored: localStorage.getItem(SIDEBAR_COLLAPSED_KEY),
+			tablet: typeof window !== "undefined" && isTablet((text) => window.matchMedia(text).matches),
+		}),
+	);
 	/** 顶部栏是否收起（底部状态栏的「▴ 顶部」切换，状态存 localStorage） */
 	const [appbarHidden, setAppbarHidden] = useState(() => localStorage.getItem("agent-web:appbar-hidden") === "1");
 	const [previewVisible, setPreviewVisible] = useState(true);
@@ -69,7 +83,14 @@ export function App() {
 	const [termSeq, setTermSeq] = useState(0);
 	const state = useAppState();
 	const snapshot = state.snapshot;
-	const messages = snapshot?.active.messages ?? [];
+	// 切会话时可能还没等到服务端快照：如果浏览器本地缓存里有这份正文，先铺上（首屏不等网络），
+	// 快照一到 ws.ts 会把 preview 清掉，自动换成权威数据。
+	const activeId = snapshot?.active.conversationId ?? null;
+	const preview = state.preview && state.preview.conversationId !== activeId ? state.preview : null;
+	const messages = preview?.messages ?? snapshot?.active.messages ?? [];
+	// 刚点下、服务端还没把这一份快照推回来（乐观高亮已生效）—— 给一条「正在打开」提示，
+	// 否则外网/手机上几百毫秒里界面看着像没反应，用户会再点一下。
+	const switching = state.pendingActive !== null && state.pendingActive !== activeId;
 	// 地址栏 ↔ 当前会话（?session=xxx）
 	const urlSession = useRef<string | null>(sessionIdFromUrl(window.location.search));
 	const appliedUrlSession = useRef(false);
@@ -105,7 +126,10 @@ export function App() {
 		}
 		// 会话可能在「本进程新建的」里，也可能只是 pi 里的历史会话（piProjects）
 		const own = snapshot.conversations.find((item) => item.id === id);
-		const piProject = snapshot.piProjects.find((project) => project.sessions.some((session) => session.id === id));
+		// 服务端可以省掉这份清单（见 protocol.ts）：缺了就当作没扫到，标题回落到自建会话
+		const piProject = (snapshot.piProjects ?? []).find((project) =>
+			project.sessions.some((session) => session.id === id),
+		);
 		const piSession = piProject?.sessions.find((session) => session.id === id);
 		const project = (own?.workspace ?? piProject?.cwd ?? snapshot.files?.root ?? "").split("/").filter(Boolean).pop();
 		const title = own?.title ?? piSession?.title ?? "";
@@ -121,6 +145,11 @@ export function App() {
 
 	return (
 		<div className="app">
+			{switching || state.creating ? (
+				<div className="switch-hint" role="status">
+					{state.creating ? "正在新建会话…" : preview ? "本地缓存 · 正在同步…" : "正在打开会话…"}
+				</div>
+			) : null}
 			{/* 顶部区域：横跨整个宽度，三栏都在它下面 */}
 			<div className="appbar" hidden={appbarHidden}>
 				<button
@@ -134,16 +163,18 @@ export function App() {
 				</button>
 				<span className="brand">
 					<img className="brand-icon" src="/favicon.svg" alt="" aria-hidden="true" />
-					Agent Web
+					<span className="brand-name">Agent Web</span>
 				</span>
 				<button type="button" className="appbar-new appbar-new-primary" onClick={() => newChat()} title="新建会话">
 					<span className="appbar-new-icon" aria-hidden="true">
 						💬
 					</span>
-					新会话
+					<span className="appbar-new-label">新会话</span>
 				</button>
 				{/* 预留区：以后放全局搜索 / 命令面板 */}
 				<span className="appbar-slot" />
+				{/* 模型 / 技能 / 推送 / 设置：靠右对齐（窄屏只留图标） */}
+				<SidebarMenu variant="full" placement="appbar" items={["models", "skills", "push", "settings"]} />
 				{panelItems.length > 0 ? (
 					<button
 						type="button"
@@ -180,9 +211,14 @@ export function App() {
 							// 用 capture 会先卸载侧栏，那一行的 onClick（切会话）就再也跑不到了 ——
 							// 这正是「点了没反应」的原因。
 							onClick={(event) => {
-								if (window.matchMedia("(max-width: 900px)").matches === false) return;
+								// 手机 / iPad（触摸屏）都按手机壳走：点会话后收起抽屉
+								if (window.matchMedia(MOBILE_SHELL_QUERY).matches === false) return;
 								const target = event.target as HTMLElement;
-								if (!target.closest(".session-row, .pi-row, .archived-view-list *")) return;
+								// 行内「⋯ / 归档」、项目行「⋯ / +」、已展开的菜单：都是「就地操作」，
+								// 抽屉一收菜单就跟着没了（看起来像“点了没反应”），所以留给它们自己处理。
+								if (target.closest(".pi-more, .pi-archive, .pi-menu, .proj-menu-btn, .proj-new, .proj-menu")) return;
+								// 其余落在整行（含 `.pi-row-wrap`）上的点击：切会话 → 收抽屉。
+								if (!target.closest(".pi-row-wrap, .session-row, .archived-view-list *")) return;
 								setTimeout(() => setCollapsed(true), 0);
 							}}
 						>
@@ -190,7 +226,6 @@ export function App() {
 								conversations={snapshot?.conversations ?? []}
 								activeId={state.pendingActive ?? snapshot?.active.conversationId ?? null}
 								piProjects={snapshot?.piProjects ?? []}
-								onCollapse={() => setCollapsed(true)}
 								runningIds={Object.keys(snapshot?.runningByConversation ?? {})}
 								onOpenTerminal={(cwd) => {
 									const id = `term:${termSeq}:${cwd}`;
@@ -219,77 +254,90 @@ export function App() {
 					</>
 				)}
 
-				<div className="workspace">
-					<main className="main" ref={scroll.ref}>
-						{snapshot ? (
-							<MessageList
-								messages={messages}
-								hasMoreBefore={snapshot.active.hasMoreBefore}
-								engine={snapshot.engine}
-								actions={snapshot.actions}
-								pending={(snapshot.queued ?? []).filter(
-									(item) => item.conversationId === snapshot.active.conversationId,
+				<div className="right-col">
+					<div className="right-upper">
+						<div className="workspace">
+							<main className="main" ref={scroll.ref}>
+								{snapshot && messages.length === 0 ? (
+									// 空会话：图标/名字/版本 + 一句招呼，整块居中（不占消息流、不需要滚动）
+									<div className="newchat-hero">
+										<NewChatMeta
+											webVersion={snapshot.versions.web}
+											engineName={snapshot.engine}
+											engineVersion={snapshot.versions.engine}
+										/>
+										<p className="newchat-hello">有什么我能帮你的吗？</p>
+									</div>
+								) : snapshot ? (
+									<MessageList
+										messages={messages}
+										hasMoreBefore={snapshot.active.hasMoreBefore}
+										engine={snapshot.engine}
+										modelLabel={
+											snapshot.models.find((item) => item.id === snapshot.model)?.label ??
+											(snapshot.model ? snapshot.model.split("/").slice(1).join("/") : "")
+										}
+										actions={snapshot.actions}
+										pending={(snapshot.queued ?? []).filter(
+											(item) => item.conversationId === snapshot.active.conversationId,
+										)}
+										onRecallPending={(queueId: string) => {
+											const item = snapshot.queued.find((entry) => entry.id === queueId);
+											if (item) setDraft(item.text);
+											cancelQueued(queueId);
+										}}
+										onCancelPending={(queueId: string) => cancelQueued(queueId)}
+										running={
+											snapshot?.running.status !== "idle" &&
+											snapshot?.running.conversationId === snapshot?.active.conversationId
+										}
+									/>
+								) : (
+									<div className="empty">等待服务端快照…（后端没起来的话看终端日志）</div>
 								)}
-								onRecallPending={(queueId: string) => {
-									const item = snapshot.queued.find((entry) => entry.id === queueId);
-									if (item) setDraft(item.text);
-									cancelQueued(queueId);
-								}}
-								onCancelPending={(queueId: string) => cancelQueued(queueId)}
+								{scroll.stuck ? null : (
+									<button type="button" className="jump-bottom" onClick={scroll.toBottom} title="回到最新">
+										↓ 回到底部
+									</button>
+								)}
+							</main>
+							<ConversationOutline messages={messages} />
+
+							{state.lastError ? <div className="error-bar">{state.lastError}</div> : null}
+							<NoticeBar notices={snapshot?.notices ?? []} />
+							<Composer
 								running={
 									snapshot?.running.status !== "idle" &&
-									snapshot?.running.conversationId === snapshot?.active.conversationId
+									snapshot?.running.conversationId === (snapshot?.active.conversationId ?? null)
 								}
+								conversationId={snapshot?.active.conversationId ?? null}
 							/>
-						) : (
-							<div className="empty">等待服务端快照…（后端没起来的话看终端日志）</div>
-						)}
-						{scroll.stuck ? null : (
-							<button type="button" className="jump-bottom" onClick={scroll.toBottom} title="回到最新">
-								↓ 回到底部
-							</button>
-						)}
-					</main>
-					<ConversationOutline messages={messages} />
+						</div>
 
-					{state.lastError ? <div className="error-bar">{state.lastError}</div> : null}
-					<NoticeBar notices={snapshot?.notices ?? []} />
-					<Composer
-						running={
-							snapshot?.running.status !== "idle" &&
-							snapshot?.running.conversationId === (snapshot?.active.conversationId ?? null)
-						}
-						conversationId={snapshot?.active.conversationId ?? null}
+						{panelItems.length > 0 && previewVisible ? (
+							<PreviewPanel
+								items={panelItems}
+								activeId={activeItem ?? panelItems[0]?.id ?? ""}
+								onActivate={setActiveItem}
+								onCloseItem={(id) => {
+									setPanelItems((current) => current.filter((item) => item.id !== id));
+									if (activeItem === id) setActiveItem(null);
+								}}
+								onCloseAll={() => {
+									setPanelItems([]);
+									setActiveItem(null);
+								}}
+							/>
+						) : null}
+					</div>
+
+					<StatusBar
+						snapshot={snapshot}
+						appbarHidden={appbarHidden}
+						onToggleAppbar={() => setAppbarHidden((value) => !value)}
 					/>
 				</div>
-
-				{panelItems.length > 0 && previewVisible ? (
-					<PreviewPanel
-						items={panelItems}
-						activeId={activeItem ?? panelItems[0]?.id ?? ""}
-						onActivate={setActiveItem}
-						onCloseItem={(id) => {
-							setPanelItems((current) => current.filter((item) => item.id !== id));
-							if (activeItem === id) setActiveItem(null);
-						}}
-						onCloseAll={() => {
-							setPanelItems([]);
-							setActiveItem(null);
-						}}
-					/>
-				) : null}
 			</div>
-
-			<StatusBar
-				connection={state.connection}
-				snapshot={snapshot}
-				appbarHidden={appbarHidden}
-				onToggleAppbar={() => setAppbarHidden((value) => !value)}
-				sidebarOpen={!collapsed}
-				onToggleSidebar={() => setCollapsed((value) => !value)}
-			>
-				<SidebarMenu variant="full" placement="appbar" />
-			</StatusBar>
 
 			{snapshot?.pendingApproval ? <ApprovalDialog approval={snapshot.pendingApproval} /> : null}
 		</div>

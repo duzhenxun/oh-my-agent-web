@@ -8,6 +8,7 @@
  */
 import { readFile, stat } from "node:fs/promises";
 import type { SessionStats } from "../protocol.js";
+import { parseUsage } from "../util/usage.js";
 
 export const MAX_STATS_BYTES = 20 * 1024 * 1024;
 
@@ -27,10 +28,6 @@ export function emptyStats(): SessionStats {
 		totalTokens: 0,
 		contextTokens: 0,
 	};
-}
-
-function num(value: unknown): number {
-	return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 /** 纯函数：把若干行 JSONL 文本聚合成统计（坏行跳过，绝不抛） */
@@ -61,18 +58,16 @@ export function summarizeSession(lines: string[]): SessionStats {
 		}
 
 		if (role === "assistant") {
-			const usage = (message.usage ?? {}) as Record<string, unknown>;
-			// 各家 provider 的字段名不一样（驼峰 / 下划线 / OpenAI 风格）→ 都认
-			const input = num(usage.inputTokens ?? usage.input ?? usage.input_tokens ?? usage.promptTokens);
-			const output = num(usage.outputTokens ?? usage.output ?? usage.output_tokens ?? usage.completionTokens);
-			const cacheRead = num(usage.cacheReadTokens ?? usage.cacheRead ?? usage.cache_read ?? usage.cachedTokens);
-			const cacheWrite = num(usage.cacheWriteTokens ?? usage.cacheWrite ?? usage.cache_write);
-			stats.inputTokens += input;
-			stats.outputTokens += output;
-			stats.cacheRead += cacheRead;
-			stats.cacheWrite += cacheWrite;
-			// 最近一条 assistant 的输入侧大小 ≈ 当前上下文占用
-			stats.contextTokens = input + cacheRead + cacheWrite;
+			// 字段名各家不一样 → 统一口径解析（server/util/usage.ts）
+			const usage = parseUsage(message.usage);
+			if (usage) {
+				stats.inputTokens += usage.input;
+				stats.outputTokens += usage.output;
+				stats.cacheRead += usage.cacheRead;
+				stats.cacheWrite += usage.cacheWrite;
+				// 最近一条 assistant 的输入侧大小 ≈ 当前上下文占用
+				stats.contextTokens = usage.input + usage.cacheRead + usage.cacheWrite;
+			}
 		}
 	}
 	stats.totalTokens = stats.inputTokens + stats.outputTokens + stats.cacheRead + stats.cacheWrite;

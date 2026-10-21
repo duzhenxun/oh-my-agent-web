@@ -47,7 +47,12 @@ type SessionHandle = {
 	/** 正在被 abort（用来把 agent_settled 翻译成「中断」而不是「完成」） */
 	aborting: boolean;
 	/** 会话转录的管理器（ADR-0021 §2：读条目 → 界面消息） */
-	sessionManager: { getEntries: () => unknown[]; getSessionFile: () => string | undefined };
+	sessionManager: {
+		getEntries: () => unknown[];
+		getSessionFile: () => string | undefined;
+		/** 追加一条 session_info（改会话显示名用，写进 pi 的会话文件） */
+		appendSessionInfo?: (name: string) => string;
+	};
 	/** 会话文件路径（新建后由 SDK 告知；打开时即入参） */
 	sessionPath: string | null;
 };
@@ -58,18 +63,15 @@ function asRecord(value: unknown): AnyRecord {
 	return typeof value === "object" && value !== null ? (value as AnyRecord) : {};
 }
 
-/**
- * 教模型怎么写「下一步建议」（ADR-0022）。
- *
- * 刻意写得短：这段每次请求都要付 token，而细节交给解析器（它容忍各种畸形写法）。
- * 不写进 SDK 的工具提示词里 —— 与工具无关，是「回复的排版约定」。
- */
+/** 教模型怎么写「下一步建议」（ADR-0022）：刻意写得短（每次请求都付 token） */
 import { reloadModelRegistry } from "./model-registry-reload.js";
 import { SUGGESTION_GUIDANCE } from "./suggestion-guidance.js";
 
 export { SUGGESTION_GUIDANCE };
 
 import { createPiThinking } from "./pi-thinking.js";
+import { piSdkVersion } from "./pi-version.js";
+import { renameSessionIn } from "./pi-rename.js";
 
 export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort {
 	const sessions = new Map<string, SessionHandle>();
@@ -170,6 +172,7 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 			}
 		},
 
+		version: piSdkVersion,
 		reloadModels: () => reloadModelRegistry(sessions, PREWARM_ID, warmUp, options.agentDir ?? getAgentDir()),
 
 		async createSession(sessionOptions: EngineSessionOptions) {
@@ -189,7 +192,8 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 			await startSession(openOptions.sessionId, workspace, sessionManager, openOptions.sessionPath);
 		},
 
-		async readUiMessages(sessionId: string) {
+		renameSession: (sessionPath, name) => renameSessionIn(sessions, sessionPath, name, options.sessionDir),
+		async readUiMessages(sessionId) {
 			const handle = sessions.get(sessionId);
 			if (!handle) return [];
 			return entriesToUiMessages(handle.sessionManager.getEntries());

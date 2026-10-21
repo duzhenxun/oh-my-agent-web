@@ -10,6 +10,7 @@
  * 这样单测可以用合成条目直接覆盖，不需要拉起 SDK。
  */
 import { TOOL_EXCERPT_CHARS, type MessageBlock, type UiMessage } from "../protocol.js";
+import { parseUsage } from "../util/usage.js";
 
 type AnyRecord = Record<string, unknown>;
 
@@ -56,6 +57,7 @@ function mapMessage(entryId: string, message: unknown, order: number): UiMessage
 	}
 
 	if (role === "assistant") {
+		const usage = parseUsage(record.usage);
 		const blocks: MessageBlock[] = [];
 		const content = Array.isArray(record.content) ? record.content : [];
 		for (const part of content) {
@@ -80,7 +82,7 @@ function mapMessage(entryId: string, message: unknown, order: number): UiMessage
 			// thinking 等其它部件不进界面（v1 不展示思考过程）
 		}
 		if (blocks.length === 0) return null;
-		return { id: entryId, role: "assistant", ts, blocks };
+		return { id: entryId, role: "assistant", ts, blocks, ...(usage ? { usage } : {}) };
 	}
 
 	return null; // system / toolResult 单独处理

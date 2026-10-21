@@ -6,8 +6,9 @@
  *   2. `approve`：界面点完按钮调它，解析那个 Promise；
  *   3. 规则：命中「总是允许这类」就直接放行（含跨重启的持久规则），并把新规则交给存储。
  *
- * 两条安全默认值：
- *   - 没有 handler / 被取消 → **拒绝**（绝不默认放行）；
+ * 默认模式是 `allow`（ADR-0034：自己一个人用的工作台，默认不想被弹窗打断），
+ * 但下面这条底线不变：
+ *   - 没有 handler / 被取消 → **拒绝**（绝不因为"没接上"就放行）；
  *   - 回合结束时若还悬着一个审批 → 按「拒绝」收尾，不留下一个永远等不到答复的 Promise。
  */
 import { hasRule, withRule, type ApprovalRule, type RuleStore } from "../approval/rules.js";
@@ -46,10 +47,11 @@ export function createApprovalBridge(options: ApprovalBridgeOptions): ApprovalBr
 	/** 本次运行内记住的（即使写盘失败也生效） */
 	const sessionRules = new Set<string>();
 	/**
-	 * 审批模式：只在内存里（不落盘）。切到 allow 时，**下一次**需要审批的操作起就直接放行；
-	 * 已经悬着的那个弹窗不会凭空消失（用户仍能选），避免"点了放行却看到一个闪现消失的弹窗"。
+	 * 审批模式：只在内存里（不落盘），**默认 allow**（ADR-0034）。
+	 * 切到 allow 时，**下一次**需要审批的操作起就直接放行；已经悬着的那个弹窗不会凭空消失
+	 * （用户仍能选），避免"点了放行却看到一个闪现消失的弹窗"。
 	 */
-	let approvalMode: ApprovalMode = "ask";
+	let approvalMode: ApprovalMode = "allow";
 	let pending: {
 		requestId: string;
 		scopeKey: string;

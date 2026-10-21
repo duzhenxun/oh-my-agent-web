@@ -57,3 +57,30 @@ export function createConversationFactory(options: {
 		},
 	};
 }
+
+/**
+ * 「新建会话」这个请求的处理（含错误归一化）。
+ *
+ * 从 runtime 抽出来：新建会话要顺带把**发起者自己的视图**指过去（ADR-0033），
+ * 这几句放回 runtime 会破 400 行护栏。
+ */
+export function newConversationWith(deps: {
+	create: (seedText: string, workspace?: string) => Promise<string>;
+	clientView: { setActive: (clientId: string, conversationId: string) => void };
+	notice: (text: string, level: "info" | "warn" | "error") => void;
+	pushSnapshot: () => void;
+}) {
+	return async (workspace?: string, clientId?: string) => {
+		try {
+			const id = await deps.create("新对话", workspace);
+			// 每个客户端各记各的视图：不把发起者的指过来，它收到的快照仍是旧会话
+			if (clientId) deps.clientView.setActive(clientId, id);
+			deps.pushSnapshot(); // ← 少了这一句，侧栏不会更新（冒烟抓到过）
+			return { ok: true as const };
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			deps.notice(`新建会话失败：${message}`, "error");
+			return { ok: false as const, error: { code: "session.create_failed", message } };
+		}
+	};
+}

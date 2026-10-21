@@ -11,27 +11,78 @@
 	min-width: 0;
 }
 
-.pi-more {
+/* 行内按钮（⋯ / 归档）。
+   两条硬要求，互相拉扯：
+   ① 不能靠 `display` 切换 —— 指针落下的那一帧重排，手机上 click 会落到刚冒出来的按钮上
+      （「点一下没反应」就是这么来的）；
+   ② 又不要一直占着行宽 —— 平时就该看不见。
+   解法：**绝对定位到「时间」那一格上**，鼠标移上去时按钮出现、时间让位，
+   行宽全程不变（不重排、不抖动），标题也不会被挤窄。 */
+.pi-more,
+.pi-archive {
 	flex: none;
-	display: none;
-	width: 20px;
-	height: 20px;
+	display: inline-flex;
 	align-items: center;
 	justify-content: center;
+	width: 20px;
+	height: 20px;
 	border: none;
 	border-radius: 5px;
 	background: none;
 	color: var(--text-faint);
 	font: inherit;
-	font-size: 13px;
 	line-height: 1;
 	cursor: pointer;
 	padding: 0;
-	margin-right: 4px;
+	visibility: hidden;
+	opacity: 0;
+	transition: opacity 90ms linear;
 }
 
-.pi-row-wrap:hover .pi-more {
-	display: inline-flex;
+.pi-more {
+	font-size: 15px;
+}
+
+.pi-archive {
+	font-size: 13px;
+}
+
+/* 桌面（真的能悬停）：时间那一格固定宽度，按钮绝对定位盖上去 */
+@media (hover: hover) {
+	.pi-row-time {
+		flex: none;
+		min-width: 44px;
+		text-align: right;
+	}
+
+	.pi-more,
+	.pi-archive {
+		position: absolute;
+		top: 50%;
+		transform: translateY(-50%);
+	}
+
+	.pi-more {
+		right: 0;
+	}
+
+	.pi-archive {
+		right: 22px;
+	}
+
+	.pi-row-wrap:hover .pi-more,
+	.pi-row-wrap:hover .pi-archive,
+	.pi-row-wrap:focus-within .pi-more,
+	.pi-row-wrap:focus-within .pi-archive {
+		visibility: visible;
+		opacity: 1;
+	}
+
+	/* 悬停时时间让位：同一块地方换成按钮（行宽不变，不闪不抖） */
+	.pi-row-wrap:hover .pi-row-time,
+	.pi-row-wrap:focus-within .pi-row-time {
+		visibility: hidden;
+	}
 }
 
 .pi-more:hover {
@@ -72,7 +123,7 @@
 	background: none;
 	color: var(--text-faint);
 	font: inherit;
-	font-size: 12px;
+	font-size: 14px;
 	text-align: left;
 	padding: 4px 6px;
 	border-radius: 6px;
@@ -112,34 +163,73 @@
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
-	font-size: 12px;
+	font-size: 14px;
 	color: var(--text-dim);
 }
 
 /* 会话行 hover：快速归档（点一下直接归档）+ 更多菜单 */
-.pi-archive {
-	flex: none;
-	display: none;
-	width: 20px;
-	height: 20px;
-	align-items: center;
-	justify-content: center;
-	border: none;
-	border-radius: 5px;
-	background: none;
-	color: var(--text-faint);
-	font: inherit;
-	font-size: 11px;
-	line-height: 1;
-	cursor: pointer;
-	padding: 0;
-}
-
-.pi-row-wrap:hover .pi-archive {
-	display: inline-flex;
-}
-
 .pi-archive:hover {
 	background: var(--bg-elev-2);
 	color: var(--accent);
+}
+
+/* 触摸屏（手机 / 平板）：**没有「悬停」这一步**。
+   按钮必须在手指落下之前就看得见、并且点得准；否则第一下总是被「刚冒出来的按钮」吃掉。
+   快速归档（🗄）在手机上一按就没，而「已归档」入口在窄屏是隐藏的（找不回来），
+   所以手机上只保留「⋯」菜单（归档在菜单里，多一步但可反悔）。 */
+@media (hover: none), (pointer: coarse) {
+	.pi-row-wrap .pi-more {
+		visibility: visible;
+		opacity: 1;
+		width: 36px;
+		height: 36px;
+		font-size: 18px;
+		margin-right: 0;
+	}
+
+	.pi-row-wrap .pi-archive {
+		display: none;
+	}
+
+	/* 会话行给手指留够高度（原来 28px 太窄，容易点到隔壁行） */
+	.pi-row-wrap,
+	.pi-row {
+		min-height: 40px;
+	}
+
+	.pi-row {
+		align-items: center;
+	}
+}
+
+/* 切会话的等待提示：点下去立刻有反馈。
+   外网 / 手机上「切换会话」要走一个来回（几百毫秒），只变高亮会被当成没点上。
+   150ms 内切完就不显示（快的时候不闪）。 */
+.switch-hint {
+	position: fixed;
+	top: calc(var(--appbar-h, 46px) + 8px);
+	left: 50%;
+	transform: translateX(-50%);
+	z-index: 50;
+	padding: 4px 12px;
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	background: var(--bg-elev-2);
+	color: var(--text-dim);
+	font-size: 14px;
+	line-height: 1.4;
+	white-space: nowrap;
+	pointer-events: none;
+	box-shadow: 0 6px 18px rgb(0 0 0 / 35%);
+	opacity: 0;
+	animation: switch-hint-in 120ms ease-out 150ms forwards;
+}
+
+@keyframes switch-hint-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
 }

@@ -15,11 +15,13 @@ import yaml from "highlight.js/lib/languages/yaml";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import {
+	computeFolds,
 	describeRange,
 	languageOf,
 	MAX_HIGHLIGHT_LINES,
 	normalizeRange,
 	referenceFor,
+	type FoldRange,
 	type LineRange,
 } from "../file-preview.ts";
 import { setDraft } from "../store.ts";
@@ -63,17 +65,33 @@ export function FileViewer({ path, root, toolbar }: { path: string; root?: strin
 	const isMarkdown = /\.(md|markdown)$/i.test(path);
 	// 图片走 /api/files/raw 直接显示（原来一律当"二进制不能预览"，图片也没法看）
 	const isImage = /\.(png|jpe?g|gif|webp|avif|svg|bmp|ico)$/i.test(path);
-	const imageSrc = isImage
-		? `/api/files/raw?path=${encodeURIComponent(path)}${root ? `&root=${encodeURIComponent(root)}` : ""}`
-		: null;
+	const query = `path=${encodeURIComponent(path)}${root ? `&root=${encodeURIComponent(root)}` : ""}`;
+	const imageSrc = isImage ? `/api/files/raw?${query}` : null;
+	// 视频 / 音频：走流式 + Range 的 /api/files/media（能拖动进度条）
+	const isVideo = /\.(mp4|m4v|webm|ogv|mov|mkv)$/i.test(path);
+	const isAudio = /\.(mp3|m4a|aac|wav|ogg|opus|flac)$/i.test(path);
+	const mediaSrc = isVideo || isAudio ? `/api/files/media?${query}` : null;
 	const [mode, setMode] = useState<"preview" | "source">(isMarkdown ? "preview" : "source");
+	/** 折叠起来的块（按起始行记）：代码 / JSON 都靠它收起一大段 */
+	const [folded, setFolded] = useState<Set<number>>(new Set());
 	const [anchor, setAnchor] = useState<number | null>(null);
 	const [focus, setFocus] = useState<number | null>(null);
+	useEffect(() => {
+		// 换文件就把折叠状态清掉（行号对不上旧的会乱）
+		setFolded(new Set());
+	}, [path]);
 
 	useEffect(() => {
 		let cancelled = false;
 		setAnchor(null);
 		setFocus(null);
+		if (mediaSrc) {
+			// 媒体不用读文本：直接交给 <video> / <audio> 流式播
+			setState({ text: "", bytes: 0, truncated: false, binary: false });
+			return () => {
+				cancelled = true;
+			};
+		}
 		void (async () => {
 			const response = await fetch(
 				`/api/files/read?path=${encodeURIComponent(path)}${root ? `&root=${encodeURIComponent(root)}` : ""}`,
@@ -106,7 +124,14 @@ export function FileViewer({ path, root, toolbar }: { path: string; root?: strin
 		return () => {
 			cancelled = true;
 		};
-	}, [path, root, imageSrc]);
+	}, [path, root, imageSrc, mediaSrc]);
+
+	const folds = useMemo<FoldRange[]>(
+		() => (state && !state.binary && !state.error ? computeFolds(state.text) : []),
+		[state],
+	);
+	/** 起始行 → 结束行 */
+	const foldEnds = useMemo(() => new Map(folds.map((fold) => [fold.start, fold.end])), [folds]);
 
 	const language = languageOf(path);
 	const lines = state && !state.binary && !state.error ? state.text.split("\n") : [];
@@ -138,7 +163,7 @@ export function FileViewer({ path, root, toolbar }: { path: string; root?: strin
 					{path.split("/").filter(Boolean).pop() ?? path}
 				</span>
 				<span className="file-preview-meta">
-					{state ? `${state.bytes} 字节` : "读取中…"}
+					{mediaSrc ? (isVideo ? "视频" : "音频") : state ? `${state.bytes} 字节` : "读取中…"}
 					{state?.truncated ? "（已截断）" : ""}
 					{language ? ` · ${language}` : ""}
 				</span>
@@ -189,53 +214,98 @@ export function FileViewer({ path, root, toolbar }: { path: string; root?: strin
 					<img className="file-image" src={imageSrc} alt={path} />
 				</div>
 			) : null}
-			{state?.binary && imageSrc === null ? <div className="file-preview-error">这是二进制文件，不能预览</div> : null}
+			{isVideo && mediaSrc ? (
+				<div className="file-media">
+					{/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+					<video className="file-video" src={mediaSrc} controls playsInline preload="metadata" />
+				</div>
+			) : null}
+			{isAudio && mediaSrc ? (
+				<div className="file-media">
+					<audio className="file-audio" src={mediaSrc} controls preload="metadata" />
+				</div>
+			) : null}
+			{state?.binary && imageSrc === null && mediaSrc === null ? (
+				<div className="file-preview-error">这是二进制文件，不能预览</div>
+			) : null}
 			{state && !state.binary && !state.error && isMarkdown && mode === "preview" ? (
 				<div className="file-preview-md">
 					<Markdown text={state.text} />
 				</div>
 			) : null}
-			{state && !state.binary && !state.error && !(isMarkdown && mode === "preview") ? (
+			{state && !state.binary && !state.error && mediaSrc === null && !(isMarkdown && mode === "preview") ? (
 				<pre className="file-preview-body mono">
-					{lines.map((line, index) => {
-						const selected = range !== null && index + 1 >= range.start && index + 1 <= range.end;
-						const html = highlighted[index];
-						return (
-							<div
-								className={`file-preview-line file-preview-line-clickable${selected ? " file-preview-line-on" : ""}`}
-								key={index}
-								title="点选中这一行（Shift+点选范围，双击直接加到对话）"
-								onClick={() => {
-									// 用户正在选文字时不抢选择（否则复制粘贴会失效）
-									if (!window.getSelection()?.isCollapsed) return;
-									setAnchor(index);
-									setFocus(index);
-								}}
-								onDoubleClick={() => setDraft(`${referenceFor(path, { start: index + 1, end: index + 1 })} `)}
-							>
-								<button
-									type="button"
-									className="file-preview-no"
-									title="点选这一行（Shift+点选范围）"
-									onClick={(event) => {
-										if (event.shiftKey && anchor !== null) {
-											setFocus(index);
-											return;
-										}
+					{(() => {
+						// 逐行渲染：遇到「折叠中的块」就跳过它内部的行（嵌套也按最大 end 跳过）
+						let hideUntil = -1;
+						return lines.map((line, index) => {
+							if (index <= hideUntil) return null;
+							const foldEnd = foldEnds.get(index);
+							const canFold = foldEnd !== undefined && foldEnd > index;
+							const isFolded = canFold && folded.has(index);
+							if (isFolded) hideUntil = foldEnd;
+							const selected = range !== null && index + 1 >= range.start && index + 1 <= range.end;
+							const html = highlighted[index];
+							return (
+								<div
+									className={`file-preview-line file-preview-line-clickable${selected ? " file-preview-line-on" : ""}`}
+									key={index}
+									title="点选中这一行（Shift+点选范围，双击直接加到对话）"
+									onClick={() => {
+										// 用户正在选文字时不抢选择（否则复制粘贴会失效）
+										if (!window.getSelection()?.isCollapsed) return;
 										setAnchor(index);
 										setFocus(index);
 									}}
+									onDoubleClick={() => setDraft(`${referenceFor(path, { start: index + 1, end: index + 1 })} `)}
 								>
-									{index + 1}
-								</button>
-								{html !== undefined ? (
-									<span className="file-preview-text" dangerouslySetInnerHTML={{ __html: html || " " }} />
-								) : (
-									<span className="file-preview-text">{line || " "}</span>
-								)}
-							</div>
-						);
-					})}
+									{canFold ? (
+										<button
+											type="button"
+											className={`file-fold${isFolded ? " file-fold-collapsed" : ""}`}
+											title={isFolded ? "展开这一段" : "折叠这一段"}
+											onClick={(event) => {
+												event.stopPropagation();
+												setFolded((current) => {
+													const next = new Set(current);
+													if (next.has(index)) next.delete(index);
+													else next.add(index);
+													return next;
+												});
+											}}
+										>
+											{isFolded ? "▸" : "▾"}
+										</button>
+									) : (
+										<span className="file-fold file-fold-empty" aria-hidden="true" />
+									)}
+									<button
+										type="button"
+										className="file-preview-no"
+										title="点选这一行（Shift+点选范围）"
+										onClick={(event) => {
+											if (event.shiftKey && anchor !== null) {
+												setFocus(index);
+												return;
+											}
+											setAnchor(index);
+											setFocus(index);
+										}}
+									>
+										{index + 1}
+									</button>
+									{html !== undefined ? (
+										<span className="file-preview-text" dangerouslySetInnerHTML={{ __html: html || " " }} />
+									) : (
+										<span className="file-preview-text">{line || " "}</span>
+									)}
+									{isFolded && foldEnd !== undefined ? (
+										<span className="file-fold-summary">⋯ {foldEnd - index} 行已折叠</span>
+									) : null}
+								</div>
+							);
+						});
+					})()}
 				</pre>
 			) : null}
 			{lines.length > MAX_HIGHLIGHT_LINES && language !== "" ? (

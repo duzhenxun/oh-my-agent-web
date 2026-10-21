@@ -29,7 +29,7 @@
 
 .btn-new {
 	padding: 4px 10px;
-	font-size: 12.5px;
+	font-size: 14.5px;
 }
 
 .sidebar-list {
@@ -44,7 +44,7 @@
 
 .sidebar-empty {
 	color: var(--text-faint);
-	font-size: 12.5px;
+	font-size: 14.5px;
 	padding: 4px 2px;
 }
 
@@ -82,7 +82,7 @@
 
 .sidebar-item-meta {
 	color: var(--text-faint);
-	font-size: 11.5px;
+	font-size: 13.5px;
 }
 
 @media (max-width: 720px) {
@@ -105,7 +105,7 @@
 	gap: 6px;
 	margin: 10px 0 2px;
 	color: var(--text-faint);
-	font-size: 11.5px;
+	font-size: 13.5px;
 	letter-spacing: 0.04em;
 	min-width: 0;
 }
@@ -114,7 +114,7 @@
 	border: 1px solid var(--border);
 	border-radius: 999px;
 	padding: 0 6px;
-	font-size: 10.5px;
+	font-size: 12.5px;
 }
 
 .proj {
@@ -129,7 +129,7 @@
 	padding: 4px 6px;
 	border-radius: 6px;
 	color: var(--text-dim);
-	font-size: 12.5px;
+	font-size: 14.5px;
 	min-width: 0;
 }
 
@@ -148,7 +148,7 @@
 .proj-count {
 	flex: none;
 	color: var(--text-faint);
-	font-size: 11px;
+	font-size: 13px;
 }
 
 .proj-body {
@@ -175,18 +175,18 @@
 	text-overflow: ellipsis;
 	white-space: nowrap;
 	color: var(--text-dim);
-	font-size: 12.5px;
+	font-size: 14.5px;
 }
 
 .pi-row-time {
 	flex: none;
 	color: var(--text-faint);
-	font-size: 11px;
+	font-size: 13px;
 }
 
 .pi-row-more {
 	color: var(--text-faint);
-	font-size: 11.5px;
+	font-size: 13.5px;
 }
 
 /* pi 会话行现在可点（ADR-0021 §2）：样式按按钮处理，但保持列表的紧凑感 */
@@ -217,7 +217,7 @@
 	color: var(--text-dim);
 	border-radius: 6px;
 	cursor: pointer;
-	font-size: 12px;
+	font-size: 14px;
 	line-height: 1;
 	padding: 1px 6px;
 }
@@ -228,172 +228,3 @@
 }
 
 /* ---- 项目分组（对齐参考实现的观感）---- */
-.proj-chevron {
-	flex: none;
-	width: 8px;
-	height: 8px;
-	border-right: 1.6px solid var(--text-faint);
-	border-bottom: 1.6px solid var(--text-faint);
-	transform: rotate(-45deg);
-	margin-right: 6px;
-	transition: transform 0.12s ease;
-}
-
-details[open] > .proj-head .proj-chevron {
-	transform: rotate(45deg);
-}
-
-.proj-head {
-	display: flex;
-	align-items: center;
-	gap: 4px;
-}
-
-.proj-name {
-	font-weight: 600;
-	color: var(--text);
-}
-
-.proj-new {
-	opacity: 0;
-}
-
-.proj-head:hover .proj-new {
-	opacity: 1;
-}
-
-/* 当前会话：左侧竖条 + 高亮底（与参考实现一致） */
-.pi-row {
-	position: relative;
-	padding-left: 10px;
-	border-left: 2px solid transparent;
-	border-radius: 0 6px 6px 0;
-}
-
-.pi-row-active {
-	border-left-color: var(--accent);
-	background: var(--bg-elev-2);
-}
-
-.pi-row-active .pi-row-title {
-	color: var(--text);
-}
-
-/* ---- 侧栏容器：可收起 + 可拖宽（状态见 web/src/sidebar-layout.ts）---- */
-.side-host {
-	position: relative;
-	flex: none;
-	min-width: 0;
-	display: flex;
-	flex-direction: column;
-}
-
-.side-host > .sidebar {
-	flex: 1 1 auto;
-	min-height: 0;
-	width: 100%;
-}
-
-/* 拖拽条：压在主区边缘上，只有 6px 宽，不挡内容 */
-.side-resizer {
-	position: absolute;
-	top: 0;
-	right: -3px;
-	width: 7px;
-	height: 100%;
-	cursor: col-resize;
-	/* 不能盖住模态（模型/技能/设置面板）：拖宽手柄只属于侧栏这一层 */
-	z-index: 5;
-	background: transparent;
-}
-
-.side-resizer:hover,
-.side-resizer:active {
-	background: color-mix(in srgb, var(--accent) 35%, transparent);
-}
-
-/* 收起后的小竖条按钮 */
-.side-expand {
-	flex: none;
-	width: 26px;
-	align-self: stretch;
-	border: 1px solid var(--border);
-	border-radius: var(--radius);
-	background: var(--bg-elev);
-	color: var(--text-dim);
-	font: inherit;
-	font-size: 15px;
-	cursor: pointer;
-}
-
-.side-expand:hover {
-	color: var(--accent);
-	border-color: var(--accent-dim);
-}
-
-/* ---- 收起态：活动栏（类 VS Code）---- */
-.activity-bar {
-	flex: none;
-	width: 44px;
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	gap: 4px;
-	padding: 6px 0;
-	border: 1px solid var(--border);
-	border-radius: var(--radius);
-	background: var(--bg-elev);
-}
-
-.activity-btn {
-	width: 32px;
-	height: 32px;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	border: none;
-	border-radius: 8px;
-	background: none;
-	color: var(--text-dim);
-	font: inherit;
-	font-size: 15px;
-	cursor: pointer;
-}
-
-.activity-btn:hover {
-	background: var(--bg-elev-2);
-	color: var(--text);
-}
-
-/* 运行中的会话：转圈 + 「运行中」标签（比一个光转的圆点明显得多） */
-.pi-running {
-	flex: none;
-	display: inline-flex;
-	align-items: center;
-	gap: 4px;
-	color: var(--accent);
-	font-size: 10.5px;
-	white-space: nowrap;
-}
-
-.pi-ring {
-	width: 9px;
-	height: 9px;
-	border-radius: 50%;
-	border: 1.5px solid color-mix(in srgb, var(--accent) 30%, transparent);
-	border-top-color: var(--accent);
-	animation: pi-spin 0.8s linear infinite;
-}
-
-@keyframes pi-spin {
-	to {
-		transform: rotate(360deg);
-	}
-}
-
-@media (prefers-reduced-motion: reduce) {
-	.pi-ring {
-		animation: none;
-		border-top-color: var(--accent);
-	}
-}

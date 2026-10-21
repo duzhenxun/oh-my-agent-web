@@ -1,7 +1,7 @@
 /* 模型测试的反馈色块：结果胶囊 + 批量测试的耗时胶囊 */
 /* 模型测试结果：贴在「测试」按钮左边的胶囊 */
 .prov-test-pill {
-	font-size: 11px;
+	font-size: 13px;
 	line-height: 1;
 	padding: 5px 8px;
 	border-radius: 999px;
@@ -26,7 +26,7 @@
 
 /* 批量测试的耗时列（放在「已启用」前面） */
 .prov-latency {
-	font-size: 10.5px;
+	font-size: 12.5px;
 	font-variant-numeric: tabular-nums;
 	padding: 1px 6px;
 	border-radius: 999px;
@@ -66,7 +66,7 @@
 	border: none;
 	background: none;
 	color: var(--text-faint);
-	font-size: 12.5px;
+	font-size: 14.5px;
 	padding: 4px 10px;
 	border-radius: 7px;
 	cursor: pointer;

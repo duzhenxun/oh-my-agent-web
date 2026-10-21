@@ -7,6 +7,10 @@ import { awaitTurnPersisted, createTurnFinisher, setRunning, settleWith } from "
 import { cancelQueuedWith, createTurnPlumbing } from "./turn-queue.js";
 import { createConversationFactory } from "./conversation-create.js";
 import { createClientView } from "./client-view.js";
+import { webVersion } from "../util/version.js";
+import { newConversationWith } from "./conversation-create.js";
+import { renameSessionWith } from "./rename-session.js";
+import { createSnapshotFor } from "./snapshot-for.js";
 import { createSwitchConversation } from "./switch-conversation.js";
 import { resolveAttachments } from "./attachment-resolve.js";
 import { createModelController } from "./model-controller.js";
@@ -20,7 +24,7 @@ import type {
 	SendMode,
 } from "../protocol.js";
 import { appendText, createMessage } from "../snapshot/messages.js";
-import { buildSnapshot, createServerState, emptyRunning } from "../snapshot/state.js";
+import { buildSnapshot, createServerState, emptyRunning, setPiProjects } from "../snapshot/state.js";
 export type { Result, Runtime, RuntimeEmit } from "./runtime-types.js";
 import type { Runtime, RuntimeOptions } from "./runtime-types.js";
 export type { RuntimeOptions } from "./runtime-types.js";
@@ -45,6 +49,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 	};
 	const turns = new Map<string, TurnState>();
 	const clientView = createClientView(); // 每客户端在看哪个会话（ADR-0033）
+	state.versions = { web: webVersion(), engine: options.engine.version?.() ?? null }; // 抬头显示的版本号
 
 	/** sendMessage 自引用：队列排空时要能再次调用自己（对象字面量还没构建完成 → 用 ref） */
 	let apiRef: Runtime | null = null;
@@ -57,7 +62,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		minIntervalMs: options.piSessionsMinIntervalMs,
 		now,
 		onLoaded: (projects) => {
-			state.piProjects = projects;
+			setPiProjects(state, projects);
 			// 记下每个 pi 会话的文件路径（ADR-0021 §2：点开就是打开这个文件）
 			piOpener.remember(projects);
 			pushSnapshot();
@@ -111,7 +116,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		onError: (message) => notice(message, "error"),
 	});
 
-	// 新建会话（ADR-0021 §2 收尾）：落在 pi 的会话存储里 —— 抽在 conversation-create 里
+	// 新建会话（ADR-0021 §2 收尾）：落在 pi 的会话存储里（conversation-create.ts）
 	const conversations = createConversationFactory({
 		state,
 		engine: options.engine,
@@ -168,11 +173,11 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		state,
 		engine: options.engine,
 		nextId,
-		appendUser: (id, value) =>
-			void (state.messages[id] = [
-				...(state.messages[id] ?? []),
-				appendText(createMessage(nextId("msg"), "user", now()), value),
-			]),
+		appendUser: (id, value, steer) => {
+			const message = appendText(createMessage(nextId("msg"), "user", now()), value);
+			if (steer) message.steer = true;
+			state.messages[id] = [...(state.messages[id] ?? []), message];
+		},
 		notice: (text, level) => notice(text, level),
 		pushSnapshot,
 	});
@@ -211,14 +216,12 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		refreshThinking: (id) => models.refreshThinking(id),
 		refreshStats: () => void refreshStats(),
 		pushSnapshot,
-		// 只写日志，不进对话流：切会话慢的时候要靠它定位
-		report: (text) => options.onStartupInfo?.(text),
+		report: (text) => options.onStartupInfo?.(text), // 只写日志，不进对话流（切会话慢时靠它定位）
 	});
 
 	const api: Runtime = {
 		async init() {
-			// 装载的「总是允许」规则只写日志：启动信息不该占用对话流（用户明确要求过）
-			const ruleCount = await approval.loadRules();
+			const ruleCount = await approval.loadRules(); // 「总是允许」规则只记日志，不占对话流
 			if (ruleCount > 0) options.onStartupInfo?.(`已装载 ${ruleCount} 条审批规则（这些操作不会再询问）`);
 			state.settings = settings ? await settings.load() : defaultSettings();
 			await piRefresher.refresh(true);
@@ -248,15 +251,10 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			if (options.loadProviders) state.providers = await options.loadProviders();
 		},
 
-		snapshot() {
-			return buildSnapshot(state);
-		},
-
-		snapshotFor: (clientId) => buildSnapshot(state, undefined, clientView.activeFor(clientId, state.activeId)),
-
-		state() {
-			return state;
-		},
+		snapshot: () => buildSnapshot(state),
+		snapshotFor: createSnapshotFor({ state, clientView, now }),
+		clientView,
+		state: () => state,
 
 		isBusy() {
 			return turns.size > 0;
@@ -271,11 +269,11 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			attachments?: AttachmentRef[],
 			mode: SendMode = "steer",
 			targetConversationId?: string,
+			clientId?: string, // 发起者：懒建会话时把它的视图指过去（ADR-0033）
 		) {
-			// 附件解析（ADR-0020 §P3）
 			const resolved = await resolveAttachments(text, attachments, options.uploadStore);
 			for (const name of resolved.missing) notice(`附件已失效（可能过期被清理）：${name}`, "warn");
-			if (resolved.images.length > 0) notice(`已附加 ${resolved.images.length} 张图片（走视觉注入）`, "info");
+			if (resolved.images.length > 0) notice(`已附加 ${resolved.images.length} 张图片（视觉注入）`, "info");
 
 			if (state.activeId !== null && turns.has(state.activeId)) {
 				const handled = await busy(mode, text, resolved.promptText, resolved.images, attachments);
@@ -283,8 +281,12 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			}
 			let conversationId: string | null = null;
 			try {
-				conversationId = targetConversationId ?? state.activeId ?? (await conversations.create(text));
-				const conv = conversationId; // 非空别名（TS 收窄）
+				// 没有任何会话时懒建一个（空实例的第一次发消息）；建了就把发起者的视图指过去
+				const existing = targetConversationId ?? state.activeId;
+				const created = existing ? null : await conversations.create(text);
+				if (created && clientId) clientView.setActive(clientId, created);
+				const conv = (existing ?? created) as string; // 两者必有一个（ADR-0033）
+				conversationId = conv;
 				if (!piOpener.isOpen(conv)) {
 					const opened = await piOpener.open(conv, (force) => piRefresher.refresh(force));
 					if (opened === null) throw new Error(`会话打不开：${conv}`);
@@ -297,9 +299,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 				const assistantMessage = createMessage(nextId("msg"), "assistant", ts);
 
 				const isFirstMessage = (state.messages[conv] ?? []).length === 0;
-				if (isFirstMessage) {
-					touchConversation(conv, { title: text.replace(/\s+/g, " ").trim().slice(0, titleChars) });
-				}
+				if (isFirstMessage) touchConversation(conv, { title: text.replace(/\s+/g, " ").trim().slice(0, titleChars) });
 
 				state.messages[conv] = [...(state.messages[conv] ?? []), userMessage, assistantMessage];
 				if (conv === state.activeId) {
@@ -380,17 +380,16 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			return { ok: true };
 		},
 
-		async newConversation(workspace?: string) {
-			try {
-				await conversations.create("新对话", workspace);
-				pushSnapshot(); // ← 少了这一句，侧栏不会更新（冒烟抓到的）
-				return { ok: true };
-			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				notice(`新建会话失败：${message}`, "error");
-				return { ok: false, error: { code: "session.create_failed", message } };
-			}
-		},
+		newConversation: newConversationWith({ create: conversations.create, clientView, notice, pushSnapshot }),
+
+		renameSession: (conversationId, title) =>
+			renameSessionWith({
+				engine: options.engine,
+				pathOf: (id) => piOpener.pathOf(id),
+				refresh: () => piRefresher.refresh(true),
+				notice,
+				pushSnapshot,
+			})(conversationId, title),
 
 		switchConversation: (conversationId, clientId) => switchTo(conversationId, clientId),
 	};

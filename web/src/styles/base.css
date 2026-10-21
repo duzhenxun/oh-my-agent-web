@@ -31,7 +31,7 @@ body {
 	background: var(--bg);
 	color: var(--text);
 	font:
-		14px/1.6 -apple-system,
+		16px/1.6 -apple-system,
 		BlinkMacSystemFont,
 		"Segoe UI",
 		"PingFang SC",
@@ -99,7 +99,7 @@ body {
 	border-radius: 999px;
 	border: 1px solid var(--border);
 	color: var(--text-dim);
-	font-size: 12px;
+	font-size: 14px;
 }
 
 .chip-open,
@@ -144,7 +144,7 @@ body {
 .notice {
 	border-left: 3px solid var(--border-strong);
 	padding: 4px 10px;
-	font-size: 12.5px;
+	font-size: 14.5px;
 	color: var(--text-dim);
 	background: var(--bg-elev);
 	border-radius: 0 6px 6px 0;
@@ -164,7 +164,7 @@ body {
 .error-bar {
 	flex: none;
 	color: var(--red);
-	font-size: 12.5px;
+	font-size: 14.5px;
 }
 
 /* ---- 输入区 ---- */
@@ -209,7 +209,7 @@ body {
 .btn.btn-send {
 	border-radius: 8px;
 	padding: 4px 10px;
-	font-size: 12px;
+	font-size: 14px;
 	font-weight: 600;
 	/* 没输入时是灰的：不可点、也不抢注意力 */
 	background: var(--bg-elev-2);
@@ -281,7 +281,7 @@ body {
 .empty-hint {
 	margin-left: 8px;
 	color: var(--text-faint);
-	font-size: 12.5px;
+	font-size: 14.5px;
 }
 
 /* ---- 浅色主题 ---- */
@@ -312,7 +312,7 @@ body {
 	border: 1px solid var(--border);
 	border-radius: 999px;
 	padding: 2px 8px;
-	font-size: 12px;
+	font-size: 14px;
 	max-width: 26ch;
 	cursor: pointer;
 }
@@ -360,31 +360,24 @@ body {
 }
 
 /* 底部状态栏里的「顶部栏」开关 */
+/* 「顶部」开关：不要边框，当普通文字用（悬浮才给一点底色） */
 .status-toggle {
-	border: 1px solid var(--border);
-	border-radius: 6px;
-	background: var(--bg-elev);
+	border: none;
+	border-radius: 5px;
+	background: none;
 	color: var(--text-faint);
 	font: inherit;
-	font-size: 11px;
-	padding: 1px 6px;
+	font-size: 12.5px;
+	padding: 1px 4px;
 	cursor: pointer;
 }
 
 .status-toggle:hover {
 	color: var(--text);
-	border-color: var(--accent-dim);
+	background: var(--bg-elev-2);
 }
 
 /* `hidden` 属性打不过作者样式里的 display:flex，得显式关掉 */
 .appbar[hidden] {
 	display: none;
-}
-
-/* 状态栏里的 token / 上下文：淡色胶囊，不抢注意力 */
-.status-usage {
-	border: 1px solid var(--border);
-	border-radius: 999px;
-	padding: 0 8px;
-	color: var(--text-faint);
 }

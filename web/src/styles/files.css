@@ -38,7 +38,7 @@
 
 .filetree-root {
 	color: var(--text-faint);
-	font-size: 11.5px;
+	font-size: 13.5px;
 	padding: 2px 4px 6px;
 	overflow-wrap: anywhere;
 }
@@ -52,7 +52,7 @@
 	border: none;
 	color: var(--text-dim);
 	font: inherit;
-	font-size: 12.5px;
+	font-size: 14.5px;
 	text-align: left;
 	padding: 3px 6px;
 	border-radius: 6px;
@@ -82,13 +82,13 @@
 .filetree-hint,
 .filetree-empty {
 	color: var(--text-faint);
-	font-size: 12px;
+	font-size: 14px;
 }
 
 .filetree-error,
 .file-preview-error {
 	color: var(--red);
-	font-size: 12px;
+	font-size: 14px;
 	overflow-wrap: anywhere;
 }
 
@@ -113,13 +113,13 @@
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
-	font-size: 12.5px;
+	font-size: 14.5px;
 }
 
 .file-preview-meta {
 	flex: none;
 	color: var(--text-faint);
-	font-size: 11.5px;
+	font-size: 13.5px;
 }
 
 .file-preview-body {
@@ -129,7 +129,7 @@
 	border: 1px solid var(--border);
 	border-radius: 8px;
 	padding: 8px 10px;
-	font-size: 12.5px;
+	font-size: 14.5px;
 	line-height: 1.55;
 	min-height: 0;
 }
@@ -175,13 +175,13 @@
 .file-preview-selection {
 	flex: none;
 	color: var(--text-faint);
-	font-size: 12px;
+	font-size: 14px;
 }
 
 .file-preview-hint {
 	margin-top: 6px;
 	color: var(--text-faint);
-	font-size: 12px;
+	font-size: 14px;
 }
 
 /* 文件行：hover 出「@ 提及」按钮（对齐参考实现的交互） */
@@ -212,7 +212,7 @@
 	background: var(--bg-elev-2);
 	color: var(--accent);
 	font: inherit;
-	font-size: 11.5px;
+	font-size: 13.5px;
 	padding: 1px 6px;
 	cursor: pointer;
 	white-space: nowrap;
@@ -269,7 +269,7 @@
 	background: none;
 	color: var(--text-dim);
 	font: inherit;
-	font-size: 12px;
+	font-size: 14px;
 	padding: 3px 10px;
 	cursor: pointer;
 }
@@ -301,4 +301,67 @@
 
 .preview-mode button {
 	white-space: nowrap;
+}
+
+/* ---- 代码 / JSON 预览的折叠三角 ---- */
+.file-fold {
+	flex: none;
+	width: 12px;
+	height: 12px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border: none;
+	background: none;
+	color: var(--text-faint);
+	font-size: 12px;
+	line-height: 1;
+	padding: 0;
+	cursor: pointer;
+	user-select: none;
+}
+
+.file-fold:hover {
+	color: var(--accent);
+}
+
+/* 没有可折叠块的行：留个等宽占位，保持行号对齐 */
+.file-fold-empty {
+	cursor: default;
+	visibility: hidden;
+}
+
+/* 折叠后那一行末尾的「⋯ N 行已折叠」 */
+.file-fold-summary {
+	flex: none;
+	margin-left: 8px;
+	padding: 0 6px;
+	border-radius: 999px;
+	background: var(--bg-elev-2);
+	color: var(--text-faint);
+	font-size: 12.5px;
+	user-select: none;
+}
+
+/* ---- 视频 / 音频播放 ---- */
+.file-media {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 10px;
+	background: #0d1117; /* 跟播放器黑底一致，四周不留白缝 */
+	border-radius: 0;
+	min-height: 0;
+	overflow: auto;
+}
+
+.file-video {
+	max-width: 100%;
+	max-height: min(70vh, 620px);
+	background: #000;
+	border-radius: 0;
+}
+
+.file-audio {
+	width: min(560px, 100%);
 }

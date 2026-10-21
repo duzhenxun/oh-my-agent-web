@@ -33,6 +33,7 @@ export function SessionRow({
 	onRename,
 	onArchive,
 	onDelete,
+	onOpenInNewTab,
 	onCloseMenu,
 }: {
 	session: PiSessionSummary;
@@ -47,6 +48,8 @@ export function SessionRow({
 	onRename: () => void;
 	onArchive: () => void;
 	onDelete: () => void;
+	/** 在新标签页打开这条会话（多开几个标签对照着看时用） */
+	onOpenInNewTab: () => void;
 	onCloseMenu: () => void;
 }) {
 	const act = (fn: () => void) => () => {
@@ -93,6 +96,14 @@ export function SessionRow({
 					</button>
 					<button type="button" className="proj-menu-item" onClick={act(onRename)}>
 						✏️ 重命名
+					</button>
+					<button
+						type="button"
+						className="proj-menu-item"
+						title="在新标签页打开这条会话（?session=…）"
+						onClick={act(onOpenInNewTab)}
+					>
+						↗ 在新标签页打开
 					</button>
 					<button type="button" className="proj-menu-item" onClick={act(onArchive)}>
 						🗄 归档（从列表隐藏）

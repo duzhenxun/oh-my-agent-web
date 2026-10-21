@@ -4,6 +4,7 @@
  * 从 `pi-sdk.ts` 拆出（400 行护栏）：这是**纯映射**，与「怎么建会话、怎么订阅」无关，
  * 所以可以脱离 SDK 用合成事件直接测（单测覆盖整张映射表，不烧 token）。
  */
+import { parseUsage } from "../util/usage.js";
 import type { EngineEvent } from "./port.js";
 
 type AnyRecord = Record<string, unknown>;
@@ -53,6 +54,9 @@ export function mapSessionEvent(event: unknown): EngineEvent | null {
 
 	if (type === "message_update") {
 		const assistantEvent = asRecord(record.assistantMessageEvent);
+		// ⚠️ 正文 / 思考的增量**必须优先**：SDK 的 message_update 里一旦带上 usage，
+		// 之前那种「先看 usage 就 return」会把后面的每一个正文增量全吞掉 ——
+		// 表现就是「只调工具、不回复」。所以先在前面处理 delta，usage 只在非 delta 更新上取。
 		if (
 			assistantEvent.type === "text_delta" &&
 			typeof assistantEvent.delta === "string" &&
@@ -68,7 +72,16 @@ export function mapSessionEvent(event: unknown): EngineEvent | null {
 		) {
 			return { type: "thinking_delta", text: assistantEvent.delta };
 		}
+		// 用量：SDK 的 message 上带 usage（各 provider 字段名不一样，统一解析）
+		const usage = parseUsage(asRecord(record.message).usage);
+		if (usage) return { type: "usage", ...usage };
 		return null; // tool_use 等：v1 不展示
+	}
+
+	// 一条消息结束：**最终**用量在这里（output 才统计全），同一条 message_update 上的是过程值
+	if (type === "message_end") {
+		const usage = parseUsage(asRecord(record.message).usage);
+		return usage ? { type: "usage", ...usage } : null;
 	}
 
 	if (type === "tool_execution_start") {

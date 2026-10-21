@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 import { handleMessage, type HandleDeps } from "../../server/ws/handle-message.js";
 
-function makeDeps(overrides: Partial<HandleDeps["runtime"]> = {}) {
+function makeDeps(overrides: Partial<HandleDeps["runtime"]> = {}, clientId?: string) {
 	const calls: { method: string; args: unknown[] }[] = [];
 	const replies: { id: string; result: unknown }[] = [];
 	const runtime = new Proxy(
@@ -30,6 +30,7 @@ function makeDeps(overrides: Partial<HandleDeps["runtime"]> = {}) {
 	) as unknown as HandleDeps["runtime"];
 	const deps: HandleDeps = {
 		runtime,
+		...(clientId ? { clientId } : {}),
 		reply: (_socket, id, result) => replies.push({ id, result }),
 		sender: { pushSnapshot: () => {}, flush: () => {} },
 		logger: { warn: () => {}, info: () => {}, error: () => {}, debug: () => {} } as unknown as HandleDeps["logger"],
@@ -49,7 +50,18 @@ describe("handleMessage：send_message 的 mode 透传", () => {
 			deps,
 		);
 		expect(calls[0]?.method).toBe("sendMessage");
-		expect(calls[0]?.args).toEqual(["排队这条", undefined, "queue"]);
+		// 第 5 个参数是发起者客户端（懒建会话时要把它的视图指过去，ADR-0033）
+		expect(calls[0]?.args).toEqual(["排队这条", undefined, "queue", undefined, undefined]);
+	});
+
+	it("发起者客户端也一起传下去（懒建会话时靠它定位到新会话）", async () => {
+		const { deps, calls } = makeDeps({}, "tab-1");
+		await handleMessage(
+			socket,
+			JSON.stringify({ id: "r3", type: "send_message", payload: { text: "没有会话时直接发" } }),
+			deps,
+		);
+		expect(calls[0]?.args?.[4]).toBe("tab-1");
 	});
 
 	it("mode=steer 原样传", async () => {

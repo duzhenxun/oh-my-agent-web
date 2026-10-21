@@ -7,7 +7,7 @@
 	border: 1px solid var(--border);
 	border-radius: 10px;
 	background: var(--bg-elev);
-	font-size: 12px;
+	font-size: 14px;
 }
 
 .sent-queue-head {
@@ -15,7 +15,7 @@
 	align-items: center;
 	gap: 6px;
 	color: var(--text-faint);
-	font-size: 11.5px;
+	font-size: 13.5px;
 }
 
 .sent-item {
@@ -31,13 +31,19 @@
 	border: 1px solid var(--accent-dim);
 	border-radius: 999px;
 	color: var(--accent);
-	font-size: 10.5px;
+	font-size: 12.5px;
 	line-height: 1.6;
 }
 
 .sent-tag-queue {
 	border-color: var(--border-strong);
 	color: var(--text-faint);
+}
+
+/* 「引导」：插进当前这一轮的那条消息（和「排队」区分开，用主色） */
+.sent-tag-steer {
+	border-color: var(--accent-dim);
+	color: var(--accent);
 }
 
 .sent-text {

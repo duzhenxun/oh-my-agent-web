@@ -21,7 +21,8 @@ export function SessionInfo({ snapshot }: { snapshot: Snapshot | null }) {
 	const stats = snapshot?.sessionStats;
 	const activeId = snapshot?.active.conversationId ?? null;
 	const activeSession =
-		snapshot?.piProjects.flatMap((project) => project.sessions).find((session) => session.id === activeId) ?? null;
+		(snapshot?.piProjects ?? []).flatMap((project) => project.sessions).find((session) => session.id === activeId) ??
+		null;
 	const sessionPath = activeSession?.sessionPath ?? null;
 	const value = stats ?? {
 		userMessages: 0,

@@ -38,6 +38,8 @@ export type ServerState = {
 	sessionStats: SessionStats | null;
 	models: ModelOption[];
 	piProjects: PiProject[];
+	/** 会话清单的版本号：变一次 +1，用来决定「这一帧要不要顺带发清单」 */
+	piProjectsVersion: number;
 	settings: SettingsView;
 	actions: ActionItem[];
 	conversations: ConversationMeta[];
@@ -55,6 +57,8 @@ export type ServerState = {
 	filesRootByConversation: Record<string, string>;
 	runningByConversation: Record<string, { status: RunningState["status"]; turnStartedAt: number }>;
 	pendingApproval: PendingApproval | null;
+	/** 版本号：界面（新会话抬头）要显示 `web v0.1.0 · pi v1.3.0` */
+	versions: { web: string; engine: string | null };
 	notices: Notice[];
 	terminal: TerminalMeta | null;
 	files: FilesMeta | null;
@@ -69,7 +73,8 @@ export function createServerState(workspace: string, engine: EngineName = "pi"):
 		workspace,
 		engine,
 		model: null,
-		approvalMode: "ask",
+		// ADR-0034：默认全部放行（提示仍然会出现在快照/悬浮牌上，用户可以随时切回「询问」）
+		approvalMode: "allow",
 		engineCapabilities: { approvals: true, tools: true, modelSwitch: true, thinkingLevel: true, resume: true },
 		providers: [],
 		thinkingLevel: null,
@@ -77,12 +82,13 @@ export function createServerState(workspace: string, engine: EngineName = "pi"):
 		sessionStats: null,
 		models: [],
 		piProjects: [],
+		piProjectsVersion: 0,
 		settings: {
 			quickPhrases: [],
 			quickPhrasesEnabled: true,
 			templates: [],
 			projectPrefs: { order: [], pinned: [], aliases: {} },
-			sessionPrefs: { pinned: [], archived: [], titles: {} },
+			sessionPrefs: { pinned: [], archived: [] },
 		},
 		actions: [],
 		conversations: [],
@@ -97,10 +103,17 @@ export function createServerState(workspace: string, engine: EngineName = "pi"):
 		filesRootByConversation: {},
 		runningByConversation: {},
 		pendingApproval: null,
+		versions: { web: "unknown", engine: null },
 		notices: [],
 		terminal: null,
 		files: null,
 	};
+}
+
+/** 换一份 pi 会话清单：顺手把版本号 +1（快照靠它决定「这一帧要不要带清单」） */
+export function setPiProjects(state: ServerState, projects: PiProject[]): void {
+	state.piProjects = projects;
+	state.piProjectsVersion += 1;
 }
 
 export function createConversation(input: {
@@ -157,10 +170,19 @@ function pickPerConversation(
 	return Object.hasOwn(cache, activeId) ? cache[activeId] : fallback;
 }
 
+export type BuildSnapshotOptions = {
+	/**
+	 * 要不要带 pi 会话清单（默认带）。
+	 * 不带时快照里没有 `piProjects` 字段 —— 客户端沿用上一份（见 protocol.ts 的说明）。
+	 */
+	includeProjects?: boolean;
+};
+
 export function buildSnapshot(
 	state: ServerState,
 	limit = SNAPSHOT_MESSAGE_LIMIT,
 	activeIdOverride?: string | null,
+	options: BuildSnapshotOptions = {},
 ): Snapshot {
 	const activeId = activeIdOverride === undefined ? state.activeId : activeIdOverride;
 	const all = activeId ? (state.messages[activeId] ?? []) : [];
@@ -192,13 +214,16 @@ export function buildSnapshot(
 			sessionPrefs: {
 				pinned: [...state.settings.sessionPrefs.pinned],
 				archived: [...state.settings.sessionPrefs.archived],
-				titles: { ...state.settings.sessionPrefs.titles },
 			},
 		},
-		piProjects: state.piProjects.map((project) => ({
-			...project,
-			sessions: project.sessions.map((session) => ({ ...session })),
-		})),
+		...(options.includeProjects === false
+			? {}
+			: {
+					piProjects: state.piProjects.map((project) => ({
+						...project,
+						sessions: project.sessions.map((session) => ({ ...session })),
+					})),
+				}),
 		conversations: state.conversations.map((conversation) => ({ ...conversation })),
 		active: {
 			conversationId: activeId,
@@ -212,6 +237,7 @@ export function buildSnapshot(
 		enabledModels: [...state.enabledModels],
 		runningByConversation: { ...state.runningByConversation },
 		pendingApproval: state.pendingApproval ? { ...state.pendingApproval } : null,
+		versions: { ...state.versions },
 		terminal: state.terminal ? { ...state.terminal } : null,
 		files: (() => {
 			const root = activeId ? state.filesRootByConversation[activeId] : undefined;

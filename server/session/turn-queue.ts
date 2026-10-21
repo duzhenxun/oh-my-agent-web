@@ -57,7 +57,8 @@ export function createBusyHandler(deps: {
 	activeId: () => string | null;
 	steer: (conversationId: string, promptText: string) => Promise<unknown>;
 	queue: (conversationId: string, text: string, attachments?: AttachmentRef[]) => number;
-	appendUser: (conversationId: string, text: string) => void;
+	/** steer = true：这条是「引导」插进来的（界面要标一下） */
+	appendUser: (conversationId: string, text: string, steer?: boolean) => void;
 	notice: (text: string, level: "info" | "warn") => void;
 	pushSnapshot: () => void;
 }) {
@@ -78,7 +79,7 @@ export function createBusyHandler(deps: {
 		}
 		if (mode === "steer") {
 			await deps.steer(conversationId, promptText);
-			deps.appendUser(conversationId, text);
+			deps.appendUser(conversationId, text, true);
 			deps.notice("已引导：插进当前这一轮", "info");
 			deps.pushSnapshot();
 			return { ok: true };
@@ -135,7 +136,8 @@ export function createTurnPlumbing(options: {
 		) => Promise<void>;
 	};
 	nextId: (prefix: string) => string;
-	appendUser: (conversationId: string, text: string) => void;
+	/** steer = true：这条是「引导」插进来的（界面要标一下） */
+	appendUser: (conversationId: string, text: string, steer?: boolean) => void;
 	notice: (text: string, level: "info" | "warn") => void;
 	pushSnapshot: () => void;
 }) {

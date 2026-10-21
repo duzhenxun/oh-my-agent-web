@@ -1,14 +1,9 @@
-/**
- * 三类消息：ClientRequest / ServerReply / ServerEvent。
- */
-
+/** 三类消息：ClientRequest / ServerReply / ServerEvent。 */
 export const PROTOCOL_VERSION = 1;
 
 export const SNAPSHOT_MESSAGE_LIMIT = 100;
-
 export const MAX_FRAME_BYTES = 64 * 1024;
-/** 工具输出摘录上限 */
-export const TOOL_EXCERPT_CHARS = 2000;
+export const TOOL_EXCERPT_CHARS = 2000; // 工具输出摘录上限
 
 export type TextBlock = { kind: "text"; text: string };
 export type ThinkingBlock = { kind: "thinking"; text: string }; // 思考过程：默认折叠
@@ -29,12 +24,14 @@ export type ToolBlock = {
 export type ErrorBlock = { kind: "error"; code: string; message: string };
 
 export type MessageBlock = TextBlock | ThinkingBlock | ToolBlock | ErrorBlock;
-
 export type UiMessage = {
 	id: string;
 	role: "user" | "assistant";
 	ts: number;
 	blocks: MessageBlock[];
+	steer?: boolean; // 这条用户消息是「引导」插进正在跑的那一轮的（界面打标签，和「排队」区分开）
+	thinkingMs?: number; // 「思考」累计耗时（毫秒）：折叠行显示「· 耗时 2s」；内存态，重开历史就没有
+	usage?: { input: number; output: number; cacheRead: number; cacheWrite: number }; // 这条消息的 token 用量（尾注显示）
 };
 
 export type Notice = {
@@ -93,8 +90,7 @@ export type PiSessionSummary = {
 	sessionPath: string;
 };
 
-/** 按项目（工作目录）分组的会话列表 */
-/** 附件引用（ADR-0020 §P3）：只带 id 不带内容；图片走 HTTP 上传，服务端据此读回文件。 */
+/** 附件引用（ADR-0020 §P3）：只带 id 不带内容（图片走 HTTP 上传） */
 export type AttachmentRef = {
 	id: string;
 	kind: "image" | "file";
@@ -144,7 +140,6 @@ export type ActionItem = {
 	prompt: string;
 };
 
-/** 客户端设置（ADR-0020 §P1）：界面直接读快照里的这一份 */
 /** 会话统计（顶部「会话信息」）：从 pi 的会话 JSONL 聚合出来 */
 export type SessionStats = {
 	userMessages: number;
@@ -161,11 +156,10 @@ export type SessionStats = {
 	contextTokens: number;
 };
 
-/** 会话级偏好：置顶（排在该项目最前）/ 重命名（只改显示名）/ 归档（从列表隐藏） */
+/** 会话级偏好：置顶 / 归档（**不含重命名**：名字写在 pi 的会话文件里） */
 export type SessionPrefs = {
 	pinned: string[];
 	archived: string[];
-	titles: Record<string, string>;
 };
 
 /** 项目偏好（ADR-0028）：显式顺序 + 置顶 + 显示名别名（身份仍是 cwd） */
@@ -203,7 +197,6 @@ export type PiProject = {
 	sessions: PiSessionSummary[];
 };
 
-/** 当前引擎（ADR-0016）：界面靠它决定提示语与后续能力展示 */
 /** 引擎注册名（ADR-0024）：`pi` / `fake` 是内置的，新增引擎只是注册一个新名字 */
 export type EngineName = string;
 
@@ -239,8 +232,10 @@ export type Snapshot = {
 	thinkingLevel: string | null;
 	/** 可选的思考强度档位（空数组 → 界面隐藏该控件） */
 	thinkingLevels: string[];
-	/** pi 已有项目与会话（只读；ADR-0021 §1） */
-	piProjects: PiProject[];
+	/** pi 已有项目与会话（ADR-0021 §1）。可选：带 `slim=1` 的客户端只在清单变了时才收到，省下上百 KB */
+	piProjects?: PiProject[];
+	/** 版本号（抬头显示）：web = agent-web 自己，engine = 引擎 SDK（拿不到为 null） */
+	versions: { web: string; engine: string | null };
 	/** 客户端设置（快捷短语等） */
 	settings: SettingsView;
 	/** 建议操作（ADR-0022）：新一轮开始时清空 */
@@ -271,6 +266,12 @@ export type SendMessageRequest = {
 	payload: { text: string; attachments?: AttachmentRef[]; mode?: SendMode };
 };
 export type InterruptRequest = { id: string; type: "interrupt"; payload: { conversationId: string } };
+/** 改会话显示名：写进 pi 的会话文件（session_info），不另存本地变量 */
+export type RenameSessionRequest = {
+	id: string;
+	type: "rename_session";
+	payload: { conversationId: string; title: string };
+};
 export type ApproveRequest = {
 	id: string;
 	type: "approve";
@@ -287,10 +288,7 @@ export type SetSettingsRequest = {
 	payload: Partial<Omit<SettingsView, "templates">> & { templates?: PromptTemplate[] | null };
 };
 
-/**
- * 审批模式（P4 第一件）：
- * 刻意**只存在内存**、不落盘：重启即回到 `ask`，避免"某天永久静默放行"这种事故。
- */
+/** 审批模式（P4 / ADR-0034）：`allow` = 全部放行（默认），`ask` = 危险操作先问；只存内存、不落盘 */
 export type ApprovalMode = "ask" | "allow";
 
 export type SetApprovalModeRequest = { id: string; type: "set_approval_mode"; payload: { mode: ApprovalMode } };
@@ -346,6 +344,7 @@ export type SetModelRequest = { id: string; type: "set_model"; payload: { modelI
 export type ClientRequest =
 	| SendMessageRequest
 	| InterruptRequest
+	| RenameSessionRequest
 	| ApproveRequest
 	| GetStateRequest
 	| SetSettingsRequest

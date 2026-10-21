@@ -63,7 +63,7 @@
 }
 
 .skill-name {
-	font-size: 12.5px;
+	font-size: 14.5px;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -71,7 +71,7 @@
 
 .skill-desc {
 	color: var(--text-faint);
-	font-size: 11px;
+	font-size: 13px;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -79,7 +79,7 @@
 
 .skill-state {
 	flex: none;
-	font-size: 10.5px;
+	font-size: 12.5px;
 	color: var(--text-faint);
 }
 
@@ -120,7 +120,7 @@
 	background: var(--bg);
 	color: var(--text-dim);
 	font: inherit;
-	font-size: 11px;
+	font-size: 13px;
 	padding: 1px 6px;
 	cursor: pointer;
 	max-width: 100%;
@@ -143,7 +143,7 @@
 	background: var(--bg);
 	border: 1px solid var(--border);
 	border-radius: 8px;
-	font-size: 12px;
+	font-size: 14px;
 	line-height: 1.6;
 	white-space: pre-wrap;
 }

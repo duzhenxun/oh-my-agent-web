@@ -45,7 +45,7 @@
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
-	font-size: 12px;
+	font-size: 14px;
 }
 
 .prov-check-row .msg-action {
@@ -70,7 +70,7 @@
 	border-radius: 8px;
 	background: var(--bg);
 	color: var(--text);
-	font-size: 12.5px;
+	font-size: 14.5px;
 }
 
 /* 全选 / 全不选 */
@@ -88,7 +88,7 @@
 /* 左栏模型行里的 id（小字，跟在显示名后面） */
 .prov-inline-id {
 	display: block;
-	font-size: 10px;
+	font-size: 12px;
 	font-style: normal;
 	color: var(--text-faint);
 	overflow: hidden;

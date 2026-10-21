@@ -15,6 +15,9 @@ import type { EngineEvent } from "../engine/port.js";
 import type { ServerState } from "../snapshot/state.js";
 import { appendError, appendText, appendThinking, finishTool, startTool } from "../snapshot/messages.js";
 
+/** 思考计时：messageId → 这一段思考的起点（跨事件累计，最后落成 message.thinkingMs） */
+const thinkingSince = new Map<string, number>();
+
 export type TurnEventContext = {
 	state: ServerState;
 	now: () => number;
@@ -48,6 +51,18 @@ export function applyEngineEvent(context: TurnEventContext, input: TurnEventInpu
 		state.messages[conversationId] = list.map((message) => (message.id === messageId ? change(message) : message));
 	};
 
+	/** 结束这一段思考计时，把毫秒累到消息上（thinkingMs） */
+	const closeThinking = () => {
+		const since = thinkingSince.get(messageId);
+		if (since === undefined) return;
+		thinkingSince.delete(messageId);
+		const span = Math.max(0, context.now() - since);
+		if (span <= 0) return;
+		patch((message) => ({ ...message, thinkingMs: (message.thinkingMs ?? 0) + span }));
+	};
+
+	if (event.type !== "thinking_delta") closeThinking();
+
 	switch (event.type) {
 		case "text_delta": {
 			const visible = context.onTextDelta(event.text, conversationId);
@@ -58,8 +73,16 @@ export function applyEngineEvent(context: TurnEventContext, input: TurnEventInpu
 			return;
 		}
 		case "thinking_delta": {
+			if (!thinkingSince.has(messageId)) thinkingSince.set(messageId, context.now());
 			patch((message) => appendThinking(message, event.text));
 			context.onThinkingDelta?.(conversationId);
+			return;
+		}
+		case "usage": {
+			patch((message) => ({
+				...message,
+				usage: { input: event.input, output: event.output, cacheRead: event.cacheRead, cacheWrite: event.cacheWrite },
+			}));
 			return;
 		}
 		case "tool_start": {

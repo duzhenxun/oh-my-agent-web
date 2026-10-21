@@ -260,7 +260,8 @@ try {
 	const hugeTool = client.blocks().find((block) => block.kind === "tool" && block.truncated === true);
 	check(hugeTool !== undefined && hugeTool.outputExcerpt.length === 2000, "超大输出被截断到 2000 字");
 
-	// ---- 审批三态（ADR-0006）：允许一次 → 总是允许这类 → 不再询问 ----
+	// ---- 审批三态（ADR-0006）：允许一次 → 总是允许这类 → 不再询问（默认全放行，先切回询问）----
+	check((await client.reply(client.send("set_approval_mode", { mode: "ask" }))).ok === true, "可以切回「询问」");
 	const onceTurn = client.reply(client.send("send_message", { text: "approve please" }));
 	await waitFor(() => client.latestSnapshot()?.pendingApproval !== null, "审批弹窗出现在快照里");
 	const approval = client.latestSnapshot().pendingApproval;
@@ -268,7 +269,7 @@ try {
 		approval.toolName === "write_file" && approval.scopeHint.includes("目录"),
 		"审批快照带工具名与「这类」描述（ADR-0006：文件类取目标目录）",
 	);
-	check(client.latestSnapshot().running.status === "awaiting_approval", "运行状态切到 awaiting_approval");
+	check(client.latestSnapshot().running.status === "awaiting_approval", "状态切到 awaiting_approval");
 
 	const onceReply = await client.reply(client.send("approve", { requestId: approval.requestId, decision: "once" }));
 	check(onceReply.ok === true, "审批应答 ok");
@@ -276,7 +277,7 @@ try {
 	await waitFor(() => client.text().includes("审批结果：once"), "引擎收到「允许一次」的结果");
 
 	const alwaysTurn = client.reply(client.send("send_message", { text: "approve please" }));
-	await waitFor(() => client.latestSnapshot()?.pendingApproval !== null, "第二次仍然要问（允许一次不被记住）");
+	await waitFor(() => client.latestSnapshot()?.pendingApproval !== null, "第二次仍然要问（一次不被记住）");
 	const secondApproval = client.latestSnapshot().pendingApproval;
 	const alwaysReply = await client.reply(
 		client.send("approve", { requestId: secondApproval.requestId, decision: "always" }),
@@ -292,7 +293,6 @@ try {
 	clearInterval(watcher);
 	check(thirdReply.ok === true, "第三次同类操作正常结束");
 	check(askedAgain === false, "「总是允许这类」之后不再询问");
-
 	// ---- 断线重连：流式当中断开（≈刷新页面）→ 重连拉快照，状态与已生成正文都还在 ----
 	client.send("send_message", { text: "slow please" });
 	await waitFor(() => client.latestSnapshot()?.running.status === "streaming", "慢速回合开跑");
@@ -302,10 +302,10 @@ try {
 
 	const reconnected = await connectReady("重连成功");
 	await waitFor(() => reconnected.latestSnapshot()?.running.status === "streaming", "重连后的快照仍显示「正在跑」");
-	check(reconnected.text().includes("慢慢说"), "重连后拿回了已生成的部分正文");
 	check(
-		reconnected.latestSnapshot().running.streamingText.length >= streamedBefore,
-		"重连后 streamingText 不丢（断线期间服务端继续干活）",
+		reconnected.text().includes("慢慢说") &&
+			reconnected.latestSnapshot().running.streamingText.length >= streamedBefore,
+		"重连后拿回了已生成的部分正文（断线期间服务端继续干活）",
 	);
 
 	const conversationId = reconnected.latestSnapshot().active.conversationId;

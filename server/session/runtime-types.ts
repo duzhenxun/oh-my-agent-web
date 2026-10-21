@@ -2,6 +2,7 @@
  * Runtime 的公开类型（ADR-0010 的拆分）：从 runtime.ts 搬出来，让那边留在 400 行护栏内。
  * 对外入口不变 —— runtime.ts 仍 `export type { Runtime, Result, RuntimeEmit }`。
  */
+import type { ClientView } from "./client-view.js";
 import type {
 	AttachmentRef,
 	ApprovalDecision,
@@ -29,16 +30,22 @@ export type Runtime = {
 	snapshot(): Snapshot;
 	/** 按客户端生成快照：`active` 用这个客户端自己选中的会话（ADR-0033） */
 	snapshotFor(clientId: string | undefined): Snapshot;
+	/** 客户端记录（看哪个会话 / 是否 slim / 清单版本）：SSE 连接与断开时要用 */
+	clientView: ClientView;
 	state(): ServerState;
 	sendMessage(
 		text: string,
 		attachments?: AttachmentRef[],
 		mode?: SendMode,
 		targetConversationId?: string,
+		/** 发起请求的客户端：懒建会话时要把它的视图指到新会话（ADR-0033） */
+		clientId?: string,
 	): Promise<Result>;
 	interrupt(): Promise<Result>;
 	approve(requestId: string, decision: ApprovalDecision): Result;
-	newConversation(workspace?: string): Promise<Result>;
+	newConversation(workspace?: string, clientId?: string): Promise<Result>;
+	/** 改会话显示名（写进 pi 的会话文件；成功后重扫列表把新名字带回来） */
+	renameSession(conversationId: string, title: string): Promise<Result>;
 	/** 改客户端设置（ADR-0020 §P1）：归一化 → 落盘 → 推快照 */
 	applySettings(patch: unknown): Promise<Result>;
 	/** 切换当前会话的模型（ADR-0020 §P2） */

@@ -4,6 +4,8 @@
 import { describe, expect, it } from "vitest";
 import {
 	clampSidebarWidth,
+	defaultCollapsed,
+	isTablet,
 	readStoredWidth,
 	SIDEBAR_DEFAULT_WIDTH,
 	SIDEBAR_MAX_WIDTH,
@@ -39,5 +41,22 @@ describe("readStoredWidth", () => {
 
 	it("存过的合法值原样读回", () => {
 		expect(readStoredWidth("320")).toBe(320);
+	});
+});
+
+describe("侧栏默认收起（平板先看对话）", () => {
+	it("有用户记录时以记录为准", () => {
+		expect(defaultCollapsed({ stored: "1", tablet: false })).toBe(true);
+		expect(defaultCollapsed({ stored: "0", tablet: true })).toBe(false);
+	});
+
+	it("没有记录：平板收起、手机/桌面展开", () => {
+		expect(defaultCollapsed({ stored: null, tablet: true })).toBe(true);
+		expect(defaultCollapsed({ stored: null, tablet: false })).toBe(false);
+	});
+
+	it("isTablet 只看「触摸 + 601~1366」这一条查询", () => {
+		expect(isTablet((text) => text.includes("pointer: coarse"))).toBe(true);
+		expect(isTablet(() => false)).toBe(false);
 	});
 });

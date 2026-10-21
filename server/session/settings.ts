@@ -164,9 +164,9 @@ export function normalizeProjectPrefs(input: unknown): ProjectPrefs {
 	return { order: paths(record.order), pinned: paths(record.pinned), aliases };
 }
 
-/** 纯函数：会话偏好的归一化（只保留非空字符串，上限 2000 条） */
+/** 纯函数：会话偏好的归一化（只保留非空字符串，上限 2000 条；改名不在这里） */
 export function normalizeSessionPrefs(input: unknown): SessionPrefs {
-	const empty: SessionPrefs = { pinned: [], archived: [], titles: {} };
+	const empty: SessionPrefs = { pinned: [], archived: [] };
 	if (typeof input !== "object" || input === null) return empty;
 	const record = input as Record<string, unknown>;
 	const ids = (value: unknown): string[] =>
@@ -176,15 +176,8 @@ export function normalizeSessionPrefs(input: unknown): SessionPrefs {
 					2000,
 				)
 			: [];
-	const titles: Record<string, string> = {};
-	if (typeof record.titles === "object" && record.titles !== null) {
-		for (const [key, value] of Object.entries(record.titles as Record<string, unknown>)) {
-			if (typeof value !== "string") continue;
-			const title = value.trim().slice(0, 80);
-			if (key !== "" && title !== "") titles[key] = title;
-		}
-	}
-	return { pinned: ids(record.pinned), archived: ids(record.archived), titles };
+	// 旧 settings.json 里可能的 titles 直接忽略（改名的事实源是 pi 的会话文件）
+	return { pinned: ids(record.pinned), archived: ids(record.archived) };
 }
 
 export function defaultSettings(): ClientSettings {
@@ -193,7 +186,7 @@ export function defaultSettings(): ClientSettings {
 		quickPhrasesEnabled: true,
 		templates: DEFAULT_TEMPLATES.map((template) => ({ ...template })),
 		projectPrefs: { order: [], pinned: [], aliases: {} },
-		sessionPrefs: { pinned: [], archived: [], titles: {} },
+		sessionPrefs: { pinned: [], archived: [] },
 	};
 }
 

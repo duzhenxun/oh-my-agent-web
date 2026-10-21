@@ -19,7 +19,7 @@
 	gap: 8px;
 	align-items: baseline;
 	color: var(--text-faint);
-	font-size: 12px;
+	font-size: 14px;
 	margin-bottom: 6px;
 }
 
@@ -32,7 +32,7 @@
 .msg-model {
 	color: var(--accent);
 	font-weight: 600;
-	font-size: 12px;
+	font-size: 14px;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -91,7 +91,7 @@
 /* 标题行里的操作按钮更小一点，不抢消息正文的注意力 */
 .msg-head .msg-action {
 	padding: 1px 6px;
-	font-size: 11px;
+	font-size: 13px;
 }
 
 .msg-action {
@@ -100,7 +100,7 @@
 	background: var(--bg-elev);
 	color: var(--text-faint);
 	font: inherit;
-	font-size: 11.5px;
+	font-size: 13.5px;
 	padding: 2px 8px;
 	cursor: pointer;
 	white-space: nowrap;
@@ -136,7 +136,7 @@
 	background: none;
 	color: var(--text-faint);
 	font: inherit;
-	font-size: 13px;
+	font-size: 15px;
 	line-height: 1;
 	cursor: pointer;
 	padding: 0;
@@ -158,7 +158,7 @@
 	background: var(--bg-elev);
 	color: var(--text-faint);
 	font: inherit;
-	font-size: 11.5px;
+	font-size: 13.5px;
 	padding: 3px 10px;
 	cursor: pointer;
 }
@@ -198,7 +198,7 @@
 	background: none;
 	color: var(--text-faint);
 	font: inherit;
-	font-size: 12px;
+	font-size: 14px;
 	text-align: left;
 	padding: 4px 8px;
 	cursor: pointer;
@@ -219,15 +219,93 @@
 
 .thinking-caret {
 	flex: none;
-	font-size: 10px;
+	font-size: 12px;
+}
+
+/* 「思考 9 段」这个标签：固定在最前，后面的预览可省略 */
+.thinking-label {
+	flex: none;
+	font-weight: 600;
+	color: var(--text-dim);
+}
+
+/* 「· 耗时 2s」：放在预览后面、三角之前，淡色小字 */
+.thinking-duration {
+	flex: none;
+	color: var(--text-faint);
+	font-size: 13px;
+	font-variant-numeric: tabular-nums;
 }
 
 .thinking-body {
 	padding: 6px 10px 8px;
 	border-top: 1px solid var(--border);
 	color: var(--text-dim);
-	font-size: 12px;
+	font-size: 14px;
 	line-height: 1.6;
 	white-space: pre-wrap;
 	overflow-wrap: anywhere;
+}
+
+/* ---- 助手消息尾注：token 用量 · 复制 · 绝对时间 ---- */
+.msg-foot {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin-top: 8px;
+	padding-top: 6px;
+	border-top: 1px dashed var(--border);
+	color: var(--text-faint);
+	font-size: 13px;
+	min-width: 0;
+}
+
+.msg-usage {
+	flex: none;
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.msg-foot-copy {
+	flex: none;
+	border: none;
+	background: none;
+	color: var(--text-faint);
+	font: inherit;
+	font-size: 13px;
+	line-height: 1.4;
+	padding: 0 2px;
+	cursor: pointer;
+	border-radius: 5px;
+}
+
+.msg-foot-copy:hover {
+	color: var(--accent);
+	background: var(--bg-elev-2);
+}
+
+.msg-foot-stamp {
+	flex: none;
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+	.msg-foot {
+		gap: 6px 8px;
+		font-size: 12.5px;
+		/* 手机上宽度不够：允许换行（时间掉到第二行），别把「复制 / 时间」挤出屏幕 */
+		flex-wrap: wrap;
+	}
+
+	.msg-usage {
+		flex: 1 1 auto;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.msg-foot-stamp {
+		margin-left: auto;
+	}
 }

@@ -9,7 +9,7 @@
  * 断点取 900px：再窄三栏就必然挤成一团，再宽笔记本仍用桌面布局。
  */
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (pointer: coarse) and (max-width: 1366px) {
 	/* 顶栏：允许换行，缩小间距 */
 	.appbar {
 		flex-wrap: wrap;
@@ -18,7 +18,7 @@
 	}
 
 	.appbar .brand {
-		font-size: 14px;
+		font-size: 16px;
 	}
 
 	/* 左栏：变成覆盖抽屉（不再占据文档流宽度） */
@@ -75,17 +75,12 @@
 		padding-right: 92px;
 	}
 
-	/* 状态栏：只留关键几项（连接 / 工作中 / 排队） */
+	/* 状态栏：高度固定 24px、字 10px（跟桌面一致） */
 	.statusbar {
-		gap: 8px;
-		padding: 4px 8px;
-		font-size: 11px;
-	}
-
-	.statusbar .status-item:nth-child(2),
-	.statusbar .status-item:nth-child(3),
-	.statusbar .status-item:nth-last-child(2) {
-		display: none;
+		gap: 6px;
+		height: 26px;
+		padding: 0 8px;
+		font-size: 12px;
 	}
 
 	/* 手机上用户消息同样整行（与桌面一致，别再单独限宽） */
@@ -114,12 +109,12 @@
 @media (max-width: 480px) {
 	.composer-tools .tool-chip,
 	.quick-chip {
-		font-size: 12px;
+		font-size: 14px;
 		padding: 3px 8px;
 	}
 
 	.statusbar {
-		font-size: 10.5px;
+		font-size: 12px;
 	}
 }
 
@@ -132,7 +127,7 @@
 	display: none;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (pointer: coarse) and (max-width: 1366px) {
 	/* 手机抽屉：占满整屏并自己滚动；**不再给侧栏设 max-height**
 	   （旧规则里 `max-height: 30vh` 会让项目列表只露三行，剩下全是空白） */
 	.side-host > .sidebar {
@@ -177,11 +172,11 @@
 		display: none;
 	}
 
-	/* 弹窗（模型 / 技能 / 设置）在手机上占满整屏，别留一圈黑边 */
+	/* 弹窗（模型 / 技能 / 推送 / 设置）在手机上占满可用区域（顶栏让位后剩下的） */
 	.modal.big-modal {
 		width: 100vw;
-		height: 100dvh;
-		max-height: 100dvh;
+		height: auto;
+		max-height: calc(100dvh - var(--appbar-h, 46px) - 16px);
 		border-radius: 0;
 	}
 
@@ -250,7 +245,7 @@
 		padding: 10px 12px;
 		min-height: 52px;
 		/* iOS 上小于 16px 会触发「聚焦自动放大」 */
-		font-size: 16px;
+		font-size: 18px;
 		line-height: 1.45;
 	}
 
@@ -262,7 +257,7 @@
 
 	.btn.btn-send {
 		padding: 8px 16px;
-		font-size: 14px;
+		font-size: 16px;
 	}
 
 	/* 建议按钮：一行一个更好点（手机上手指粗，挤两列容易点错） */
@@ -272,15 +267,11 @@
 	}
 }
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (pointer: coarse) and (max-width: 1366px) {
 	/* 手机顶栏只留「品牌 + 新会话 + 面板开关」：
 	   token 统计与「模型 / 技能 / 设置」这一排都收起来 ——
 	   它们在窄屏上占掉两行高度，而同样功能左侧活动栏里都有。 */
 	.appbar .session-info,
-	.appbar .appbar-menu {
-		display: none;
-	}
-
 	.appbar .appbar-slot {
 		flex: 1 1 auto;
 	}
@@ -292,7 +283,7 @@
  * 要么需要精确点按；手机上打开抽屉就是为了切项目/会话。
  * ------------------------------------------------------------------------- */
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (pointer: coarse) and (max-width: 1366px) {
 	/* 活动栏已整体移除（桌面同款），这里只是兜底 */
 	.activity-bar {
 		display: none;
@@ -340,18 +331,18 @@
 	color: var(--text);
 	border-radius: 8px;
 	padding: 4px 9px;
-	font-size: 15px;
+	font-size: 17px;
 	line-height: 1.1;
 	cursor: pointer;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (pointer: coarse) and (max-width: 1366px) {
 	.appbar-drawer {
 		align-items: center;
 	}
 }
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (pointer: coarse) and (max-width: 1366px) {
 	/* 手机端输入区只留「模型 + 思考强度 + 快捷短语」：
 	   模板库与审批模式是低频入口，留着会把输入框挤成一条缝；
 	   快捷短语是常用输入手段，**保留**（横向滚动，不换行）。 */
@@ -370,18 +361,20 @@
 	}
 }
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (pointer: coarse) and (max-width: 1366px) {
 	/* 新建项目对话框：手机上不要撑满整屏高度（撑满后顶部会被裁掉，
 	   路径栏与「关闭」按钮看不见） */
 	.modal.new-project {
 		height: auto;
-		max-height: 92dvh;
+		max-height: calc(100dvh - var(--appbar-h, 46px) - 24px);
 	}
 
-	/* 弹窗必须盖在顶栏之上（顶栏在手机上是 z-index:45，否则弹窗标题被压住） */
+	/* 弹窗必须盖在顶栏之上（顶栏在手机上是 z-index:45，否则弹窗标题被压住）；
+	   顶部还要**按顶栏真实高度让位**，否则标题会缩到顶栏底下看不见（新建项目就踩过） */
 	.modal-backdrop {
 		z-index: 60;
-		padding-top: calc(8px + env(safe-area-inset-top, 0px));
+		padding-top: calc(var(--appbar-h, 46px) + 8px);
+		padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
 		align-items: flex-start;
 	}
 

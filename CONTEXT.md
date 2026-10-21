@@ -57,7 +57,7 @@
 | **等待纪律**            | 测试里判定「我刚发的这一轮结束了」必须看**这一轮的数据**（消息出现），不能看残留状态（上一轮结束时也是 idle）。        | **已定** | M1 踩过的坑；`tests/smoke/flow-smoke.mjs` 头注释 |
 | **工具 / Tool**         | 引擎可调用的一个能力（读文件、跑命令、搜网页…）。由宿主注册，可有开关与提示词。                                        | 待定   |                                                |
 | **宿主 / Host**         | 拥有进程、持有工作区、注册工具与审批策略的那一方（通常是我们的服务端）。                                                | 待定   |                                                |
-| **审批 / Approval**     | 危险操作（写文件、跑命令、删东西）在真正执行前要求人类点一次确认的机制；附带「总是允许这类」的记忆规则。                | **已定**   | ADR-0006：三态；「这类」= 工具名 + 可执行名/目标目录 |
+| **审批 / Approval**     | 危险操作（写文件、跑命令、删东西）在真正执行前要求人类点一次确认的机制；附带「总是允许这类」的记忆规则。**默认为「全部放行」**，可随时切回「询问」。 | **已定**   | ADR-0006（三态）+ ADR-0034（默认放行）；「这类」= 工具名 + 可执行名/目标目录 |
 | **闸门 / Gate**         | 比审批更硬的拦截：某种模式下（计划模式/审查者模式）直接拒掉某类工具，不给「点一下放行」的选项。                          | **不做**   | ADR-0006 否决危险命令黑名单层（「不做」也是决策）|
 | **工作区 / Workspace**  | 引擎被允许读写的根目录（cwd）。文件树、搜索、终端都从它出发。                                                          | **已定** | ADR-0002 纪律③ + ADR-0006：`realpath` 后必须在根内      |
 | **快照 / Snapshot**     | 服务端推给前端的「当前完整状态」视图，是前端渲染的**唯一事实源**。                                                      | **已定** | ADR-0002 纪律② + ADR-0012（字段清单）           |
@@ -123,6 +123,9 @@
 | [ADR-0028](docs/adr/0028-project-ordering.md) | 项目排序：显式顺序 + 置顶 + 新建落位（存 settings.json） | accepted | 2026-10-19 |
 | [ADR-0029](docs/adr/0029-dependency-budget-mermaid.md) | 依赖预算 12→14，为 mermaid 放宽（必须懒加载） | accepted | 2026-10-19 |
 | [ADR-0030](docs/adr/0030-parallel-turns.md) | 并行回合：按会话隔离在飞状态（**推翻 ADR-0005 §1**） | accepted | 2026-10-19 |
+| [ADR-0031](docs/adr/0031-cli-and-remote-password.md) | 命令行开关（start/stop/restart）+ 非本机访问的口令 | accepted | 2026-10-20 |
+| [ADR-0032](docs/adr/0032-http-transport.md) | 实时通道改用纯 HTTP（SSE + RPC），WebSocket 降为可选项 | accepted | 2026-10-20 |
+| [ADR-0034](docs/adr/0034-approval-default-allow.md) | 审批默认值改为「全部放行」（三态机制不变，随时可切回询问） | accepted | 2026-10-21 |
 | [ADR-0005](docs/adr/0005-persistence-and-concurrency.md) | ~~自建 JSONL + 索引~~ → **被 ADR-0021 §2 取代**（事实源 = pi 会话存储） | superseded | 2026-10-16 |
 | [ADR-0015](docs/adr/0015-transcript-write-timing.md) | ~~用户消息即时写/助手回合结束写~~ → **被 ADR-0021 §2 取代**（SDK 负责落盘） | superseded | 2026-10-16 |
 | [ADR-0020](docs/adr/0020-composer-upgrade.md) | 输入区升级四期；推翻「不做附件/模型 UI/工具开关」三条排除 | accepted | 2026-10-16 |

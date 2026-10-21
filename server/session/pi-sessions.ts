@@ -64,6 +64,8 @@ export function parseSessionHeader(line: string): { id: string; cwd: string; sta
 
 /** 纯函数：从会话内容行里抠出标题、模型（不解析全文件，只看开头这几十行） */
 export function extractListMeta(lines: string[]): { title: string; model: string | null } {
+	/** pi 自己的会话名（session_info.name）：有它就以它为准，首条消息只当兜底 */
+	let name = "";
 	let title = "";
 	let model: string | null = null;
 
@@ -78,6 +80,10 @@ export function extractListMeta(lines: string[]): { title: string; model: string
 			const provider = typeof record.provider === "string" ? record.provider : "";
 			model = provider ? `${provider}/${record.modelId}` : record.modelId;
 		}
+		if (record.type === "session_info" && typeof record.name === "string" && record.name.trim() !== "") {
+			name = record.name; // 后写的覆盖先写的（追加式，最新一条生效）
+			continue;
+		}
 		if (title) continue;
 		if (record.type !== "message") continue;
 		const message = record.message as Record<string, unknown> | undefined;
@@ -86,7 +92,8 @@ export function extractListMeta(lines: string[]): { title: string; model: string
 	}
 
 	// 列表只显示一行：折叠换行/连续空白（首条消息常是多行任务描述）
-	return { title: title.replace(/\s+/g, " ").trim().slice(0, 60), model };
+	const display = (name || title).replace(/\s+/g, " ").trim();
+	return { title: display.slice(0, 60), model };
 }
 
 function textOfMessageContent(content: unknown): string {
@@ -114,7 +121,13 @@ export function projectNameOf(cwd: string): string {
 	return parts[parts.length - 1] ?? cwd;
 }
 
-/** 纯函数：把扁平会话列表按 cwd 分组（组内按 updatedAt 倒序，组间按最新活动倒序） */
+/**
+ * 纯函数：把扁平会话列表按 cwd 分组。
+ *
+ * 组内按 **startedAt（创建时间）倒序**：新会话在最上面，而**更新一个旧会话不会让它跳位置** ——
+ * 按 updatedAt 排的话，你在一个老会话里说一句话它就窜到最上面，整个列表跟着挪，很烦人。
+ * 组间仍按最新活动倒序（侧栏会用 projectPrefs 再排一次，这里只保证可预期的初始顺序）。
+ */
 export function groupByProject(sessions: PiSessionRow[]): PiProjectGroup[] {
 	const groups = new Map<string, PiProjectGroup>();
 	for (const session of sessions) {
@@ -133,7 +146,7 @@ export function groupByProject(sessions: PiSessionRow[]): PiProjectGroup[] {
 		}
 	}
 	const list = [...groups.values()];
-	for (const group of list) group.sessions.sort((a, b) => b.updatedAt - a.updatedAt);
+	for (const group of list) group.sessions.sort((a, b) => b.startedAt - a.startedAt);
 	return list.sort((a, b) => b.updatedAt - a.updatedAt);
 }
 

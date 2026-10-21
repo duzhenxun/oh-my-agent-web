@@ -13,6 +13,8 @@ describe("M3：审批规则跨重启（ADR-0006 的「总是允许这类」）",
 	it("「总是允许这类」写进规则库，下一次运行不再询问", async () => {
 		const rules = createMemoryRuleStore();
 		const first = harness(rules);
+		// 默认是「全部放行」（ADR-0034）：这条用例要测规则，先切回「询问」
+		first.runtime.setApprovalMode("ask");
 
 		const turn = first.runtime.sendMessage("approve please");
 		await waitFor(() => first.runtime.snapshot().pendingApproval !== null);
@@ -25,10 +27,21 @@ describe("M3：审批规则跨重启（ADR-0006 的「总是允许这类」）",
 
 		// 新的一次运行（新 runtime、同一规则库）→ 同类操作不再弹窗
 		const second = harness(rules);
+		second.runtime.setApprovalMode("ask");
 		await second.runtime.init();
 		await second.runtime.sendMessage("approve please");
 		expect(second.recorder.snapshots.some((snapshot) => snapshot.pendingApproval !== null)).toBe(false);
 		expect(messageTextForTest(second.runtime.snapshot())).toContain("审批结果：always");
+	});
+
+	it("默认「全部放行」（ADR-0034）：危险操作不弹窗，引擎直接收到 once", async () => {
+		const { runtime, recorder } = harness();
+		await runtime.init();
+		expect(runtime.snapshot().approvalMode).toBe("allow");
+
+		await runtime.sendMessage("approve please");
+		expect(recorder.snapshots.some((snapshot) => snapshot.pendingApproval !== null)).toBe(false);
+		expect(messageTextForTest(runtime.snapshot())).toContain("审批结果：once");
 	});
 
 	it("init 装载规则但不往对话流里塞提示（启动信息只进日志）", async () => {
@@ -42,6 +55,7 @@ describe("M3：审批规则跨重启（ADR-0006 的「总是允许这类」）",
 	it("「允许一次」不写规则（这正是三态的意义）", async () => {
 		const rules = createMemoryRuleStore();
 		const first = harness(rules);
+		first.runtime.setApprovalMode("ask");
 
 		const turn = first.runtime.sendMessage("approve please");
 		await waitFor(() => first.runtime.snapshot().pendingApproval !== null);
@@ -59,6 +73,7 @@ describe("M3：审批规则跨重启（ADR-0006 的「总是允许这类」）",
 			},
 		};
 		const { runtime } = harness(rules);
+		runtime.setApprovalMode("ask");
 		const turn = runtime.sendMessage("approve please");
 		await waitFor(() => runtime.snapshot().pendingApproval !== null);
 		runtime.approve(runtime.snapshot().pendingApproval!.requestId, "always");
@@ -67,6 +82,25 @@ describe("M3：审批规则跨重启（ADR-0006 的「总是允许这类」）",
 		// 第二次同类操作：内存规则已经生效
 		await runtime.sendMessage("approve please");
 		expect(runtime.snapshot().notices.some((notice) => notice.text.includes("写盘失败"))).toBe(true);
+	});
+});
+
+describe("新建会话：页面要自动跳到它（ADR-0033 的每客户端视图）", () => {
+	it("发起者的视图跟到新会话，其他客户端不受影响", async () => {
+		const { runtime } = harness();
+		await runtime.init();
+
+		await runtime.newConversation(undefined, "tab-a");
+		const firstId = runtime.snapshotFor("tab-a").active.conversationId;
+		expect(firstId).not.toBeNull();
+		// tab-b 第一次要快照 → 定型在当时的全局 active，也就是这个新会话
+		expect(runtime.snapshotFor("tab-b").active.conversationId).toBe(firstId);
+
+		// 再新建一次：只有发起者跟过去
+		await runtime.newConversation(undefined, "tab-a");
+		const secondId = runtime.snapshotFor("tab-a").active.conversationId;
+		expect(secondId).not.toBe(firstId);
+		expect(runtime.snapshotFor("tab-b").active.conversationId).toBe(firstId);
 	});
 });
 
@@ -119,7 +153,7 @@ describe("M3.5-P1：客户端设置（ADR-0020）", () => {
 			quickPhrasesEnabled: true,
 			templates: [],
 			projectPrefs: { order: [], pinned: [], aliases: {} },
-			sessionPrefs: { pinned: [], archived: [], titles: {} },
+			sessionPrefs: { pinned: [], archived: [] },
 		});
 		const { runtime } = harness(createMemoryRuleStore(), { settings: store });
 		await runtime.init();
@@ -130,7 +164,7 @@ describe("M3.5-P1：客户端设置（ADR-0020）", () => {
 			quickPhrasesEnabled: false,
 			templates: [],
 			projectPrefs: { order: [], pinned: [], aliases: {} },
-			sessionPrefs: { pinned: [], archived: [], titles: {} },
+			sessionPrefs: { pinned: [], archived: [] },
 		});
 		expect(result.ok).toBe(true);
 		expect(runtime.snapshot().settings).toEqual({
@@ -138,7 +172,7 @@ describe("M3.5-P1：客户端设置（ADR-0020）", () => {
 			quickPhrasesEnabled: false,
 			templates: [],
 			projectPrefs: { order: [], pinned: [], aliases: {} },
-			sessionPrefs: { pinned: [], archived: [], titles: {} },
+			sessionPrefs: { pinned: [], archived: [] },
 		});
 		// 真的落盘了
 		expect(await store.load()).toEqual({
@@ -146,7 +180,7 @@ describe("M3.5-P1：客户端设置（ADR-0020）", () => {
 			quickPhrasesEnabled: false,
 			templates: [],
 			projectPrefs: { order: [], pinned: [], aliases: {} },
-			sessionPrefs: { pinned: [], archived: [], titles: {} },
+			sessionPrefs: { pinned: [], archived: [] },
 		});
 	});
 
@@ -156,7 +190,7 @@ describe("M3.5-P1：客户端设置（ADR-0020）", () => {
 			quickPhrasesEnabled: true,
 			templates: [],
 			projectPrefs: { order: [], pinned: [], aliases: {} },
-			sessionPrefs: { pinned: [], archived: [], titles: {} },
+			sessionPrefs: { pinned: [], archived: [] },
 		});
 		const { runtime } = harness(createMemoryRuleStore(), { settings: store });
 		await runtime.init();

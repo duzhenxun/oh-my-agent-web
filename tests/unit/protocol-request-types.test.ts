@@ -11,6 +11,7 @@ import { REQUEST_TYPES, parseClientRequest } from "../../server/protocol-parse.j
 const EXPECTED = [
 	"send_message",
 	"interrupt",
+	"rename_session",
 	"approve",
 	"get_state",
 	"new_chat",

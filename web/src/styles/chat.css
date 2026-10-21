@@ -4,11 +4,19 @@
 	flex-direction: column;
 	gap: var(--gap);
 	min-width: 0;
+	/* 第一条消息离顶部多留一点白：贴着边框看很挤（手机上 .main 的上下内边距是 0，所以这条尤其明显） */
+	padding-top: 32px;
+}
+
+@media (max-width: 900px), (pointer: coarse) and (max-width: 1366px) {
+	.messages {
+		padding-top: 24px;
+	}
 }
 
 .more-before {
 	color: var(--text-faint);
-	font-size: 12px;
+	font-size: 14px;
 	text-align: center;
 }
 
@@ -37,7 +45,7 @@
 
 .md code {
 	font-family: var(--mono);
-	font-size: 12.5px;
+	font-size: 14.5px;
 	background: var(--bg-elev-2);
 	border-radius: 4px;
 	padding: 1px 4px;
@@ -75,7 +83,7 @@
 	flex: none;
 	color: var(--accent);
 	font-family: var(--mono);
-	font-size: 12.5px;
+	font-size: 14.5px;
 }
 
 .tool-args {
@@ -86,13 +94,13 @@
 	white-space: nowrap;
 	color: var(--text-dim);
 	font-family: var(--mono);
-	font-size: 12.5px;
+	font-size: 14.5px;
 }
 
 .tool-status {
 	flex: none;
 	margin-left: auto;
-	font-size: 12px;
+	font-size: 14px;
 	color: var(--text-faint);
 }
 
@@ -113,14 +121,14 @@
 	overflow: auto;
 	white-space: pre-wrap;
 	overflow-wrap: anywhere;
-	font-size: 12.5px;
+	font-size: 14.5px;
 	color: var(--text-dim);
 }
 
 .tool-truncated {
 	margin-top: 6px;
 	color: var(--amber);
-	font-size: 12px;
+	font-size: 14px;
 }
 
 /* ---- 错误块（失败必须留在历史里，ADR-0013）---- */
@@ -139,7 +147,7 @@
 .block-error-code {
 	flex: none;
 	font-family: var(--mono);
-	font-size: 12.5px;
+	font-size: 14.5px;
 	color: var(--red);
 }
 
@@ -168,7 +176,7 @@
 	border-radius: 999px;
 	padding: 4px 12px;
 	font: inherit;
-	font-size: 12.5px;
+	font-size: 14.5px;
 	cursor: pointer;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -202,7 +210,7 @@
 	align-items: center;
 	justify-content: space-between;
 	gap: 6px;
-	font-size: 12.5px;
+	font-size: 14.5px;
 	color: var(--text-dim);
 }
 
@@ -210,7 +218,7 @@
 	display: flex;
 	align-items: center;
 	gap: 6px;
-	font-size: 12.5px;
+	font-size: 14.5px;
 	color: var(--text-dim);
 }
 
@@ -223,12 +231,12 @@
 	border-radius: 8px;
 	padding: 6px 8px;
 	font: inherit;
-	font-size: 12.5px;
+	font-size: 14.5px;
 }
 
 .settings-hint {
 	color: var(--text-faint);
-	font-size: 11.5px;
+	font-size: 13.5px;
 	overflow-wrap: anywhere;
 }
 
@@ -239,7 +247,7 @@
 
 .btn-tiny {
 	padding: 3px 8px;
-	font-size: 12px;
+	font-size: 14px;
 }
 
 /* ---- 建议操作（ADR-0022）：模型给出的下一步，一点即发 ---- */
@@ -255,7 +263,7 @@
 .action-row-label {
 	flex: none;
 	color: var(--text-faint);
-	font-size: 11.5px;
+	font-size: 13.5px;
 }
 
 .action-btn {
@@ -267,7 +275,7 @@
 	border-radius: 8px;
 	padding: 5px 12px;
 	font: inherit;
-	font-size: 12.5px;
+	font-size: 14.5px;
 	cursor: pointer;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -302,7 +310,7 @@
 	border: 1px solid var(--border-strong);
 	border-radius: 8px;
 	padding: 3px 6px 3px 3px;
-	font-size: 12px;
+	font-size: 14px;
 	color: var(--text-dim);
 	min-width: 0;
 }
@@ -340,7 +348,7 @@
 	border: none;
 	color: var(--text-faint);
 	cursor: pointer;
-	font-size: 14px;
+	font-size: 16px;
 	line-height: 1;
 	padding: 0 2px;
 }
@@ -351,12 +359,12 @@
 
 .attach-hint {
 	color: var(--text-faint);
-	font-size: 12px;
+	font-size: 14px;
 }
 
 .attach-error {
 	color: var(--red);
-	font-size: 12px;
+	font-size: 14px;
 	overflow-wrap: anywhere;
 }
 
@@ -364,7 +372,7 @@
 .btn-queue {
 	border-radius: 8px;
 	padding: 6px 10px;
-	font-size: 12.5px;
+	font-size: 14.5px;
 	background: var(--bg-elev-2);
 	border: 1px solid var(--border);
 	color: var(--text-dim);

@@ -12,7 +12,7 @@
 	background: var(--bg);
 	border: 1px solid var(--border);
 	border-radius: 8px;
-	font-size: 12.5px;
+	font-size: 14.5px;
 	line-height: 1.55;
 }
 
@@ -26,7 +26,7 @@
 	border-radius: 999px;
 	background: var(--bg-elev-2);
 	color: var(--text-faint);
-	font-size: 10.5px;
+	font-size: 12.5px;
 	letter-spacing: 0.04em;
 	text-transform: lowercase;
 	pointer-events: none;
@@ -45,7 +45,7 @@
 
 .md-img-blocked {
 	color: var(--text-faint);
-	font-size: 12px;
+	font-size: 14px;
 }
 
 /* mermaid 图（ADR-0029）：右上有 SVG / 源代码 切换，失败时显示报错而不是空白 */
@@ -68,7 +68,7 @@
 
 .mermaid-lang {
 	color: var(--text-faint);
-	font-size: 11px;
+	font-size: 13px;
 	letter-spacing: 0.04em;
 }
 
@@ -78,7 +78,7 @@
 	background: none;
 	color: var(--text-dim);
 	font: inherit;
-	font-size: 11.5px;
+	font-size: 13.5px;
 	padding: 2px 8px;
 	cursor: pointer;
 }
@@ -110,7 +110,7 @@
 .mermaid-source {
 	margin: 0;
 	padding: 8px 10px;
-	font-size: 12px;
+	font-size: 14px;
 	line-height: 1.55;
 	color: var(--text-dim);
 	overflow: auto;
@@ -120,7 +120,7 @@
 	padding: 6px 10px;
 	border-top: 1px solid var(--border);
 	color: var(--red);
-	font-size: 11.5px;
+	font-size: 13.5px;
 }
 
 /* ---- 表格（GFM 表格）：之前完全没有样式，看起来像一堆竖线文字 ---- */
@@ -131,7 +131,7 @@
 	overflow-x: auto; /* 宽表格自己横向滚动，不撑破消息气泡 */
 	border-collapse: collapse;
 	margin: 10px 0;
-	font-size: 12.5px;
+	font-size: 14.5px;
 	line-height: 1.5;
 }
 

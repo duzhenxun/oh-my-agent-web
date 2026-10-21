@@ -9,7 +9,7 @@
  * （否则两个标签页会互相拽着切换）。cookie 不存在时由 `/api/events` 发一个。
  */
 import { randomUUID } from "node:crypto";
-import { createGzip } from "node:zlib";
+import { constants as zlibConstants, createGzip } from "node:zlib";
 import type { Express } from "express";
 import type { Snapshot } from "../protocol.js";
 
@@ -24,6 +24,14 @@ export type LiveDeps = {
 	sinks: Map<string, Sink>;
 	/** 按客户端生成快照（active 用它自己选中的会话） */
 	snapshotFor: (clientId: string) => Snapshot;
+	/**
+	 * 客户端生命周期：`slim` 是能力协商（`?slim=1` = 受得了快照里省掉会话清单），
+	 * `drop` 在 SSE 断开时清掉这个客户端的记录。
+	 */
+	clientTracker?: {
+		setSlim: (clientId: string, slim: boolean) => void;
+		drop: (clientId: string) => void;
+	};
 	/** 请求分发（与 WS 那条路共用） */
 	handleMessage: (clientId: string, socket: { send: (payload: string) => void }, raw: string) => Promise<void>;
 	logger: { info: (message: string, meta?: Record<string, unknown>) => void };
@@ -81,12 +89,17 @@ export function registerLiveRoutes(app: Express, deps: LiveDeps): void {
 		});
 		response.flushHeaders?.();
 
-		const compressor = gzip ? createGzip({ level: 6 }) : null;
+		// `flush: Z_SYNC_FLUSH` 是必需的，不是调优项：SSE 每一帧都得**立刻**落地。
+		// 默认模式（Z_NO_FLUSH）下 zlib 会把小帧攒在内部缓冲区里，几 KB～几十 KB 的快照
+		// 要等下一大块数据才被推出去 —— 表现就是「切会话 / 新建会话页面不跳、快照像停了」。
+		const compressor = gzip ? createGzip({ level: 6, flush: zlibConstants.Z_SYNC_FLUSH }) : null;
 		compressor?.on("data", (chunk: Buffer) => response.write(chunk));
 		const send = (text: string) => (compressor ? compressor.write(text) : response.write(text));
 		const sink: Sink = (payload) => send(`data: ${payload}\n\n`);
 		deps.sinks.set(clientId, sink);
-		deps.logger.info("SSE 已连接", { clients: deps.sinks.size });
+		// 能力协商：带 slim=1 的客户端由服务端决定「会话清单只在变化时带」
+		deps.clientTracker?.setSlim(clientId, request.query?.slim === "1");
+		deps.logger.info("SSE 已连接", { clients: deps.sinks.size, slim: request.query?.slim === "1" });
 
 		// 首屏：立刻给这个客户端一份「属于它自己」的快照
 		sink(JSON.stringify({ type: "event", event: "snapshot", snapshot: deps.snapshotFor(clientId) }));
@@ -98,6 +111,7 @@ export function registerLiveRoutes(app: Express, deps: LiveDeps): void {
 			clearInterval(beat);
 			compressor?.end();
 			deps.sinks.delete(clientId);
+			deps.clientTracker?.drop(clientId);
 			deps.logger.info("SSE 已断开", { clients: deps.sinks.size });
 		});
 	});

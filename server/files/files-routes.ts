@@ -6,9 +6,9 @@
  *
  * `workspaceOf()` 返回**当前会话**的工作区（多项目：文件树跟着当前会话走，ADR-0021 §3）。
  */
-import { realpathSync, statSync } from "node:fs";
+import { createReadStream, realpathSync, statSync } from "node:fs";
 import type { Express } from "express";
-import { listDirectory, readPreview, readRaw } from "./file-service.js";
+import { listDirectory, parseRange, readPreview, readRaw, resolveMediaFile } from "./file-service.js";
 
 export function registerFileRoutes(app: Express, options: { workspaceOf: () => string | null }): void {
 	app.get("/api/files/list", async (request, response) => {
@@ -46,6 +46,44 @@ export function registerFileRoutes(app: Express, options: { workspaceOf: () => s
 		response.setHeader("Content-Type", result.mime);
 		response.setHeader("Cache-Control", "private, max-age=60");
 		response.send(result.bytes);
+	});
+
+	/**
+	 * 视频 / 音频：**流式 + Range**（拖动进度条、边下边播都靠它）。
+	 * 只让白名单里的媒体类型通过；大小上限 4GB；路径同样受工作区约束。
+	 */
+	app.get("/api/files/media", async (request, response) => {
+		const root = rootOf(request.query.root, options.workspaceOf());
+		if (!root) {
+			response
+				.status(409)
+				.json({ error: { code: "files.no_workspace", message: "还没有打开会话（不知道是哪个项目）" } });
+			return;
+		}
+		const relPath = typeof request.query.path === "string" ? request.query.path : "";
+		const file = await resolveMediaFile(root, relPath);
+		if (!file.ok) {
+			response.status(file.tooLarge ? 413 : 400).json({ error: { code: "files.media_failed", message: file.error } });
+			return;
+		}
+		const range = parseRange(request.headers.range, file.size);
+		response.setHeader("Content-Type", file.mime);
+		response.setHeader("Accept-Ranges", "bytes");
+		response.setHeader("Cache-Control", "private, max-age=600");
+		if (range) {
+			response.status(206);
+			response.setHeader("Content-Range", `bytes ${range.start}-${range.end}/${file.size}`);
+			response.setHeader("Content-Length", String(range.end - range.start + 1));
+		} else {
+			response.setHeader("Content-Length", String(file.size));
+		}
+		if (request.method === "HEAD") {
+			response.end();
+			return;
+		}
+		createReadStream(file.path, range ? { start: range.start, end: range.end } : undefined)
+			.on("error", () => response.destroy())
+			.pipe(response);
 	});
 
 	app.get("/api/files/read", async (request, response) => {

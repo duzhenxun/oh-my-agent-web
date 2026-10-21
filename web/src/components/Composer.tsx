@@ -1,4 +1,4 @@
-import { useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import { imagesMarkdown, pickUploadableFiles, uploadFile } from "../attachments.ts";
 import { ModelPicker } from "./ModelPicker.tsx";
 import { ThinkingPicker } from "./ThinkingPicker.tsx";
@@ -21,11 +21,26 @@ function formatBytes(bytes: number): string {
  * 这样**刷新之后图片仍然显示**（引用随会话文件落盘）。
  */
 export function Composer({ running, conversationId }: { running: boolean; conversationId: string | null }) {
-	const { draft, snapshot } = useAppState();
+	const { draft, snapshot, creating } = useAppState();
 	const [pending, setPending] = useState<AttachmentRef[]>([]);
 	const [uploading, setUploading] = useState(false);
 	const [uploadError, setUploadError] = useState<string | null>(null);
 	const inputRef = useRef<HTMLTextAreaElement>(null);
+
+	// 点「新会话」→ 建好后把光标直接放进输入框（下一步肯定是打字，少点一次）。
+	// 只在新会话**刚建好**这一刻抢焦点：切会话时不抢（否则手机上会莫名弹出键盘）。
+	const wasCreating = useRef(false);
+	useEffect(() => {
+		const justCreated = wasCreating.current && !creating;
+		wasCreating.current = creating;
+		if (!justCreated || !inputRef.current) return;
+		// 别把别人正在打的字顶掉（例如建会话失败、用户已经在别处输入）
+		const active = document.activeElement;
+		if ((active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) && active !== inputRef.current) {
+			return;
+		}
+		inputRef.current.focus();
+	}, [creating]);
 
 	const quickPhrases = snapshot?.settings.quickPhrasesEnabled ? (snapshot?.settings.quickPhrases ?? []) : [];
 	const templates = snapshot?.settings.templates ?? [];
@@ -116,7 +131,7 @@ export function Composer({ running, conversationId }: { running: boolean; conver
 							type="button"
 							className={`tool-chip composer-approval-btn${snapshot?.approvalMode === "allow" ? " tool-chip-warn" : ""}`}
 							onClick={() => setApprovalMode(snapshot?.approvalMode === "allow" ? "ask" : "allow")}
-							title="审批模式（只在本会话生效，重启恢复询问）"
+							title="审批模式（全局生效，重启回到默认：全部放行）"
 						>
 							{snapshot?.approvalMode === "allow" ? "🔓 审批：全部放行" : "🔒 审批：询问"}
 						</button>
@@ -183,7 +198,7 @@ export function Composer({ running, conversationId }: { running: boolean; conver
 					ref={inputRef}
 					className="composer-input"
 					value={draft}
-					placeholder={running ? "正在跑…（回车排队会被拒绝，先点停止）" : "说点什么，回车发送 · Shift+回车换行"}
+					placeholder={running ? "正在跑…回车排队，Shift+回车换行" : "说点什么，回车发送 · Shift+回车换行"}
 					onChange={(event) => {
 						setDraft(event.target.value);
 						// 自动高度：先归零再按内容算，上限 240px（超过就内部滚动）
@@ -195,8 +210,8 @@ export function Composer({ running, conversationId }: { running: boolean; conver
 					onKeyDown={(event: KeyboardEvent<HTMLTextAreaElement>) => {
 						if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
 						event.preventDefault();
-						// 回车默认：空闲时直接发；回合进行中默认「引导」（排队要点按钮）
-						submit(running ? "steer" : "now");
+						// 回车默认：空闲时直接发；回合进行中默认「排队」（想插队再点「引导」）
+						submit(running ? "queue" : "now");
 					}}
 					rows={1}
 				/>
@@ -206,18 +221,18 @@ export function Composer({ running, conversationId }: { running: boolean; conver
 							<button
 								type="button"
 								className="btn btn-send"
-								title="插进当前这一轮（打断它，按新指示继续）"
-								onClick={() => submit("steer")}
+								title="等这一轮结束后再发（回车默认就是它）"
+								onClick={() => submit("queue")}
 							>
-								引导
+								排队
 							</button>
 							<button
 								type="button"
 								className="btn btn-queue"
-								title="等这一轮结束后再发"
-								onClick={() => submit("queue")}
+								title="插进当前这一轮（打断它，按新指示继续）"
+								onClick={() => submit("steer")}
 							>
-								排队
+								引导
 							</button>
 							<button
 								type="button"

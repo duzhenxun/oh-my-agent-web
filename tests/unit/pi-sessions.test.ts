@@ -122,7 +122,7 @@ describe("projectNameOf / groupByProject", () => {
 		expect(projectNameOf("")).toBe("（未知项目）");
 	});
 
-	it("按 cwd 分组：组内按时间倒序，组间按最新活动倒序", () => {
+	it("按 cwd 分组：组内按创建时间倒序，组间按最新活动倒序", () => {
 		const rows: PiSessionRow[] = [
 			{ id: "1", path: "/p/a/1", cwd: "/repo/a", startedAt: 1, updatedAt: 10, title: "a1", model: null },
 			{ id: "2", path: "/p/a/2", cwd: "/repo/a", startedAt: 2, updatedAt: 30, title: "a2", model: null },
@@ -132,6 +132,16 @@ describe("projectNameOf / groupByProject", () => {
 		expect(groups.map((group) => group.name)).toEqual(["a", "b"]);
 		expect(groups[0].sessions.map((session) => session.title)).toEqual(["a2", "a1"]);
 		expect(groups[0].updatedAt).toBe(30);
+	});
+
+	it("老会话刚说过话也不往上跳（位置只看创建时间）", () => {
+		const rows: PiSessionRow[] = [
+			// a1 老会话，但最近刚更新（updatedAt 最大）→ 仍然排在 a2 后面
+			{ id: "1", path: "/p/a/1", cwd: "/repo/a", startedAt: 1, updatedAt: 999, title: "a1", model: null },
+			{ id: "2", path: "/p/a/2", cwd: "/repo/a", startedAt: 2, updatedAt: 30, title: "a2", model: null },
+		];
+		const groups = groupByProject(rows);
+		expect(groups[0].sessions.map((session) => session.title)).toEqual(["a2", "a1"]);
 	});
 });
 

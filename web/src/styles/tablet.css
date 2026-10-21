@@ -1,0 +1,24 @@
+/* 平板（触摸屏、宽度 > 900px）：也走手机壳，但只是宽度上的微调（从 responsive.css 拆出：行数护栏） */
+@media (pointer: coarse) and (min-width: 601px) and (max-width: 1366px) {
+	.side-host {
+		width: min(78vw, 380px) !important;
+		max-width: 380px;
+	}
+
+	/* 右侧面板（终端/预览）在平板上留一点边，不要整屏 */
+	.preview-panel {
+		position: fixed;
+		top: var(--appbar-h, 46px);
+		right: 8px;
+		bottom: 40px;
+		left: 8px;
+		width: auto !important;
+		height: auto;
+		border-radius: 0;
+	}
+
+	/* 平板上的状态栏那几项不至于挤：留着居中 + 右侧「顶部」 */
+	.statusbar {
+		padding-right: 62px;
+	}
+}

@@ -151,6 +151,7 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
 	}
 
 	return {
+		version: () => "fake",
 		async createSession(sessionOptions: EngineSessionOptions) {
 			sessions.set(sessionOptions.sessionId, {
 				workspace: sessionOptions.workspace,

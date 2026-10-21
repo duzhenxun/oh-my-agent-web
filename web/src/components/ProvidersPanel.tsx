@@ -26,6 +26,8 @@ export function ProvidersPanel() {
 		allowlist.some((pattern) => pattern === `${provider.provider}/**` || pattern.startsWith(`${provider.provider}/`));
 
 	const [selected, setSelected] = useState<string | null>(null);
+	/** 手动收起的那一项（再点一下同一个 provider 就收起它下面的模型列表） */
+	const [collapsed, setCollapsed] = useState<string | null>(null);
 	const [creating, setCreating] = useState(false);
 	const [importing, setImporting] = useState(false);
 	const [editingModel, setEditingModel] = useState<string | null>(null);
@@ -132,12 +134,20 @@ export function ProvidersPanel() {
 						{providers.length === 0 ? <div className="side-panel-hint">还没有 provider</div> : null}
 						{providers.map((provider) => {
 							const active = !creating && current?.provider === provider.provider;
+							// 高亮（右侧显示谁）不变；只有「模型列表是否展开」受点第二下控制
+							const inlineOpen = active && collapsed !== provider.provider;
 							return (
 								<div key={provider.provider} className={`prov-block${active ? " prov-block-on" : ""}`}>
 									<button
 										type="button"
 										className={`prov-item${active ? " prov-item-on" : ""}`}
 										onClick={() => {
+											// 再点一下同一个：把模型列表收起来（右侧仍显示它的配置）
+											if (active && collapsed !== provider.provider) {
+												setCollapsed(provider.provider);
+												return;
+											}
+											setCollapsed(null);
 											setCreating(false);
 											setImporting(false);
 											setEditingModel(null);
@@ -146,6 +156,7 @@ export function ProvidersPanel() {
 										}}
 									>
 										<span className="prov-item-name">
+											<span className={`prov-caret${inlineOpen ? " prov-caret-open" : ""}`} aria-hidden="true" />
 											{provider.provider}
 											{provider.source === "builtin" ? <span className="side-provider-badge">内置</span> : null}
 											{provider.hasKey ? null : <span className="prov-item-warn">无 key</span>}
@@ -154,7 +165,7 @@ export function ProvidersPanel() {
 											启用 {enabledCount(provider)}/{provider.models.length}
 										</span>
 									</button>
-									{active ? (
+									{inlineOpen ? (
 										<div className="prov-models-inline">
 											{provider.models.length === 0 ? (
 												<div className="side-panel-hint">这个 provider 下没有模型</div>

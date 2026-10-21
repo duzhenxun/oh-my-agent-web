@@ -14,7 +14,7 @@ export function groupArchived(projects: PiProject[], prefs: SessionPrefs): Archi
 				.filter((session) => prefs.archived.includes(session.id))
 				.map((session) => ({
 					id: session.id,
-					title: prefs.titles[session.id] ?? (session.title || "（无标题）"),
+					title: session.title || "（无标题）",
 					time: "已归档",
 				})),
 		}))

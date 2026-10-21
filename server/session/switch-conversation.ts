@@ -63,11 +63,13 @@ export function createSwitchConversation(deps: SwitchDeps) {
 				lap("thinking", tThinking);
 				state.activeId = conversationId;
 				state.files = { root: fromPi.workspace, treeVersion: (state.files?.treeVersion ?? 0) + 1 };
-				deps.pushSnapshot();
 			}
 			const tStats = Date.now();
 			deps.refreshStats();
 			lap("stats", tStats);
+			// 无论有没有真的换（已是当前会话也推）：客户端靠这份快照把乐观高亮退掉，
+			// 否则点一下当前会话就变成「正在打开…」卡在那里 —— 看着就是「点了没反应」。
+			deps.pushSnapshot();
 			report(deps, conversationId, began, laps);
 			return { ok: true };
 		}
@@ -78,11 +80,12 @@ export function createSwitchConversation(deps: SwitchDeps) {
 			if (workspace && state.files?.root !== workspace) {
 				state.files = { root: workspace, treeVersion: (state.files?.treeVersion ?? 0) + 1 };
 			}
-			deps.pushSnapshot();
 		}
 		const tStats2 = Date.now();
 		deps.refreshStats();
 		lap("stats", tStats2);
+		// 同一个理由：已经是当前会话也要推一份，客户端才知道「切到了」。
+		deps.pushSnapshot();
 		report(deps, conversationId, began, laps);
 		return { ok: true };
 	}

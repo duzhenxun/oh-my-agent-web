@@ -22,6 +22,7 @@ export type {
 	FilesMeta,
 	GetStateRequest,
 	InterruptRequest,
+	RenameSessionRequest,
 	MessageBlock,
 	ModelOption,
 	ModelSpecView,

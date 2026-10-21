@@ -5,6 +5,7 @@ import { createSender, type OutFrame } from "../../server/snapshot/sender.js";
 function makeSnapshot(tag: number): Snapshot {
 	return {
 		protocolVersion: PROTOCOL_VERSION,
+		versions: { web: "0.0.0-test", engine: "1.0.0-test" },
 		engine: "fake",
 		model: "test/model",
 		approvalMode: "ask",
@@ -21,7 +22,7 @@ function makeSnapshot(tag: number): Snapshot {
 			quickPhrasesEnabled: true,
 			templates: [],
 			projectPrefs: { order: [], pinned: [], aliases: {} },
-			sessionPrefs: { pinned: [], archived: [], titles: {} },
+			sessionPrefs: { pinned: [], archived: [] },
 		},
 		conversations: [],
 		active: { conversationId: null, messages: [], hasMoreBefore: false },

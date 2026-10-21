@@ -7,6 +7,7 @@
  */
 @import "./styles/base.css";
 @import "./styles/sidebar.css";
+@import "./styles/project-icon.css";
 @import "./styles/project-menu.css";
 @import "./styles/session-row.css";
 @import "./styles/archived.css";
@@ -17,11 +18,14 @@
 @import "./styles/provider-checklist.css";
 @import "./styles/provider-switch.css";
 @import "./styles/app-bar.css";
+@import "./styles/app-bar-mobile.css";
 @import "./styles/terminal.css";
 @import "./styles/skills.css";
 @import "./styles/chat.css";
+@import "./styles/newchat.css";
 @import "./styles/composer-actions.css";
 @import "./styles/statusbar.css";
+@import "./styles/push.css";
 @import "./styles/sent-queue.css";
 @import "./styles/messages.css";
 @import "./styles/files.css";
@@ -32,3 +36,4 @@
 @import "./styles/highlight.css";
 @import "./styles/markdown.css";
 @import "./styles/responsive.css";
+@import "./styles/tablet.css";

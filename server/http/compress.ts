@@ -15,8 +15,12 @@ const TEXT_TYPE = /text|javascript|json|svg|css|xml/i;
 export function compressText() {
 	return (request: Request, response: Response, next: NextFunction): void => {
 		const accept = String(request.headers["accept-encoding"] ?? "");
-		// SSE 是流式响应：攒着压缩等于永远不发送（还会一直吃内存），必须直接放行
-		if (!/gzip/i.test(accept) || request.path === "/api/events") {
+		// SSE 与文件字节流不能攒也不能压：
+		//   - SSE 攒着等于永远不发送；
+		//   - 视频/音频要支持 Range 拖动，整块进内存会直接把进程吃爆。
+		const streamy =
+			request.path === "/api/events" || request.path === "/api/files/media" || request.path === "/api/files/raw";
+		if (!/gzip/i.test(accept) || streamy) {
 			next();
 			return;
 		}

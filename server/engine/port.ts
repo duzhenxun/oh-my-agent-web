@@ -34,6 +34,8 @@ export type EngineEvent =
 			output: string;
 			exitCode?: number;
 	  }
+	/** 这条 assistant 消息的 token 用量（SDK 在 message_update 里带上来时解析出来） */
+	| { type: "usage"; input: number; output: number; cacheRead: number; cacheWrite: number }
 	| { type: "turn_end"; reason: "done" | "interrupted" | "error" }
 	| { type: "error"; code: string; message: string };
 
@@ -57,6 +59,8 @@ export type EngineOpenOptions = {
 };
 
 export type EnginePort = {
+	/** 引擎自己的版本号（界面上要显示 `pi v1.3.0` 这种）；拿不到返回 null */
+	version?: () => string | null;
 	/** 新建会话（ADR-0021 §2 起返回会话文件路径，供宿主列表用） */
 	createSession(options: EngineSessionOptions): Promise<{ sessionPath: string | null }>;
 	/** 打开已有会话（ADR-0021 §2）：上下文来自会话自己的转录，不需要注入历史 */
@@ -77,6 +81,11 @@ export type EnginePort = {
 	/** 关掉一个引擎会话（LRU 回收：同时打开太多会带来多次资源扫描） */
 	closeSession?(sessionId: string): Promise<void>;
 	readTranscript(sessionId: string): Promise<EngineMessage[]>;
+	/**
+	 * 改会话显示名：写进 **pi 自己的会话文件**（追加一条 `session_info`），
+	 * 不另存一份本地变量 —— 这样 pi CLI 里看到的也是这个名字。
+	 */
+	renameSession?: (sessionPath: string, name: string) => Promise<void>;
 	/** 读转录并映射成界面消息（text / tool 块）——侧栏与对话区都靠它 */
 	readUiMessages(sessionId: string): Promise<UiMessage[]>;
 	/** 危险操作前引擎会调用它；宿主负责弹给用户并等待决定（ADR-0006 审批三态） */

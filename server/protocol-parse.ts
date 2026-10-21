@@ -9,6 +9,7 @@ import type { ApprovalDecision, AttachmentRef, ClientRequest, ClientRequestType,
 export const REQUEST_TYPES: ClientRequestType[] = [
 	"send_message",
 	"interrupt",
+	"rename_session",
 	"approve",
 	"get_state",
 	"new_chat",
@@ -182,6 +183,12 @@ export function parseClientRequest(raw: unknown): ClientRequest | null {
 			? { id, type: "switch_conversation", payload: { conversationId: payload.conversationId } }
 			: null;
 	}
+	if (type === "rename_session") {
+		const conversationId = typeof payload.conversationId === "string" ? payload.conversationId.trim() : "";
+		const title = typeof payload.title === "string" ? payload.title.replace(/\s+/g, " ").trim().slice(0, 60) : "";
+		return conversationId === "" ? null : { id, type: "rename_session", payload: { conversationId, title } };
+	}
+
 	if (type === "interrupt") {
 		return nonEmptyString(payload.conversationId)
 			? { id, type: "interrupt", payload: { conversationId: payload.conversationId } }

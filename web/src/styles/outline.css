@@ -61,7 +61,7 @@
 	display: flex;
 	gap: 8px;
 	padding: 3px 0;
-	font-size: 12.5px;
+	font-size: 14.5px;
 }
 
 .outline-item-answer {
@@ -75,7 +75,7 @@
 	flex: none;
 	width: 22px;
 	color: var(--text-faint);
-	font-size: 11px;
+	font-size: 13px;
 }
 
 .outline-q {
@@ -89,7 +89,7 @@
 .outline-hint {
 	margin-top: 6px;
 	color: var(--text-faint);
-	font-size: 11px;
+	font-size: 13px;
 }
 
 /* 文件区：默认收起时只有一行标题；展开后下拉单独一行 */
@@ -137,7 +137,7 @@
 	padding-right: 26px;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (pointer: coarse) and (max-width: 1366px) {
 	.workspace .messages {
 		padding-right: 8px;
 	}

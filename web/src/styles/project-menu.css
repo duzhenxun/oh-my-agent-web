@@ -1,7 +1,10 @@
 /* ---- 项目行的「⋯」菜单 ---- */
+/* 和会话行一样：**始终占位、只切可见性**。
+   用 `display` 切换会让行在指针落下的那一帧重排 —— 触屏上就是「点项目名」变成
+   「点到刚冒出来的按钮」（新建会话 / 菜单），点一下像没反应。 */
 .proj-menu-btn {
 	flex: none;
-	display: none;
+	display: inline-flex;
 	width: 20px;
 	height: 20px;
 	align-items: center;
@@ -11,18 +14,48 @@
 	background: var(--bg-elev);
 	color: var(--text-dim);
 	font: inherit;
-	font-size: 12px;
+	font-size: 14px;
 	line-height: 1;
 	cursor: pointer;
+	visibility: hidden;
+	opacity: 0;
+	transition: opacity 90ms linear;
 }
 
-.proj-head:hover .proj-menu-btn {
-	display: inline-flex;
+.proj-head:hover .proj-menu-btn,
+.proj-head:focus-within .proj-menu-btn {
+	visibility: visible;
+	opacity: 1;
 }
 
 .proj-menu-btn:hover {
 	color: var(--text);
 	border-color: var(--accent-dim);
+}
+
+/* 触摸屏（手机 / 平板）：没有「悬停」，按钮必须一直看得见、并且点得准。
+   否则第一下的 click 会落到「刚冒出来的按钮」上（弹菜单 / 新建会话）。 */
+@media (hover: none), (pointer: coarse) {
+	.proj-head .proj-menu-btn {
+		visibility: visible;
+		opacity: 1;
+		width: 32px;
+		height: 32px;
+		font-size: 16px;
+	}
+
+	.proj-head .proj-new {
+		opacity: 1;
+		min-width: 32px;
+		min-height: 32px;
+		font-size: 16px;
+	}
+
+	/* 菜单项给手指留够高度（现在手机上也能打开了） */
+	.proj-menu-item {
+		min-height: 36px;
+		font-size: 15px;
+	}
 }
 
 .proj-menu {
@@ -47,7 +80,7 @@
 	background: none;
 	color: var(--text-dim);
 	font: inherit;
-	font-size: 12px;
+	font-size: 14px;
 	text-align: left;
 	padding: 5px 8px;
 	cursor: pointer;
@@ -74,7 +107,7 @@
 	border: none;
 	color: var(--text-faint);
 	font: inherit;
-	font-size: 12px;
+	font-size: 14px;
 	text-align: left;
 	cursor: pointer;
 	padding: 3px 8px;
@@ -89,7 +122,7 @@
 /* 置顶标记：跟在项目名后面，小一点、别抢注意力 */
 .proj-pin {
 	flex: none;
-	font-size: 10px;
+	font-size: 12px;
 	line-height: 1;
 	opacity: 0.85;
 }
@@ -137,7 +170,7 @@
 	border-radius: 8px;
 	background: var(--bg);
 	color: var(--text);
-	font-size: 12.5px;
+	font-size: 14.5px;
 	padding: 6px 9px;
 }
 
@@ -170,7 +203,7 @@
 	border: none;
 	color: var(--text);
 	font: inherit;
-	font-size: 12.5px;
+	font-size: 14.5px;
 	cursor: pointer;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -191,8 +224,9 @@
 	display: flex;
 	flex-direction: column;
 	gap: 4px;
-	padding-top: 8px;
-	margin-top: 4px;
+	/* 分隔线已经让过位置了，这里别再叠留白（否则线和标题之间空一大块） */
+	padding-top: 0;
+	margin-top: 0;
 }
 
 .side-files-head {
@@ -207,7 +241,7 @@
 .side-files-title {
 	flex: none;
 	color: var(--text);
-	font-size: 13.5px;
+	font-size: 16px;
 	font-weight: 600;
 }
 
@@ -220,9 +254,24 @@
 	background: var(--bg-elev);
 	color: var(--text-dim);
 	font: inherit;
-	font-size: 11.5px;
-	padding: 3px 6px;
+	font-size: 13.5px;
+	/* 文字居中 + 自绘箭头：原生箭头永远贴最右边，看着「太靠右」 */
+	text-align: center;
+	text-align-last: center;
+	padding: 3px 26px 3px 26px;
 	cursor: pointer;
+	appearance: none;
+	background-image:
+		linear-gradient(45deg, transparent 50%, currentColor 50%),
+		linear-gradient(135deg, currentColor 50%, transparent 50%);
+	background-position:
+		calc(100% - 12px) calc(50% - 1px),
+		calc(100% - 8px) calc(50% - 1px);
+	background-size:
+		4px 4px,
+		4px 4px;
+	background-repeat: no-repeat;
+	opacity: 0.95;
 }
 
 .side-files-body {
@@ -237,23 +286,24 @@
 }
 
 /* 文件区标题栏的终端按钮（点一下在右侧打开当前项目的终端） */
+/* 「>_」终端入口：不要边框，当一枚小字按钮用 */
 .side-files-term {
 	flex: none;
-	border: 1px solid var(--border);
-	border-radius: 7px;
-	background: var(--bg-elev);
-	color: var(--text-dim);
+	border: none;
+	border-radius: 5px;
+	background: none;
+	color: var(--text-faint);
 	font: inherit;
 	font-family: ui-monospace, monospace;
-	font-size: 12.5px;
-	padding: 3px 8px;
+	font-size: 13px;
+	padding: 1px 5px;
 	cursor: pointer;
-	line-height: 1.4;
+	line-height: 1.3;
 }
 
 .side-files-term:hover {
 	color: var(--accent);
-	border-color: var(--accent-dim);
+	background: var(--bg-elev-2);
 }
 
 /* 会话区与文件区之间的分隔条：上下拖动改文件区高度 */
@@ -261,8 +311,10 @@
 .side-split {
 	position: relative;
 	flex: none;
-	height: 11px;
-	margin: 0;
+	/* 10px 是拖拽热区；负 margin 抵掉侧栏 8px 间距 + 多一点，
+	   让「文件管理」几乎贴着这条线（线本身只在顶端 1px，重叠不会挡住内容） */
+	height: 10px;
+	margin: 0 0 -13px;
 	cursor: row-resize;
 	background: transparent;
 }
@@ -272,9 +324,9 @@
 	position: absolute;
 	left: 0;
 	right: 0;
-	top: 50%;
+	/* 线压在分隔条顶端（而不是居中）：视觉上就是「文件管理」区域的上边界 */
+	top: 0;
 	height: 1px;
-	transform: translateY(-50%);
 	background: var(--border);
 	border-radius: 2px;
 	transition:
@@ -288,6 +340,13 @@
 	background: var(--accent-dim);
 }
 
-.proj-chevron-open {
-	transform: rotate(45deg) !important;
+/* 浮窗版项目菜单：portal 到 body，按锚点算坐标（不再被侧栏滚动容器裁掉） */
+.proj-menu-floating {
+	position: fixed;
+	z-index: 90;
+	/* 内联版的 margin 在这里必须清掉（否则位置会偏出去） */
+	margin: 0;
+	width: 220px;
+	max-height: min(70vh, 560px);
+	overflow: auto;
 }

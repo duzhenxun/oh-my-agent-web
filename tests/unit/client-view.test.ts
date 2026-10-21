@@ -20,6 +20,14 @@ describe("clientView", () => {
 		expect(view.activeFor("tab-b", null)).toBe("conv-b");
 	});
 
+	it("连上来时还没有会话（定型为空）→ 第一个会话出现时跟上，之后不再跟", () => {
+		const view = createClientView();
+		expect(view.activeFor("tab-a", null)).toBe(null);
+		expect(view.activeFor("tab-a", "conv-new")).toBe("conv-new");
+		// 定型之后就认自己的，不再被全局 activeId 拖着走（ADR-0033）
+		expect(view.activeFor("tab-a", "conv-other")).toBe("conv-new");
+	});
+
 	it("会话被删/归档时清掉指向它的记录", () => {
 		const view = createClientView();
 		view.setActive("tab-a", "gone");

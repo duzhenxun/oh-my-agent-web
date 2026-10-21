@@ -141,3 +141,31 @@ describe("summarizeArgs", () => {
 		expect(summarizeArgs({ text: "x".repeat(500) }).length).toBe(201);
 	});
 });
+
+describe("usage 不能吞掉正文（回归：只调工具不回复）", () => {
+	it("message_update 同时带 usage 时，正文增量照常出来", () => {
+		const event = {
+			type: "message_update",
+			message: { role: "assistant", usage: { inputTokens: 100, outputTokens: 0 } },
+			assistantMessageEvent: { type: "text_delta", delta: "好的" },
+		};
+		expect(mapSessionEvent(event)).toEqual({ type: "text_delta", text: "好的" });
+	});
+
+	it("message_end 给出最终用量（output 统计全）", () => {
+		const event = {
+			type: "message_end",
+			message: { role: "assistant", usage: { inputTokens: 151, outputTokens: 42, cacheReadTokens: 900 } },
+		};
+		expect(mapSessionEvent(event)).toEqual({ type: "usage", input: 151, output: 42, cacheRead: 900, cacheWrite: 0 });
+	});
+
+	it("非 delta 的 message_update 才产出 usage", () => {
+		const event = {
+			type: "message_update",
+			message: { role: "assistant", usage: { inputTokens: 100, outputTokens: 20 } },
+			assistantMessageEvent: { type: "message_end" },
+		};
+		expect(mapSessionEvent(event)).toEqual({ type: "usage", input: 100, output: 20, cacheRead: 0, cacheWrite: 0 });
+	});
+});

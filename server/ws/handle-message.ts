@@ -50,7 +50,13 @@ export async function handleMessage(socket: WebSocket, raw: string, deps: Handle
 				deps.reply(
 					socket,
 					request.id,
-					await deps.runtime.sendMessage(request.payload.text, request.payload.attachments, request.payload.mode),
+					await deps.runtime.sendMessage(
+						request.payload.text,
+						request.payload.attachments,
+						request.payload.mode,
+						undefined,
+						deps.clientId,
+					),
 				);
 				return;
 			}
@@ -61,7 +67,14 @@ export async function handleMessage(socket: WebSocket, raw: string, deps: Handle
 				deps.reply(socket, request.id, deps.runtime.approve(request.payload.requestId, request.payload.decision));
 				return;
 			case "new_chat":
-				deps.reply(socket, request.id, await deps.runtime.newConversation(request.payload?.workspace));
+				deps.reply(socket, request.id, await deps.runtime.newConversation(request.payload?.workspace, deps.clientId));
+				return;
+			case "rename_session":
+				deps.reply(
+					socket,
+					request.id,
+					await deps.runtime.renameSession(request.payload.conversationId, request.payload.title),
+				);
 				return;
 			case "switch_conversation":
 				deps.reply(

@@ -16,7 +16,25 @@
 	min-width: 0;
 	display: flex;
 	gap: 8px;
-	padding: 8px;
+	/* 底部不留白：状态栏贴在窗口底边（它只占右列的宽度） */
+	padding: 8px 8px 0;
+}
+
+/* 右侧一列：上边是「对话 + 右侧面板」，下边是状态栏（只在右列宽度内） */
+.right-col {
+	flex: 1 1 auto;
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	min-height: 0;
+}
+
+.right-upper {
+	flex: 1 1 auto;
+	display: flex;
+	gap: 8px;
+	min-width: 0;
+	min-height: 0;
 }
 
 /* appbar 里的三个入口：横排、带图标与文字 */
@@ -32,11 +50,20 @@
 	gap: 6px;
 }
 
+.appbar-menu .side-foot-row {
+	gap: 4px;
+}
+
 .appbar-menu .side-foot-btn {
 	flex: none;
 	gap: 5px;
-	padding: 5px 12px;
-	font-size: 12.5px;
+	padding: 4px 9px;
+	border-radius: 7px;
+	font-size: 12px;
+}
+
+.appbar-menu .side-foot-btn:hover {
+	background: var(--bg);
 }
 
 /* 顶栏的预留区（以后放全局搜索/命令面板）：占住中间，右侧入口贴右边 */
@@ -141,12 +168,16 @@
 	flex: none;
 	display: flex;
 	align-items: center;
-	gap: 12px;
-	padding: 4px 12px;
+	gap: 8px;
+	/* 固定 24px 高：字 10px + 里面最小 12px 的圆环，正好放得下 */
+	height: 24px;
+	box-sizing: border-box;
+	padding: 0 10px;
 	border-top: 1px solid var(--border);
 	background: var(--bg-elev);
 	color: var(--text-faint);
-	font-size: 11.5px;
+	font-size: 12px;
+	line-height: 1;
 	min-width: 0;
 	overflow: hidden;
 	white-space: nowrap;
@@ -334,3 +365,6 @@
 	color: var(--text-dim);
 	overflow-wrap: anywhere;
 }
+
+/* 手机：顶栏要在一行里放得下「☰ + 图标 + 💬 + 四个入口」
+   —— 品牌文字和「新会话」文字收起来（都有 title），入口只留图标 */

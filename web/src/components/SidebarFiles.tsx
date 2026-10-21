@@ -29,11 +29,22 @@ export function SidebarFiles({
 			<div className="side-files-head">
 				<button
 					type="button"
-					className="project-collapse-all side-files-toggle"
+					className={`project-collapse-all side-files-toggle${open ? " side-files-toggle-open" : ""}`}
 					onClick={onToggle}
 					title={open ? "收起文件管理" : "展开文件管理"}
+					aria-expanded={open}
 				>
-					{open ? "⌄" : "›"}
+					{/* 用 SVG 三角而不是文字字符：文字字形天生偏下，放在按钮里看着就不居中 */}
+					<svg viewBox="0 0 12 12" aria-hidden="true">
+						<path
+							d="M3 4.5 6 7.5 9 4.5"
+							fill="none"
+							stroke="currentColor"
+							strokeWidth="1.6"
+							strokeLinecap="round"
+							strokeLinejoin="round"
+						/>
+					</svg>
 				</button>
 				<span className="side-files-title">文件管理</span>
 				<button type="button" className="side-files-term" title="在右侧打开当前项目的终端" onClick={onOpenTerminal}>

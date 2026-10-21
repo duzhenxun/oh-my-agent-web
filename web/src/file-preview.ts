@@ -70,3 +70,70 @@ export function describeRange(range: LineRange | null): string {
 
 /** 高亮行数上限：再大就退化成纯文本（避免几千行一起跑词法分析） */
 export const MAX_HIGHLIGHT_LINES = 800;
+
+/** 可折叠区间（行号 0-based，闭区间）：`{ … }` / `[ … ]` 这种块 */
+export type FoldRange = { start: number; end: number };
+
+/**
+ * 纯函数：找出可以折叠的「块」。
+ *
+ * 做法是扫一遍字符（跳过字符串与注释，避免把 `"{"` 里的括号算进去）：
+ * 遇到 `{` / `[` 记下起始行，遇到配对的 `}` / `]` 且跨了行，就形成一个可折叠区间。
+ * 只认跨行的块（同一行闭合的 `{}` 折叠没意义）。
+ */
+export function computeFolds(text: string): FoldRange[] {
+	const folds: FoldRange[] = [];
+	const stack: number[] = [];
+	let line = 0;
+	let quote: string | null = null;
+	let blockComment = false;
+
+	for (let i = 0; i < text.length; i += 1) {
+		const ch = text[i];
+		if (ch === "\n") {
+			line += 1;
+			// 普通字符串不跨行（模板串 ` 允许换行）
+			if (quote !== "`") quote = null;
+			continue;
+		}
+		if (blockComment) {
+			if (ch === "*" && text[i + 1] === "/") {
+				blockComment = false;
+				i += 1;
+			}
+			continue;
+		}
+		if (quote) {
+			if (ch === "\\") {
+				i += 1;
+				continue;
+			}
+			if (ch === quote) quote = null;
+			continue;
+		}
+		if (ch === "/" && text[i + 1] === "/") {
+			const newline = text.indexOf("\n", i);
+			if (newline === -1) break;
+			i = newline - 1; // 交给下一轮处理换行
+			continue;
+		}
+		if (ch === "/" && text[i + 1] === "*") {
+			blockComment = true;
+			i += 1;
+			continue;
+		}
+		if (ch === '"' || ch === "'" || ch === "`") {
+			quote = ch;
+			continue;
+		}
+		if (ch === "{" || ch === "[") {
+			stack.push(line);
+			continue;
+		}
+		if (ch === "}" || ch === "]") {
+			const start = stack.pop();
+			if (start !== undefined && line > start) folds.push({ start, end: line });
+		}
+	}
+	return folds.sort((a, b) => a.start - b.start);
+}
