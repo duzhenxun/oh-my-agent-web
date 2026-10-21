@@ -81,7 +81,7 @@ export type RuntimeOptions = {
 	/** pi 已有会话的扫描器（ADR-0021 §1）；不给就不显示那一栏（单测用） */
 	piSessions?: () => Promise<PiProject[]>;
 	/** 回合结束时回调（index 用它发推送通知） */
-	onTurnFinished?: (info: { conversationId: string; title: string; failed: boolean }) => void;
+	onTurnFinished?: (info: { conversationId: string; title: string; workspace: string; failed: boolean }) => void;
 	/** 读 provider 列表（index 注入：它同时知道内置 provider 的分组） */
 	loadProviders?: () => Promise<ProviderView[]>;
 	/** 两次扫描的最小间隔（默认 10s） */

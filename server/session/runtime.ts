@@ -186,10 +186,11 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		cancelPending: () => approval.cancelPending(),
 		settle: (info) => {
 			settleWith(state, nextId)(info);
-			// 回合收尾：通知宿主（推送「已完成」给订阅者）
+			const conversation = state.conversations.find((item) => item.id === info.conversationId);
 			options.onTurnFinished?.({
 				conversationId: info.conversationId,
-				title: state.conversations.find((item) => item.id === info.conversationId)?.title ?? "会话",
+				title: conversation?.title ?? "会话",
+				workspace: conversation?.workspace ?? state.workspace,
 				failed: false,
 			});
 		},

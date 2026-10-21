@@ -95,6 +95,23 @@ export function App() {
 		}
 	}, [snapshot?.active.conversationId]);
 
+	// 浏览器标签页标题：`项目名-对话名`，多开几个标签时一眼能分清
+	useEffect(() => {
+		if (!snapshot) return;
+		const id = snapshot.active.conversationId;
+		if (!id) {
+			document.title = "agent-web — 单机编码智能体工作台";
+			return;
+		}
+		// 会话可能在「本进程新建的」里，也可能只是 pi 里的历史会话（piProjects）
+		const own = snapshot.conversations.find((item) => item.id === id);
+		const piProject = snapshot.piProjects.find((project) => project.sessions.some((session) => session.id === id));
+		const piSession = piProject?.sessions.find((session) => session.id === id);
+		const project = (own?.workspace ?? piProject?.cwd ?? snapshot.files?.root ?? "").split("/").filter(Boolean).pop();
+		const title = own?.title ?? piSession?.title ?? "";
+		document.title = project && title ? `${project}-${title}` : "agent-web — 单机编码智能体工作台";
+	}, [snapshot?.active.conversationId, snapshot?.files?.root, snapshot?.conversations, snapshot?.piProjects]);
+
 	// 粘底滚动：条数、末条正文长度、流式文本任一变化都算「内容更新」
 	const lastTextLength =
 		messages.at(-1)?.blocks.reduce((sum, block) => sum + (block.kind === "text" ? block.text.length : 0), 0) ?? 0;
