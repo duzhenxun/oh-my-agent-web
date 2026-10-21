@@ -156,7 +156,11 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		activeId: () => state.activeId,
 		pathOf: (id) => piOpener.pathOf(id),
 		projects: () => state.piProjects,
-		setStats: (stats) => void (state.sessionStats = stats),
+		setStats: (stats) => {
+			state.sessionStats = stats;
+			// 会话级缓存：别的标签页看自己的会话时不会读到别人那份
+			if (state.activeId) state.statsByConversation[state.activeId] = stats;
+		},
 		onChanged: pushSnapshot,
 	});
 

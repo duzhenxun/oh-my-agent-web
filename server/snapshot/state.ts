@@ -48,6 +48,11 @@ export type ServerState = {
 	queued: { id: string; conversationId: string; text: string }[];
 	/** 已启用模型白名单（pi settings.json） */
 	enabledModels: string[];
+	/** 会话级缓存（ADR-0033）：多标签各看各的，不该互相覆盖 */
+	statsByConversation: Record<string, SessionStats>;
+	modelByConversation: Record<string, string | null>;
+	thinkingByConversation: Record<string, string | null>;
+	filesRootByConversation: Record<string, string>;
 	runningByConversation: Record<string, { status: RunningState["status"]; turnStartedAt: number }>;
 	pendingApproval: PendingApproval | null;
 	notices: Notice[];
@@ -86,6 +91,10 @@ export function createServerState(workspace: string, engine: EngineName = "pi"):
 		running: emptyRunning(),
 		queued: [],
 		enabledModels: [],
+		statsByConversation: {},
+		modelByConversation: {},
+		thinkingByConversation: {},
+		filesRootByConversation: {},
 		runningByConversation: {},
 		pendingApproval: null,
 		notices: [],
@@ -138,6 +147,16 @@ function runningForClient(state: ServerState, activeId: string | null, override?
 	};
 }
 
+/** 会话级缓存里取该会话的值；没有记录就回落到全局那份 */
+function pickPerConversation(
+	cache: Record<string, string | null>,
+	activeId: string | null,
+	fallback: string | null,
+): string | null {
+	if (!activeId) return fallback;
+	return Object.hasOwn(cache, activeId) ? cache[activeId] : fallback;
+}
+
 export function buildSnapshot(
 	state: ServerState,
 	limit = SNAPSHOT_MESSAGE_LIMIT,
@@ -149,14 +168,14 @@ export function buildSnapshot(
 	return {
 		protocolVersion: PROTOCOL_VERSION,
 		engine: state.engine,
-		model: state.model,
+		model: pickPerConversation(state.modelByConversation, activeId, state.model),
 		approvalMode: state.approvalMode,
 		engineCapabilities: { ...state.engineCapabilities },
 		providers: state.providers.map((provider) => ({
 			...provider,
 			models: provider.models.map((model) => ({ ...model })),
 		})),
-		thinkingLevel: state.thinkingLevel,
+		thinkingLevel: pickPerConversation(state.thinkingByConversation, activeId, state.thinkingLevel),
 		thinkingLevels: [...state.thinkingLevels],
 		sessionStats: state.sessionStats ? { ...state.sessionStats } : null,
 		models: state.models.map((model) => ({ ...model })),
@@ -194,7 +213,11 @@ export function buildSnapshot(
 		runningByConversation: { ...state.runningByConversation },
 		pendingApproval: state.pendingApproval ? { ...state.pendingApproval } : null,
 		terminal: state.terminal ? { ...state.terminal } : null,
-		files: state.files ? { ...state.files } : null,
+		files: (() => {
+			const root = activeId ? state.filesRootByConversation[activeId] : undefined;
+			if (!root) return state.files ? { ...state.files } : null;
+			return { root, treeVersion: state.files?.treeVersion ?? 0 };
+		})(),
 		notices: state.notices.map((notice) => ({ ...notice })),
 	};
 }
