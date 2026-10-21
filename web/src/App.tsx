@@ -159,11 +159,14 @@ export function App() {
 						<div
 							className="side-host"
 							style={{ width: sideWidth }}
-							// 手机上点了会话就把抽屉收起，直接看对话（桌面上 side-backdrop 是隐藏的，不受影响）
-							onClickCapture={(event) => {
+							// 手机上点会话后收起抽屉。注意要在**冒泡阶段**做：
+							// 用 capture 会先卸载侧栏，那一行的 onClick（切会话）就再也跑不到了 ——
+							// 这正是「点了没反应」的原因。
+							onClick={(event) => {
 								if (window.matchMedia("(max-width: 900px)").matches === false) return;
 								const target = event.target as HTMLElement;
-								if (target.closest(".session-row, .pi-row, .archived-view-list *")) setCollapsed(true);
+								if (!target.closest(".session-row, .pi-row, .archived-view-list *")) return;
+								setTimeout(() => setCollapsed(true), 0);
 							}}
 						>
 							<Sidebar
