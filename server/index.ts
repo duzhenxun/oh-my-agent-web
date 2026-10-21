@@ -1,7 +1,5 @@
 /**
  * 入口：一个 HTTP 端口 + 实时通道（WS 或 SSE/RPC，ADR-0032）。
- * 启动顺序：环境自检 → 数据目录可写 → 抢单实例锁 → 装填会话索引 → 监听端口
- * （锁必须在读写会话数据之前拿到，否则两个进程可能同时建索引）。
  */
 import { homedir, networkInterfaces } from "node:os";
 import { createServer, type IncomingMessage } from "node:http";
@@ -27,6 +25,7 @@ import { probeProvider } from "./providers/probe.js";
 import { createProviderStore } from "./providers/provider-store.js";
 import { createEnabledStore } from "./providers/enabled-models.js";
 import { migrateStoreToCatalog } from "./providers/catalog-writes.js";
+import { createPushStore, notifyTurnFinished } from "./push/push.js";
 import { registerAuxRoutes } from "./http/aux-routes.js";
 import { handleMessage } from "./ws/handle-message.js";
 import { registerHealthAndStatic } from "./http/health-and-static.js";
@@ -92,7 +91,6 @@ const engineRegistry = createEngineRegistry([
 			createPiSdkEngine({
 				onNotice: (text, level) => {
 					logger.warn(text, { engine: "pi" });
-					// 引擎层的异常也要让用户看见（否则只在日志里，界面上像是卡住了）
 					runtimeRef.current?.notify(text, level);
 				},
 			}),
@@ -113,11 +111,11 @@ const engine: EnginePort = resolved.engine;
 /** 引擎在 runtime 建好之前就会创建，用一个 ref 把「通知」转发给界面 */
 /** provider 配置存储（ADR-0025）：复用 pi 自己的 models-store.json / auth.json */
 const providerStore = createProviderStore({ agentDir: piAgentDir(), now: Date.now });
-// 早期写进 models-store.json 的 provider，补一份到 models.json（pi CLI 只认后者）
 void migrateStoreToCatalog(piAgentDir()).then((migrated) => {
 	if (migrated.length > 0) logger.info("已把老 provider 补进 models.json", { providers: migrated });
 });
 const enabledStore = createEnabledStore({ agentDir: piAgentDir() });
+const pushStore = createPushStore({ dataDir: config.dataDir, now: Date.now });
 
 const runProviderRequest = createProviderWiring({
 	store: providerStore,
@@ -133,7 +131,6 @@ const runtimeRef: { current: { notify: (text: string, level?: "info" | "warn" | 
 /** 懒读：provider 列表里要带上内置 provider 分组，而那需要 runtime 里的模型表 */
 const providerList = async () => {
 	const list = await providerStore.list(builtinProviderGroups(runtime?.state().models ?? []));
-	// 白名单在同一次刷新里带出：界面上 provider / 模型的启用状态都靠它
 	const live = runtime?.state();
 	if (live) live.enabledModels = await enabledStore.read();
 	return list;
@@ -143,6 +140,7 @@ const runtime = createRuntime({
 	engine,
 	// 自定义 provider 来自 models-store.json；不主动读一次，界面上就只剩内置的那几个
 	loadProviders: providerList,
+	onTurnFinished: (info) => notifyTurnFinished(pushStore, info),
 	rules: createFileRuleStore(config.dataDir),
 	// 启动信息只进日志，不进对话流
 	onStartupInfo: (text) => logger.info(text),
@@ -220,6 +218,7 @@ registerAuxRoutes(app, {
 	providerStore,
 	workspaceOf,
 	projects: () => runtime.state().piProjects,
+	pushStore,
 	onChange: () => void runProviderRequest({ type: "list_providers" }, () => {}),
 });
 

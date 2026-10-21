@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { setAppState, useAppState } from "../store.ts";
 import { setSettings } from "../ws.ts";
+import { currentPushState, sendTestPush, subscribePush, unsubscribePush } from "../push.ts";
 
 const DEFAULT_PLACEHOLDER = "继续\n总结一下\n详细解释一下";
 
@@ -34,8 +35,66 @@ export function SettingsPanel() {
 		setDirty(false);
 	};
 
+	// ---- 推送订阅（VAPID）----
+	const [pushState, setPushState] = useState<string>("…");
+	const [pushMsg, setPushMsg] = useState<string | null>(null);
+	useEffect(() => {
+		void currentPushState()
+			.then(setPushState)
+			.catch(() => setPushState("unsupported"));
+	}, []);
+
 	return (
 		<div className="settings-panel">
+			<div className="settings-head">
+				<span>推送通知</span>
+				<span className="side-panel-count">{pushState === "subscribed" ? "已订阅" : "未订阅"}</span>
+			</div>
+			<div className="settings-hint">
+				回合结束后推一条到这台设备。需要 <b>https 或 localhost</b>；手机请用域名打开。
+			</div>
+			<div className="settings-actions">
+				<button
+					type="button"
+					className="btn btn-tiny btn-primary"
+					onClick={() => {
+						void (async () => {
+							const result = await subscribePush();
+							setPushMsg(result.ok ? "已订阅，点「测试推送」验一下" : result.message);
+							setPushState(await currentPushState());
+						})();
+					}}
+				>
+					启用推送
+				</button>
+				<button
+					type="button"
+					className="btn btn-tiny"
+					onClick={() => {
+						void (async () => {
+							const result = await sendTestPush();
+							setPushMsg(`已发送 ${result.sent} 条，失败 ${result.failed} 条`);
+						})();
+					}}
+				>
+					测试推送
+				</button>
+				<button
+					type="button"
+					className="btn btn-tiny"
+					onClick={() => {
+						void (async () => {
+							await unsubscribePush();
+							setPushMsg("已取消订阅");
+							setPushState(await currentPushState());
+						})();
+					}}
+				>
+					取消订阅
+				</button>
+			</div>
+			{pushMsg ? <div className="settings-hint">{pushMsg}</div> : null}
+
 			<div className="settings-head">
 				<span>快捷短语</span>
 				<button type="button" className="btn btn-tiny" onClick={() => setAppState({ settingsOpen: false })}>

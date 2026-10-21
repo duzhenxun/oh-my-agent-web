@@ -36,6 +36,7 @@
 		"@types/node": "^22.10.0",
 		"@types/react": "^19.0.0",
 		"@types/react-dom": "^19.0.0",
+		"@types/web-push": "^3.6.4",
 		"@types/ws": "^8.5.0",
 		"@vitejs/plugin-react": "^6.0.0",
 		"oxlint": "^1.0.0",
@@ -59,6 +60,7 @@
 		"react-markdown": "^10.1.0",
 		"rehype-highlight": "^7.0.2",
 		"remark-gfm": "^4.0.1",
+		"web-push": "^3.6.7",
 		"ws": "^8.22.0"
 	}
 }

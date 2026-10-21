@@ -12,6 +12,8 @@ import { registerProjectActions, registerTerminalRoutes } from "../terminal/term
 import { registerDirRoutes } from "../files/dir-routes.js";
 import { registerFileRoutes } from "../files/files-routes.js";
 import { registerSessionRoutes } from "../sessions/session-routes.js";
+import type { PushStore } from "../push/push.js";
+import { registerPushRoutes } from "../push/push-routes.js";
 
 export function registerAuxRoutes(
 	app: Express,
@@ -20,9 +22,11 @@ export function registerAuxRoutes(
 		onChange: () => void;
 		workspaceOf: () => string | null;
 		projects: () => import("../protocol.js").PiProject[];
+		pushStore: PushStore;
 	},
 ): void {
 	registerSessionRoutes(app, { projects: options.projects });
+	registerPushRoutes(app, { store: options.pushStore });
 	registerFileRoutes(app, { workspaceOf: options.workspaceOf });
 	registerTerminalRoutes(app, { workspaceOf: options.workspaceOf });
 	registerProjectActions(app, { workspaceOf: options.workspaceOf });

@@ -184,7 +184,15 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		sendNext: (message, conversationId) =>
 			setTimeout(() => void apiRef?.sendMessage(message.text, message.attachments, "now", conversationId), 0),
 		cancelPending: () => approval.cancelPending(),
-		settle: settleWith(state, nextId),
+		settle: (info) => {
+			settleWith(state, nextId)(info);
+			// 回合收尾：通知宿主（推送「已完成」给订阅者）
+			options.onTurnFinished?.({
+				conversationId: info.conversationId,
+				title: state.conversations.find((item) => item.id === info.conversationId)?.title ?? "会话",
+				failed: false,
+			});
+		},
 		touchConversation: (conversationId) => touchConversation(conversationId),
 		refreshStats: () => void refreshStats(),
 		refreshProjects: () => void piRefresher.refresh(true),
