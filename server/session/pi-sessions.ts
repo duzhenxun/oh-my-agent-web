@@ -68,15 +68,15 @@ export function parseSessionHeader(line: string): { id: string; cwd: string; sta
  * 标题只看开头（`headLimit` 行）：首条消息就够了，全量扫会慢。
  * 模型**从末尾倒着找**最后一条 `model_change`：追加式文件里那就是「现在用哪个」，
  * 只扫开头会把「中途换过模型」的会话报成最初那个（切回去时选择器就显示错了）。
+ * 会话名（session_info）也一样倒着找 —— **改名是往文件末尾追加一条**，
+ * 只扫开头的话，超过 60 行的会话改完名界面上永远看不到变化（"改名改不了"那个 bug）。
  */
 export function extractListMeta(lines: string[], headLimit = lines.length): { title: string; model: string | null } {
-	/** pi 自己的会话名（session_info.name）：有它就以它为准，首条消息只当兜底 */
-	let name = "";
 	let title = "";
 	let model: string | null = null;
 
 	for (const [index, line] of lines.entries()) {
-		// 标题/名字只扫开头；模型那一段继续扫到底（下面单独倒着找，这里先跳过）
+		// 标题只扫开头；模型 / 会话名在下面单独倒着找
 		if (index >= headLimit) break;
 		let record: Record<string, unknown>;
 		try {
@@ -90,16 +90,15 @@ export function extractListMeta(lines: string[], headLimit = lines.length): { ti
 			const provider = typeof record.provider === "string" ? record.provider : "";
 			model = provider ? `${provider}/${record.modelId}` : record.modelId;
 		}
-		if (record.type === "session_info" && typeof record.name === "string" && record.name.trim() !== "") {
-			name = record.name; // 后写的覆盖先写的（追加式，最新一条生效）
-			continue;
-		}
 		if (title) continue;
 		if (record.type !== "message") continue;
 		const message = record.message as Record<string, unknown> | undefined;
 		if (!message || message.role !== "user") continue;
 		title = textOfMessageContent(message.content);
 	}
+
+	/** pi 自己的会话名（session_info.name）：有它就以它为准，首条消息只当兜底 */
+	const name = lastSessionName(lines);
 
 	// 模型：倒着找最后一条 model_change（只解析含关键字的行，避免整文件 JSON.parse）
 	for (let index = lines.length - 1; index >= 0; index -= 1) {
@@ -120,6 +119,27 @@ export function extractListMeta(lines: string[], headLimit = lines.length): { ti
 	// 列表只显示一行：折叠换行/连续空白（首条消息常是多行任务描述）
 	const display = (name || title).replace(/\s+/g, " ").trim();
 	return { title: display.slice(0, 60), model };
+}
+
+/**
+ * 最后一条 `session_info.name`（改名 = 往文件末尾再追加一条，所以要从后往前找）。
+ * 只对含关键字的行 JSON.parse —— 会话文件动辄几千行，全量解析太贵。
+ */
+function lastSessionName(lines: string[]): string {
+	for (let index = lines.length - 1; index >= 0; index -= 1) {
+		const line = lines[index] ?? "";
+		if (!line.includes("session_info")) continue;
+		let record: Record<string, unknown>;
+		try {
+			record = JSON.parse(line) as Record<string, unknown>;
+		} catch {
+			continue;
+		}
+		if (record.type !== "session_info") continue;
+		if (typeof record.name !== "string" || record.name.trim() === "") continue;
+		return record.name;
+	}
+	return "";
 }
 
 function textOfMessageContent(content: unknown): string {

@@ -10,7 +10,7 @@ import { createReadStream, realpathSync, statSync } from "node:fs";
 import type { Express } from "express";
 import { listDirectory, parseRange, readPreview, readRaw, resolveMediaFile } from "./file-service.js";
 import { searchFiles } from "./file-search.js";
-import { readGitInfo } from "./git-info.js";
+import { checkoutBranch, readGitBranches } from "./git-info.js";
 
 export function registerFileRoutes(app: Express, options: { workspaceOf: () => string | null }): void {
 	app.get("/api/files/list", async (request, response) => {
@@ -107,14 +107,51 @@ export function registerFileRoutes(app: Express, options: { workspaceOf: () => s
 		response.json(result);
 	});
 
-	/** 当前项目的 git 信息（分支名；不是仓库就 isRepo=false） */
+	/** 当前项目的 git 信息（分支名 + 本地分支清单；不是仓库就 isRepo=false） */
 	app.get("/api/files/git", async (request, response) => {
 		const root = rootOf(request.query.root, options.workspaceOf());
 		if (!root) {
-			response.json({ isRepo: false, branch: null });
+			response.json({ isRepo: false, branch: null, branches: [] });
 			return;
 		}
-		response.json(await readGitInfo(root));
+		response.json(await readGitBranches(root));
+	});
+
+	/**
+	 * 切分支：`{ root, branch, force? }` → `git checkout <branch>`。
+	 * 只接受**本地已有分支**；工作区有未提交改动时先 409 回一份改动清单（`files.dirty_worktree`），
+	 * 界面确认后带 `force: true` 再发一次。冲突时 git 会拒绝，报错原样回给界面。
+	 */
+	app.post("/api/files/git/checkout", async (request, response) => {
+		const body = request.body as { root?: unknown; branch?: unknown; force?: unknown } | undefined;
+		const root = rootOf(body?.root, options.workspaceOf());
+		if (!root) {
+			response
+				.status(409)
+				.json({ error: { code: "files.no_workspace", message: "还没有打开会话（不知道是哪个项目）" } });
+			return;
+		}
+		if (typeof body?.branch !== "string" || body.branch.trim() === "") {
+			response.status(400).json({ error: { code: "files.no_branch", message: "没有指定要切换的分支" } });
+			return;
+		}
+		const result = await checkoutBranch(root, body.branch, { force: body.force === true });
+		if (!result.ok) {
+			if (result.dirty) {
+				response.status(409).json({
+					error: {
+						code: "files.dirty_worktree",
+						message: `工作区有 ${result.dirty.total} 个未提交改动`,
+						files: result.dirty.files,
+						total: result.dirty.total,
+					},
+				});
+				return;
+			}
+			response.status(400).json({ error: { code: "files.checkout_failed", message: result.message } });
+			return;
+		}
+		response.json({ ...(await readGitBranches(root)), branch: result.branch });
 	});
 
 	app.get("/api/files/read", async (request, response) => {

@@ -12,7 +12,7 @@ export function ProjectMenu({
 	onClose,
 	pinned,
 	onTogglePin,
-	/** 在这个项目下新建会话（菜单第二项，紧跟置顶） */
+	/** 在这个项目下新建会话（菜单第一项，最常用） */
 	onNewSession,
 	onMoveUp,
 	onMoveDown,
@@ -48,11 +48,11 @@ export function ProjectMenu({
 
 	return (
 		<ProjectMenuPopover point={point} onClose={onClose}>
-			<button type="button" className="proj-menu-item" onClick={act(onTogglePin)}>
-				{pinned ? "📌 取消置顶" : "📌 置顶项目"}
-			</button>
 			<button type="button" className="proj-menu-item" title="在这个项目下开一条新会话" onClick={act(onNewSession)}>
 				💬 新建会话
+			</button>
+			<button type="button" className="proj-menu-item" onClick={act(onTogglePin)}>
+				{pinned ? "📌 取消置顶" : "📌 置顶项目"}
 			</button>
 			<button type="button" className="proj-menu-item" title="在同组内上移一格" onClick={act(onMoveUp)}>
 				↑ 上移

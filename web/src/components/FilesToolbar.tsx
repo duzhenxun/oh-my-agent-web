@@ -1,6 +1,6 @@
 /**
  * 「文件管理」标题栏右侧那排小按钮（`>_` 终端 · 📁 在 Finder 中显示 · 👁 隐藏文件 · 🔍 搜索），
- * 外加下拉框右边的 git 分支小标签、下拉框下面的搜索框与结果列表。
+ * 外加下拉框右边的 git 分支标签（点开是分支菜单）、下拉框下面的搜索框与结果列表。
  *
  * 布局约定（用户要求）：
  *   标题栏  = 三角 + 「文件管理」+ 那排小按钮
@@ -11,9 +11,11 @@
  * 搜索与分支的状态都在 SidebarFiles 里（`useFileSearch` / `useGitBranch`），
  * 因为按钮和渲染位置分散在两行，状态必须放在共同父级。
  */
+import { useState } from "react";
 import type { FileSearch } from "../use-file-search.ts";
-import type { GitBranch } from "../use-git-branch.ts";
+import type { GitBranchControl } from "../use-git-branch.ts";
 import type { FileSearchEntry } from "../use-file-search.ts";
+import { GitBranchMenu } from "./GitBranchMenu.tsx";
 
 function BranchIcon() {
 	return (
@@ -32,15 +34,33 @@ function BranchIcon() {
 	);
 }
 
-/** git 分支标签：放在项目下拉框右边，不是仓库时不渲染 */
-export function GitBranchTag({ isRepo, branch }: GitBranch) {
-	if (!isRepo) return null;
+/** git 分支标签：放在项目下拉框右边，点开是分支菜单；不是仓库时不渲染 */
+export function GitBranchTag({ git }: { git: GitBranchControl }) {
+	const [open, setOpen] = useState(false);
+	const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
+	if (!git.isRepo) return null;
+	const name = git.branch ?? "detached";
 	return (
-		<span className="files-branch" title={`当前 git 分支：${branch ?? "（detached）"}`}>
-			<BranchIcon />
-			{/* 文字必须自带一层：.files-branch 是 flex，text-overflow 对匿名文本项不生效（会硬切半个字） */}
-			<span className="files-branch-name">{branch ?? "detached"}</span>
-		</span>
+		<>
+			<button
+				type="button"
+				ref={setAnchor}
+				className={`files-branch${open ? " files-branch-open" : ""}`}
+				title={`当前 git 分支：${name}（点开切换）`}
+				aria-haspopup="menu"
+				aria-expanded={open}
+				onClick={() => {
+					// 每次打开都刷一下：别的终端里刚 checkout 过的分支也能看见
+					if (!open) git.refresh();
+					setOpen((value) => !value);
+				}}
+			>
+				<BranchIcon />
+				{/* 文字必须自带一层：.files-branch 是 flex，text-overflow 对匿名文本项不生效（会硬切半个字） */}
+				<span className="files-branch-name">{name}</span>
+			</button>
+			{open && anchor ? <GitBranchMenu anchor={anchor} git={git} onClose={() => setOpen(false)} /> : null}
+		</>
 	);
 }
 

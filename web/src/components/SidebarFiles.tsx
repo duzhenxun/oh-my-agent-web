@@ -9,7 +9,7 @@ import { useGitBranch } from "../use-git-branch.ts";
  *
  * 默认收起，只有一行标题；展开后从上到下依次是：
  *   标题栏（三角 + 文件管理 + 那排小按钮）
- *   项目下拉框 + git 分支（分支在下拉框右边）
+ *   项目下拉框 + git 分支（分支在下拉框右边，点开可切分支）
  *   搜索框（点 🔍 才出现，在下拉框下面）
  *   文件树，或者有搜索关键字时的搜索结果列表
  */
@@ -86,14 +86,20 @@ export function SidebarFiles({
 								</option>
 							))}
 						</select>
-						<GitBranchTag isRepo={git.isRepo} branch={git.branch} />
+						<GitBranchTag git={git} />
 					</div>
 					{searching ? <FilesSearchInput search={search} /> : null}
 					<div className="side-files-body">
 						{showResults ? (
 							<FilesSearchResults entries={search.results} truncated={search.truncated} onOpenFile={onOpenFile} />
 						) : (
-							<FileTree root={root} showHidden={showHidden} onOpenFile={onOpenFile} />
+							<FileTree
+								/* 换分支后文件可能变了：用 key 重置文件树（否则看到的是旧分支的列表） */
+								key={`${root ?? ""}:${git.branch ?? ""}`}
+								root={root}
+								showHidden={showHidden}
+								onOpenFile={onOpenFile}
+							/>
 						)}
 					</div>
 				</>
