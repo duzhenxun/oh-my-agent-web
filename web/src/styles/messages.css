@@ -250,7 +250,9 @@
 	color: var(--text);
 }
 
-/* 工具调用折叠条：只留一行摘要，点开才看过程 */
+/* 「过程 N 步」开关：恢复成小胶囊（描边 + 淡底，宽度跟着文字走）。
+ * 试过跟下面那些行一样的满宽无边框，但它是「一整个过程的目录」，不是过程里的一行 ——
+ * 小胶囊反而更容易和展开后的内容区分开。 */
 .msg-tools-toggle {
 	display: inline-flex;
 	align-items: center;
@@ -271,14 +273,44 @@
 	border-color: var(--accent-dim);
 }
 
-/* 「过程」容器：思考 + 工具调用按发生顺序装在同一块里，默认折叠成一个按钮。
-   展开后每一项仍然各管各的（思考单独展开、工具卡单独展开），不再分成两块。 */
+/* 「过程」容器：思考 + 工具调用按发生顺序装在同一块里，默认折叠成一行。
+   展开后每块仍然各管各的（思考单独展开、工具卡单独展开），不再分成两块。 */
 .msg-process,
 .msg-process-body {
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
 	min-width: 0;
+}
+
+/* 一小块 = 一段思考 + 它后面跟着的工具调用。
+ * 用左侧一道竖线 + 很淡的底色「括」住，而不是再套一层边框：里面的思考块和工具卡
+ * 本身已经有框了，再套一层会出现框里框、层次反而乱。 */
+.process-group {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	min-width: 0;
+	padding: 6px 8px 6px 10px;
+	border-left: 2px solid var(--accent-dim);
+	border-radius: 6px;
+	background: color-mix(in srgb, var(--accent) 4%, transparent);
+}
+
+/* 组内不再画边框：外层已经有竖线 + 淡底，里面每条再框一圈就是框里框（一屏下来好几层线）。
+ * 靠间距分组，悬停时给一条淡底色表示「这一条是独立可点的」。 */
+.process-group .thinking-block,
+.process-group .tool {
+	border: 0;
+	background: transparent;
+	transition: background 0.12s ease;
+}
+
+/* 悬停底色：2% 就够了 —— 边框去掉之后这一层只是「这条能点」的提示，
+ * 再深就跟分组那层 4% 的淡底撞到一起，看起来像另一块面板 */
+.process-group .thinking-block:hover,
+.process-group .tool:hover {
+	background: color-mix(in srgb, var(--text) 2%, transparent);
 }
 
 .msg-process-meta {
@@ -306,6 +338,20 @@
 	border-radius: 8px;
 	background: var(--bg-elev);
 	overflow: hidden;
+}
+
+/* 思考编号：小圆片，等宽数字 —— 跟后面的「思考」标签分开，读起来是「① 思考…」 */
+.thinking-index {
+	flex: none;
+	min-width: 18px;
+	padding: 0 4px;
+	border-radius: 4px;
+	background: color-mix(in srgb, var(--accent) 12%, transparent);
+	color: var(--accent);
+	font-size: 12.5px;
+	line-height: 1.5;
+	font-variant-numeric: tabular-nums;
+	text-align: center;
 }
 
 .thinking-head {

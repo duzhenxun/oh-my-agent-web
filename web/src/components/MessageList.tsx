@@ -15,6 +15,42 @@ export function textOfMessage(message: UiMessage): string {
 		.join("\n\n");
 }
 
+/** 过程里的一项（思考或工具调用） */
+type ProcessItem = Extract<UiMessage["blocks"][number], { kind: "thinking" } | { kind: "tool" }>;
+
+/**
+ * 把平坦的过程列表切成小块：**一段思考 + 它后面跟着的那些工具调用** = 一小块。
+ *
+ * 为什么不在渲染时现算：过程列表一长（五六个思考、十几次工具），扁平地排下来
+ * 分不清「哪几次工具是这次想完之后干的」。切成块后每块前面有编号，读起来是
+ * 「想 ① → 试一下 → 再想 ② → 再试」的节奏。
+ *
+ * 规则：
+ *   - 碰到 thinking 就开新块（后续工具都归它）；
+ *   - 第一个 thinking 之前就有工具（少见，但不是不可能）→ 单独成一块，`thinking` 为 null。
+ */
+export function groupProcess(items: ProcessItem[]): {
+	thinking: { text: string; index: number } | null;
+	tools: Extract<ProcessItem, { kind: "tool" }>[];
+}[] {
+	const groups: {
+		thinking: { text: string; index: number } | null;
+		tools: Extract<ProcessItem, { kind: "tool" }>[];
+	}[] = [];
+	let thinkingCount = 0;
+	for (const item of items) {
+		if (item.kind === "thinking") {
+			thinkingCount += 1;
+			groups.push({ thinking: { text: item.text, index: thinkingCount }, tools: [] });
+			continue;
+		}
+		const last = groups[groups.length - 1];
+		if (last) last.tools.push(item);
+		else groups.push({ thinking: null, tools: [item] });
+	}
+	return groups;
+}
+
 /** 千分位：5865 → 5,865 */
 function withThousands(value: number): string {
 	return value.toLocaleString("en-US");
@@ -42,7 +78,7 @@ function formatDuration(ms: number): string {
  * 以前是「所有思考段合并成一块」，工具调用又单独提到最上面 —— 于是「想 → 调工具 → 想 → 调工具」
  * 的顺序全乱了。现在思考与工具都交给外层的「过程」容器按发生顺序摆，这里只管一段。
  */
-function ThinkingSegment({ text }: { text: string }) {
+function ThinkingSegment({ text, index }: { text: string; index: number }) {
 	const [open, setOpen] = useState(false);
 	const joined = text.trim();
 	if (joined === "") return null;
@@ -50,6 +86,10 @@ function ThinkingSegment({ text }: { text: string }) {
 	return (
 		<div className="thinking-block">
 			<button type="button" className="thinking-head" onClick={() => setOpen((value) => !value)}>
+				{/* 编号在最前面：一眼能数到「第几次思考」，也方便指代（“看第 2 段”） */}
+				<span className="thinking-index mono" title={`第 ${index} 段思考`}>
+					{index}
+				</span>
 				<span aria-hidden="true">💡</span>
 				<span className="thinking-label">思考{open ? "" : "（点击展开）"}</span>
 				{open ? null : <span className="thinking-preview">{preview}</span>}
@@ -147,24 +187,32 @@ function MessageViewInner({ message, modelLabel, live }: { message: UiMessage; m
 								title="思考与工具调用按发生顺序排列"
 							>
 								<span className={`msg-tools-caret${showTools ? " msg-tools-caret-open" : ""}`} aria-hidden="true" />
-								<span>
-									过程 {processItems.length} 步{showTools ? "（点击收起）" : "（点击展开）"}
-								</span>
-								{toolCount > 0 ? <span className="msg-process-meta">{toolCount} 次工具</span> : null}
-								{thinkingCount > 0 ? <span className="msg-process-meta">{thinkingCount} 段思考</span> : null}
+								{/* 耗时放最前：一眼先看「这轮花了多久」，后面才是细节计数 */}
 								{processDurationMs > 0 ? (
 									<span className="msg-process-meta">耗时 {formatDuration(processDurationMs)}</span>
 								) : null}
+								{thinkingCount > 0 ? <span className="msg-process-meta">{thinkingCount} 段思考</span> : null}
+								{toolCount > 0 ? <span className="msg-process-meta">{toolCount} 次工具</span> : null}
+								<span>
+									过程 {processItems.length} 步{showTools ? "（点击收起）" : "（点击展开）"}
+								</span>
 							</button>
 							{showTools ? (
 								<div className="msg-process-body">
-									{processItems.map((item, index) =>
-										item.kind === "thinking" ? (
-											<ThinkingSegment key={`think-${index}`} text={item.text} />
-										) : (
-											<ToolCard key={item.toolCallId || `tool-${index}`} block={item} />
-										),
-									)}
+									{/* 一块 = 一段思考 + 它后面跟着的工具调用（见 groupProcess） */}
+									{groupProcess(processItems).map((group, groupIndex) => (
+										<div
+											className="process-group"
+											key={group.thinking ? `think-${group.thinking.index}` : `lead-${groupIndex}`}
+										>
+											{group.thinking ? (
+												<ThinkingSegment text={group.thinking.text} index={group.thinking.index} />
+											) : null}
+											{group.tools.map((tool, toolIndex) => (
+												<ToolCard key={tool.toolCallId || `tool-${groupIndex}-${toolIndex}`} block={tool} />
+											))}
+										</div>
+									))}
 								</div>
 							) : null}
 						</div>
