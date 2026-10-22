@@ -15,6 +15,8 @@ export type TurnMarkersInput = {
 	/** 本回合的**原始**文本（含标记）：建议必须从它里面解析 —— 流式过滤器已经把标记丢了 */
 	rawText: string;
 	nextId: (prefix: string) => string;
+	/** 回合结束的时间（毫秒）：写进助手消息的 `endedAt`，界面显示它而不是开始时间 */
+	at?: number;
 };
 
 export function settleTurnMarkers(input: TurnMarkersInput): void {
@@ -30,9 +32,11 @@ export function settleTurnMarkers(input: TurnMarkersInput): void {
 	if (!assistant) return;
 	const applied = applyMarkersToMessage(assistant, state.actions, () => input.nextId("act"));
 	state.actions = applied.actions;
-	if (applied.blocks !== assistant.blocks) {
+	const endedAt = input.at ?? Date.now();
+	const blocksChanged = applied.blocks !== assistant.blocks;
+	if (blocksChanged || assistant.endedAt !== endedAt) {
 		state.messages[conversationId] = (state.messages[conversationId] ?? []).map((message) =>
-			message.id === messageId ? { ...message, blocks: applied.blocks } : message,
+			message.id === messageId ? { ...message, blocks: applied.blocks, endedAt } : message,
 		);
 	}
 }

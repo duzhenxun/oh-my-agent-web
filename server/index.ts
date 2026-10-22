@@ -7,9 +7,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import express from "express";
 import { WebSocketServer, type WebSocket } from "ws";
-import { createFakeEngine } from "./engine/fake.js";
-import { createPiSdkEngine } from "./engine/pi-sdk.js";
-import { createEngineRegistry, FAKE_CAPABILITIES, PI_CAPABILITIES } from "./engine/registry.js";
+import { createEngineWiring } from "./engine/wiring.js";
 import type { EnginePort } from "./engine/port.js";
 import { createFileRuleStore } from "./approval/rules.js";
 import { existsSync } from "node:fs";
@@ -33,12 +31,17 @@ import { registerUploadRoutes } from "./uploads/upload-routes.js";
 import { readConfig, validateConfig } from "./util/env.js";
 import { createLogger } from "./util/log.js";
 import { createRotatingFileSink, logFileName, type RotatingFileSink } from "./util/log-file.js";
+import { refreshPriceIndex } from "./util/pricing-index.js";
 import { describePolicy, isAllowedHost, isAllowedOrigin } from "./util/origin.js";
 import { pickExisting, webDistCandidates } from "./util/paths.js";
-import { authMiddleware, decide, effectiveAddress, AUTH_REALM } from "./http/auth.js";
+import { authMiddleware, decide, effectiveAddress } from "./http/auth.js";
+import { registerAuthRoutes } from "./http/auth-routes.js";
+import { BRAND_NAME } from "./brand.js";
 import { registerLiveRoutes, type Sink } from "./http/live-routes.js";
+import { compressText, immutableAssets } from "./http/compress.js";
 import { fanOutSnapshot } from "./snapshot/fan-out.js";
 import { checkDataDirWritable, describeListenError } from "./util/startup.js";
+import { migrateLegacyDataDir } from "./util/data-dir.js";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 /** 开发态对外端口（Vite）；dev 脚本用它告诉后端可信来源 */
@@ -59,6 +62,14 @@ const logger = createLogger({
 		fileSink?.write(line);
 	},
 });
+// 单用户工作台：一处 fire-and-forget 的 Promise 拒绝（推送写盘失败、模型热重载失败……）
+// 不该把整个服务带走（Node ≥15 默认会直接退出）。记日志、继续跑。
+process.on("unhandledRejection", (reason) => {
+	logger.error("未处理的 Promise 拒绝（已记录，进程继续）", {
+		message: reason instanceof Error ? (reason.stack ?? reason.message) : String(reason),
+	});
+});
+
 /** 局域网地址自动放行；域名仍要显式配 */
 const localAddresses = Object.values(networkInterfaces())
 	.flat()
@@ -81,37 +92,31 @@ const sender = createSender({
 	},
 });
 
-/** 引擎注册表（ADR-0024）：加引擎 = 写适配文件 + 注册一行 */
-const engineRegistry = createEngineRegistry([
-	{
-		name: "pi",
-		label: "pi",
-		capabilities: PI_CAPABILITIES,
-		create: () =>
-			createPiSdkEngine({
-				onNotice: (text, level) => {
-					logger.warn(text, { engine: "pi" });
-					runtimeRef.current?.notify(text, level);
-				},
-			}),
-	},
-	{ name: "fake", label: "假引擎", capabilities: FAKE_CAPABILITIES, create: () => createFakeEngine() },
-]);
+const piSessions = createPiSessionsProvider({ agentDir: piAgentDir(), dataDir: config.dataDir, logger });
 
-/** 引擎选择（ADR-0016 + ADR-0024）：默认 pi；未知名字回落到 pi 并告警 */
-const resolved = engineRegistry.resolve(config.engine);
-if (resolved.fallbackFrom) {
-	logger.warn("AGENT_WEB_ENGINE 未注册，回落到 pi", {
-		requested: resolved.fallbackFrom,
-		known: engineRegistry.names(),
-	});
-}
+/** 引擎接线：注册表 + codex 客户端 + 每个引擎的会话来源（engine/wiring.ts） */
+const engineWiring = createEngineWiring({
+	engineName: config.engine,
+	codexBin: config.codexBin,
+	codexHome: config.codexHome,
+	dshBin: config.dshBin,
+	dshHome: config.dshHome,
+	dshModel: config.dshModel,
+	dshPatches: config.dshPatches,
+	dshPatchDir: join(config.dataDir, "dsh-patches"),
+	piSessions,
+	onNotice: (text, level) => runtimeRef.current?.notify(text, level),
+	onLog: (text, meta) => logger.warn(text, meta),
+});
+const engineCatalog = engineWiring.catalog;
+const resolved = engineWiring.resolved;
 const engine: EnginePort = resolved.engine;
 
 /** 引擎在 runtime 建好之前就会创建，用一个 ref 把「通知」转发给界面 */
 /** provider 配置存储（ADR-0025）：复用 pi 自己的 models-store.json / auth.json */
 const providerStore = createProviderStore({ agentDir: piAgentDir(), now: Date.now });
-void migrateStoreToCatalog(piAgentDir()).then((migrated) => {
+/** 启动时的配置补齐（main 里会 await 它：避免和价格索引抢着读同一个文件） */
+const catalogMigration = migrateStoreToCatalog(piAgentDir()).then((migrated) => {
 	if (migrated.length > 0) logger.info("已把老 provider 补进 models.json", { providers: migrated });
 });
 const enabledStore = createEnabledStore({ agentDir: piAgentDir() });
@@ -153,11 +158,8 @@ const runtime = createRuntime({
 		read: (id) => uploadStore.read(id),
 		pathOf: (id) => join(uploadsDir(config.dataDir), id),
 	},
-	piSessions: createPiSessionsProvider({
-		agentDir: piAgentDir(),
-		dataDir: config.dataDir,
-		logger,
-	}),
+	piSessions: engineCatalog.sessionsFor(resolved.descriptor.name) ?? undefined,
+	engines: engineCatalog,
 	emit: {
 		snapshot: (snapshot) => sender.pushSnapshot(snapshot),
 		event: (event) => {
@@ -206,10 +208,17 @@ function reply(
 // ------------------------------ HTTP ------------------------------
 
 const app = express();
-// 鉴权最先挂：本机放行，其它来源必须过密码（ADR-0031）
-app.use(authMiddleware(config.password));
+// 登录端点必须挂在鉴权**之前**：此刻还没有 cookie，不能要求先过鉴权（ADR-0031 修订）
+registerAuthRoutes(app, { password: config.password, brandName: BRAND_NAME });
+// 鉴权其次：本机放行，其它来源必须过密码；页面请求给登录页，接口请求给 401
+app.use(authMiddleware({ password: config.password, brandName: BRAND_NAME }));
 app.use(express.json()); // 终端/技能/导入要读 body
 const webDist = pickExisting(webDistCandidates(HERE), existsSync);
+// 压缩 + 缓存头必须在 **API 路由注册之前** 挂：Express 按注册顺序匹配中间件，
+// 挂在后面就只影响之后注册的路由 —— `/api/rpc`（快照帧）这类大包会一直裸奔。
+// SSE / 终端流 / Range 媒体在 compress.ts 里显式跳过（不能攒、不能压）。
+app.use(compressText());
+app.use(immutableAssets());
 const uploadStore = createUploadStore({ dataDir: config.dataDir });
 registerUploadRoutes(app, { uploadStore, logger }); // 附件（ADR-0020 §P3）
 
@@ -218,6 +227,7 @@ registerAuxRoutes(app, {
 	providerStore,
 	workspaceOf,
 	projects: () => runtime.state().piProjects,
+	deleteSession: (id) => runtime.deleteSession(id),
 	pushStore,
 	onChange: () => void runProviderRequest({ type: "list_providers" }, () => {}),
 });
@@ -264,11 +274,8 @@ httpServer.on("upgrade", (request: IncomingMessage, socket, head) => {
 		cookie: request.headers.cookie,
 	});
 	if (auth !== "allow") {
-		socket.write(
-			auth === "forbid"
-				? "HTTP/1.1 403 Forbidden\r\n\r\n"
-				: `HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm="${AUTH_REALM}"\r\n\r\n`,
-		);
+		// 不发 WWW-Authenticate：那会让浏览器弹原生登录框，与自建登录页重复
+		socket.write(auth === "forbid" ? "HTTP/1.1 403 Forbidden\r\n\r\n" : "HTTP/1.1 401 Unauthorized\r\n\r\n");
 		socket.destroy();
 		return;
 	}
@@ -313,6 +320,8 @@ wss.on("connection", (socket: WebSocket) => {
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
+	// 旧数据目录（~/.agent-web）自动搬到新目录：dev 直接跑本文件时也要搬
+	migrateLegacyDataDir({ dataDir: config.dataDir, log: (line) => logger.info(line) });
 	const problems = [...envProblems, ...validateConfig(config, { home: homedir() })];
 	if (problems.length > 0) {
 		for (const problem of problems) logger.error(`启动自检失败：${problem}`);
@@ -342,6 +351,9 @@ async function main(): Promise<void> {
 	}
 
 	const { conversations } = await runtime.init().then(() => ({ conversations: runtime.state().conversations }));
+	// 分时价格索引（ADR-0026 D 期）：要在读历史 / 算账之前就绪；读不到就是空表 = 全部走引擎给的 cost
+	await catalogMigration.catch(() => undefined);
+	await refreshPriceIndex(piAgentDir());
 	void runProviderRequest({ type: "list_providers" }, () => {}); // 启动先填一次 provider 列表
 	logger.info("会话索引已装载", { conversations: conversations.length });
 
@@ -382,6 +394,7 @@ async function shutdown(signal: string): Promise<void> {
 	shuttingDown = true;
 	logger.info("收到退出信号，正在关闭", { signal });
 	sender.flush(Date.now());
+	engineWiring.close(); // 收掉 codex app-server 子进程（不给它留孤儿）
 	for (const socket of sockets) socket.close(1001, "server shutting down");
 	wss.close();
 	httpServer.close();

@@ -17,6 +17,7 @@
  */
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import type { PriceSegment } from "../util/pricing.js";
 
 export const MODELS_FILE = "models.json";
 
@@ -28,6 +29,8 @@ export type CatalogModel = {
 	contextWindow?: number;
 	maxTokens?: number;
 	cost?: Record<string, number>;
+	/** 分时价格（ADR-0026 D 期）：我们自己的扩展字段，pi 不认、也不会用 */
+	costSchedule?: PriceSegment[];
 	headers?: Record<string, string>;
 	[key: string]: unknown;
 };
@@ -91,6 +94,8 @@ export function specToCatalog(spec: {
 	contextWindow: number | null;
 	maxTokens: number | null;
 	cost: Record<string, number> | null;
+	/** 分时价格（ADR-0026 D 期）：写进模型条目，pi 不认这个字段 → 只当我们的扩展 */
+	costSchedule?: PriceSegment[] | null;
 }) {
 	return {
 		name: spec.name,
@@ -99,6 +104,7 @@ export function specToCatalog(spec: {
 		...(spec.contextWindow !== null ? { contextWindow: spec.contextWindow } : {}),
 		...(spec.maxTokens !== null ? { maxTokens: spec.maxTokens } : {}),
 		...(spec.cost ? { cost: spec.cost } : {}),
+		...(spec.costSchedule && spec.costSchedule.length > 0 ? { costSchedule: spec.costSchedule } : {}),
 	};
 }
 
@@ -113,5 +119,8 @@ export function specView(model: CatalogModel) {
 		...(typeof model.contextWindow === "number" ? { contextWindow: model.contextWindow } : {}),
 		...(typeof model.maxTokens === "number" ? { maxTokens: model.maxTokens } : {}),
 		...(model.cost ? { cost: model.cost as Record<string, number> } : {}),
+		...(Array.isArray(model.costSchedule) && model.costSchedule.length > 0
+			? { costSchedule: model.costSchedule as PriceSegment[] }
+			: {}),
 	};
 }

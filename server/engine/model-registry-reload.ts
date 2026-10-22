@@ -12,6 +12,7 @@
  */
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { setPriceIndex } from "../util/pricing-index.js";
 
 type WarmSession = {
 	unsubscribe: () => void;
@@ -128,15 +129,17 @@ export async function reloadModelRegistry(
 	await prewarm();
 
 	const configs = await readProviderConfigs(agentDir);
+	// 分时价格索引（ADR-0026 D 期）：反正这两份配置刚读过，顺手把「时段 → 价格」也刷一遍，
+	// 不然用户刚改完价格，下一轮的消息花费还是按旧价算的。
+	setPriceIndex(configs.map((config) => ({ provider: config.id, models: config.models })));
 	for (const handle of sessions.values()) {
 		const runtime = handle.session.modelRuntime;
 		await runtime?.refresh?.({ allowNetwork: false }).catch(() => undefined);
-		// 配置里已经没有的（改名 / 删除）：从运行时注销，否则旧名字会一直挂在模型表里
-		for (const id of pushed) {
-			if (configs.some((config) => config.id === id)) continue;
-			runtime?.unregisterProvider?.(id);
-			pushed.delete(id);
-		}
+		// 配置里已经没有的（改名 / 删除）：从运行时注销，否则旧名字会一直挂在模型表里。
+		// 先收集再删：在遍历 `pushed` 时 delete 会让后续会话跳过这些 id（旧的注销不干净）。
+		const stale = [...pushed].filter((id) => !configs.some((config) => config.id === id));
+		for (const id of stale) runtime?.unregisterProvider?.(id);
+		if (sessions.size > 0) for (const id of stale) pushed.delete(id);
 		for (const config of configs) {
 			try {
 				runtime?.registerProvider?.(config.id, {

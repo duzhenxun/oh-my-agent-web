@@ -5,10 +5,22 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export function useSplitHeight(options: { storageKey: string; initial: number; min: number; maxRatio?: number }) {
+export function useSplitHeight(options: {
+	storageKey: string;
+	initial: number;
+	min: number;
+	maxRatio?: number;
+	/**
+	 * 旧版本的默认值：用户在旧版里没拖过，存的也会是这个数。
+	 * 命中就当成「没设过」，直接用新的 `initial` —— 否则改了默认值，老用户看不到变化。
+	 */
+	legacyDefaults?: number[];
+}) {
 	const [height, setHeight] = useState<number>(() => {
 		const raw = Number(localStorage.getItem(options.storageKey));
-		return Number.isFinite(raw) && raw >= options.min ? raw : options.initial;
+		if (!Number.isFinite(raw) || raw < options.min) return options.initial;
+		if (options.legacyDefaults?.includes(raw)) return options.initial;
+		return raw;
 	});
 	const dragging = useRef(false);
 

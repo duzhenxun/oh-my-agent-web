@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import type { Snapshot } from "../types.ts";
+import { setApprovalMode } from "../ws.ts";
 
 function formatTokens(value: number): string {
 	if (value < 1000) return String(value);
@@ -9,8 +10,11 @@ function formatTokens(value: number): string {
 
 /**
  * 底部状态栏：一眼看到"工作台现在是什么状态"。
- * 左：连接 / 引擎 / 对话数 / 工作中 / 排队；右：会话 token / 项目路径。
+ * 左：审批 / 排队 / 工作中 / 上下文；右：项目名 + 顶部栏开关。
  * 数据全部来自已有快照，不额外拉取。
+ *
+ * 为什么把「模型 / 强度 / 审批」放这里：它们改的是**这一次以及之后怎么跑**，
+ * 不是要发出去的内容；放在输入框上方会跟「想说什么」挤在一起。
  */
 export function StatusBar({
 	snapshot,
@@ -57,9 +61,22 @@ export function StatusBar({
 	}, [usageOpen]);
 	return (
 		<footer className="statusbar">
-			{/* 最左边：当前项目（原来在最右边） */}
-			<span className="status-item status-path" title={snapshot?.files?.root ?? ""}>
-				📁 {snapshot?.files?.root?.split("/").filter(Boolean).pop() ?? "—"}
+			<span className="status-controls">
+				{/* 审批模式在最前面：它是「这一步会不会被拦住」的开关，最该一眼看到 */}
+				{snapshot?.engineCapabilities.approvals === false ? (
+					<span className="tool-chip tool-static" title="该引擎自行决定授权，本工作台拦不住它的危险操作">
+						🔒 审批：引擎自理
+					</span>
+				) : (
+					<button
+						type="button"
+						className={`tool-chip${snapshot?.approvalMode === "allow" ? " tool-chip-warn" : ""}`}
+						onClick={() => setApprovalMode(snapshot?.approvalMode === "allow" ? "ask" : "allow")}
+						title="审批模式（全局生效，重启回到默认：全部放行）——点一下在「全部放行 / 询问」之间切换"
+					>
+						{snapshot?.approvalMode === "allow" ? "🔓 全部放行" : "🔒 询问"}
+					</button>
+				)}
 			</span>
 			<span className="status-item status-queued">
 				<span className="status-ico">⏳</span> 排队 {snapshot?.queued.length ?? 0}
@@ -128,6 +145,10 @@ export function StatusBar({
 				) : null}
 			</span>
 			<span className="status-spacer" />
+			{/* 当前项目：放在右端、「顶部」开关前面（左边留给状态与配置） */}
+			<span className="status-item status-path" title={snapshot?.files?.root ?? ""}>
+				📁 {snapshot?.files?.root?.split("/").filter(Boolean).pop() ?? "—"}
+			</span>
 			<button
 				type="button"
 				className="status-toggle"

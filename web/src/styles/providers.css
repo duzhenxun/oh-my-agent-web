@@ -76,11 +76,6 @@
 	white-space: nowrap;
 }
 
-.prov-item-meta {
-	font-size: 12.5px;
-	color: var(--text-faint);
-}
-
 .prov-add {
 	margin-top: auto;
 	width: 100%;
@@ -301,10 +296,6 @@
 
 .prov-item-name > span {
 	flex: none;
-}
-
-.prov-item-meta {
-	font-variant-numeric: tabular-nums;
 }
 
 /* 字段标题行：文字 + 右侧小按钮（如「从 API 获取」） */

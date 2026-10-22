@@ -7,7 +7,7 @@
  *   3. **有上限**：预览只读前 N 字节，二进制给「不可预览」而不是塞满界面。
  */
 import { realpathSync } from "node:fs";
-import { readFile, readdir, stat } from "node:fs/promises";
+import { open, readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { resolveInsideRoot } from "../util/paths.js";
 
@@ -87,15 +87,25 @@ export async function readPreview(root: string, relPath: string, limit = MAX_PRE
 	try {
 		const info = await stat(safe.path);
 		if (info.isDirectory()) return { ok: false, error: "这是一个目录" };
-		const handle = await readFile(safe.path);
-		const bytes = handle.byteLength > limit ? handle.subarray(0, limit) : handle;
+		// 只读前 limit 字节：以前是 readFile 全读进来再截断（工作区里一个几 GB 的日志
+		// 就能把进程内存打爆），512KB 的上限等于没设。
+		const size = info.size;
+		const take = Math.min(size, limit);
+		const handle = await open(safe.path, "r");
+		let bytes: Buffer;
+		try {
+			bytes = Buffer.alloc(take);
+			if (take > 0) await handle.read(bytes, 0, take, 0);
+		} finally {
+			await handle.close();
+		}
 		const binary = looksBinary(bytes, safe.path);
 		return {
 			ok: true,
 			path: relPath,
 			text: binary ? "" : bytes.toString("utf8"),
-			bytes: handle.byteLength,
-			truncated: handle.byteLength > limit,
+			bytes: size,
+			truncated: size > limit,
 			binary,
 		};
 	} catch (error) {

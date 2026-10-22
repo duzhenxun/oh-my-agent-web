@@ -4,7 +4,14 @@
  */
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { patchCatalogModel, readCatalog, specToCatalog, writeCatalog, type CatalogEntry } from "./catalog-store.js";
+import {
+	patchCatalogModel,
+	readCatalog,
+	specToCatalog,
+	writeCatalog,
+	type CatalogEntry,
+	type CatalogModel,
+} from "./catalog-store.js";
 
 async function readJson<T>(path: string, fallback: T): Promise<T> {
 	try {
@@ -52,9 +59,13 @@ export async function writeCatalogModelPatch(
 	if (!entry) return false;
 	catalog.providers = {
 		...catalog.providers,
-		[provider]: patchCatalogModel(entry, modelId, (current) =>
-			spec === null ? null : { ...current, ...specToCatalog(spec) },
-		),
+		[provider]: patchCatalogModel(entry, modelId, (current) => {
+			if (spec === null) return null;
+			const next: CatalogModel = { ...current, ...specToCatalog(spec) };
+			// 分时价格清空了就要真的删掉：只 spread 不删 → 旧时段表会一直挂在配置里
+			if (!spec.costSchedule || spec.costSchedule.length === 0) delete next.costSchedule;
+			return next;
+		}),
 	};
 	await writeCatalog(agentDir, catalog);
 	return true;

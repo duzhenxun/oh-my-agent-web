@@ -56,6 +56,7 @@ export function TerminalPanel({
 		fit.fit();
 
 		let source: EventSource | null = null;
+		let observer: ResizeObserver | null = null;
 		let disposed = false;
 		let started = false;
 		// 先注册输入：/api/terminal/start 是异步的，等它回来之前敲的字不能丢
@@ -113,7 +114,8 @@ export function TerminalPanel({
 					term.write(event.data);
 				}
 			};
-			const observer = new ResizeObserver(() => fit.fit());
+			// 存在 effect 作用域里：卸载时要 disconnect（以前它建在 async 回调里，清理拿不到）
+			observer = new ResizeObserver(() => fit.fit());
 			observer.observe(host);
 			refitRef.current = () => {
 				fit.fit();
@@ -124,8 +126,15 @@ export function TerminalPanel({
 
 		return () => {
 			disposed = true;
+			observer?.disconnect();
 			source?.close();
-			void fetch("/api/terminal/stop", { method: "POST" });
+			// 必须带 id：服务端 `/api/terminal/stop` 是「按 id 杀进程」，空 id 直接 no-op，
+			// 否则关掉面板后那个 shell 会一直留在服务端（孤儿进程）。
+			void fetch("/api/terminal/stop", {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ id: termId }),
+			});
 			term.dispose();
 		};
 	}, [cwd, termId]);

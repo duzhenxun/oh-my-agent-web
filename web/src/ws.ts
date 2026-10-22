@@ -29,6 +29,7 @@ import type {
 import { focusComposer } from "./composer-focus.ts";
 import { appendTextToMessage } from "./lib/delta.ts";
 import { sessionUrlFor } from "./session-url.ts";
+import { reloadIfUnauthorized, reloadOnExpiredLogin } from "./auth-expiry.ts";
 
 const MAX_BACKOFF_MS = 8000;
 const BASE_BACKOFF_MS = 500;
@@ -84,6 +85,8 @@ export function connect(): void {
 		// EventSource 自己会重连，但间隔由浏览器定（可能很久）；这里再兜一层
 		if (next.readyState === EventSource.CLOSED) {
 			source = null;
+			// 401（登录态过期）时 SSE 不会重连：探一次健康接口，确认过期就整页刷新
+			void reloadOnExpiredLogin();
 			const delay = Math.min(BASE_BACKOFF_MS * 2 ** attempt, MAX_BACKOFF_MS);
 			attempt += 1;
 			setTimeout(connect, delay);
@@ -108,6 +111,7 @@ export function send(requestMessage: ClientRequest): void {
 				body: JSON.stringify(requestMessage),
 			});
 			if (!response.ok) {
+				if (reloadIfUnauthorized(response.status)) return;
 				setAppState({ lastError: `请求失败：HTTP ${response.status}` });
 				return;
 			}
@@ -226,6 +230,25 @@ export function setThinkingLevel(level: string): void {
 	send({ id: `req-${++seq}`, type: "set_thinking_level", payload: { level } });
 }
 
+/** 「想一想」：服务端用隐藏回合重新向模型要一批建议（界面上不会多出对话） */
+export function refreshActions(conversationId?: string, count?: number): void {
+	send({
+		id: `req-${++seq}`,
+		type: "refresh_actions",
+		...(conversationId || count
+			? { payload: { ...(conversationId ? { conversationId } : {}), ...(count ? { count } : {}) } }
+			: {}),
+	});
+}
+
+/**
+ * 切智能体引擎（顶栏切换面板）：服务端零重启换引擎，项目 / 模型 / 能力矩阵跟着变。
+ * 回合在飞时服务端会拒绝（`engine.busy`），界面按 lastError 提示即可。
+ */
+export function setEngine(engine: string): void {
+	send({ id: `req-${++seq}`, type: "set_engine", payload: { engine } });
+}
+
 /** 审批模式（P4）：本会话放行 / 照旧询问 */
 export function setApprovalMode(mode: ApprovalMode): void {
 	send({ id: `req-${++seq}`, type: "set_approval_mode", payload: { mode } });
@@ -320,6 +343,10 @@ export function setSettings(payload: {
 	sessionPrefs?: SessionPrefs;
 	/** 每个项目的默认模型（workspace → `provider/model`）：整表覆盖 */
 	defaultModels?: Record<string, string>;
+	/** 「想想」一次生成几条建议（1–5） */
+	thinkCount?: number;
+	/** 「想想」隐藏回合最多等多久（秒，5–180） */
+	thinkTimeoutSec?: number;
 }): void {
 	send({ id: `req-${++seq}`, type: "set_settings", payload });
 }
@@ -331,10 +358,13 @@ export function approve(requestId: string, decision: "once" | "always" | "deny")
 function handle(message: ServerMessage): void {
 	if (message.type === "reply") {
 		if (!message.ok) {
-			// 请求被拒：乐观高亮要退回去，否则那个会话会一直亮着、看着像「点了没反应」
+			// 请求被拒：乐观高亮要退回去，否则那个会话会一直亮着、看着像「点了没反应」。
+			// 本地缓存铺出来的 preview 也要撤掉：切换失败时服务端不会再来一帧「active=目标」的
+			// 快照把它顶掉，留着它就会出现「屏幕/URL 是 B，消息实际发给了 A」。
 			setAppState({
 				lastError: `${message.error.code}: ${message.error.message}`,
 				...(getAppState().pendingActive ? { pendingActive: null } : {}),
+				...(getAppState().preview ? { preview: null } : {}),
 			});
 		}
 		return;

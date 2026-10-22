@@ -4,7 +4,7 @@
  * 四个环境变量，仅此四个：
  *   AGENT_WEB_PORT       默认 25257
  *   AGENT_WEB_CWD        默认 process.cwd()
- *   AGENT_WEB_DATA_DIR   默认 ~/.agent-web
+ *   AGENT_WEB_DATA_DIR   默认 ~/.oh-my-agent-web
  *   AGENT_WEB_HOST       默认 127.0.0.1（对外监听需要它）
  *   AGENT_WEB_PASSWORD   远程访问密码（不设 = 只允许本机）
  *   AGENT_WEB_ALLOWED_HOSTS  额外允许的域名（逗号分隔，默认只认 loopback）
@@ -20,8 +20,11 @@ import { join, resolve, sep } from "node:path";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
-/** 引擎选择（ADR-0016）：默认用真实 pi SDK；`fake` 只给测试与离线演示用。 */
-export type EngineName = "pi" | "fake";
+/**
+ * 引擎选择（ADR-0016 + ADR-0024）：只是个注册名，默认 `pi`。
+ * 具体有哪些在注册表里；未注册的名字由接线层回落并告警（加引擎不用改这里）。
+ */
+export type EngineName = string;
 
 export type Config = {
 	port: number;
@@ -34,6 +37,18 @@ export type Config = {
 	turnTimeoutMs: number;
 	/** ADR-0006：v1 不实现，仅保留开关位 */
 	token: string | null;
+	/** codex 可执行文件（默认 PATH 里的 codex） */
+	codexBin: string;
+	/** 单独的 CODEX_HOME（不给就用 ~/.codex） */
+	codexHome: string | null;
+	/** dsh 可执行文件（默认 PATH 里的 dsh） */
+	dshBin: string;
+	/** 单独的 DSH_HOME（不给就用 ~/.dsh） */
+	dshHome: string | null;
+	/** 新会话优先用的 DSH 模型路由（provider/model）；不给就自动挑 */
+	dshModel: string | null;
+	/** 额外的 dsh patch 文件（`--patch` 叠加层；冒号分隔） */
+	dshPatches: string[];
 	/** 非本机访问时要求的密码（明文只存在进程内存里）；空 = 只允许本机访问 */
 	password: string | null;
 	/** 额外允许的主机名（域名 / 局域网 IP）：用自己的域名访问时要配它 */
@@ -49,7 +64,15 @@ export const PASSWORD_ENV = "AGENT_WEB_PASSWORD";
 export const ALLOWED_HOSTS_ENV = "AGENT_WEB_ALLOWED_HOSTS";
 /** 回合看门狗默认超时：20 分钟（与参考实现同口径） */
 export const DEFAULT_TURN_TIMEOUT_MS = 20 * 60 * 1000;
-export const DEFAULT_DATA_DIR_NAME = ".agent-web";
+export const DEFAULT_DATA_DIR_NAME = ".oh-my-agent-web";
+/**
+ * 旧的数据目录名（改名前的）。
+ *
+ * 里面装的是**这台机器的私有配置**：远程访问密码、允许的域名、审批规则、推送订阅、
+ * 客户端设置、日志和锁。改名不能让这些凭空消失，所以启动时会**自动搬家**
+ * （见 `server/util/data-dir.ts`），搬完旧目录就不存在了。
+ */
+export const LEGACY_DATA_DIR_NAME = ".agent-web";
 export const DATA_DIR_ENV = "AGENT_WEB_DATA_DIR";
 
 /** ADR-0011：绝不与参考实现（~/.pi-web）共用数据目录 —— 否则两边会互相覆盖会话与配置 */
@@ -99,9 +122,9 @@ export function readConfig(env: EnvLike, options: ReadConfigOptions): ConfigResu
 	let engine: EngineName = "pi";
 	const rawEngine = env.AGENT_WEB_ENGINE;
 	if (rawEngine !== undefined && rawEngine !== "") {
-		const normalized = rawEngine.toLowerCase();
-		if (normalized === "pi" || normalized === "fake") engine = normalized;
-		else problems.push(`AGENT_WEB_ENGINE 不是合法值：${rawEngine}（可选 pi / fake，回落到 pi）`);
+		// 只做形状归一化；**是不是注册过的引擎**由注册表判断（ADR-0024）：
+		// 未注册的名字在那里回落 pi 并告警 —— 这样加引擎不用改这里
+		engine = rawEngine.trim().toLowerCase();
 	}
 
 	let host = DEFAULT_HOST;
@@ -125,6 +148,15 @@ export function readConfig(env: EnvLike, options: ReadConfigOptions): ConfigResu
 			engine,
 			turnTimeoutMs,
 			token: env.AGENT_WEB_TOKEN && env.AGENT_WEB_TOKEN !== "" ? env.AGENT_WEB_TOKEN : null,
+			codexBin: env.AGENT_WEB_CODEX_BIN?.trim() || "codex",
+			codexHome: env.AGENT_WEB_CODEX_HOME?.trim() || null,
+			dshBin: env.AGENT_WEB_DSH_BIN?.trim() || "dsh",
+			dshHome: env.AGENT_WEB_DSH_HOME?.trim() || null,
+			dshModel: env.AGENT_WEB_DSH_MODEL?.trim() || null,
+			dshPatches: (env.AGENT_WEB_DSH_PATCH ?? "")
+				.split(":")
+				.map((item) => item.trim())
+				.filter((item) => item !== ""),
 			password,
 			allowedHosts,
 		},

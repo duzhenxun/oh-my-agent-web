@@ -185,8 +185,14 @@
 	display: flex;
 	flex-direction: column;
 	gap: 4px;
-	/* 这条线就是会话区与文件区之间的分隔线（拖拽手柄不占高度、不画线） */
+	/* 这条线就是会话区与文件区之间的分隔线（拖拽手柄不占高度、不画线）。
+	   用负 margin 顶到侧栏两边、再用等量 padding 把内容挪回来：
+	   否则它会跟着侧栏的 10px 内边距缩进去，看起来是「断开的半条线」。 */
 	border-top: 1px solid var(--border);
+	margin-left: calc(var(--side-pad, 10px) * -1);
+	margin-right: calc(var(--side-pad, 10px) * -1);
+	padding-left: var(--side-pad, 10px);
+	padding-right: var(--side-pad, 10px);
 	padding-top: 0;
 	margin-top: 0;
 }

@@ -29,6 +29,17 @@ export type EngineDescriptor = {
 	name: string;
 	/** 界面显示名 */
 	label: string;
+	/** 顶栏 / 面板上的短标签（PI / FAKE / CODEX）；不给就用 label */
+	badge?: string;
+	/** 切换面板里的一句话说明：能力边界写清楚，别夸大（ADR-0024 §2） */
+	description?: string;
+	/** 这个引擎的模型/provider 配置由本工作台管理（只有 pi 是：models-store.json + auth.json） */
+	providerConfig?: boolean;
+	/**
+	 * 不出现在切换面板里（除非它就是当前引擎）。
+	 * `fake` 是测试引擎：环境变量能选中它，但普通用户不该在面板里点到。
+	 */
+	hidden?: boolean;
 	capabilities: EngineCapabilities;
 	create: () => EnginePort;
 };
@@ -38,6 +49,10 @@ export type EngineRegistry = {
 	names: () => string[];
 	/** 按名字取引擎；未知名字回落到 fallback（默认 pi），并报告这件事 */
 	resolve: (name: string) => { engine: EnginePort; descriptor: EngineDescriptor; fallbackFrom: string | null };
+	/** 按名字取**缓存实例**（切换引擎用：同一个引擎不该每次都 new 一个）；未知名字返回 null */
+	get: (name: string) => { engine: EnginePort; descriptor: EngineDescriptor } | null;
+	/** 全部描述（切换面板的列表来源） */
+	descriptors: () => EngineDescriptor[];
 	/** 按名字取能力矩阵；未知名字回落 */
 	capabilitiesOf: (name: string) => EngineCapabilities;
 };
@@ -54,13 +69,28 @@ export function createEngineRegistry(descriptors: EngineDescriptor[], fallbackNa
 	const byName = new Map(descriptors.map((descriptor) => [descriptor.name, descriptor]));
 	const fallback = byName.get(fallbackName) ?? descriptors[0];
 	if (!fallback) throw new Error("引擎注册表为空（至少要注册一个引擎）");
+	/** name → 实例（懒建）；切换引擎复用它，避免每次 new 一个带状态的引擎 */
+	const instances = new Map<string, EnginePort>();
+
+	const instantiate = (descriptor: EngineDescriptor): EnginePort => {
+		const known = instances.get(descriptor.name);
+		if (known) return known;
+		const created = descriptor.create();
+		instances.set(descriptor.name, created);
+		return created;
+	};
 
 	return {
 		names: () => [...byName.keys()],
+		descriptors: () => descriptors.map((descriptor) => ({ ...descriptor })),
+		get(name) {
+			const found = byName.get(name);
+			return found ? { engine: instantiate(found), descriptor: found } : null;
+		},
 		resolve(name) {
 			const found = byName.get(name);
-			if (found) return { engine: found.create(), descriptor: found, fallbackFrom: null };
-			return { engine: fallback.create(), descriptor: fallback, fallbackFrom: name };
+			if (found) return { engine: instantiate(found), descriptor: found, fallbackFrom: null };
+			return { engine: instantiate(fallback), descriptor: fallback, fallbackFrom: name };
 		},
 		capabilitiesOf: (name) => (byName.get(name) ?? fallback).capabilities,
 	};

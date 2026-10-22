@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="agent-web">
+	<!-- Android 「maskable」图标：**不留圆角、占满整块**，系统自己裁形状。
+	     图案缩到约 78%，保证落在 80% 安全圈内（圆形/方形裁切都不会切到内容）。
+	     与 favicon.svg 同一个图案，改一处就要同步改另一处。 -->
+	<defs>
+		<linearGradient id="tile" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+			<stop offset="0" stop-color="#5BC8FF" />
+			<stop offset=".55" stop-color="#3B82F6" />
+			<stop offset="1" stop-color="#7C5CFF" />
+		</linearGradient>
+	</defs>
+	<rect width="32" height="32" fill="url(#tile)" />
+	<!-- 组内坐标被 scale(.78) 缩小，所以描边要按 1/0.78 反向放大，视觉粗细才与 favicon.svg 一致 -->
+	<g transform="translate(16 16) scale(.78) translate(-16 -16)">
+		<path
+			d="M9.6 8.6 18.6 16 9.6 23.4"
+			fill="none"
+			stroke="#fff"
+			stroke-width="5.1"
+			stroke-linecap="round"
+			stroke-linejoin="round"
+		/>
+		<rect x="19.2" y="19.4" width="7" height="4.2" rx="2.1" fill="#fff" />
+	</g>
+</svg>

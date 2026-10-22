@@ -73,7 +73,7 @@ export async function handleProviderRequest(
 			deps.notify(`模型信息有问题：${message}`, "error");
 			return { ok: false, error: { code: "model.invalid", message } };
 		}
-		const view = await deps.store.get(payload.provider);
+		const view = await deps.store.get(payload.provider, deps.builtinProviders());
 		const seed =
 			view?.source === "builtin"
 				? { baseUrl: view.baseUrl, api: view.api, models: view.models.map((m) => ({ id: m.id, name: m.name })) }
@@ -97,9 +97,12 @@ export async function handleProviderRequest(
 			return { ok: true, result: { enabledModels: [] } };
 		}
 		const patterns = await deps.enabled.read();
-		const view = await deps.store.get(payload.provider);
+		const builtins = deps.builtinProviders();
+		// 内置 provider 也在名单里：否则 view 为 null，modelIds 为空，
+		// 「停用其中一个模型」会被展开成 []（= 禁用整个 provider）
+		const view = await deps.store.get(payload.provider, builtins);
 		// 全开状态下停用一个 provider，需要知道「其它 provider 有哪些模型」才能展开成白名单
-		const universe = (await deps.store.list()).map((item) => ({
+		const universe = (await deps.store.list(builtins)).map((item) => ({
 			provider: item.provider,
 			models: item.models.map((model) => model.id),
 		}));
@@ -115,7 +118,7 @@ export async function handleProviderRequest(
 
 	if (request.type === "remove_model") {
 		const payload = (request as unknown as { payload: { provider: string; modelId: string } }).payload;
-		const view = await deps.store.get(payload.provider);
+		const view = await deps.store.get(payload.provider, deps.builtinProviders());
 		const seed =
 			view?.source === "builtin"
 				? { baseUrl: view.baseUrl, api: view.api, models: view.models.map((m) => ({ id: m.id, name: m.name })) }
@@ -148,7 +151,8 @@ export async function handleProviderRequest(
 
 	if (request.type === "test_provider") {
 		const provider = String((request as { provider?: unknown }).provider ?? "");
-		const view = await deps.store.get(provider);
+		// 内置 provider 也要能测：以前查不到直接报「没有这个 provider」
+		const view = await deps.store.get(provider, deps.builtinProviders());
 		if (!view) {
 			deps.notify(`没有这个 provider：${provider}`, "warn");
 			return { ok: false, error: { code: "provider.not_found", message: "没有这个 provider" } };

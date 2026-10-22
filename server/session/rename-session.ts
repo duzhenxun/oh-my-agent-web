@@ -11,26 +11,30 @@ type Result = { ok: true } | { ok: false; error: { code: string; message: string
 
 export function renameSessionWith(deps: {
 	engine: EnginePort;
-	pathOf: (conversationId: string) => string | null;
+	/** 引擎自己的会话句柄：pi = 文件路径，codex = threadId */
+	handleOf: (conversationId: string) => string | null;
 	refresh: () => Promise<void>;
+	/** 改名成功后的本地同步（会话清单里的标题也改掉，不必等下一次扫描） */
+	onRenamed?: (conversationId: string, title: string) => void;
 	notice: (text: string, level: "info" | "warn" | "error") => void;
 	pushSnapshot: () => void;
 }): (conversationId: string, title: string) => Promise<Result> {
 	return async (conversationId, title) => {
-		const sessionPath = deps.pathOf(conversationId);
-		if (!sessionPath) {
-			return { ok: false, error: { code: "session.not_found", message: `找不到会话文件：${conversationId}` } };
+		const handle = deps.handleOf(conversationId);
+		if (!handle) {
+			return { ok: false, error: { code: "session.not_found", message: `找不到这条会话：${conversationId}` } };
 		}
 		if (!deps.engine.renameSession) {
 			return { ok: false, error: { code: "session.rename_unsupported", message: "当前引擎不支持改会话名" } };
 		}
 		try {
-			await deps.engine.renameSession(sessionPath, title);
+			await deps.engine.renameSession(handle, title);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			deps.notice(`重命名失败：${message}`, "error");
 			return { ok: false, error: { code: "session.rename_failed", message } };
 		}
+		deps.onRenamed?.(conversationId, title);
 		await deps.refresh();
 		deps.pushSnapshot();
 		return { ok: true };

@@ -1,5 +1,5 @@
 /* 手机顶栏：文案显示全 + 一排塞得下（从 app-bar.css 拆出：400 行护栏，ADR-0010） */
-/* 手机：文案显示全（品牌 + 新会话），靠收紧间距 + 入口只留图标腾地方 */
+/* 手机：品牌名不写（只留小图标），省出的宽度给「新会话」与右侧四个入口 */
 .is-mobile-shell .appbar {
 	gap: 6px;
 	padding: 6px 8px;
@@ -10,7 +10,7 @@
 }
 
 .is-mobile-shell .appbar .brand-name {
-	font-size: 13px;
+	display: none;
 }
 
 .is-mobile-shell .appbar .brand-icon {
@@ -46,13 +46,8 @@
 	height: 15px;
 }
 
-/* 超窄屏（≤340px，老机型/分屏）：文案保住「新会话」，品牌退回只留图标，
-   这样整排还是一条线（再窄就只能换行，反而更难看） */
+/* 超窄屏（≤340px，老机型/分屏）：文案保住「新会话」，右侧入口再收一档 */
 @media (max-width: 340px) {
-	.appbar .brand-name {
-		display: none;
-	}
-
 	.appbar .appbar-menu .side-foot-btn {
 		padding: 3px 3px;
 	}

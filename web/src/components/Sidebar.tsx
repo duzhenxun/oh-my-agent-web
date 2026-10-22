@@ -109,7 +109,13 @@ export function Sidebar({
 		setSettings({ projectPrefs: { ...prefs, pinned: next } });
 	};
 
-	const split = useSplitHeight({ storageKey: "agent-web.side.filesHeight", initial: 260, min: 120 });
+	// 文件区默认高度：矮一点，「文件管理」标题离底部（文件树占的地方）更近；拖过的人按自己存的来
+	const split = useSplitHeight({
+		storageKey: "agent-web.side.filesHeight",
+		initial: 200,
+		min: 120,
+		legacyDefaults: [260],
+	});
 
 	// 把「本地待归档」的会话按 workspace 归组；workspace 不在已知项目里的，单独成组（避免新建的会话消失）
 	const knownWorkspaces = new Set(piProjects.map((project) => project.cwd));
@@ -341,6 +347,11 @@ export function Sidebar({
 					setArchivedView(false);
 				}}
 				onRestore={(id) => patchSessionPrefs({ archived: sessionPrefs.archived.filter((item) => item !== id) })}
+				onRestoreMany={(ids) => {
+					// 一次算完再发：批量恢复不能逐条发（每条都基于旧列表，服务端整表覆盖 → 只剩一条生效）
+					const drop = new Set(ids);
+					patchSessionPrefs({ archived: sessionPrefs.archived.filter((item) => !drop.has(item)) });
+				}}
 			/>
 			{archivedView ? null : (
 				<SideSplitter open={fileOpen} onOpen={() => setFileOpen(true)} onStart={split.start} onReset={split.reset} />

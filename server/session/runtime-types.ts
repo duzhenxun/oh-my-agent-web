@@ -17,6 +17,7 @@ import type {
 } from "../protocol.js";
 import type { ServerState } from "../snapshot/state.js";
 import type { EnginePort } from "../engine/port.js";
+import type { EngineCatalog } from "../engine/catalog.js";
 import type { RuleStore } from "../approval/rules.js";
 import type { SettingsStore } from "./settings.js";
 
@@ -41,17 +42,24 @@ export type Runtime = {
 		/** 发起请求的客户端：懒建会话时要把它的视图指到新会话（ADR-0033） */
 		clientId?: string,
 	): Promise<Result>;
-	interrupt(): Promise<Result>;
+	/** 中断某个会话的回合；不给就挑「当前会话 / 第一个在跑的」 */
+	interrupt(conversationId?: string): Promise<Result>;
 	approve(requestId: string, decision: ApprovalDecision): Result;
 	newConversation(workspace?: string, clientId?: string): Promise<Result>;
 	/** 改会话显示名（写进 pi 的会话文件；成功后重扫列表把新名字带回来） */
 	renameSession(conversationId: string, title: string): Promise<Result>;
+	/** 删除会话：引擎原生删除（codex）或文件改名（pi） */
+	deleteSession(conversationId: string): Promise<
+		{ ok: true; mode: "engine" | "file"; movedTo?: string } | { ok: false; error: { code: string; message: string } }
+	>;
 	/** 改客户端设置（ADR-0020 §P1）：归一化 → 落盘 → 推快照 */
 	applySettings(patch: unknown): Promise<Result>;
 	/** 切换当前会话的模型（ADR-0020 §P2） */
 	setModel(modelId: string): Promise<Result>;
 	/** 思考强度（P4）：档位由引擎给，不支持时界面隐藏控件 */
 	setThinkingLevel(level: string): Promise<Result>;
+	/** 「想一想」：隐藏回合重新向模型要一批建议（不进对话区/历史） */
+	refreshActions(conversationId?: string, count?: number): Promise<Result>;
 	/** 只推一帧快照（不制造提示条） */
 	pushSnapshot(): void;
 	/** 热重载模型表（改完 provider / 模型配置后调用，免重启） */
@@ -67,6 +75,11 @@ export type Runtime = {
 	refreshPiSessions(force?: boolean): Promise<void>;
 	/** 给宿主其他部分（引擎、启动流程）推一条界面提示 */
 	notify(text: string, level?: Notice["level"]): void;
+	/**
+	 * 切智能体引擎（零重启）：项目清单 / 模型 / 能力矩阵跟着换。
+	 * 回合在飞时返回 `engine.busy`（不把半截回合丢给另一个引擎）。
+	 */
+	setEngine(name: string): Promise<Result>;
 	isBusy(): boolean;
 };
 
@@ -78,6 +91,8 @@ export type RuntimeOptions = {
 	rules: RuleStore;
 	/** 回合看门狗超时（ADR-0023）；不给就用默认 20 分钟 */
 	turnTimeoutMs?: number;
+	/** 「下一步」要建议的超时（默认 20 秒：超时就中断，不让隐藏回合一直挂着） */
+	actionsTimeoutMs?: number;
 	/** 附件上传存储（ADR-0020 §P3）：读回上传的文件；不给则附件一律失效 */
 	uploadStore?: {
 		read: (id: string) => Promise<{ bytes: Buffer; mime: string } | null>;
@@ -87,6 +102,11 @@ export type RuntimeOptions = {
 	settings?: SettingsStore;
 	/** pi 已有会话的扫描器（ADR-0021 §1）；不给就不显示那一栏（单测用） */
 	piSessions?: () => Promise<PiProject[]>;
+	/**
+	 * 引擎目录（ADR-0024）：提供「有哪些引擎 / 按名字取实例 / 每个引擎的历史会话来源」。
+	 * 不给就只有 `engine` 一个（单测与最小启动），切换请求会被拒。
+	 */
+	engines?: EngineCatalog;
 	/** 回合结束时回调（index 用它发推送通知） */
 	onTurnFinished?: (info: { conversationId: string; title: string; workspace: string; failed: boolean }) => void;
 	/** 读 provider 列表（index 注入：它同时知道内置 provider 的分组） */

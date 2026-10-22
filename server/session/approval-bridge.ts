@@ -52,12 +52,32 @@ export function createApprovalBridge(options: ApprovalBridgeOptions): ApprovalBr
 	 * （用户仍能选），避免"点了放行却看到一个闪现消失的弹窗"。
 	 */
 	let approvalMode: ApprovalMode = "allow";
-	let pending: {
+	/**
+	 * 待审批队列（FIFO）。
+	 *
+	 * 以前只有**一个**槽位：两个会话同时要审批时，第二个会把第一个的 resolve 覆盖掉，
+	 * 第一个回合就永远等不到答复（只能等看门狗超时）。现在按请求排队，
+	 * 界面仍然一次只显示队首那条（协议里只有一个 `pendingApproval`）。
+	 */
+	type PendingEntry = {
 		requestId: string;
+		request: ApprovalRequest;
 		scopeKey: string;
 		scopeHint: string;
-		resolve: (decision: ApprovalDecision) => void;
-	} | null = null;
+		settle: (decision: ApprovalDecision) => void;
+	};
+	const pending: PendingEntry[] = [];
+	const viewOf = (entry: PendingEntry): PendingApproval => ({
+		requestId: entry.requestId,
+		toolName: entry.request.toolName,
+		argsSummary: entry.request.argsSummary,
+		riskNote: entry.request.riskNote,
+		scopeHint: entry.request.scopeHint,
+	});
+	const showHead = (): void => {
+		const head = pending[0];
+		options.onPending(head ? viewOf(head) : null);
+	};
 
 	const bridge: ApprovalBridge = {
 		async handler(request) {
@@ -66,26 +86,22 @@ export function createApprovalBridge(options: ApprovalBridgeOptions): ApprovalBr
 			if (sessionRules.has(request.scopeKey) || hasRule(rules, request.scopeKey)) return "always";
 
 			const requestId = options.nextId("appr");
-			options.onPending({
-				requestId,
-				toolName: request.toolName,
-				argsSummary: request.argsSummary,
-				riskNote: request.riskNote,
-				scopeHint: request.scopeHint,
+			let settle: (decision: ApprovalDecision) => void = () => {};
+			const promise = new Promise<ApprovalDecision>((resolve) => {
+				settle = resolve;
 			});
-
-			return new Promise<ApprovalDecision>((resolve) => {
-				pending = { requestId, scopeKey: request.scopeKey, scopeHint: request.scopeHint, resolve };
-			});
+			pending.push({ requestId, request, scopeKey: request.scopeKey, scopeHint: request.scopeHint, settle });
+			// 已经有一条在显示时不抢镜：等队首处理完再顶上（否则界面上那条会突然被换掉）
+			if (pending.length === 1) options.onPending(viewOf(pending[0] as PendingEntry));
+			return promise;
 		},
 
 		approve(requestId, decision) {
-			if (!pending || pending.requestId !== requestId) {
+			const index = pending.findIndex((entry) => entry.requestId === requestId);
+			const current = index >= 0 ? pending.splice(index, 1)[0] : undefined;
+			if (!current) {
 				return { ok: false, error: { code: "approval.unknown_request", message: "没有待处理的审批请求" } };
 			}
-			const current = pending;
-			pending = null;
-			options.onPending(null);
 
 			if (decision === "always") {
 				sessionRules.add(current.scopeKey);
@@ -102,7 +118,8 @@ export function createApprovalBridge(options: ApprovalBridgeOptions): ApprovalBr
 				options.onNotice(`已记住：以后这类操作不再询问（${current.scopeHint}）`, "info");
 			}
 
-			current.resolve(decision);
+			current.settle(decision);
+			showHead(); // 队里还有下一条就顶上来，否则清空弹窗
 			return { ok: true };
 		},
 
@@ -124,12 +141,11 @@ export function createApprovalBridge(options: ApprovalBridgeOptions): ApprovalBr
 		},
 
 		cancelPending() {
-			if (!pending) return;
-			const current = pending;
-			pending = null;
+			if (pending.length === 0) return;
+			const waiting = pending.splice(0);
 			options.onPending(null);
-			// 安全默认值：悬着的审批按拒绝收尾（绝不默认放行）
-			current.resolve("deny");
+			// 安全默认值：所有悬着的审批都按拒绝收尾（绝不默认放行）
+			for (const entry of waiting) entry.settle("deny");
 		},
 	};
 

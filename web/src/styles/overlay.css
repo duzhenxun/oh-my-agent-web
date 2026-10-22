@@ -65,10 +65,11 @@
 .jump-bottom {
 	position: sticky;
 	bottom: 12px;
-	/* 居中：.main 不是 flex 容器，align-self 无效 → 用 auto 外边距 + fit-content */
+	/* 靠右：.main 不是 flex 容器，align-self 无效 → fit-content + auto 左外边距把它推到右侧，
+	   别放在对话中间（那里正好是正文，挡字） */
 	display: block;
 	width: fit-content;
-	margin: -44px auto 0;
+	margin: -44px 16px 0 auto;
 	z-index: 9;
 	border: 1px solid var(--border);
 	border-radius: 999px;

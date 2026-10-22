@@ -1,11 +1,20 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ProvidersPanel } from "./ProvidersPanel.tsx";
 import { SettingsPanel } from "./SettingsPanel.tsx";
 import { SkillsPanel } from "./SkillsPanel.tsx";
 import { PushPanel } from "./PushPanel.tsx";
+import { useModalSize } from "../use-modal-size.ts";
+import { useAppState } from "../store.ts";
 
 type Panel = "models" | "skills" | "push" | "settings" | null;
+
+/** 弹窗顶部那一条反馈（只留一条，到点自己消失） */
+type ModalTip = { key: string; text: string; level: "info" | "warn" | "error"; at: number };
+
+/** 显示多久：错误留久一点（否则用户还没看清就没了） */
+const TIP_TTL_MS = (level: ModalTip["level"]): number =>
+	level === "error" ? 12_000 : level === "warn" ? 8_000 : 5_000;
 
 /**
  * 一套线性小图标（16 格），替掉原来的大彩 emoji：
@@ -80,6 +89,54 @@ export function SidebarMenu({
 	items?: Panel[];
 } = {}) {
 	const [panel, setPanel] = useState<Panel>(initialPanel);
+	// 弹窗尺寸可拖（模型面板里价格 / 分时价格一多，默认的 760 高就不够用了）
+	const modalSize = useModalSize();
+	/**
+	 * 弹窗里的反馈：服务端的提示条（`.error-bar` / `NoticeBar`）都在工作区顶上，
+	 * 而弹窗是全屏遮罩 —— 用户在弹窗里操作时**什么都看不到**（保存成功/失败郿如此）。
+	 * 这里把「打开弹窗之后新出现的提示 + 请求错误」镜像到弹窗顶部。
+	 *
+	 * 三条纪律（都是被「顶部堆了一堆提示」撞出来的）：
+	 *   - 只留**最新一条**：旧消息叠成三行只会挡内容；
+	 *   - 到点**自己消失**（提示 / 警告 5s、错误 12s）：服务端的 notices 会挂很久，不能跟着它；
+	 *   - 打开 / 切面板时把当时的提示全吸收掉，不把旧消息当成这次操作的结果。
+	 */
+	const { snapshot, lastError } = useAppState();
+	const seenNotices = useRef<Set<string>>(new Set());
+	const errorBaseline = useRef<string | null>(lastError);
+	const [tip, setTip] = useState<ModalTip | null>(null);
+
+	useEffect(() => {
+		seenNotices.current = new Set((snapshot?.notices ?? []).map((notice) => notice.id));
+		errorBaseline.current = lastError;
+		setTip(null);
+		// 只看「本次打开面板之后」出现的提示；snapshot / lastError 故意不进依赖（否则自己就被吸收掉了）
+	}, [panel]);
+
+	// 新提示：只收最新一条（一次操作可能连推好几条）
+	useEffect(() => {
+		const fresh = (snapshot?.notices ?? []).filter((notice) => !seenNotices.current.has(notice.id));
+		if (fresh.length === 0) return;
+		for (const notice of fresh) seenNotices.current.add(notice.id);
+		const latest = fresh[fresh.length - 1];
+		if (latest) setTip({ key: `notice-${latest.id}`, text: latest.text, level: latest.level, at: Date.now() });
+	}, [snapshot?.notices]);
+
+	// 请求错误（例如「保存失败」）也走同一张条
+	useEffect(() => {
+		if (!lastError || lastError === errorBaseline.current) return;
+		errorBaseline.current = lastError;
+		setTip({ key: `error-${Date.now()}`, text: lastError, level: "error", at: Date.now() });
+	}, [lastError]);
+
+	// 到点自己消失（服务端的 notices 会挂很久，不能跟着它留在弹窗里）
+	useEffect(() => {
+		if (!tip) return;
+		const timer = setTimeout(() => {
+			setTip((current) => (current && Date.now() - current.at >= TIP_TTL_MS(current.level) ? null : current));
+		}, TIP_TTL_MS(tip.level));
+		return () => clearTimeout(timer);
+	}, [tip]);
 	const wanted = (key: Exclude<Panel, null>) => !items || items.includes(key);
 	const item = (key: Exclude<Panel, null>, label: string) => (
 		<button
@@ -109,7 +166,7 @@ export function SidebarMenu({
 			{panel
 				? createPortal(
 						<div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="工作台面板">
-							<div className="modal big-modal">
+							<div className="modal big-modal" style={modalSize.style}>
 								<div className="big-modal-head">
 									{(["models", "skills", "push", "settings"] as const).map((key) => (
 										<button
@@ -130,6 +187,17 @@ export function SidebarMenu({
 									</button>
 								</div>
 
+								{tip ? (
+									<div className="modal-notices">
+										<div
+											className={`notice${tip.level === "error" ? " notice-error" : tip.level === "warn" ? " notice-warn" : ""}`}
+											key={tip.key}
+										>
+											{tip.text}
+										</div>
+									</div>
+								) : null}
+
 								<div className="big-modal-body">
 									{panel === "models" ? <ProvidersPanel /> : null}
 
@@ -137,6 +205,16 @@ export function SidebarMenu({
 									{panel === "push" ? <PushPanel /> : null}
 									{panel === "settings" ? <SettingsPanel /> : null}
 								</div>
+
+								{/* 右下角拖拽手柄：拖改宽高，双击回默认（尺寸存 localStorage） */}
+								<div
+									className="modal-resize"
+									role="separator"
+									aria-label="调整面板大小"
+									title="拖动调整窗口大小（双击复位）"
+									onPointerDown={modalSize.start}
+									onDoubleClick={modalSize.reset}
+								/>
 							</div>
 						</div>,
 						document.body,

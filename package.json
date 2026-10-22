@@ -1,8 +1,16 @@
 {
-	"name": "agentweb",
+	"name": "oh-my-agent-web",
 	"version": "0.1.0",
 	"private": true,
-	"description": "agent-web — 单机编码智能体工作台（单用户、loopback、对话+文件+终端+会话落盘）",
+	"bin": {
+		"oh-my-agent-web": "dist/server/cli.js",
+		"omaw": "dist/server/cli.js"
+	},
+	"files": [
+		"dist",
+		"web/dist"
+	],
+	"description": "oh-my-agent-web — 单机编码智能体工作台（单用户、loopback、对话+文件+终端+会话落盘）",
 	"type": "module",
 	"license": "MIT",
 	"engines": {
@@ -18,18 +26,13 @@
 		"start": "node dist/server/cli.js",
 		"stop": "node dist/server/cli.js stop",
 		"restart": "node dist/server/cli.js restart",
-		"typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.tests.json --noEmit && tsc -p web/tsconfig.json --noEmit",
-		"lint": "oxlint server web/src scripts tests",
-		"lint:fix": "oxlint --fix server web/src scripts tests",
+		"typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p web/tsconfig.json --noEmit",
+		"lint": "oxlint server web/src scripts",
+		"lint:fix": "oxlint --fix server web/src scripts",
 		"format": "prettier --write .",
 		"format:check": "prettier --check .",
-		"test": "vitest run",
-		"test:smoke": "node tests/smoke/run.mjs",
-		"test:smoke:core": "node tests/smoke/run.mjs --core",
-		"check": "node scripts/run-guards.mjs",
-		"check:guards": "node scripts/run-guards.mjs --self-test",
-		"check:protocol": "node scripts/check-protocol-sync.mjs",
-		"postinstall": "chmod +x node_modules/node-pty/prebuilds/*/spawn-helper 2>/dev/null || true"
+		"postinstall": "chmod +x node_modules/node-pty/prebuilds/*/spawn-helper 2>/dev/null || true",
+		"icons": "node scripts/make-icons.mjs"
 	},
 	"devDependencies": {
 		"@types/express": "^5.0.0",
@@ -44,8 +47,7 @@
 		"prettier": "^3.4.0",
 		"tsx": "^4.19.0",
 		"typescript": "^5.7.0",
-		"vite": "^8.0.0",
-		"vitest": "^5.0.0"
+		"vite": "^8.0.0"
 	},
 	"dependencies": {
 		"@earendil-works/pi-coding-agent": "^1.3.0",

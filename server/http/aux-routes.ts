@@ -11,7 +11,7 @@ import { registerSkillRoutes } from "../skills/skill-routes.js";
 import { registerProjectActions, registerTerminalRoutes } from "../terminal/terminal-routes.js";
 import { registerDirRoutes } from "../files/dir-routes.js";
 import { registerFileRoutes } from "../files/files-routes.js";
-import { registerSessionRoutes } from "../sessions/session-routes.js";
+import { registerSessionRoutes, type SessionDeleteResult } from "../sessions/session-routes.js";
 import type { PushStore } from "../push/push.js";
 import { registerPushRoutes } from "../push/push-routes.js";
 
@@ -22,10 +22,12 @@ export function registerAuxRoutes(
 		onChange: () => void;
 		workspaceOf: () => string | null;
 		projects: () => import("../protocol.js").PiProject[];
+		/** 删会话：引擎原生删除 or 文件改名，由 runtime 决定 */
+		deleteSession: (id: string) => Promise<SessionDeleteResult>;
 		pushStore: PushStore;
 	},
 ): void {
-	registerSessionRoutes(app, { projects: options.projects });
+	registerSessionRoutes(app, { deleteSession: options.deleteSession });
 	registerPushRoutes(app, { store: options.pushStore });
 	registerFileRoutes(app, { workspaceOf: options.workspaceOf });
 	registerTerminalRoutes(app, { workspaceOf: options.workspaceOf });

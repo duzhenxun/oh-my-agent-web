@@ -6,7 +6,7 @@
  *
  * 拿不到列表时保持空数组（界面退回只读芯片）—— 不编造默认值，也不阻塞主流程。
  */
-import type { EnginePort } from "../engine/port.js";
+import type { EngineModelInfo, EnginePort } from "../engine/port.js";
 import type { ModelOption, ProtocolError } from "../protocol.js";
 
 export type Result = { ok: true } | { ok: false; error: ProtocolError };
@@ -41,6 +41,11 @@ export function createModelController(options: {
 				if (list.length > 0 || options.state.models.length === 0) {
 					options.state.models = list.map((model) => ({ id: model.id, label: model.label }));
 				}
+				// 还没有当前模型（刚建会话 / 刚切引擎）：用引擎标的默认项，别让选择器空着
+				if (!options.state.model && list.length > 0) {
+					const preferred = list.find((model) => model.current) ?? list[0];
+					if (preferred) options.state.model = preferred.id;
+				}
 			} catch {
 				// 保留旧值：下次刷新成功自然会更新
 			}
@@ -69,8 +74,16 @@ export function createModelController(options: {
 		async setThinking(conversationId, level) {
 			if (!conversationId) return { ok: false, error: { code: "session.none", message: "先打开一个会话" } };
 			const applied = (await options.engine.setThinkingLevel?.(conversationId, level)) ?? false;
-			if (!applied)
-				return { ok: false, error: { code: "thinking.unsupported", message: `这个模型不支持档位：${level}` } };
+			if (!applied) {
+				const reason = options.engine.lastError?.();
+				return {
+					ok: false,
+					error: {
+						code: "thinking.unsupported",
+						message: reason ? `切换思考档位失败：${reason}` : `这个模型不支持档位：${level}`,
+					},
+				};
+			}
 			options.state.thinkingLevel = level;
 			options.onChanged();
 			return { ok: true };
@@ -80,12 +93,49 @@ export function createModelController(options: {
 			if (!conversationId) return { ok: false, error: { code: "session.none", message: "先打开一个会话" } };
 			const switched = (await options.engine.switchModel?.(conversationId, modelId)) ?? false;
 			if (!switched) {
-				return { ok: false, error: { code: "model.switch_failed", message: `切换模型失败：${modelId}` } };
+				const reason = options.engine.lastError?.();
+				return {
+					ok: false,
+					error: { code: "model.switch_failed", message: reason ? `切换模型失败：${reason}` : `切换模型失败：${modelId}` },
+				};
 			}
 			options.state.model = modelId;
 			// 不再推提示：输入区的模型选择器已经在显示当前模型（提示条太占地方）
 			options.onChanged();
 			return { ok: true };
 		},
+	};
+}
+
+/**
+ * 「重读模型表」的独立入口（切引擎与 provider 热重载共用）：
+ * prewarm（有的引擎要先把模型表挂到会话上）→ reloadModels → listModels。
+ * 取不到就**保留旧表**：模型下拉宁可短暂显示旧的，也不能整块消失。
+ */
+export function createModelRefresher(options: {
+	engine: EnginePort;
+	state: { models: ModelOption[]; model?: string | null };
+}): () => Promise<void> {
+	return async () => {
+		try {
+			await options.engine.prewarm?.();
+			await options.engine.reloadModels?.();
+		} catch {
+			return; // 引擎没起起来（比如 codex 没装）：保留旧表，别把切换流程打断
+		}
+		let list: EngineModelInfo[] = [];
+		try {
+			list = (await options.engine.listModels?.()) ?? [];
+		} catch {
+			return;
+		}
+		if (list.length > 0) {
+			options.state.models = list.map((model) => ({ id: model.id, label: model.label }));
+			// 还没有当前模型（刚切引擎 / 还没开会话）：用引擎给的默认项，别让选择器空着
+			if (!options.state.model) {
+				const preferred = list.find((model) => model.current) ?? list[0];
+				if (preferred) options.state.model = preferred.id;
+			}
+		}
 	};
 }

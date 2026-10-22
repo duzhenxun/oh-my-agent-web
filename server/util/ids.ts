@@ -14,7 +14,18 @@ export function shortId(): string {
 	return randomUUID().replace(/-/g, "").slice(0, 10);
 }
 
-/** 带前缀的 id 工厂：`conv-3f2a9c1b04`、`msg-…`、`appr-…` */
+/** 带前缀的 id 工厂：`msg-…`、`appr-…`、`notice-…`（会话不用它，见下面的 conversationId） */
 export function makeIdFactory(): (prefix: string) => string {
 	return (prefix: string) => `${prefix}-${shortId()}`;
+}
+
+/**
+ * 会话 id：直接给 UUID，和 pi CLI 自己建会话时一模一样（`01a13d8d-a916-70b8-…`）。
+ *
+ * 为什么单独一个函数而不是 `makeIdFactory()("conv")`：会话 id 会**进入 pi 的会话文件名**
+ * 和地址栏的 `?session=`，跟 pi 生成的会话用同一种格式，才不用去猜「这个 id 是谁建的」；
+ * 另外 122 bit 随机比短 id 的 40 bit 更抗撞（会话是要长期保存的）。
+ */
+export function conversationId(): string {
+	return randomUUID();
 }

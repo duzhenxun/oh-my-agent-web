@@ -1,4 +1,24 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-	<rect width="32" height="32" rx="7" fill="#101418" />
-	<path d="M8 21V11l8 5 8-5v10" fill="none" stroke="#4c9aff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="agent-web">
+	<!-- 极简版：**渐变圆角砖上只有一个提示符 + 一块光标**，就两笔。
+	     提示符=给 agent 下指令，块光标=它正在等你输入；不放任何白色底板/气泡，
+	     16px 下也只剩两个干净的形状。
+	     改图之后**必须换 URL**（index.html / manifest 里的 ?v=）：
+	     iOS/Android 会按 URL 永久缓存主屏图标。 -->
+	<defs>
+		<linearGradient id="tile" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+			<stop offset="0" stop-color="#5BC8FF" />
+			<stop offset=".55" stop-color="#3B82F6" />
+			<stop offset="1" stop-color="#7C5CFF" />
+		</linearGradient>
+	</defs>
+	<rect width="32" height="32" rx="7" fill="url(#tile)" />
+	<path
+		d="M9.6 8.6 18.6 16 9.6 23.4"
+		fill="none"
+		stroke="#fff"
+		stroke-width="4"
+		stroke-linecap="round"
+		stroke-linejoin="round"
+	/>
+	<rect x="19.2" y="19.4" width="7" height="4.2" rx="2.1" fill="#fff" />
 </svg>

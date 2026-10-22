@@ -76,13 +76,7 @@
 	padding-right: 92px;
 }
 
-/* 状态栏：高度固定 24px、字 10px（跟桌面一致） */
-.is-mobile-shell .statusbar {
-	gap: 6px;
-	height: 26px;
-	padding: 0 8px;
-	font-size: 12px;
-}
+/* 状态栏的尺寸统一在 statusbar.css 里定（手机那一版要放大到 32px，这里不再覆盖） */
 
 /* 手机上用户消息同样整行（与桌面一致，别再单独限宽） */
 .is-mobile-shell .msg-user {
@@ -184,6 +178,11 @@
 	height: auto;
 	max-height: calc(100dvh - var(--appbar-h, 46px) - 16px);
 	border-radius: 0;
+}
+
+/* 手机上不拖大小（整屏铺满就是最好的尺寸），也不显示手柄 */
+.is-mobile-shell .modal-resize {
+	display: none;
 }
 
 .is-mobile-shell .big-modal-body {
@@ -368,4 +367,16 @@
 /* 目录列表在手机上至少给 40vh，否则只剩两行可点 */
 .is-mobile-shell .new-project-list {
 	min-height: 40vh;
+}
+
+/* 实时 token / 速度：窄屏上与模型名同一行会挤，缩一号（两个数字都留着，
+   它们是「还在跑」的证据；藏掉反而看不出进没进展） */
+.is-mobile-shell .msg-live {
+	gap: 4px;
+	font-size: 11.5px;
+}
+
+.is-mobile-shell .msg-live-rate {
+	font-size: 11px;
+	padding: 0 5px;
 }

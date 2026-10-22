@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import { imagesMarkdown, pickUploadableFiles, uploadFile } from "../attachments.ts";
 import { ModelPicker } from "./ModelPicker.tsx";
+import { ThinkButton } from "./ThinkButton.tsx";
 import { ThinkingPicker } from "./ThinkingPicker.tsx";
 import { TemplateEditor, TemplateGallery } from "./TemplateModals.tsx";
 import { setDraft, useAppState } from "../store.ts";
 import type { AttachmentRef, PromptTemplate } from "../types.ts";
-import { interrupt, sendMessage, setApprovalMode, setSettings } from "../ws.ts";
+import { interrupt, sendMessage, setSettings } from "../ws.ts";
 
 function formatBytes(bytes: number): string {
 	if (bytes < 1024) return `${bytes}B`;
@@ -107,19 +108,10 @@ export function Composer({ running, conversationId }: { running: boolean; conver
 	return (
 		<div className="composer-wrap">
 			<div className="composer-topbar">
-				{/* 输入框上方一行：模板 / 模型 / 强度 / 审批 + 快捷短语（同一行） */}
+				{/* 输入框上方一行：模型 / 强度 · 模板 · 想想 + 快捷短语（审批在底部状态栏） */}
 				<div className="composer-tools">
-					<button
-						type="button"
-						className="tool-chip composer-template-btn"
-						onClick={() => setGalleryOpen(true)}
-						title="提示词模板库"
-					>
-						🧩 模板
-					</button>
-					<span className="tool-sep" aria-hidden="true" />
 					{/* 模型槽位**永远在**：列表没到 / 引擎暂时取不到时显示占位，
-				    免得用户以为功能坏了（"怎么又不见了" 就是清空列表造成的） */}
+					    免得用户以为功能坏了（"怎么又不见了" 就是清空列表造成的） */}
 					{snapshot && snapshot.models.length > 0 && snapshot.engineCapabilities.modelSwitch ? (
 						<ModelPicker
 							models={snapshot.models}
@@ -140,20 +132,16 @@ export function Composer({ running, conversationId }: { running: boolean; conver
 					)}
 					<ThinkingPicker level={snapshot?.thinkingLevel ?? null} levels={snapshot?.thinkingLevels ?? []} />
 					<span className="tool-sep" aria-hidden="true" />
-					{snapshot?.engineCapabilities.approvals === false ? (
-						<span className="tool-chip tool-static" title="该引擎自行决定授权，本工作台拦不住它的危险操作">
-							🔒 审批：引擎自理
-						</span>
-					) : (
-						<button
-							type="button"
-							className={`tool-chip composer-approval-btn${snapshot?.approvalMode === "allow" ? " tool-chip-warn" : ""}`}
-							onClick={() => setApprovalMode(snapshot?.approvalMode === "allow" ? "ask" : "allow")}
-							title="审批模式（全局生效，重启回到默认：全部放行）"
-						>
-							{snapshot?.approvalMode === "allow" ? "🔓 审批：全部放行" : "🔒 审批：询问"}
-						</button>
-					)}
+					<button
+						type="button"
+						className="tool-chip composer-template-btn"
+						onClick={() => setGalleryOpen(true)}
+						title="提示词模板库"
+					>
+						🧩 模板
+					</button>
+					<span className="tool-sep" aria-hidden="true" />
+					<ThinkButton conversationId={conversationId} running={running} />
 					{/* 右侧扩展位：工具范围 / 压缩（P4 待做，先占位保持排布稳定） */}
 					<span className="topbar-spacer" />
 				</div>

@@ -5,6 +5,8 @@
  * 一旦写坏，下次 pi 启动可能整个模型表都读不出来。所以「用户能填什么」必须先收窄。
  */
 
+import { validateSchedule, type CostSchedule } from "../util/pricing.js";
+
 /** 支持的上游 API 形态（与 pi 的 ModelDefinition.api 对齐） */
 export const API_KINDS = [
 	"openai-completions",
@@ -178,6 +180,11 @@ export type ModelSpec = {
 	contextWindow: number | null;
 	maxTokens: number | null;
 	cost: { input: number; output: number; cacheRead: number; cacheWrite: number } | null;
+	/**
+	 * 分时价格（ADR-0026 D 期）：厂商按高峰/低峰定价时，一天里可以配好几段。
+	 * null = 全天用一个价（就是上面的 cost），既有行为不变。
+	 */
+	costSchedule: CostSchedule | null;
 };
 
 export const MAX_CONTEXT_WINDOW = 100_000_000;
@@ -231,6 +238,10 @@ export function validateModelSpec(input: unknown): { ok: true; value: ModelSpec 
 		costInput !== undefined &&
 		Object.values(costInput).some((value) => value !== "" && value !== null && value !== undefined);
 
+	// 分时价格：起始时间 / 价格格式一次列全（写法坏了的时段表会让算账静默变错，必须挡住）
+	const schedule = validateSchedule(record.costSchedule);
+	if (!schedule.ok) for (const error of schedule.errors) errors.push(error);
+
 	if (errors.length > 0) return { ok: false, errors };
 	return {
 		ok: true,
@@ -249,6 +260,7 @@ export function validateModelSpec(input: unknown): { ok: true; value: ModelSpec 
 						cacheWrite: cost.cacheWrite.ok ? cost.cacheWrite.value : 0,
 					}
 				: null,
+			costSchedule: schedule.ok ? schedule.value : null,
 		},
 	};
 }

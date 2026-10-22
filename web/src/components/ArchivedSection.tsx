@@ -10,13 +10,23 @@ export function ArchivedSection({
 	onBack,
 	onOpen,
 	onRestore,
+	onRestoreMany,
 }: {
 	groups: { name: string; items: { id: string; title: string; time: string }[] }[];
 	view: boolean;
 	onBack: () => void;
 	onOpen: (id: string) => void;
 	onRestore: (id: string) => void;
+	onRestoreMany: (ids: string[]) => void;
 }) {
 	if (!view) return null;
-	return <ArchivedSessions groups={groups} onBack={onBack} onOpen={onOpen} onRestore={onRestore} />;
+	return (
+		<ArchivedSessions
+			groups={groups}
+			onBack={onBack}
+			onOpen={onOpen}
+			onRestore={onRestore}
+			onRestoreMany={onRestoreMany}
+		/>
+	);
 }

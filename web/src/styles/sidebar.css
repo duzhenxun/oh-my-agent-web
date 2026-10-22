@@ -10,7 +10,9 @@
 	border: 1px solid var(--border);
 	border-radius: var(--radius);
 	background: var(--bg-elev);
-	padding: 10px;
+	/* 内边距抽成变量：底部分隔线要「顶满整条侧栏」，得靠负 margin 抵消它 */
+	--side-pad: 10px;
+	padding: var(--side-pad);
 }
 
 .sidebar-head {

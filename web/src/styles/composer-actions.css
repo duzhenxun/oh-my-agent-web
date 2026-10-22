@@ -12,3 +12,26 @@
 	min-width: 72px;
 	justify-content: center;
 }
+
+/* 「引导」：会让当前回合改道的动作 → 暖色底，提醒它和「排队」不是一回事 */
+.btn.btn-queue {
+	background: color-mix(in srgb, var(--yellow, #d9a441) 16%, var(--bg-elev));
+	border-color: color-mix(in srgb, var(--yellow, #d9a441) 55%, var(--border));
+	color: color-mix(in srgb, var(--yellow, #d9a441) 78%, var(--text));
+}
+
+.btn.btn-queue:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--yellow, #d9a441) 26%, var(--bg-elev));
+	border-color: var(--yellow, #d9a441);
+}
+
+/* 「停止」：危险动作 → 红色描边 + 红色浅底（原来只有描边，贴在输入框里像是没底色） */
+.btn.btn-stop {
+	background: color-mix(in srgb, var(--red) 14%, var(--bg-elev));
+	border-color: var(--red);
+	color: var(--red);
+}
+
+.btn.btn-stop:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--red) 24%, var(--bg-elev));
+}

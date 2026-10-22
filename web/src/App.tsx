@@ -16,9 +16,11 @@ import { currentMobileShell } from "./mobile-shell-dom.ts";
 import { ApprovalDialog, NoticeBar } from "./components/ApprovalDialog.tsx";
 import { Composer } from "./components/Composer.tsx";
 import { MessageList } from "./components/MessageList.tsx";
+import { ActionSuggestions } from "./components/ActionSuggestions.tsx";
 import { NewChatMeta } from "./components/NewChatMeta.tsx";
 import { ConversationOutline } from "./components/ConversationOutline.tsx";
 import { SidebarMenu } from "./components/SidebarMenu.tsx";
+import { EnginePicker } from "./components/EnginePicker.tsx";
 import { PreviewPanel, type PanelItem } from "./components/PreviewPanel.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
 import { StatusBar } from "./components/StatusBar.tsx";
@@ -32,6 +34,17 @@ export function App() {
 			tablet: typeof window !== "undefined" && isTablet((text) => window.matchMedia(text).matches),
 		}),
 	);
+	/** 单栏（手机外壳）判定：手机上 ☰ 是抽屉开关，桌面上它换成「收起 / 展开」的箭头 */
+	const [mobileShell, setMobileShell] = useState(() => currentMobileShell());
+	useEffect(() => {
+		const sync = () => setMobileShell(currentMobileShell());
+		window.addEventListener("resize", sync);
+		window.addEventListener("orientationchange", sync);
+		return () => {
+			window.removeEventListener("resize", sync);
+			window.removeEventListener("orientationchange", sync);
+		};
+	}, []);
 	/** 顶部栏是否收起（底部状态栏的「▴ 顶部」切换，状态存 localStorage） */
 	const [appbarHidden, setAppbarHidden] = useState(() => localStorage.getItem("agent-web:appbar-hidden") === "1");
 	const [previewVisible, setPreviewVisible] = useState(true);
@@ -82,6 +95,12 @@ export function App() {
 	};
 	// 右侧面板的标签：文件与终端共用（终端也在右侧，标签上标出来）
 	const [panelItems, setPanelItems] = useState<PanelItem[]>([]);
+	/**
+	 * 右侧面板此刻**真的在显示**吗：铺开（previewWide）会把 workspace 整块替换掉，
+	 * 所以「铺开」必须和「面板可见 + 有内容」绑在一起 —— 不然收起面板时会剩一片空白，
+	 * 连输入框都没有（用户只能靠再点开面板才能救回来）。
+	 */
+	const panelOpen = previewVisible && panelItems.length > 0;
 	const [activeItem, setActiveItem] = useState<string | null>(null);
 	const [termSeq, setTermSeq] = useState(0);
 	const state = useAppState();
@@ -144,6 +163,7 @@ export function App() {
 		messages.at(-1)?.blocks.reduce((sum, block) => sum + (block.kind === "text" ? block.text.length : 0), 0) ?? 0;
 	const scroll = useStickToBottom(
 		`${messages.length}:${lastTextLength}:${snapshot?.running.streamingText?.length ?? 0}:${snapshot?.active.conversationId ?? ""}`,
+		snapshot?.active.conversationId ?? null,
 	);
 
 	return (
@@ -155,17 +175,33 @@ export function App() {
 			) : null}
 			{/* 顶部区域：横跨整个宽度，三栏都在它下面 */}
 			<div className="appbar" hidden={appbarHidden}>
-				<button
-					type="button"
-					className="appbar-drawer"
-					onClick={() => setCollapsed((value) => !value)}
-					title="项目列表"
-					aria-label="项目列表"
-				>
-					☰
-				</button>
+				{/* 手机：☰ 是抽屉开关（必须留）。
+				    桌面：收起态才需要入口 —— 展开态直接点分割线上的小箭头（见 .side-collapse） */}
+				{mobileShell ? (
+					<button
+						type="button"
+						className="appbar-drawer"
+						onClick={() => setCollapsed((value) => !value)}
+						title="项目列表"
+						aria-label="项目列表"
+					>
+						☰
+					</button>
+				) : collapsed ? (
+					<button
+						type="button"
+						className="appbar-drawer appbar-drawer-open"
+						onClick={() => setCollapsed(false)}
+						title="展开项目列表"
+						aria-label="展开项目列表"
+					>
+						<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} aria-hidden="true">
+							<path d="M6 3.6 10.4 8 6 12.4" strokeLinecap="round" strokeLinejoin="round" />
+						</svg>
+					</button>
+				) : null}
 				<span className="brand">
-					<img className="brand-icon" src="/favicon.svg" alt="" aria-hidden="true" />
+					<img className="brand-icon" src="/favicon.svg?v=4" alt="" aria-hidden="true" />
 					<span className="brand-name">{BRAND_NAME}</span>
 				</span>
 				<button type="button" className="appbar-new appbar-new-primary" onClick={() => newChat()} title="新建会话">
@@ -176,13 +212,20 @@ export function App() {
 				</button>
 				{/* 预留区：以后放全局搜索 / 命令面板 */}
 				<span className="appbar-slot" />
+				{/* 智能体引擎切换：切完项目 / 模型 / 能力一并跟着换（ADR-0024） */}
+				<EnginePicker />
 				{/* 模型 / 技能 / 推送 / 设置：靠右对齐（窄屏只留图标） */}
 				<SidebarMenu variant="full" placement="appbar" items={["models", "skills", "push", "settings"]} />
 				{panelItems.length > 0 ? (
 					<button
 						type="button"
 						className={`side-foot-btn appbar-panel-btn${previewVisible ? " side-foot-btn-on" : ""}`}
-						onClick={() => setPreviewVisible((visible) => !visible)}
+						onClick={() => {
+							const next = !previewVisible;
+							setPreviewVisible(next);
+							// 收起时必须退出铺开：否则 workspace 和面板都不渲染 = 整块空白
+							if (!next) setPreviewWide(false);
+						}}
 						title={previewVisible ? "收起右侧面板" : "展开右侧面板"}
 					>
 						<svg className="appbar-panel-icon" viewBox="0 0 16 16" aria-hidden="true">
@@ -244,6 +287,20 @@ export function App() {
 									setActiveItem(id);
 								}}
 							/>
+							{/* 分割线上的收起按钮：点一下把侧栏收起来（拖拽条仍是拖宽用） */}
+							<button
+								type="button"
+								className="side-collapse"
+								title="收起项目列表"
+								aria-label="收起项目列表"
+								// 别让按下的这一帧被拖拽条接走（否则会变成一次 0 位移的拖动）
+								onPointerDown={(event) => event.stopPropagation()}
+								onClick={() => setCollapsed(true)}
+							>
+								<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} aria-hidden="true">
+									<path d="M10 3.6 5.6 8 10 12.4" strokeLinecap="round" strokeLinejoin="round" />
+								</svg>
+							</button>
 							{/* 拖拽条：右边边缘 6px，双击回到默认宽度 */}
 							<div
 								className="side-resizer"
@@ -259,7 +316,7 @@ export function App() {
 
 				<div className="right-col">
 					<div className={`right-upper${previewWide ? " right-upper-wide" : ""}`}>
-						{previewWide ? null : (
+						{previewWide && panelOpen ? null : (
 							<div className="workspace">
 								<main className="main" ref={scroll.ref}>
 									{snapshot && messages.length === 0 ? (
@@ -276,9 +333,14 @@ export function App() {
 										<MessageList
 											messages={messages}
 											hasMoreBefore={snapshot.active.hasMoreBefore}
+											// 实时 token / 速度只算「当前这个会话真的在跑」的回合（预览缓存里不算）
+											running={
+												preview === null &&
+												snapshot.running.status !== "idle" &&
+												snapshot.running.conversationId === snapshot.active.conversationId
+											}
 											// 每条消息按自己生成时的模型显示（id → 显示名）
 											modelLabels={Object.fromEntries(snapshot.models.map((item) => [item.id, item.label]))}
-											actions={snapshot.actions}
 											pending={(snapshot.queued ?? []).filter(
 												(item) => item.conversationId === snapshot.active.conversationId,
 											)}
@@ -288,10 +350,6 @@ export function App() {
 												cancelQueued(queueId);
 											}}
 											onCancelPending={(queueId: string) => cancelQueued(queueId)}
-											running={
-												snapshot?.running.status !== "idle" &&
-												snapshot?.running.conversationId === snapshot?.active.conversationId
-											}
 										/>
 									) : (
 										<div className="empty">等待服务端快照…（后端没起来的话看终端日志）</div>
@@ -306,6 +364,16 @@ export function App() {
 
 								{state.lastError ? <div className="error-bar">{state.lastError}</div> : null}
 								<NoticeBar notices={snapshot?.notices ?? []} />
+								{/* 下一步建议：放在输入区上方，空会话也看得见「想一想」 */}
+								<div className="action-row-host">
+									<ActionSuggestions
+										actions={snapshot?.actions ?? []}
+										running={
+											snapshot?.running.status !== "idle" &&
+											snapshot?.running.conversationId === (snapshot?.active.conversationId ?? null)
+										}
+									/>
+								</div>
 								<Composer
 									running={
 										snapshot?.running.status !== "idle" &&
@@ -316,14 +384,17 @@ export function App() {
 							</div>
 						)}
 
-						{panelItems.length > 0 && previewVisible ? (
+						{panelOpen ? (
 							<PreviewPanel
 								items={panelItems}
 								activeId={activeItem ?? panelItems[0]?.id ?? ""}
 								onActivate={setActiveItem}
 								onCloseItem={(id) => {
-									setPanelItems((current) => current.filter((item) => item.id !== id));
+									const next = panelItems.filter((item) => item.id !== id);
+									setPanelItems(next);
 									if (activeItem === id) setActiveItem(null);
+									// 关掉最后一项 = 面板消失：铺开态也要退出，否则对话区跟着一起没了
+									if (next.length === 0) setPreviewWide(false);
 								}}
 								onCloseAll={() => {
 									setPanelItems([]);
@@ -334,15 +405,14 @@ export function App() {
 							/>
 						) : null}
 					</div>
+					{/* 状态栏只在**右侧工作区**这一栏（左边那栏底部是文件管理，各用各的） */}
+					<StatusBar
+						snapshot={snapshot}
+						appbarHidden={appbarHidden}
+						onToggleAppbar={() => setAppbarHidden((value) => !value)}
+					/>
 				</div>
 			</div>
-
-			{/* 状态栏横跨整个窗口（和顶栏一样全通）：左侧项目栏到它上面为止 */}
-			<StatusBar
-				snapshot={snapshot}
-				appbarHidden={appbarHidden}
-				onToggleAppbar={() => setAppbarHidden((value) => !value)}
-			/>
 
 			{snapshot?.pendingApproval ? <ApprovalDialog approval={snapshot.pendingApproval} /> : null}
 		</div>

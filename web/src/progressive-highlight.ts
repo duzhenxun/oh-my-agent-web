@@ -34,7 +34,9 @@ function cancelIdle(handle: IdleHandle): void {
 }
 
 /**
- * @param lines 文件的每一行
+ * @param lines 文件的每一行 —— **必须 memo 过**（引用稳定）。它决定 effect 何时重跑；
+ *              每次渲染现造数组（比如内联 `text.split("\n")`）会「高亮 → setState → 重渲染 →
+ *              新数组 → 再高亮」无限循环。
  * @param language highlight.js 的语言名（空串 = 不做高亮）
  * @param highlight 单行 → HTML 的函数（由调用方持有 hljs 实例）
  */

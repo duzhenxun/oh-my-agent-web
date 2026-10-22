@@ -94,7 +94,7 @@ export function PushPanel() {
 				return;
 			}
 			const reg = await navigator.serviceWorker.getRegistration("/sw.js");
-			const options = { body: "这是本地通知测试，不经过服务端。", icon: "/favicon.svg", tag: "agent-web-local" };
+			const options = { body: "这是本地通知测试，不经过服务端。", icon: "/icons/icon-192.png", tag: "agent-web-local" };
 			if (reg) await reg.showNotification(BRAND_NAME, options);
 			else new Notification(BRAND_NAME, options);
 			setMessage("已发出本地通知（没看到的话检查系统通知设置）");

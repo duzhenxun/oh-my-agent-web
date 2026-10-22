@@ -18,10 +18,12 @@
 @import "./styles/provider-checklist.css";
 @import "./styles/provider-switch.css";
 @import "./styles/app-bar.css";
+@import "./styles/engine-picker.css";
 @import "./styles/app-bar-mobile.css";
 @import "./styles/terminal.css";
 @import "./styles/skills.css";
 @import "./styles/chat.css";
+@import "./styles/action-suggestions.css";
 @import "./styles/newchat.css";
 @import "./styles/composer-actions.css";
 @import "./styles/statusbar.css";

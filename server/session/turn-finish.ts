@@ -50,22 +50,54 @@ export function createTurnFinisher(deps: {
 	};
 }
 
-/** 把 settleTurnMarkers 的调用签名收成上面那个形状（避免 runtime 里再写一段） */
-export function settleWith(state: ServerState, nextId: (prefix: string) => string) {
-	return (input: { conversationId: string; messageId: string; rawText: string }) =>
-		settleTurnMarkers({ state, ...input, nextId });
+/**
+ * runtime 侧的整套收尾装配（落盘 + 队列排空 + 推送回调）。
+ * 抽出来是为了让 runtime 只留一行：它自己的业务（推送通知）用 onTurnFinished 注入。
+ */
+export function createRuntimeTurnFinisher(options: {
+	state: ServerState;
+	turns: Map<string, { messageId: string; rawText: string }>;
+	nextId: (prefix: string) => string;
+	/** 回合结束的「现在」（写进消息的 endedAt；测试可注入固定值） */
+	now?: () => number;
+	shiftQueued: (conversationId: string) => QueuedMessage | null;
+	sendNext: (message: QueuedMessage, conversationId: string) => void;
+	cancelPending: () => void;
+	onTurnFinished?: (info: { conversationId: string; title: string; workspace: string; failed: boolean }) => void;
+	touchConversation: (conversationId: string) => void;
+	refreshStats: () => void;
+	refreshProjects: () => void;
+	notice: (text: string, level: "info" | "warn" | "error") => void;
+	pushSnapshot: () => void;
+}): (conversationId: string, reason: "done" | "interrupted" | "error") => Promise<void> {
+	return createTurnFinisher({
+		state: options.state,
+		turns: options.turns,
+		shiftQueued: options.shiftQueued,
+		sendNext: options.sendNext,
+		cancelPending: options.cancelPending,
+		settle: (info) => {
+			settleWith(options.state, options.nextId, options.now)(info);
+			const conversation = options.state.conversations.find((item) => item.id === info.conversationId);
+			options.onTurnFinished?.({
+				conversationId: info.conversationId,
+				title: conversation?.title ?? "会话",
+				workspace: conversation?.workspace ?? options.state.workspace,
+				failed: false,
+			});
+		},
+		touchConversation: options.touchConversation,
+		refreshStats: options.refreshStats,
+		refreshProjects: options.refreshProjects,
+		notice: options.notice,
+		pushSnapshot: options.pushSnapshot,
+	});
 }
 
-/** 等这一轮的落盘完成（同一会话的下一次回合不应与其持久化重叠） */
-export async function awaitTurnPersisted(
-	turns: Map<string, { finish?: Promise<void> }>,
-	conversationId: string,
-): Promise<void> {
-	const pending = turns.get(conversationId)?.finish;
-	if (!pending) return;
-	await pending;
-	const turn = turns.get(conversationId);
-	if (turn) turn.finish = undefined;
+/** 把 settleTurnMarkers 的调用签名收成上面那个形状（避免 runtime 里再写一段） */
+export function settleWith(state: ServerState, nextId: (prefix: string) => string, now?: () => number) {
+	return (input: { conversationId: string; messageId: string; rawText: string }) =>
+		settleTurnMarkers({ state, ...input, nextId, at: now?.() });
 }
 
 /** 维护 runningByConversation（并行时侧栏可以同时多行转圈） */

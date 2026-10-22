@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { referenceFor } from "../file-preview.ts";
+import { collapseAt } from "../file-tree-model.ts";
 import { setDraft } from "../store.ts";
 
 type FileEntry = { name: string; path: string; isDir: boolean };
@@ -53,7 +54,10 @@ export function FileTree({
 		setNodes([]);
 		setError(null);
 		if (!root) return;
+		// 切项目 / 切「显示隐藏文件」时，上一次的响应可能后到：用标记把它丢掉
+		let cancelled = false;
 		void fetchList("", root, showHidden).then(({ entries, error: failure }) => {
+			if (cancelled) return;
 			if (failure) {
 				setError(failure);
 				return;
@@ -69,35 +73,47 @@ export function FileTree({
 				})),
 			);
 		});
+		return () => {
+			cancelled = true;
+		};
 	}, [root, showHidden]);
 
-	const toggleDir = async (index: number) => {
-		const node = nodes[index];
+	const toggleDir = async (path: string) => {
+		const node = nodes.find((item) => item.entry.path === path);
 		if (!node) return;
 		if (node.expanded) {
-			setNodes((current) => current.map((item, i) => (i === index ? { ...item, expanded: false } : item)));
+			// 收起：箭头翻回去，并把子孙行一起移掉（否则行还留在原地，看起来「收不起来」）
+			setNodes((current) => {
+				const index = current.findIndex((item) => item.entry.path === path);
+				return index < 0 ? current : collapseAt(current, index);
+			});
 			return;
 		}
-		setNodes((current) => current.map((item, i) => (i === index ? { ...item, expanded: true, loading: true } : item)));
-		const { entries, error: failure } = await fetchList(node.entry.path, root, showHidden);
+		setNodes((current) =>
+			current.map((item) => (item.entry.path === path ? { ...item, expanded: true, loading: true } : item)),
+		);
+		const { entries, error: failure } = await fetchList(path, root, showHidden);
 		setNodes((current) => {
-			const next: Node[] = [];
-			current.forEach((item, i) => {
-				next.push(i === index ? { ...item, loading: false, children: entries ?? null, error: failure ?? null } : item);
-				if (i === index && !failure && entries) {
-					for (const child of entries) {
-						next.push({
-							entry: child,
-							depth: item.depth + 1,
-							expanded: false,
-							loading: false,
-							children: null,
-							error: null,
-						});
-					}
-				}
-			});
-			return next;
+			// 按**路径**回填（不再用渲染时捕获的 index）：await 期间树可能已经变了
+			// （切项目、折叠了上面的目录），按 index 插会把子节点塞到别的目录下面。
+			const index = current.findIndex((item) => item.entry.path === path && item.expanded);
+			const target = index < 0 ? undefined : current[index];
+			if (!target) return current; // 已经收起 / 整棵树被换掉：这次结果直接丢弃
+			const head = current
+				.slice(0, index + 1)
+				.map((item, i) =>
+					i === index ? { ...item, loading: false, children: entries ?? null, error: failure ?? null } : item,
+				);
+			if (failure || !entries) return [...head, ...current.slice(index + 1)];
+			const children: Node[] = entries.map((child) => ({
+				entry: child,
+				depth: target.depth + 1,
+				expanded: false,
+				loading: false,
+				children: null,
+				error: null,
+			}));
+			return [...head, ...children, ...current.slice(index + 1)];
 		});
 	};
 
@@ -112,12 +128,18 @@ export function FileTree({
 						type="button"
 						className={`filetree-row filetree-${node.entry.isDir ? "dir" : "file"}`}
 						style={{ paddingLeft: 8 + node.depth * 14 }}
-						onClick={() => (node.entry.isDir ? void toggleDir(index) : onOpenFile(node.entry.path))}
+						onClick={() => (node.entry.isDir ? void toggleDir(node.entry.path) : onOpenFile(node.entry.path))}
 						title={node.entry.path}
 					>
 						<span className="filetree-icon" aria-hidden="true">
 							{node.entry.isDir ? (node.expanded ? "▾" : "▸") : "·"}
 						</span>
+						{/* 目录额外给一个文件夹图标：开着的用 📂，收起用 📁，一眼能分清「这是文件夹」 */}
+						{node.entry.isDir ? (
+							<span className="filetree-folder" aria-hidden="true">
+								{node.expanded ? "📂" : "📁"}
+							</span>
+						) : null}
 						<span className="filetree-name">{node.entry.name}</span>
 						{node.loading ? <span className="filetree-hint">…</span> : null}
 					</button>

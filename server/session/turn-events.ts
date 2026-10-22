@@ -14,6 +14,7 @@ import type { Notice, ServerEvent, UiMessage } from "../protocol.js";
 import type { EngineEvent } from "../engine/port.js";
 import type { ServerState } from "../snapshot/state.js";
 import { appendError, appendText, appendThinking, finishTool, startTool } from "../snapshot/messages.js";
+import { scheduledCost } from "../util/pricing-index.js";
 
 /** 思考计时：messageId → 这一段思考的起点（跨事件累计，最后落成 message.thinkingMs） */
 const thinkingSince = new Map<string, number>();
@@ -35,6 +36,35 @@ export type TurnEventContext = {
 	/** 回合结束（done / interrupted / error）：由 runtime 负责落盘与状态收尾 */
 	onTurnEnd: (conversationId: string, reason: "done" | "interrupted" | "error") => void;
 };
+
+/**
+ * 组装「事件 → 状态」的上下文（从 runtime 抽出来，省下十来行装配代码）。
+ * runtime 只提供三件事：原始文本累积、事件出口、回合收尾。
+ */
+export function createTurnContext(options: {
+	state: ServerState;
+	now: () => number;
+	pushSnapshot: () => void;
+	emitEvent: (event: ServerEvent) => void;
+	notice: (text: string, level?: Notice["level"]) => void;
+	/** 思考增量节流后的推帧（runtime 注入 createThrottle 的结果） */
+	onThinkingDelta: (conversationId: string) => void;
+	/** 原始正文累积并返回可显示部分（ADR-0022 的标记扣留） */
+	appendRawText: (chunk: string, conversationId: string) => string;
+	/** 回合结束：落盘 + 状态收尾（runtime 负责） */
+	finish: (conversationId: string, reason: "done" | "interrupted" | "error") => void;
+}): TurnEventContext {
+	return {
+		state: options.state,
+		now: options.now,
+		pushSnapshot: options.pushSnapshot,
+		emitEvent: options.emitEvent,
+		notice: options.notice,
+		onThinkingDelta: options.onThinkingDelta,
+		onTextDelta: options.appendRawText,
+		onTurnEnd: options.finish,
+	};
+}
 
 export type TurnEventInput = {
 	conversationId: string;
@@ -84,16 +114,34 @@ export function applyEngineEvent(context: TurnEventContext, input: TurnEventInpu
 			return;
 		}
 		case "usage": {
-			patch((message) => ({
-				...message,
-				usage: {
-					input: event.input,
-					output: event.output,
-					cacheRead: event.cacheRead,
-					cacheWrite: event.cacheWrite,
-					...(event.cost === undefined ? {} : { cost: event.cost }),
-				},
-			}));
+			// 过程值不算（final:false）：同一轮里每调一次模型都会有一份最终值，
+			// 全部**累加**才是这一轮的真实开销 —— 以前是覆盖，只剩最后一次调用的数字。
+			if (event.final === false) return;
+			patch((message) => {
+				const previous = message.usage;
+				// 分时价格（ADR-0026 D 期）：模型配了时段表就按「这次调用发生的时刻」算钱，
+				// 引擎给的 cost 只是兜底（厂商的分时价 pi 根本不知道，混着算只会更错）。
+				// 用增量而不是总额：一轮里跨过时段边界也能各算各的。
+				const scheduled = scheduledCost(
+					message.model ?? state.model,
+					{ input: event.input, output: event.output, cacheRead: event.cacheRead, cacheWrite: event.cacheWrite },
+					context.now(),
+				);
+				const delta = scheduled ?? event.cost;
+				// 只有真的拿到过价格才给：拿不到就别编一个 0 出来
+				const cost =
+					previous?.cost === undefined && delta === undefined ? undefined : (previous?.cost ?? 0) + (delta ?? 0);
+				return {
+					...message,
+					usage: {
+						input: (previous?.input ?? 0) + event.input,
+						output: (previous?.output ?? 0) + event.output,
+						cacheRead: (previous?.cacheRead ?? 0) + event.cacheRead,
+						cacheWrite: (previous?.cacheWrite ?? 0) + event.cacheWrite,
+						...(cost === undefined ? {} : { cost }),
+					},
+				};
+			});
 			return;
 		}
 		case "tool_start": {

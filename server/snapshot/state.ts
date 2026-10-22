@@ -9,6 +9,7 @@ import {
 	PROTOCOL_VERSION,
 	type ApprovalMode,
 	type EngineCapabilities,
+	type EngineOption,
 	type ProviderView,
 	type SessionStats,
 	type ConversationMeta,
@@ -29,6 +30,8 @@ import {
 export type ServerState = {
 	workspace: string;
 	engine: EngineName;
+	/** 可切换的引擎清单（注册表给的，不随会话变） */
+	engines: EngineOption[];
 	model: string | null;
 	approvalMode: ApprovalMode;
 	engineCapabilities: EngineCapabilities;
@@ -72,6 +75,7 @@ export function createServerState(workspace: string, engine: EngineName = "pi"):
 	return {
 		workspace,
 		engine,
+		engines: [],
 		model: null,
 		// ADR-0034：默认全部放行（提示仍然会出现在快照/悬浮牌上，用户可以随时切回「询问」）
 		approvalMode: "allow",
@@ -90,6 +94,8 @@ export function createServerState(workspace: string, engine: EngineName = "pi"):
 			projectPrefs: { order: [], pinned: [], aliases: {} },
 			sessionPrefs: { pinned: [], archived: [] },
 			defaultModels: {},
+			thinkCount: 5,
+			thinkTimeoutSec: 20,
 		},
 		actions: [],
 		conversations: [],
@@ -115,6 +121,25 @@ export function createServerState(workspace: string, engine: EngineName = "pi"):
 export function setPiProjects(state: ServerState, projects: PiProject[]): void {
 	state.piProjects = projects;
 	state.piProjectsVersion += 1;
+}
+
+/** 会话元数据刷新（内存态）：updatedAt / messageCount 跟着消息走 */
+export function touchConversationIn(
+	state: ServerState,
+	conversationId: string,
+	now: number,
+	patch: { title?: string } = {},
+): void {
+	state.conversations = state.conversations.map((conversation) =>
+		conversation.id === conversationId
+			? {
+					...conversation,
+					...patch,
+					updatedAt: now,
+					messageCount: state.messages[conversationId]?.length ?? conversation.messageCount,
+				}
+			: conversation,
+	);
 }
 
 export function createConversation(input: {
@@ -191,6 +216,7 @@ export function buildSnapshot(
 	return {
 		protocolVersion: PROTOCOL_VERSION,
 		engine: state.engine,
+		engines: state.engines.map((option) => ({ ...option, capabilities: { ...option.capabilities } })),
 		model: pickPerConversation(state.modelByConversation, activeId, state.model),
 		approvalMode: state.approvalMode,
 		engineCapabilities: { ...state.engineCapabilities },
@@ -217,6 +243,8 @@ export function buildSnapshot(
 				pinned: [...state.settings.sessionPrefs.pinned],
 				archived: [...state.settings.sessionPrefs.archived],
 			},
+			thinkCount: state.settings.thinkCount,
+			thinkTimeoutSec: state.settings.thinkTimeoutSec,
 		},
 		...(options.includeProjects === false
 			? {}

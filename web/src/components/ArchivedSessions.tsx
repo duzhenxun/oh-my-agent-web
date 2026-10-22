@@ -13,11 +13,19 @@ export function ArchivedSessions({
 	onBack,
 	onOpen,
 	onRestore,
+	onRestoreMany,
 }: {
 	groups: { name: string; items: { id: string; title: string; time: string }[] }[];
 	onBack: () => void;
 	onOpen: (id: string) => void;
+	/** 恢复一条 */
 	onRestore: (id: string) => void;
+	/**
+	 * 批量恢复：**一次请求**改整份 archived 列表。
+	 * 以前是 for 循环调 onRestore，每条请求都基于同一份旧 archived 计算，
+	 * 服务端又是整表覆盖 → 只有最后一条生效（选 5 条只回来 1 条）。
+	 */
+	onRestoreMany: (ids: string[]) => void;
 }) {
 	const total = groups.reduce((sum, group) => sum + group.items.length, 0);
 	const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -57,7 +65,10 @@ export function ArchivedSessions({
 	};
 
 	const restoreSelected = () => {
-		for (const id of selected) onRestore(id);
+		const ids = [...selected];
+		if (ids.length === 0) return;
+		if (ids.length === 1) onRestore(ids[0] as string);
+		else onRestoreMany(ids);
 		setSelected(new Set());
 	};
 

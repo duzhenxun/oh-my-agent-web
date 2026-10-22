@@ -2,8 +2,8 @@
  * HTTP 的「非 API」部分（从 index.ts 抽出：400 行护栏）：健康检查 + 前端静态资源。
  */
 import express, { type Express } from "express";
-import { compressText, immutableAssets } from "./compress.js";
 import { PROTOCOL_VERSION, type EngineName } from "../protocol.js";
+import { webVersion } from "../util/version.js";
 
 export function registerHealthAndStatic(
 	app: Express,
@@ -15,15 +15,16 @@ export function registerHealthAndStatic(
 		counts: () => { sessions: number; conversations: number };
 	},
 ): void {
-	// 压缩 + 缓存头要在静态与 API 之前挂（两条都是外网首屏的关键路径）
-	app.use(compressText());
-	app.use(immutableAssets());
+	// 压缩 + 缓存头由 index.ts 在**注册 API 路由之前**挂（见那里的注释）：
+	// 在这里挂只会覆盖它之后注册的路由，`/api/rpc` 那些大包就永远压不到。
 
 	app.get("/api/health", (_request, response) => {
 		const counts = options.counts();
 		response.json({
 			ok: true,
 			protocolVersion: PROTOCOL_VERSION,
+			// 跑着的这个进程的版本（omaw status 用它和磁盘上的 package.json 对比）
+			version: webVersion(),
 			workspace: options.workspace,
 			engine: options.engine,
 			// 会话事实源是 pi 的会话存储（ADR-0021 §2）→ 报它的数量

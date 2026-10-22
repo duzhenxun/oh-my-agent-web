@@ -40,7 +40,13 @@ type SessionHandle = {
 		isStreaming: boolean;
 	};
 	workspace: string;
+	/** 取消**全部**监听器（关会话 / 切引擎时用） */
 	unsubscribe: () => void;
+	/**
+	 * 当前挂着的订阅。**按次登记**：一轮在跑时「引导」会再 subscribe 一次，
+	 * 以前两者共用一个 `unsubscribe` 字段，第二轮一结束就把第一轮的监听器弄丢（泄漏 + 事件重复）。
+	 */
+	subscriptions: Set<() => void>;
 	/** 正在被 abort（用来把 agent_settled 翻译成「中断」而不是「完成」） */
 	aborting: boolean;
 	/** 会话转录的管理器（ADR-0021 §2：读条目 → 界面消息） */
@@ -135,10 +141,15 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 			sessionManager,
 		});
 
+		const subscriptions = new Set<() => void>();
 		const handle: SessionHandle = {
 			session: session as unknown as SessionHandle["session"],
 			workspace,
-			unsubscribe: () => {},
+			unsubscribe: () => {
+				for (const off of subscriptions) off();
+				subscriptions.clear();
+			},
+			subscriptions,
 			aborting: false,
 			sessionManager: sessionManager as unknown as SessionHandle["sessionManager"],
 			sessionPath: sessionPath ?? sessionManager.getSessionFile() ?? null,
@@ -183,10 +194,11 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 		},
 
 		async openSession(openOptions) {
-			// SessionManager.open 会读首行 header 拿到 cwd，并把后续写入追加回**同一个文件**
-			const sessionManager = SessionManager.open(openOptions.sessionPath, options.sessionDir);
+			const sessionPath = openOptions.sessionPath ?? openOptions.engineSessionId;
+			if (!sessionPath) throw new Error("pi 打开会话需要 sessionPath（文件路径）");
+			const sessionManager = SessionManager.open(sessionPath, options.sessionDir); // header 里的 cwd + 同一个文件续写
 			const workspace = sessionManager.getCwd() || process.cwd();
-			await startSession(openOptions.sessionId, workspace, sessionManager, openOptions.sessionPath);
+			await startSession(openOptions.sessionId, workspace, sessionManager, sessionPath);
 		},
 
 		renameSession: (sessionPath, name) => renameSessionIn(sessions, sessionPath, name, options.sessionDir),
@@ -214,6 +226,7 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 
 			handle.aborting = false;
 			let interrupted = false;
+			let providerError = false;
 			let failed: { code: string; message: string } | null = null;
 			let settled: Promise<void> | null = null;
 			let markSettled: (() => void) | null = null;
@@ -221,9 +234,12 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 				markSettled = resolve;
 			});
 
-			handle.unsubscribe = handle.session.subscribe((event: unknown) => {
+			// 订阅**按次**持有：steer 会并发再进一次 sendMessage，两轮各自摘自己的监听器
+			const off = handle.session.subscribe((event: unknown) => {
 				const mapped = mapSessionEvent(event);
 				if (mapped) {
+					// provider 报错也要算「这一轮失败」：不能最后还发 turn_end: done
+					if (mapped.type === "error") providerError = true;
 					onEvent(mapped);
 					return;
 				}
@@ -233,6 +249,7 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 					markSettled?.();
 				}
 			});
+			handle.subscriptions.add(off);
 
 			try {
 				// 图片走 SDK 的 images 参数（视觉注入）；没有图片时不传，避免空数组影响提示词缓存
@@ -256,8 +273,8 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 					message: error instanceof Error ? error.message : String(error),
 				};
 			} finally {
-				handle.unsubscribe();
-				handle.unsubscribe = () => {};
+				off();
+				handle.subscriptions.delete(off);
 			}
 
 			if (failed) {
@@ -265,7 +282,7 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 				onEvent({ type: "turn_end", reason: "error" });
 				return;
 			}
-			onEvent({ type: "turn_end", reason: interrupted ? "interrupted" : "done" });
+			onEvent({ type: "turn_end", reason: interrupted ? "interrupted" : providerError ? "error" : "done" });
 		},
 
 		async interrupt(sessionId: string) {
@@ -382,17 +399,24 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 			sessions.delete(sessionId);
 		},
 
-		// 关掉一个会话（宿主换会话/退出时用）
-		async dispose(sessionId: string) {
-			const handle = sessions.get(sessionId);
-			if (!handle) return;
-			handle.unsubscribe();
-			try {
-				handle.session.dispose();
-			} catch {
-				// 已经关掉了
+		/**
+		 * 关会话：给了 id 就关那一个；**不给就是引擎级 dispose（切引擎时宿主就是这么调的）**，
+		 * 把所有会话一起关掉。以前这个签名必填 sessionId，宿主 `dispose?.()` 传空 →
+		 * `sessions.get(undefined)` 什么也没关，每切一次引擎就漏一批 SDK 会话与资源加载器。
+		 */
+		async dispose(sessionId?: string) {
+			const ids = sessionId ? [sessionId] : [...sessions.keys()];
+			for (const id of ids) {
+				const handle = sessions.get(id);
+				if (!handle) continue;
+				handle.unsubscribe();
+				try {
+					handle.session.dispose();
+				} catch {
+					// 已经关掉了
+				}
+				sessions.delete(id);
 			}
-			sessions.delete(sessionId);
 		},
-	} as EnginePort & { dispose: (sessionId: string) => Promise<void> };
+	} as EnginePort;
 }

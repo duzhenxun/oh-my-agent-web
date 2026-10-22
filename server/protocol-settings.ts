@@ -37,4 +37,8 @@ export type SettingsView = {
 	sessionPrefs: SessionPrefs;
 	/** 每个项目的默认模型（workspace 绝对路径 → `provider/model`）：新会话按它起步 */
 	defaultModels: Record<string, string>;
+	/** 「想想」一次生成几条下一步建议（1–8） */
+	thinkCount: number;
+	/** 「想想」最多等多久（秒，5–180）：超时就中断那个隐藏回合 */
+	thinkTimeoutSec: number;
 };

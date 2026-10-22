@@ -30,7 +30,7 @@ export type PortError = { code?: string };
 /** 把 listen 的错误翻译成人话（尤其是「端口被占」这种最常见的一种） */
 export function describeListenError(error: PortError, port: number, holderHint?: string): string {
 	if (error.code === "EADDRINUSE") {
-		const hint = holderHint ? `；${holderHint}` : "；先确认是否已有实例在跑（看 ~/.agent-web/server.lock）";
+		const hint = holderHint ? `；${holderHint}` : "；先确认是否已有实例在跑（看数据目录里的 server.lock）";
 		return `端口 ${port} 已被占用，本进程退出${hint}`;
 	}
 	if (error.code === "EACCES") return `没有权限监听端口 ${port}（小于 1024 的端口通常需要特权）`;

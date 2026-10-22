@@ -20,7 +20,7 @@
 	padding: 8px 8px 0;
 }
 
-/* 右侧一列：上边是「对话 + 右侧面板」（状态栏已经挪到 .app 底下一层，横贯全宽） */
+/* 右侧一列：上边是「对话 + 右侧面板」，下边是状态栏（只占这一栏，左边那栏底部是文件管理） */
 .right-col {
 	flex: 1 1 auto;
 	display: flex;
@@ -169,7 +169,8 @@
 	/* 固定 24px 高：字 10px + 里面最小 12px 的圆环，正好放得下 */
 	height: 24px;
 	box-sizing: border-box;
-	padding: 0 10px;
+	/* 右边不留内边距：「项目名 + 顶部」要贴到窗口右沿，留一条空白看着像少了一块 */
+	padding: 0 0 0 10px;
 	border-top: 1px solid var(--border);
 	background: var(--bg-elev);
 	color: var(--text-faint);
@@ -250,12 +251,12 @@
 	padding-right: 0;
 }
 
-/* 正文与输入区仍然离滚动条一点距离（否则文字会顶到滚动条上） */
+/* 正文与输入区仍然离滚动条一点距离（否则文字会顶到滚动条上）
+   状态栏不在此列：它在滚动区下方，留这 14px 会在右下角空出一块 */
 .workspace .messages,
 .workspace .composer-wrap,
 .workspace .sent-queue,
-.workspace .notices,
-.workspace .statusbar {
+.workspace .notices {
 	margin-right: 14px;
 }
 
@@ -272,6 +273,14 @@
 	height: 20px;
 	border-radius: 5px;
 	flex: none;
+}
+
+/* 品牌名是长英文（oh-my-agent-web）：窄屏上宁可截断，也不能被挤成竖排四行 */
+.brand-name {
+	min-width: 0;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 /* 顶栏「收起/展开」面板按钮：与模型/技能/设置同一套尺寸与边框 */
@@ -365,3 +374,28 @@
 
 /* 手机：顶栏要在一行里放得下「☰ + 图标 + 💬 + 四个入口」
    —— 品牌文字和「新会话」文字收起来（都有 title），入口只留图标 */
+
+/* 桌面收起侧栏后的展开入口：顶栏最左边一颗小箭头（和手机的 ☰ 同一位置） */
+.appbar-drawer-open {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 26px;
+	height: 26px;
+	padding: 0;
+	border: 1px solid var(--border);
+	border-radius: 7px;
+	background: var(--bg-elev);
+	color: var(--text-dim);
+	cursor: pointer;
+}
+
+.appbar-drawer-open:hover {
+	color: var(--accent);
+	border-color: var(--accent-dim);
+}
+
+.appbar-drawer-open svg {
+	width: 14px;
+	height: 14px;
+}

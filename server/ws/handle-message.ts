@@ -61,7 +61,18 @@ export async function handleMessage(socket: WebSocket, raw: string, deps: Handle
 				return;
 			}
 			case "interrupt":
-				deps.reply(socket, request.id, await deps.runtime.interrupt());
+				deps.reply(socket, request.id, await deps.runtime.interrupt(request.payload.conversationId));
+				return;
+			case "refresh_actions":
+				deps.reply(
+					socket,
+					request.id,
+					await deps.runtime.refreshActions(request.payload?.conversationId, request.payload?.count),
+				);
+				return;
+			case "set_engine":
+				// 零重启切引擎：项目 / 模型 / 能力都跟着新引擎走（engine-switch.ts）
+				deps.reply(socket, request.id, await deps.runtime.setEngine(request.payload.engine));
 				return;
 			case "approve":
 				deps.reply(socket, request.id, deps.runtime.approve(request.payload.requestId, request.payload.decision));
@@ -114,7 +125,9 @@ export async function handleMessage(socket: WebSocket, raw: string, deps: Handle
 				// 重连/刷新后的第一件事：拉一份权威快照（ADR-0004 §3）；顺便刷一次 pi 会话列表（带 10s 下限）
 				await deps.runtime.refreshPiSessions();
 				await deps.runtime.refreshProviders();
-				deps.sender.pushSnapshot(deps.runtime.snapshot());
+				// 必须按**这个客户端**生成：用全局快照会让重连的手机拿到电脑的会话
+				// （真实症状：电脑上切会话，手机跟着切 —— get_state 是每次重连都会调的）
+				deps.sender.pushSnapshot(deps.runtime.snapshotFor(deps.clientId));
 				deps.sender.flush(Date.now());
 				deps.reply(socket, request.id, { ok: true });
 				return;

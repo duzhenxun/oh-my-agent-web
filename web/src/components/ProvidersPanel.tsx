@@ -17,6 +17,9 @@ import { ProviderForm } from "./ProviderForm.tsx";
  */
 export function ProvidersPanel() {
 	const { snapshot } = useAppState();
+	// provider 表是 pi 独有的（models-store.json / auth.json）：别的引擎自己管模型，
+	// 这里不能拿 pi 的配置去冒充「当前引擎的模型」。
+	const piOwned = (snapshot?.engine ?? "pi") === "pi"
 	const providers: ProviderView[] = snapshot?.providers ?? [];
 	/** 引擎当前可用的模型（`provider/modelId`）：用来标「已启用」 */
 	/** 启用白名单（pi settings.json）：空数组 = 全开 */
@@ -106,6 +109,16 @@ export function ProvidersPanel() {
 	const totalModels = providers.reduce((sum, provider) => sum + provider.models.length, 0);
 	const enabledTotal = providers.reduce((sum, provider) => sum + enabledCount(provider), 0);
 
+	if (!piOwned) {
+		return (
+			<div className="sidebar-empty">
+				当前引擎（{snapshot?.engine}）的模型由它自己管理，不经过这里的 provider 配置。
+				<br />
+				模型列表来自引擎的 model/list；切回 pi 引擎后可以在这里增删 provider。
+			</div>
+		);
+	}
+
 	return (
 		<>
 			<div className="prov-global-bar">
@@ -160,9 +173,6 @@ export function ProvidersPanel() {
 											{provider.provider}
 											{provider.source === "builtin" ? <span className="side-provider-badge">内置</span> : null}
 											{provider.hasKey ? null : <span className="prov-item-warn">无 key</span>}
-										</span>
-										<span className="prov-item-meta">
-											启用 {enabledCount(provider)}/{provider.models.length}
 										</span>
 									</button>
 									{inlineOpen ? (

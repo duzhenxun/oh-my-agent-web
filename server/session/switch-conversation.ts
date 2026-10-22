@@ -19,6 +19,8 @@ export type SwitchDeps = {
 	refreshModels: (conversationId: string) => Promise<void>;
 	refreshThinking: (conversationId: string) => Promise<void>;
 	refreshStats: () => void;
+	/** 上一个会话不再看了：让引擎放开写锁（codex）；有回合在跑时不调用 */
+	parkPrevious: (conversationId: string) => void;
 	/** 耗时上报（写入启动日志/文件日志，定位「切会话慢」用） */
 	report: (text: string) => void;
 	pushSnapshot: () => void;
@@ -27,8 +29,10 @@ export type SwitchDeps = {
 type Result = { ok: true } | { ok: false; error: { code: string; message: string } };
 
 /** 耗时上报：`switch <id> 总 123ms · open=100ms models=10ms …`（只进日志，不进对话流） */
-function report(deps: SwitchDeps, conversationId: string, began: number, laps: string[]): void {
-	deps.report(`switch ${conversationId.slice(0, 12)} 总 ${Date.now() - began}ms · ${laps.join(" ")}`);
+function report(deps: SwitchDeps, conversationId: string, began: number, laps: string[], clientId?: string): void {
+	// 带上发起者前缀：多设备时能分清「谁切的」，排查串台全靠它
+	const who = clientId ? ` client=${clientId.slice(0, 8)}` : "";
+	deps.report(`switch ${conversationId.slice(0, 12)}${who} 总 ${Date.now() - began}ms · ${laps.join(" ")}`);
 }
 
 export function createSwitchConversation(deps: SwitchDeps) {
@@ -36,15 +40,27 @@ export function createSwitchConversation(deps: SwitchDeps) {
 
 	async function switchTo(conversationId: string, clientId?: string): Promise<Result> {
 		const began = Date.now();
+		const previous = state.activeId;
 		const laps: string[] = [];
 		const lap = (label: string, from: number) => laps.push(`${label}=${Date.now() - from}ms`);
-		// 每个客户端各记一份视图（互不影响）
-		if (clientId) clientView.setActive(clientId, conversationId);
 		const mine = state.conversations.some((conversation) => conversation.id === conversationId);
 		const fromPi = deps.infoOf(conversationId);
+		// 先校验再动状态：以前 parkPrevious / 清建议 / 改客户端视图都在校验之前，
+		// 点一条已删除的会话会把**当前**会话停泊掉（codex 放开写锁）、建议被清空，
+		// 而界面还停在错误提示上 —— 副作用全白做了。
 		if (!mine && !fromPi) {
 			return { ok: false, error: { code: "session.not_found", message: `会话不存在：${conversationId}` } };
 		}
+		if (previous && previous !== conversationId) {
+			deps.parkPrevious(previous);
+			// 建议不跨会话：切走就清空（「想一想」生成的也不保存，下次打开是空的）
+			state.actions = [];
+		}
+		// 每个客户端各记一份视图（互不影响）
+		if (clientId) clientView.setActive(clientId, conversationId);
+		// 统计先换成本会话的缓存（没有就清空）：refreshStats 是异步的，不先换的话
+		// 这一帧快照里还是**上一个会话**的 token 数（新会话看着像"有记录"）。
+		state.sessionStats = state.statsByConversation[conversationId] ?? null;
 
 		if (!mine && fromPi) {
 			if (state.activeId !== conversationId || !state.messages[conversationId]) {
@@ -70,7 +86,7 @@ export function createSwitchConversation(deps: SwitchDeps) {
 			// 无论有没有真的换（已是当前会话也推）：客户端靠这份快照把乐观高亮退掉，
 			// 否则点一下当前会话就变成「正在打开…」卡在那里 —— 看着就是「点了没反应」。
 			deps.pushSnapshot();
-			report(deps, conversationId, began, laps);
+			report(deps, conversationId, began, laps, clientId);
 			return { ok: true };
 		}
 		if (state.activeId !== conversationId) {
@@ -85,13 +101,17 @@ export function createSwitchConversation(deps: SwitchDeps) {
 			const tModels2 = Date.now();
 			await deps.refreshModels(conversationId);
 			lap("models", tModels2);
+			// 思考强度也是「每个会话一份」：自建会话同样要读回来，否则切来切去显示的是上一个会话的
+			const tThinking2 = Date.now();
+			await deps.refreshThinking(conversationId);
+			lap("thinking", tThinking2);
 		}
 		const tStats2 = Date.now();
 		deps.refreshStats();
 		lap("stats", tStats2);
 		// 同一个理由：已经是当前会话也要推一份，客户端才知道「切到了」。
 		deps.pushSnapshot();
-		report(deps, conversationId, began, laps);
+		report(deps, conversationId, began, laps, clientId);
 		return { ok: true };
 	}
 

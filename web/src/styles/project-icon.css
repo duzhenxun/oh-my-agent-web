@@ -181,3 +181,45 @@
 		border-top-color: var(--accent);
 	}
 }
+
+/* 分割线上那颗「收起」小箭头：压在侧栏右边缘，竖着居中。
+   它盖在拖拽条（7px）中间，所以按下时要 stopPropagation，否则会被当成一次拖动。 */
+.side-collapse {
+	position: absolute;
+	top: 50%;
+	right: -10px;
+	transform: translateY(-50%);
+	z-index: 6;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 18px;
+	height: 34px;
+	padding: 0;
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	background: var(--bg-elev);
+	color: var(--text-faint);
+	cursor: pointer;
+	opacity: 0.55;
+	transition:
+		opacity 0.12s ease,
+		color 0.12s ease;
+}
+
+.side-collapse svg {
+	width: 12px;
+	height: 12px;
+}
+
+.side-collapse:hover,
+.side-collapse:focus-visible {
+	opacity: 1;
+	color: var(--accent);
+	border-color: var(--accent-dim);
+}
+
+/* 手机单栏用顶栏的 ☰（抽屉），分割线这颗不出现 */
+.is-mobile-shell .side-collapse {
+	display: none;
+}

@@ -16,10 +16,13 @@ export function compressText() {
 	return (request: Request, response: Response, next: NextFunction): void => {
 		const accept = String(request.headers["accept-encoding"] ?? "");
 		// SSE 与文件字节流不能攒也不能压：
-		//   - SSE 攒着等于永远不发送；
+		//   - SSE 攒着等于永远不发送（终端输出同理）；
 		//   - 视频/音频要支持 Range 拖动，整块进内存会直接把进程吃爆。
 		const streamy =
-			request.path === "/api/events" || request.path === "/api/files/media" || request.path === "/api/files/raw";
+			request.path === "/api/events" ||
+			request.path.startsWith("/api/terminal/stream") ||
+			request.path === "/api/files/media" ||
+			request.path === "/api/files/raw";
 		if (!/gzip/i.test(accept) || streamy) {
 			next();
 			return;
@@ -46,9 +49,16 @@ export function compressText() {
 			const body = Buffer.concat(chunks);
 			const type = String(response.getHeader("content-type") ?? "");
 			const alreadyEncoded = response.getHeader("content-encoding") !== undefined;
+			// HEAD / 204 / 304 没有实体：不能把 content-length 改成 0（那是在撒谎，
+			// 也会让 HEAD 拿不到真实长度）；express.static 已经设好的长度要留着。
+			const status = response.statusCode;
+			const noBody = request.method === "HEAD" || status === 204 || status === 304;
+			const hadLength = response.getHeader("content-length") !== undefined;
 
-			if (alreadyEncoded || !TEXT_TYPE.test(type) || body.length < 1024) {
-				response.setHeader("content-length", String(body.length));
+			if (noBody || alreadyEncoded || !TEXT_TYPE.test(type) || body.length < 1024) {
+				if (!noBody && !(body.length === 0 && hadLength)) {
+					response.setHeader("content-length", String(body.length));
+				}
 				return originalEnd(body, ...(rest as never[]));
 			}
 

@@ -2,9 +2,9 @@
 node_modules/
 dist/
 web/dist/
-coverage/
 
-# 本机运行数据（ADR-0011：默认在 ~/.agent-web，这里是兜底）
+# 本机运行数据（默认在 ~/.oh-my-agent-web，这里是兜底）
+.oh-my-agent-web/
 .agent-web/
 *.log
 

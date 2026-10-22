@@ -18,11 +18,26 @@ export type StickToBottom = {
 	toBottom: () => void;
 };
 
-/** `signal` 变化 = 内容可能有更新（消息条数 / 末条正文长度 / 流式文本） */
-export function useStickToBottom(signal: string): StickToBottom {
+/**
+ * @param signal 变化 = 内容可能有更新（消息条数 / 末条正文长度 / 流式文本）
+ * @param resetKey 会话标识：换了会话就重新「粘底」——否则在 A 里往上翻过之后，
+ *                 切到 B 会带着「用户想往上翻」的状态，新内容不再自动跟随。
+ */
+export function useStickToBottom(signal: string, resetKey?: string | null): StickToBottom {
 	const ref = useRef<HTMLDivElement>(null);
 	const stuckRef = useRef(true);
 	const [stuck, setStuck] = useState(true);
+	const lastKey = useRef(resetKey);
+
+	// 换会话：重新贴底（并立刻滚一次，别等下一次内容变化）
+	useEffect(() => {
+		if (lastKey.current === resetKey) return;
+		lastKey.current = resetKey;
+		stuckRef.current = true;
+		setStuck(true);
+		const element = ref.current;
+		if (element) element.scrollTo({ top: element.scrollHeight });
+	}, [resetKey]);
 
 	// 用户手动滚动 → 记录他是不是还贴着底
 	useEffect(() => {

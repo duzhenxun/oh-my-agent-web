@@ -25,6 +25,18 @@ export const DEFAULT_QUICK_PHRASES = [
 	"提交并跑测试",
 ];
 
+/**
+ * 「想想」参数上下限。
+ * 条数上限跟 `MAX_ACTIONS`（5）对齐：再多也只会被截掉，界面就别给出会落空的选择。
+ * 超时给到 3 分钟：慢模型 + 长上下文时 20 秒确实会不够。
+ */
+export const MIN_THINK_COUNT = 1;
+export const MAX_THINK_COUNT = 5;
+export const DEFAULT_THINK_COUNT = 5;
+export const MIN_THINK_TIMEOUT_SEC = 5;
+export const MAX_THINK_TIMEOUT_SEC = 180;
+export const DEFAULT_THINK_TIMEOUT_SEC = 20;
+
 export const MAX_TEMPLATES = 40;
 export const MAX_TEMPLATE_NAME_CHARS = 24;
 export const MAX_TEMPLATE_DESC_CHARS = 60;
@@ -131,6 +143,10 @@ export type ClientSettings = {
 	sessionPrefs: SessionPrefs;
 	/** 每个项目的默认模型（workspace → `provider/model`）：新会话按它起步 */
 	defaultModels: Record<string, string>;
+	/** 「想想」一次生成几条建议 */
+	thinkCount: number;
+	/** 「想想」隐藏回合的最大等待（秒） */
+	thinkTimeoutSec: number;
 };
 
 export const MAX_DEFAULT_MODELS = 200;
@@ -208,6 +224,8 @@ export function defaultSettings(): ClientSettings {
 		projectPrefs: { order: [], pinned: [], aliases: {} },
 		sessionPrefs: { pinned: [], archived: [] },
 		defaultModels: {},
+		thinkCount: DEFAULT_THINK_COUNT,
+		thinkTimeoutSec: DEFAULT_THINK_TIMEOUT_SEC,
 	};
 }
 
@@ -268,6 +286,13 @@ export function normalizeTemplates(input: unknown): PromptTemplate[] {
 	return out;
 }
 
+/** 纯函数：把一个数字收敛到 [min, max]；不是有限数就用默认值（坏值不抛） */
+export function normalizeInt(input: unknown, min: number, max: number, fallback: number): number {
+	const value = typeof input === "number" ? input : typeof input === "string" ? Number(input.trim()) : Number.NaN;
+	if (!Number.isFinite(value)) return fallback;
+	return Math.min(max, Math.max(min, Math.round(value)));
+}
+
 /** 纯函数：把外来的部分设置合并进现有设置（坏值一律忽略，不抛） */
 export function mergeSettings(current: ClientSettings, patch: unknown): ClientSettings {
 	if (typeof patch !== "object" || patch === null) return current;
@@ -281,6 +306,15 @@ export function mergeSettings(current: ClientSettings, patch: unknown): ClientSe
 	if ("projectPrefs" in record) next.projectPrefs = normalizeProjectPrefs(record.projectPrefs);
 	if ("sessionPrefs" in record) next.sessionPrefs = normalizeSessionPrefs(record.sessionPrefs);
 	if ("defaultModels" in record) next.defaultModels = normalizeDefaultModels(record.defaultModels);
+	if ("thinkCount" in record)
+		next.thinkCount = normalizeInt(record.thinkCount, MIN_THINK_COUNT, MAX_THINK_COUNT, DEFAULT_THINK_COUNT);
+	if ("thinkTimeoutSec" in record)
+		next.thinkTimeoutSec = normalizeInt(
+			record.thinkTimeoutSec,
+			MIN_THINK_TIMEOUT_SEC,
+			MAX_THINK_TIMEOUT_SEC,
+			DEFAULT_THINK_TIMEOUT_SEC,
+		);
 	return next;
 }
 

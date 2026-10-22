@@ -10,7 +10,9 @@
  * 这样单测可以用合成条目直接覆盖，不需要拉起 SDK。
  */
 import { TOOL_EXCERPT_CHARS, type MessageBlock, type UiMessage } from "../protocol.js";
+import { sanitizeHistoricalActions } from "../markers/actions.js";
 import { parseUsage } from "../util/usage.js";
+import { scheduledCost } from "../util/pricing-index.js";
 
 type AnyRecord = Record<string, unknown>;
 
@@ -43,7 +45,10 @@ function truncate(text: string): { outputExcerpt: string; truncated: boolean } {
 
 /**
  * 把一条 SDK message 转成「消息 + 其中的工具块」。
- * 用户/助手消息各自成为一条界面消息；工具结果**不单独成条**，而是回填到对应的工具块上。
+ *
+ * 助手消息只是**一次模型调用**：一轮里有几次工具轮次就有几条。调用方会把同一轮里的
+ * 助手消息**合并成一条界面消息**（见 entriesToUiMessagesRaw）—— 界面上一次提问只该有一个
+ * 回复气泡，费用与 token 也要按整轮累加。
  */
 function mapMessage(entryId: string, message: unknown, order: number): UiMessage | null {
 	const record = asRecord(message);
@@ -70,6 +75,15 @@ function mapMessage(entryId: string, message: unknown, order: number): UiMessage
 				blocks.push({ kind: "text", text: item.text });
 				continue;
 			}
+			// 思考过程也回放出来（「过程」里要按发生顺序摆，历史里没有它就对不上）
+			if (
+				item.type === "thinking" &&
+				typeof (item.thinking ?? item.text ?? item.reasoning) === "string" &&
+				String(item.thinking ?? item.text ?? item.reasoning).trim() !== ""
+			) {
+				blocks.push({ kind: "thinking", text: String(item.thinking ?? item.text ?? item.reasoning) });
+				continue;
+			}
 			if (item.type === "toolCall" || item.type === "tool_use") {
 				blocks.push({
 					kind: "tool",
@@ -83,13 +97,36 @@ function mapMessage(entryId: string, message: unknown, order: number): UiMessage
 					startedAt: ts,
 				});
 			}
-			// thinking 等其它部件不进界面（v1 不展示思考过程）
+			// 其它部件（images 等）不进界面
 		}
 		if (blocks.length === 0) return null;
-		return { id: entryId, role: "assistant", ts, blocks, ...(usage ? { usage } : {}), ...(model ? { model } : {}) };
+		// 分时价格（ADR-0026 D 期）：配了时段表就按这条消息的时间算钱，
+		// 不沿用会话里 pi 当时按全天价算出来的 cost（否则历史一会儿是旧价、一会儿是新价）
+		const priced = usage && model ? scheduledCost(model, usage, ts) : undefined;
+		const finalUsage = usage && priced !== undefined ? { ...usage, cost: priced } : usage;
+		return {
+			id: entryId,
+			role: "assistant",
+			ts,
+			blocks,
+			...(finalUsage ? { usage: finalUsage } : {}),
+			...(model ? { model } : {}),
+		};
 	}
 
 	return null; // system / toolResult 单独处理
+}
+
+/** 两段用量相加（一轮里多次模型调用 → 合计；cost 拿不到就不给，别编 0） */
+function addUsage(base: UiMessage["usage"], extra: NonNullable<UiMessage["usage"]>): NonNullable<UiMessage["usage"]> {
+	const cost = (base?.cost ?? 0) + (extra.cost ?? 0);
+	return {
+		input: (base?.input ?? 0) + extra.input,
+		output: (base?.output ?? 0) + extra.output,
+		cacheRead: (base?.cacheRead ?? 0) + extra.cacheRead,
+		cacheWrite: (base?.cacheWrite ?? 0) + extra.cacheWrite,
+		...(base?.cost === undefined && extra.cost === undefined ? {} : { cost }),
+	};
 }
 
 function summarize(args: unknown): string {
@@ -107,6 +144,10 @@ function summarize(args: unknown): string {
  * 工具结果按 `toolCallId` 回填到最近的对应工具块（找不到就补一条工具块，保证结果不丢）。
  */
 export function entriesToUiMessages(entries: unknown[]): UiMessage[] {
+	return sanitizeHistoricalActions(entriesToUiMessagesRaw(entries));
+}
+
+function entriesToUiMessagesRaw(entries: unknown[]): UiMessage[] {
 	const messages: UiMessage[] = [];
 	/** toolCallId → 已经放进消息里的那个块（用于回填结果） */
 	const toolBlocks = new Map<string, Extract<MessageBlock, { kind: "tool" }>>();
@@ -158,6 +199,20 @@ export function entriesToUiMessages(entries: unknown[]): UiMessage[] {
 
 		const mapped = mapMessage(entryId, message, order);
 		if (!mapped) continue;
+		// 同一轮里的助手消息合并成一条（工具轮次会有很多条）：界面上一次提问只有一个回复气泡，
+		// token / 费用也跟着累加 —— 否则历史里看到的是「每次模型调用各一条」，总数还得自己加。
+		const previous = messages.at(-1);
+		if (previous && previous.role === "assistant") {
+			previous.blocks = [...previous.blocks, ...mapped.blocks];
+			if (mapped.usage) previous.usage = addUsage(previous.usage, mapped.usage);
+			if (mapped.model) previous.model = mapped.model;
+			// 完成时间 = 这一轮最后一次模型调用的时间
+			previous.endedAt = mapped.ts;
+			for (const block of mapped.blocks) {
+				if (block.kind === "tool") toolBlocks.set(block.toolCallId, block);
+			}
+			continue;
+		}
 		messages.push(mapped);
 		for (const block of mapped.blocks) {
 			if (block.kind === "tool") toolBlocks.set(block.toolCallId, block);

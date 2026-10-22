@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { currentMobileShell } from "../mobile-shell-dom.ts";
 import { groupModels } from "../model-groups.ts";
 import type { ModelOption } from "../types.ts";
 import { setModel } from "../ws.ts";
@@ -27,6 +28,25 @@ export function ModelPicker({
 	const [open, setOpen] = useState(false);
 	const [filter, setFilter] = useState("");
 	const boxRef = useRef<HTMLDivElement>(null);
+	/** 菜单的 fixed 坐标（贴触发按钮正上方）：状态栏是 overflow:hidden，绝对定位会被裁掉 */
+	const [anchor, setAnchor] = useState<{ left: number; bottom: number } | null>(null);
+	const triggerRef = useRef<HTMLButtonElement>(null);
+	const menuRef = useRef<HTMLDivElement>(null);
+	const mobile = currentMobileShell();
+
+	// 打开后量一次：菜单右边缘对齐按钮右边缘，再夹到视口内
+	// 手机上是底部抽屉（CSS 里 position:fixed + inset），不需要坐标
+	useLayoutEffect(() => {
+		if (!open || mobile) {
+			setAnchor(null);
+			return;
+		}
+		const trigger = triggerRef.current?.getBoundingClientRect();
+		const menu = menuRef.current?.getBoundingClientRect();
+		if (!trigger || !menu) return;
+		const left = Math.min(Math.max(8, trigger.right - menu.width), window.innerWidth - menu.width - 8);
+		setAnchor({ left, bottom: window.innerHeight - trigger.top + 6 });
+	}, [open, mobile, filter]);
 
 	// 点外面 / 按 Esc 关掉
 	useEffect(() => {
@@ -51,6 +71,7 @@ export function ModelPicker({
 	return (
 		<div className="model-picker" ref={boxRef}>
 			<button
+				ref={triggerRef}
 				type="button"
 				className="tool-chip model-trigger"
 				onClick={() => {
@@ -72,7 +93,14 @@ export function ModelPicker({
 
 			{open ? <div className="model-sheet-backdrop" onClick={() => setOpen(false)} aria-hidden="true" /> : null}
 			{open ? (
-				<div className="model-menu" role="listbox" aria-label="选择模型">
+				<div
+					ref={menuRef}
+					className="model-menu"
+					role="listbox"
+					aria-label="选择模型"
+					// 手机走 CSS 抽屉（这里不给坐标）；桌面用现算的 fixed 坐标，先藏一帧避免闪
+					style={mobile ? undefined : anchor ? { left: anchor.left, bottom: anchor.bottom } : { visibility: "hidden" }}
+				>
 					{/* 手机上菜单是整宽的底部抽屉，需要一个明确可见的关闭入口 */}
 					<button type="button" className="model-sheet-close" onClick={() => setOpen(false)} title="关闭">
 						✕ 关闭

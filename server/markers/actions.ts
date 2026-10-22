@@ -10,9 +10,40 @@
  *   [[action:clear:all]]                                → 清空
  *   别名：[[action:next:…]]、[[suggest:…]]
  */
-import type { ActionItem, MessageBlock, TextBlock } from "../protocol.js";
+import type { ActionItem, MessageBlock, TextBlock, UiMessage } from "../protocol.js";
 
-export const MAX_ACTIONS = 8;
+/**
+ * 「想一想」（换一批建议）用的隐藏指令哨兵。
+ *
+ * 它不是一个 action 标记（命名空间 `agent-web` 不在 KNOWN_TOOLS 里），
+ * 作用只有一个：让历史回放能认出「这条用户消息是我们自己发的重生成请求」并把它丢掉，
+ * 否则用户会在对话里看到一条莫名其妙的「请再给三条建议」。
+ */
+export const REFRESH_ACTIONS_SENTINEL = "[[agent-web:refresh-actions]]";
+
+/**
+ * 「想一想」要发给模型的指令（纯函数，单测覆盖）。
+ *
+ * 两个刻意的写法：
+ *   - 示例给**空标记** `[[action:suggest:]]`（解析器会忽略空标签）—— 模型即使原样抄回来也不会冒假建议；
+ *   - 明确「4 到 5 条」：ADR-0039 定的条数（3 条里常有一条是废话）。
+ */
+export function buildRefreshActionsPrompt(labels: string[], count?: number | null): string {
+	const avoid = labels.length > 0 ? `（不要和这些重复：${labels.join("、")}）` : "";
+	// 手机上一行放不下 4~5 个按钮：客户端可以指定「就要 3 条」。
+	const wanted = typeof count === "number" && Number.isInteger(count) && count >= 1 && count <= 5 ? count : null;
+	const amount = wanted === null ? "4 到 5 条" : `${wanted} 条`;
+	// **一行**：这条指令在引擎侧会作为一条真实用户消息落盘（DSH web / pi CLI 里也看得见），
+	// 所以压到最短，同时语法自包含（dsh / codex 没有系统提示教它这个格式）。
+	return `${REFRESH_ACTIONS_SENTINEL} 再给 ${amount}不同的下一步建议${avoid}，每行一条 [[action:suggest:]]（把按钮文字填在 suggest: 后面），只输出标记，不要正文。`;
+}
+
+/** 这条用户消息是不是「想一想」的隐藏请求 */
+export function isRefreshActionsPrompt(text: string): boolean {
+	return text.trimStart().startsWith(REFRESH_ACTIONS_SENTINEL);
+}
+
+export const MAX_ACTIONS = 5; // 每轮建议 4~5 条：超过只留最新的那批
 export const MAX_LABEL_CHARS = 80;
 export const MAX_PROMPT_CHARS = 2000;
 
@@ -223,4 +254,44 @@ export function applyMarkersToMessage(
 		...nonTextAfter,
 	];
 	return { blocks, actions };
+}
+
+/**
+ * 历史回放清洗（pi / dsh 共用）：
+ *   1. 丢掉「想一想」的隐藏请求（用户不该看到那条内部消息）；
+ *   2. 剥掉正文里残留的 action 标记（历史记录里存的是原文）；
+ *   3. 剥完变空的消息（例如模型只回了三条标记）直接丢掉，不留空气泡。
+ */
+export function sanitizeHistoricalActions(messages: UiMessage[]): UiMessage[] {
+	const out: UiMessage[] = [];
+	for (const message of messages) {
+		if (message.role === "user") {
+			const text = message.blocks
+				.filter((block): block is TextBlock => block.kind === "text")
+				.map((block) => block.text)
+				.join("");
+			if (isRefreshActionsPrompt(text)) continue;
+			// 防御：哨兵被引擎包了一层（或模型回显到助手消息里）时也要剥掉
+			const blocks = message.blocks.map((block) =>
+				block.kind === "text" && block.text.includes(REFRESH_ACTIONS_SENTINEL)
+					? { ...block, text: block.text.split(REFRESH_ACTIONS_SENTINEL).join("").trim() }
+					: block,
+			);
+			const cleaned = blocks.filter((block) => block.kind !== "text" || block.text.trim() !== "");
+			if (cleaned.length === 0) continue;
+			out.push({ ...message, blocks: cleaned });
+			continue;
+		}
+		if (!message.blocks.some((block) => block.kind === "text")) {
+			out.push(message);
+			continue;
+		}
+		const cleaned = message.blocks.map((block) =>
+			block.kind === "text" ? { ...block, text: stripMarkers(block.text) } : block,
+		);
+		const blocks = cleaned.filter((block) => block.kind !== "text" || block.text.trim() !== "");
+		if (blocks.length === 0) continue;
+		out.push({ ...message, blocks });
+	}
+	return out;
 }

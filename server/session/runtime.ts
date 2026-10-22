@@ -1,9 +1,11 @@
 /** 会话运行时：引擎事件 → UI 状态 / 协议事件，并把转录落盘。规则见 ADR。 */
 import { createMarkerStreamFilter } from "../markers/actions.js";
+import { createRefreshActions } from "./refresh-actions.js";
+import { appendText, createMessage } from "../snapshot/messages.js";
 import { createRuntimeServices } from "./runtime-services.js";
 import { createStatsRefresher } from "./stats-refresher.js";
 import { createThrottle } from "./throttle.js";
-import { awaitTurnPersisted, createTurnFinisher, setRunning, settleWith } from "./turn-finish.js";
+import { createRuntimeTurnFinisher, setRunning } from "./turn-finish.js";
 import { cancelQueuedWith, createTurnPlumbing } from "./turn-queue.js";
 import { createConversationFactory } from "./conversation-create.js";
 import { createClientView } from "./client-view.js";
@@ -12,19 +14,17 @@ import { newConversationWith } from "./conversation-create.js";
 import { renameSessionWith } from "./rename-session.js";
 import { createSnapshotFor } from "./snapshot-for.js";
 import { createSwitchConversation } from "./switch-conversation.js";
-import { resolveAttachments } from "./attachment-resolve.js";
-import { createModelController } from "./model-controller.js";
+import { createModelController, createModelRefresher } from "./model-controller.js";
 import { createPiSessionOpener } from "./pi-opener.js";
-import { createPiRefresher } from "./pi-refresh.js";
+import { createSessionDeleter } from "./delete-session.js";
+import { createTurnSender } from "./turn-send.js";
+import { createSessionsRefresher } from "./pi-refresh.js";
 import { applySettingsPatch, defaultSettings } from "./settings.js";
-import { applyEngineEvent, type TurnEventContext } from "./turn-events.js";
-import { makeIdFactory } from "../util/ids.js";
-import type {
-	AttachmentRef, // 附件引用（ADR-0020 §P3）
-	SendMode,
-} from "../protocol.js";
-import { appendText, createMessage } from "../snapshot/messages.js";
-import { buildSnapshot, createServerState, emptyRunning, setPiProjects } from "../snapshot/state.js";
+import { createTurnContext } from "./turn-events.js";
+import { createEngineSwitcher, engineOptionsFor } from "./engine-switch.js";
+import { createSwitchableEngine } from "../engine/switchable.js";
+import { conversationId as newConversationId, makeIdFactory } from "../util/ids.js";
+import { buildSnapshot, createServerState, emptyRunning, touchConversationIn } from "../snapshot/state.js";
 export type { Result, Runtime, RuntimeEmit } from "./runtime-types.js";
 import type { Runtime, RuntimeOptions } from "./runtime-types.js";
 export type { RuntimeOptions } from "./runtime-types.js";
@@ -33,42 +33,50 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 	const now = options.now ?? (() => Date.now());
 	const settings = options.settings;
 	const titleChars = options.titleChars ?? 24;
+	/** 「下一步」生成建议的超时（默认 20s；测试可调小） */
+	const actionsTimeoutMs = options.actionsTimeoutMs ?? 20_000;
+
+	// 引擎槽：下游模块拿到的都是这个稳定代理，切引擎时不用重建任何一个
+	const slot = createSwitchableEngine(options.engine);
+	const engine = slot.port;
 
 	const state = createServerState(options.workspace, options.engineName ?? "pi");
 	if (options.engineCapabilities) state.engineCapabilities = { ...options.engineCapabilities };
+	state.engines = engineOptionsFor(
+		options.engineName ?? "pi",
+		state.engineCapabilities,
+		options.engines?.descriptors(),
+	);
 	state.files = { root: options.workspace, treeVersion: 0 };
 
 	// 默认真实运行用全局唯一 id（ADR-0019）；测试注入确定性 id
 	const nextId = options.idSeq ?? makeIdFactory();
-	// 按会话的在飞回合（ADR-0030 ③）：finish 是落盘 Promise，sendMessage 返回前要等它
+	// 按会话的在飞回合（ADR-0030 ③）：有条目 = 这个会话有回合在跑（isBusy 也看它）
 	type TurnState = {
 		messageId: string;
 		filter: ReturnType<typeof createMarkerStreamFilter>;
 		rawText: string;
-		finish?: Promise<void>;
 	};
 	const turns = new Map<string, TurnState>();
 	const clientView = createClientView(); // 每客户端在看哪个会话（ADR-0033）
-	state.versions = { web: webVersion(), engine: options.engine.version?.() ?? null }; // 抬头显示的版本号
+	state.versions = { web: webVersion(), engine: engine.version?.() ?? null }; // 抬头显示的版本号
 
 	/** sendMessage 自引用：队列排空时要能再次调用自己（对象字面量还没构建完成 → 用 ref） */
 	let apiRef: Runtime | null = null;
 
 	const pushSnapshot = () => options.emit.snapshot(buildSnapshot(state));
 
-	// pi 已有会话列表的刷新节奏（ADR-0021 §1）：首扫立刻，之后带最小间隔（扫描器自带缓存）
-	const piRefresher = createPiRefresher({
-		list: () => options.piSessions?.() ?? Promise.resolve([]),
+	// 历史会话清单的刷新节奏（ADR-0021 §1）：来源可换（切引擎），节奏与缓存只有一份
+	const sessionsRefresher = createSessionsRefresher({
+		initial: options.piSessions ?? null,
+		state,
 		minIntervalMs: options.piSessionsMinIntervalMs,
 		now,
-		onLoaded: (projects) => {
-			setPiProjects(state, projects);
-			// 记下每个 pi 会话的文件路径（ADR-0021 §2：点开就是打开这个文件）
-			piOpener.remember(projects);
-			pushSnapshot();
-		},
+		remember: (projects) => piOpener.remember(projects),
+		onChanged: pushSnapshot,
 		onError: (message) => notice(message, "warn"),
 	});
+	const piRefresher = { refresh: sessionsRefresher.refresh };
 
 	const services = createRuntimeServices({
 		options,
@@ -91,24 +99,12 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 	});
 	const { notice, approval, watchdog } = services;
 
-	// 引擎会话的生命周期（懒创建 + 历史注入 + 读模型），见 ADR-0018
-
 	/** 更新会话元数据（只在内存里，不再有自建索引） */
-	function touchConversation(conversationId: string, patch: { title?: string } = {}): void {
-		state.conversations = state.conversations.map((conversation) =>
-			conversation.id === conversationId
-				? {
-						...conversation,
-						...patch,
-						updatedAt: now(),
-						messageCount: state.messages[conversationId]?.length ?? conversation.messageCount,
-					}
-				: conversation,
-		);
-	}
+	const touchConversation = (conversationId: string, patch: { title?: string } = {}): void =>
+		touchConversationIn(state, conversationId, now(), patch);
 
 	const piOpener = createPiSessionOpener({
-		engine: options.engine,
+		engine,
 		onModel: (model) => {
 			state.model = model;
 			pushSnapshot();
@@ -116,12 +112,13 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		onError: (message) => notice(message, "error"),
 	});
 
-	// 新建会话（ADR-0021 §2 收尾）：落在 pi 的会话存储里（conversation-create.ts）
 	const conversations = createConversationFactory({
 		state,
-		engine: options.engine,
+		engine,
 		opener: piOpener,
 		nextId,
+		// 会话 id 与 pi 一致用 UUID；测试注入确定性 id 时仍走 `conv-N`（断言好写）
+		newConversationId: options.idSeq ? () => nextId("conv") : newConversationId,
 		now,
 		titleChars,
 		defaultModelFor: (workspace) => state.settings.defaultModels[workspace] ?? piOpener.projectModel(workspace), // 项目默认 > 该项目最近会话，见 conversation-create
@@ -129,50 +126,46 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			void models.refresh(id);
 			void refreshStats();
 			void models.refreshThinking(id);
+			// 新会话可能刚让引擎创建了一个项目（codex）：立刻重扫，侧栏不用等下一轮
+			void piRefresher.refresh(true);
 		},
 	});
-	// 模型列表与切换（ADR-0020 §P2）：抽在 model-controller 里
 	const models = createModelController({
-		engine: options.engine,
+		engine,
 		state,
 		notice: (text, level) => notice(text, level),
 		onChanged: pushSnapshot,
 	});
 
-	const turnContext: TurnEventContext = {
+	const turnContext = createTurnContext({
 		state,
 		now,
-		onTextDelta: (chunk, conversationId) => {
+		pushSnapshot,
+		emitEvent: (event) => options.emit.event(event),
+		notice,
+		onThinkingDelta: createThrottle(250, pushSnapshot), // 思考增量节流
+		appendRawText: (chunk, conversationId) => {
 			const turn = turns.get(conversationId);
 			if (!turn) return "";
 			return ((turn.rawText += chunk), turn.filter.push(chunk));
 		},
-		emitEvent: (event) => options.emit.event(event),
-		pushSnapshot,
-		notice,
-		onThinkingDelta: createThrottle(250, pushSnapshot), // 思考增量节流
-		onTurnEnd: (conversationId, reason) => {
-			const turn = turns.get(conversationId);
-			const promise = finishTurn(conversationId, reason);
-			if (turn) turn.finish = promise;
-		},
-	};
+		// 收尾全过程都是同步的状态更新（settle 立刻写内存、刷新另起），所以返回的 Promise
+		// 不需要再被 await —— 以前留过一条「等落盘」的通道，但它把 Promise 挂在一个已经被
+		// 删除的 turns 条目上，永远读不到（死代码，已删）。
+		finish: (conversationId, reason) => void finishTurn(conversationId, reason),
+	});
 
 	const refreshStats = createStatsRefresher({
-		activeId: () => state.activeId,
+		state,
 		pathOf: (id) => piOpener.pathOf(id),
-		projects: () => state.piProjects,
-		setStats: (stats) => {
-			state.sessionStats = stats;
-			// 会话级缓存：别的标签页看自己的会话时不会读到别人那份
-			if (state.activeId) state.statsByConversation[state.activeId] = stats;
-		},
+		// 引擎自带统计（dsh 的日志）；pi / codex 走下面的文件路径兜底
+		statsOf: async (id) => (await engine.sessionStats?.(id)) ?? null,
 		onChanged: pushSnapshot,
 	});
 
 	const { queue, busy } = createTurnPlumbing({
 		state,
-		engine: options.engine,
+		engine,
 		nextId,
 		appendUser: (id, value, steer) => {
 			const message = appendText(createMessage(nextId("msg"), "user", now()), value);
@@ -183,23 +176,16 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		pushSnapshot,
 	});
 
-	const finishTurn = createTurnFinisher({
+	const finishTurn = createRuntimeTurnFinisher({
 		state,
 		turns,
+		nextId,
+		now,
 		shiftQueued: (conversationId) => queue.shift(conversationId),
 		sendNext: (message, conversationId) =>
 			setTimeout(() => void apiRef?.sendMessage(message.text, message.attachments, "now", conversationId), 0),
 		cancelPending: () => approval.cancelPending(),
-		settle: (info) => {
-			settleWith(state, nextId)(info);
-			const conversation = state.conversations.find((item) => item.id === info.conversationId);
-			options.onTurnFinished?.({
-				conversationId: info.conversationId,
-				title: conversation?.title ?? "会话",
-				workspace: conversation?.workspace ?? state.workspace,
-				failed: false,
-			});
-		},
+		onTurnFinished: options.onTurnFinished,
 		touchConversation: (conversationId) => touchConversation(conversationId),
 		refreshStats: () => void refreshStats(),
 		refreshProjects: () => void piRefresher.refresh(true),
@@ -216,8 +202,102 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		refreshModels: (id) => models.refresh(id),
 		refreshThinking: (id) => models.refreshThinking(id),
 		refreshStats: () => void refreshStats(),
+		// 切走的那条会话放开引擎写锁（codex）：否则 Codex 桌面端打不开它
+		parkPrevious: (id) => {
+			if (turns.has(id)) return;
+			void engine.parkSession?.(id).catch(() => undefined);
+		},
 		pushSnapshot,
 		report: (text) => options.onStartupInfo?.(text), // 只写日志，不进对话流（切会话慢时靠它定位）
+	});
+
+	const refreshModels = createModelRefresher({ engine, state });
+
+	const refreshActions = createRefreshActions({
+		state,
+		turns,
+		engine,
+		notice,
+		pushSnapshot,
+		sendTurn: (prompt, conv) => sendTurn(prompt, undefined, "now", conv, undefined, { hidden: true }),
+		// 设置里的「最大超时」优先；没有/非法就退回启动参数（默认 20s）
+		timeoutMs: () => {
+			const seconds = state.settings.thinkTimeoutSec;
+			return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : actionsTimeoutMs;
+		},
+	});
+
+	const sendTurn = createTurnSender({
+		state,
+		engine,
+		now,
+		nextId,
+		titleChars,
+		turns,
+		watchdog,
+		turnContext,
+		notice,
+		pushSnapshot,
+		finishTurn: (id, reason) => finishTurn(id, reason),
+		busy,
+		createConversation: (seed) => conversations.create(seed),
+		openConversation: (id, refresh) => piOpener.open(id, refresh),
+		isOpen: (id) => piOpener.isOpen(id),
+		refreshProjects: (force) => piRefresher.refresh(force),
+		refreshModels: (id) => models.refresh(id),
+		refreshThinking: (id) => models.refreshThinking(id),
+		clientView,
+		touchConversation,
+		uploadStore: options.uploadStore,
+	});
+
+	/**
+	 * 删除会话后的**本地清场**。
+	 *
+	 * 只把磁盘文件改名不够：内存里的会话/消息/排队项、pi-opener 的「已打开」记录、
+	 * 引擎会话句柄都还在 —— 表现就是「删了还在侧栏、点进去还能读、还能发消息」。
+	 */
+	const discardConversation = (conversationId: string): void => {
+		clientView.forget(conversationId);
+		piOpener.forget(conversationId);
+		state.conversations = state.conversations.filter((conversation) => conversation.id !== conversationId);
+		const { [conversationId]: _messages, ...remainingMessages } = state.messages;
+		state.messages = remainingMessages;
+		state.queued = state.queued.filter((item) => item.conversationId !== conversationId);
+		setRunning(state, conversationId, null);
+		turns.delete(conversationId);
+		if (state.activeId === conversationId) {
+			state.activeId = state.conversations[0]?.id ?? null;
+			state.running = emptyRunning();
+			state.actions = [];
+		}
+		// 引擎侧的句柄也放开：否则它继续占着会话（还能被写进那个已改名的文件）
+		Promise.resolve(engine.closeSession?.(conversationId)).catch(() => undefined);
+	};
+
+	const deleteSession = createSessionDeleter({
+		engine,
+		projects: () => state.piProjects,
+		handleOf: (id) => piOpener.handleOf(id),
+		discard: discardConversation,
+		refresh: () => piRefresher.refresh(true),
+		pushSnapshot,
+	});
+
+	const switchEngine = createEngineSwitcher({
+		state,
+		slot,
+		engines: options.engines ?? null,
+		sessionsSlot: sessionsRefresher.slot,
+		clientView,
+		clearSessions: () => piOpener.clear(),
+		approvalHandler: approval.handler,
+		refreshModels,
+		refreshSessions: (force) => piRefresher.refresh(force),
+		loadProviders: options.loadProviders ?? null,
+		isBusy: () => turns.size > 0,
+		notice,
+		pushSnapshot,
 	});
 
 	const api: Runtime = {
@@ -243,13 +323,10 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 
 		refreshPiSessions: (force?: boolean) => piRefresher.refresh(force),
 		refreshProviders: async () => {
-			// pi 的模型表挂在会话上：先保证有会话，再重读配置；模型表也一起更新
-			// （provider 面板里的「内置」分组就是从它推出来的）
-			await options.engine.prewarm?.();
-			await options.engine.reloadModels?.();
-			const models = (await options.engine.listModels?.()) ?? [];
-			if (models.length > 0) state.models = models;
-			if (options.loadProviders) state.providers = await options.loadProviders();
+			await refreshModels(); // 模型表挂在会话上：先保证有会话，再重读
+			// provider 配置是 pi 独有的（models-store.json）：别的引擎不碰这张表
+			const ownConfig = options.engines?.get(state.engine)?.descriptor.providerConfig !== false;
+			if (options.loadProviders && ownConfig) state.providers = await options.loadProviders();
 		},
 
 		snapshot: () => buildSnapshot(state),
@@ -265,97 +342,18 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			notice(text, level);
 		},
 
-		async sendMessage(
-			text: string,
-			attachments?: AttachmentRef[],
-			mode: SendMode = "steer",
-			targetConversationId?: string,
-			clientId?: string, // 发起者：懒建会话时把它的视图指过去（ADR-0033）
-		) {
-			const resolved = await resolveAttachments(text, attachments, options.uploadStore);
-			for (const name of resolved.missing) notice(`附件已失效（可能过期被清理）：${name}`, "warn");
-			if (resolved.images.length > 0) notice(`已附加 ${resolved.images.length} 张图片（视觉注入）`, "info");
+		sendMessage: sendTurn,
 
-			if (state.activeId !== null && turns.has(state.activeId)) {
-				const handled = await busy(mode, text, resolved.promptText, resolved.images, attachments);
-				if (handled) return handled;
-			}
-			let conversationId: string | null = null;
-			try {
-				// 没有任何会话时懒建一个（空实例的第一次发消息）；建了就把发起者的视图指过去
-				const existing = targetConversationId ?? state.activeId;
-				const created = existing ? null : await conversations.create(text);
-				if (created && clientId) clientView.setActive(clientId, created);
-				const conv = (existing ?? created) as string; // 两者必有一个（ADR-0033）
-				conversationId = conv;
-				if (!piOpener.isOpen(conv)) {
-					const opened = await piOpener.open(conv, (force) => piRefresher.refresh(force));
-					if (opened === null) throw new Error(`会话打不开：${conv}`);
-					state.messages[conv] = opened;
-					await models.refresh(conv);
-					await models.refreshThinking(conv);
-				}
-				const ts = now();
-				const userMessage = appendText(createMessage(nextId("msg"), "user", ts), text);
-				const assistantMessage = createMessage(nextId("msg"), "assistant", ts);
-
-				const isFirstMessage = (state.messages[conv] ?? []).length === 0;
-				if (isFirstMessage) touchConversation(conv, { title: text.replace(/\s+/g, " ").trim().slice(0, titleChars) });
-
-				state.messages[conv] = [...(state.messages[conv] ?? []), userMessage, assistantMessage];
-				if (conv === state.activeId) {
-					state.running = {
-						status: "streaming",
-						conversationId: conv,
-						turnStartedAt: ts,
-						streamingText: "",
-						activeTool: null,
-					};
-				}
-				state.actions = [];
-				turns.set(conv, { messageId: assistantMessage.id, filter: createMarkerStreamFilter(), rawText: "" });
-				setRunning(state, conv, { status: "streaming", turnStartedAt: ts });
-				watchdog.start(conv);
-				touchConversation(conv);
-
-				pushSnapshot();
-
-				await options.engine.sendMessage(
-					conv,
-					resolved.promptText,
-					(event) => {
-						applyEngineEvent(turnContext, { conversationId: conv, messageId: assistantMessage.id, event });
-					},
-					resolved.images.length > 0 ? { images: resolved.images } : undefined,
-				);
-				return { ok: true };
-			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				notice(`回合执行失败：${message}`, "error");
-				if (conversationId !== null && conversationId === state.activeId) {
-					state.running = { ...emptyRunning(), status: "error" };
-				}
-				if (conversationId !== null) {
-					turns.delete(conversationId);
-					setRunning(state, conversationId, null);
-				}
-				pushSnapshot();
-				return { ok: false, error: { code: "session.turn_failed", message } };
-			} finally {
-				if (conversationId !== null) {
-					watchdog.stop(conversationId);
-					await awaitTurnPersisted(turns, conversationId); // 等这一轮落盘，避免与下一轮重叠
-				}
-			}
-		},
-
-		async interrupt() {
-			const fallback = state.activeId !== null && turns.has(state.activeId) ? state.activeId : [...turns.keys()][0];
+		async interrupt(requested?: string) {
+			// 优先停用户点的那条（前端会把当前会话带上来），否则用当前会话，最后兜底任意一条
+			const fallback =
+				(requested && turns.has(requested) ? requested : undefined) ??
+				(state.activeId !== null && turns.has(state.activeId) ? state.activeId : [...turns.keys()][0]);
 			const target = fallback ?? null;
 			if (!target) {
 				return { ok: false, error: { code: "session.idle", message: "当前没有在跑的回合" } };
 			}
-			await options.engine.interrupt(target);
+			await engine.interrupt(target);
 			return { ok: true };
 		},
 
@@ -364,6 +362,10 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			if (result.ok) pushSnapshot();
 			return result;
 		},
+
+		// 没显式指定条数时用设置里的「一次生成几条」（手机端仍会自己传 3）
+		refreshActions: (conversationId?: string, count?: number) =>
+			refreshActions(conversationId, count ?? state.settings.thinkCount),
 
 		setModel: (modelId) => models.switchTo(state.activeId, modelId),
 
@@ -381,13 +383,18 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			return { ok: true };
 		},
 
+		setEngine: (name) => switchEngine(name),
+
 		newConversation: newConversationWith({ create: conversations.create, clientView, notice, pushSnapshot }),
+
+		deleteSession: (conversationId) => deleteSession(conversationId),
 
 		renameSession: (conversationId, title) =>
 			renameSessionWith({
-				engine: options.engine,
-				pathOf: (id) => piOpener.pathOf(id),
+				engine,
+				handleOf: (id) => piOpener.handleOf(id),
 				refresh: () => piRefresher.refresh(true),
+				onRenamed: (id, title) => touchConversation(id, { title }),
 				notice,
 				pushSnapshot,
 			})(conversationId, title),

@@ -171,7 +171,7 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
 				sessions.set(openOptions.sessionId, {
 					workspace: options.workspaceHint ?? "/tmp/agent-web-fake",
 					transcript: [],
-					sessionPath: openOptions.sessionPath,
+					sessionPath: openOptions.sessionPath ?? null,
 				});
 			}
 		},

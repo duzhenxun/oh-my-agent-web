@@ -1,0 +1,22 @@
+/* 「下一步建议」行：只放模型给的建议（触发再给一批的「想想」在输入区工具行最左边） */
+
+/* 「想想」：生成动作，比真正的建议弱一档，但不虚线（它一直在工具行里常态出现） */
+.action-think {
+	font-style: normal;
+}
+
+.action-think:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+
+/* 放在输入区上方：和 .composer-wrap 同样的左右留白（见 app-bar.css） */
+.action-row-host {
+	flex: none;
+	padding: 0 12px;
+	margin-right: 14px;
+}
+
+.action-row-host:empty {
+	display: none;
+}

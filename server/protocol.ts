@@ -28,6 +28,8 @@ export type UiMessage = {
 	id: string;
 	role: "user" | "assistant";
 	ts: number;
+	/** 这条助手消息**跑完**的时间（界面显示「完成时间」，不再显示开始时间） */
+	endedAt?: number;
 	blocks: MessageBlock[];
 	steer?: boolean; // 这条用户消息是「引导」插进正在跑的那一轮的（界面打标签，和「排队」区分开）
 	model?: string; // 这条回复用的模型（`provider/model`）：历史按当时那个，不跟当前选择变
@@ -87,8 +89,12 @@ export type PiSessionSummary = {
 	updatedAt: number;
 	cwd: string;
 	model: string | null;
-	/** 会话文件路径（宿主打开它要用；界面不显示） */
-	sessionPath: string;
+	/** 会话文件路径（宿主打开它要用；界面不显示）。引擎不落文件时为 undefined */
+	sessionPath?: string;
+	/**
+	 * 引擎自己的会话句柄（codex = threadId）：打开 / 改名 / 删除都靠它；pi 用文件路径。
+	 */
+	engineSessionId?: string;
 };
 
 /** 附件引用（ADR-0020 §P3）：只带 id 不带内容（图片走 HTTP 上传） */
@@ -115,12 +121,14 @@ export type ModelSpecView = {
 	contextWindow?: number;
 	maxTokens?: number;
 	cost?: Record<string, number>;
+	/** 分时价格（ADR-0026 D 期）：编辑器回填用；没配就是缺省 = 全天一个价 */
+	costSchedule?: PriceSegment[];
 };
 
 export type ProviderView = {
 	provider: string;
 	/**
-	 * custom = 我们（用户）在 models-store.json 里配的，可以编辑/删除；
+	 * custom = 用户在 models-store.json 里配的，可以编辑/删除；
 	 */
 	source: "custom" | "builtin";
 	baseUrl: string;
@@ -159,6 +167,7 @@ export type SessionStats = {
 
 export type { ProjectPrefs, PromptTemplate, SessionPrefs, SettingsView } from "./protocol-settings.js";
 import type { PromptTemplate, SettingsView } from "./protocol-settings.js";
+import type { PriceSegment } from "./util/pricing.js";
 
 export type PiProject = {
 	cwd: string;
@@ -178,9 +187,23 @@ export type EngineCapabilities = {
 	resume: boolean;
 };
 
+/** 可选引擎（顶栏切换面板的列表项）；当前是谁由 `Snapshot.engine` 说，不重复表达 */
+export type EngineOption = {
+	name: EngineName;
+	/** 显示名（pi / 假引擎 / Codex） */
+	label: string;
+	/** 短标签（PI / FAKE / CODEX） */
+	badge: string;
+	/** 一句话能力说明：如实写，别夸大（ADR-0024 §2） */
+	description: string;
+	capabilities: EngineCapabilities;
+};
+
 export type Snapshot = {
 	protocolVersion: number;
 	engine: EngineName;
+	/** 可切换的引擎清单（含当前这个）：顶栏切换面板靠它渲染，不需要额外接口 */
+	engines: EngineOption[];
 	/** 可用模型列表（ADR-0020 §P2；打开会话后才拿得到，可能为空） */
 	models: ModelOption[];
 	/** 当前模型（`provider/model`；取不到为 null）——M3 起界面要能看见自己在跟谁说话 */
@@ -248,9 +271,7 @@ export type ApproveRequest = {
 };
 export type GetStateRequest = { id: string; type: "get_state" };
 
-/**
- * 改客户端设置（ADR-0020 §P1）：只带要改的字段，服务端归一化后落盘。
- */
+/** 改客户端设置（ADR-0020 §P1）：只带要改的字段，服务端归一化后落盘。 */
 export type SetSettingsRequest = {
 	id: string;
 	type: "set_settings";
@@ -310,7 +331,19 @@ export type SetThinkingLevelRequest = { id: string; type: "set_thinking_level"; 
 /** 切换当前会话的模型（ADR-0020 §P2）：写进会话文件，续聊时不变 */
 export type SetModelRequest = { id: string; type: "set_model"; payload: { modelId: string } };
 
+/** 切换智能体引擎（零重启）：项目 / 模型 / 能力矩阵都换；回合在飞时拒绝（engine.busy）。 */
+export type SetEngineRequest = { id: string; type: "set_engine"; payload: { engine: string } };
+
+/** 「想一想」：隐藏回合重新要一批建议（count = 这一批几条，手机用 3；1~5） */
+export type RefreshActionsRequest = {
+	id: string;
+	type: "refresh_actions";
+	payload?: { conversationId?: string; count?: number };
+};
+
 export type ClientRequest =
+	| SetEngineRequest
+	| RefreshActionsRequest
 	| SendMessageRequest
 	| InterruptRequest
 	| RenameSessionRequest

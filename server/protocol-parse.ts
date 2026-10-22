@@ -7,6 +7,8 @@ import type { ApprovalDecision, AttachmentRef, ClientRequest, ClientRequestType,
 // ---------------------------------------------------------------------------
 
 export const REQUEST_TYPES: ClientRequestType[] = [
+	"set_engine",
+	"refresh_actions",
 	"send_message",
 	"interrupt",
 	"rename_session",
@@ -66,6 +68,20 @@ export function parseClientRequest(raw: unknown): ClientRequest | null {
 		return workspace ? { id, type: "new_chat", payload: { workspace } } : { id, type: "new_chat" };
 	}
 
+	if (type === "refresh_actions") {
+		const payload = isRecord(raw.payload) ? raw.payload : undefined;
+		const conversationId = payload && nonEmptyString(payload.conversationId) ? payload.conversationId : undefined;
+		const rawCount = payload?.count;
+		const count =
+			typeof rawCount === "number" && Number.isInteger(rawCount) && rawCount >= 1 && rawCount <= 5
+				? rawCount
+				: undefined;
+		return {
+			id,
+			type: "refresh_actions",
+			...(conversationId || count ? { payload: { ...(conversationId ? { conversationId } : {}), ...(count ? { count } : {}) } } : {}),
+		};
+	}
 	// 这两个请求的 provider 在**顶层**（老的形状），也容忍放进 payload 里
 	if (type === "delete_provider" || type === "test_provider") {
 		const source = isRecord(raw.payload) ? raw.payload.provider : undefined;
@@ -171,6 +187,10 @@ export function parseClientRequest(raw: unknown): ClientRequest | null {
 		return mode === "ask" || mode === "allow" ? { id, type: "set_approval_mode", payload: { mode } } : null;
 	}
 
+	if (type === "set_engine") {
+		// 引擎名只做形状校验；「是不是注册过的引擎」由目录判断（未知名字要回一条可读错误）
+		return nonEmptyString(payload.engine) ? { id, type: "set_engine", payload: { engine: payload.engine } } : null;
+	}
 	if (type === "set_model") {
 		return nonEmptyString(payload.modelId) ? { id, type: "set_model", payload: { modelId: payload.modelId } } : null;
 	}

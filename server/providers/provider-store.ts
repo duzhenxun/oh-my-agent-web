@@ -60,7 +60,7 @@ export type ProviderStore = {
 	upsert: (input: ProviderInput) => Promise<{ ok: true; view: ProviderView } | { ok: false; error: string }>;
 	/** 删掉一个 provider（模型表 + 凭证一起删，B 期；调用方必须先二次确认） */
 	remove: (provider: string) => Promise<{ ok: true; removed: boolean } | { ok: false; error: string }>;
-	get: (provider: string) => Promise<ProviderView | null>;
+	get: (provider: string, builtin?: BuiltinProvider[]) => Promise<ProviderView | null>;
 	/**
 	 * 写回单个模型的规格（ADR-0026 A 期）：能力 / 上下文窗口 / 最大输出 / 价格。
 	 * 只覆盖这几个字段，其余（compat / headers 等）原样保留。
@@ -116,8 +116,10 @@ function materialize(provider: string, seed?: ProviderSeed): { models: ModelDefi
 		models: seed.models.map((model) => ({
 			id: model.id,
 			name: model.name,
-			api: seed.api,
-			baseUrl: seed.baseUrl,
+			// api / baseUrl 可能拿不到（引擎只报了模型名）：空字符串不能写进去，
+			// 否则这个 provider 会因为「没有可用端点」被当成坏配置（模型表里也不推）
+			...(seed.api ? { api: seed.api } : {}),
+			...(seed.baseUrl ? { baseUrl: seed.baseUrl } : {}),
 			provider,
 		})),
 	};
@@ -220,8 +222,10 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 			return fromCatalog ? { ...fromCatalog } : {};
 		},
 
-		async get(provider) {
-			const all = await this.list();
+		async get(provider, builtin = []) {
+			// 内置 provider（引擎报上来的那一批）也要能查到：否则改模型 / 停用单个模型时
+			// view 为 null，模型列表被当成空 → 停一个模型会把整个 provider 关掉
+			const all = await this.list(builtin);
 			return all.find((view) => view.provider === provider) ?? null;
 		},
 
@@ -247,10 +251,13 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 				...(spec.contextWindow !== null ? { contextWindow: spec.contextWindow } : {}),
 				...(spec.maxTokens !== null ? { maxTokens: spec.maxTokens } : {}),
 				...(spec.cost ? { cost: spec.cost } : {}),
+				...(spec.costSchedule && spec.costSchedule.length > 0 ? { costSchedule: spec.costSchedule } : {}),
 			};
 			if (spec.contextWindow === null) delete next.contextWindow;
 			if (spec.maxTokens === null) delete next.maxTokens;
 			if (!spec.cost) delete next.cost;
+			// 分时价格清空了也要真删（否则界面上删掉的时段表下次保存又回来了）
+			if (!spec.costSchedule || spec.costSchedule.length === 0) delete next.costSchedule;
 			const models2 = [...list];
 			models2[index] = next;
 			models[provider] = { ...entry, models: models2, lastModified: options.now() };

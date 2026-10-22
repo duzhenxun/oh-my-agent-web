@@ -219,9 +219,52 @@
 .modal.big-modal {
 	width: min(1120px, 94vw);
 	height: min(760px, 86vh);
+	/* 内联尺寸（拖拽后）要能突破 .modal 的 80vh，所以这里重新给上限 */
+	max-width: calc(100vw - 2 * var(--gap, 16px));
+	max-height: calc(100vh - 2 * var(--gap, 16px));
+	/* 右下角有自绘的拖拽手柄（.modal-resize）：位置要落到弹窗角上，不能随内容滚走 */
+	position: relative;
+	overflow: hidden;
 	display: flex;
 	flex-direction: column;
 	gap: 10px;
+}
+
+/* 内容超高时让 body 自己滚：标题栏和右下角手柄始终看得见 */
+.big-modal-body {
+	overflow: auto;
+	overscroll-behavior: contain;
+}
+
+/* 弹窗里的反馈：成功 / 失败都镜像一条（提示条在工作区顶上，会被全屏弹窗遮住） */
+.modal-notices {
+	flex: none;
+	display: flex;
+	flex-direction: column;
+}
+
+.modal-notices .notice {
+	background: var(--bg-elev-2);
+	font-size: 14px;
+}
+
+/* 拖拽手柄（use-modal-size.ts）：两条斜线，颜色跟主题走 */
+.modal-resize {
+	position: absolute;
+	right: 0;
+	bottom: 0;
+	width: 18px;
+	height: 18px;
+	cursor: nwse-resize;
+	touch-action: none;
+	opacity: 0.55;
+	background:
+		linear-gradient(135deg, transparent 46%, var(--border-strong) 46%, var(--border-strong) 55%, transparent 55%),
+		linear-gradient(135deg, transparent 66%, var(--border-strong) 66%, var(--border-strong) 75%, transparent 75%);
+}
+
+.modal-resize:hover {
+	opacity: 1;
 }
 
 .big-modal-head {
@@ -264,6 +307,21 @@
 	font-weight: 600;
 }
 
+/* 窄屏下 tab 文字会被挤成「模
+型」：禁止换行，放不下就横向滚动 */
+.big-tab {
+	white-space: nowrap;
+}
+
+.big-modal-head {
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+
+.big-modal-head::-webkit-scrollbar {
+	display: none;
+}
+
 .big-modal-body {
 	flex: 1 1 auto;
 	min-height: 0;
@@ -279,6 +337,10 @@
 	max-height: none;
 	flex: 1 1 auto;
 	gap: 10px;
+	/* 内容比弹窗高时自己滚：不然分时价格、保存按钮会被裁在弹窗外面（点不到 = 「保存不进去」） */
+	min-height: 0;
+	overflow: auto;
+	overscroll-behavior: contain;
 }
 
 .big-modal-body .side-panel-scroll,
@@ -326,6 +388,26 @@
 
 .model-editor {
 	gap: 10px;
+}
+
+/* 分时价格（ADR-0026 D 期）：一段一张小卡片，行内放两个时间 + 四个价格 */
+.price-seg {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 6px 7px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--bg-elev-1);
+}
+
+.price-seg .side-field > span {
+	font-size: 12px;
+}
+
+.price-seg .side-field-row > .btn {
+	align-self: flex-end;
+	margin-bottom: 1px;
 }
 
 .side-provider-models {

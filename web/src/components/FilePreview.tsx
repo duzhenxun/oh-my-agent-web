@@ -27,6 +27,9 @@ import { useProgressiveHighlight } from "../progressive-highlight.ts";
 import { setDraft } from "../store.ts";
 import { Markdown } from "./Markdown.tsx";
 
+/** 空数组常量：state 为空/二进制时复用它，保证依赖引用稳定（否则高亮 effect 每次都重跑） */
+const EMPTY_LINES: string[] = [];
+
 // 只注册用得到的语言（全量包 ~1MB，这里按需注册约 80KB）
 hljs.registerLanguage("typescript", typescript);
 hljs.registerLanguage("javascript", javascript);
@@ -134,7 +137,9 @@ export function FileViewer({ path, root, toolbar }: { path: string; root?: strin
 	const foldEnds = useMemo(() => new Map(folds.map((fold) => [fold.start, fold.end])), [folds]);
 
 	const language = languageOf(path);
-	const lines = state && !state.binary && !state.error ? state.text.split("\n") : [];
+	// ⚠️ 必须 memo：`split` 每次渲染都给新数组，而它是 useProgressiveHighlight 的依赖 ——
+	// 直接内联会让「高亮 → setState → 重渲染 → 新数组 → 再高亮」无限循环（CPU 直接飙满）。
+	const lines = useMemo(() => (state && !state.binary && !state.error ? state.text.split("\n") : EMPTY_LINES), [state]);
 	const range: LineRange | null = anchor === null || focus === null ? null : normalizeRange(anchor, focus);
 
 	// 逐行高亮：**分批上色**（大文件也能有颜色，不再整篇黑白）

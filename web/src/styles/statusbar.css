@@ -95,25 +95,49 @@
 }
 
 /* ---------------------------------------------------------------------------
- * 手机底部状态栏：只留「上下文 / 顶部 / 项目名」，并且居中。
- * 其余（连接、引擎、对话数、工作中、排队、token）全部收起来 ——
- * 模型 / 技能 / 推送 / 设置 都在顶栏右上角；左侧栏用顶栏的 ☰ 开合。
+ * 手机底部状态栏：放行 / 上下文 / 项目名 / 顶部（排队与工作中已隐藏）。
+ *
+ * 桌面那套 24px 高、12px 字在小屏上「又小又显示不全」，所以这里整条放大一档：
+ * 高度 32px、13px 字，控件也水涨船高。
+ * 另外**不能居中**：flex 居中 + overflow-x:auto 时左侧会被推出可滚动区，
+ * 表现就是「有的显示不全、往左也划不回来」——改成左对齐 + 溢出可滚。
  * ------------------------------------------------------------------------- */
 .is-mobile-shell .statusbar {
-	position: relative;
-	justify-content: center;
-	gap: 4px;
-	/* 右边给「顶部」按钮留出位置（它是绝对定位贴右边的） */
-	padding-left: 6px;
-	padding-right: 58px;
+	height: 32px;
+	font-size: 13px;
+	gap: 10px;
+	justify-content: flex-start;
+	/* 右侧不留内边距：「项目名 + 顶部」贴到屏幕右沿 */
+	padding: 0 0 0 10px;
 }
 
-/* 「顶部」固定在右下角最右边（手机上也一样），中间那组仍然居中 */
+/* 「顶部」不再绝对定位：留在流里靠右（内容超宽时它跟着一起滚，不会被盖住） */
 .is-mobile-shell .statusbar > .status-toggle {
-	position: absolute;
-	right: 6px;
-	top: 50%;
-	transform: translateY(-50%);
+	position: static;
+	transform: none;
+	margin-left: auto;
+	font-size: 12px;
+	padding: 0 4px;
+}
+
+/* 手机上的控件同样放大（桌面那版是为 24px 高的栏收过的） */
+.is-mobile-shell .statusbar .tool-chip {
+	font-size: 13px;
+	height: 22px;
+	line-height: 22px;
+	padding: 0 5px;
+}
+
+.is-mobile-shell .statusbar .tool-chip .tool-icon {
+	font-size: 13px;
+}
+
+.is-mobile-shell .statusbar .thinking-value {
+	font-size: 13px;
+}
+
+.is-mobile-shell .statusbar .model-caret {
+	font-size: 11px;
 }
 
 .is-mobile-shell .statusbar > .status-spacer {
@@ -125,11 +149,18 @@
 	display: none;
 }
 
-/* 项目名会很长（比如「活动消耗查询」），窄屏上要能自己缩，别把整排顶出屏幕 */
+/* 手机单栏不给「排队 / 工作中」：横排本来就窄，排队与进度在会话里看得到，
+   底部留给审批开关、上下文和项目名（按需求隐藏） */
+.is-mobile-shell .statusbar .status-queued,
+.is-mobile-shell .statusbar .status-running {
+	display: none;
+}
+
+/* 项目名会很长（比如「活动消耗查询」）：允许自己缩，但别缩到看不清（42vw） */
 .is-mobile-shell .statusbar > .status-path {
 	flex: 0 1 auto;
 	min-width: 0;
-	max-width: 20vw;
+	max-width: 42vw;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -224,10 +255,15 @@
 	font-variant-numeric: tabular-nums;
 }
 
-/* 手机：状态栏只剩四项 + 这一颗，圆环稍微收一点 */
+/* 手机：跟整条一起放大（圆环也大一号，手指好点） */
 .is-mobile-shell .status-context {
 	padding: 2px 7px 2px 5px;
-	font-size: 11px;
+	font-size: 12.5px;
+}
+
+.is-mobile-shell .status-ring {
+	width: 15px;
+	height: 15px;
 }
 
 /* 超窄屏（≤380px）：顶部开关只留箭头图标；上下文只留「已用」，把位置让出来 */
@@ -243,4 +279,53 @@
 	.statusbar > .status-path {
 		max-width: 34vw;
 	}
+}
+
+/* 本轮配置（模型 / 思考强度 / 审批）：状态栏只有 24px 高，chip 要收得更小 */
+.status-controls {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	flex: none;
+	min-width: 0;
+}
+
+/* 状态栏里是「一条扁平的栏」，不要给这些控件再套外框：字和图标就够 */
+.statusbar .tool-chip {
+	font-size: 11.5px;
+	padding: 0 3px;
+	border: none;
+	border-radius: 5px;
+	line-height: 17px;
+	height: 17px;
+	color: var(--text-dim);
+	background: transparent;
+}
+
+/* 悬浮只给一点底色，让人知道能点（不加边框，避免又变成一堆小盒子） */
+.statusbar .tool-chip:hover:not(:disabled) {
+	background: var(--bg-elev-2);
+	color: var(--text);
+}
+
+/* 审批的「全部放行」保留警示色，但同样不画框（框只在输入区那版才有意义） */
+.statusbar .tool-chip-warn {
+	border: none;
+	color: var(--yellow, #d9a441);
+}
+
+.statusbar .tool-chip .tool-icon {
+	font-size: 11px;
+}
+
+.statusbar .model-trigger {
+	max-width: 190px;
+}
+
+.statusbar .thinking-value {
+	font-size: 11.5px;
+}
+
+.statusbar .model-caret {
+	font-size: 10px;
 }

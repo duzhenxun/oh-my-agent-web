@@ -24,10 +24,16 @@ export function createConversationFactory(options: {
 		model: string | null;
 		workspace: string;
 		files: { root: string; treeVersion: number } | null;
+		/** 建议不跟着新会话走（ADR-0022 §建议的生命周期） */
+		actions: import("../protocol.js").ActionItem[];
+		/** 会话统计（新会话要清零，否则第一帧带着上一个会话的上下文用量） */
+		sessionStats: import("../protocol.js").SessionStats | null;
 	};
 	engine: EnginePort;
 	opener: PiSessionOpener;
 	nextId: (prefix: string) => string;
+	/** 新会话的 id（默认 UUID，与 pi 一致；测试注入确定性 id） */
+	newConversationId: () => string;
 	now: () => number;
 	titleChars: number;
 	/** 这个项目该用哪个模型起头（runtime 给：显式默认 → 该项目最近用过的） */
@@ -38,7 +44,7 @@ export function createConversationFactory(options: {
 	return {
 		async create(seedText: string, workspaceOverride?: string) {
 			const { state } = options;
-			const id = options.nextId("conv");
+			const id = options.newConversationId();
 			// 新会话沿用「当前会话/当前工作区」的目录（多项目：不把新会话丢回默认根）
 			const previousWorkspace = state.activeId
 				? state.conversations.find((item) => item.id === state.activeId)?.workspace
@@ -47,7 +53,7 @@ export function createConversationFactory(options: {
 			const workspace = workspaceOverride ?? previousWorkspace ?? state.files?.root ?? state.workspace;
 			const title = seedText.replace(/\s+/g, " ").trim().slice(0, options.titleChars) || "新对话";
 
-			const { sessionPath } = await options.engine.createSession({ sessionId: id, workspace });
+			const { sessionPath, engineSessionId } = await options.engine.createSession({ sessionId: id, workspace });
 			// SDK 建会话时用的是**引擎默认模型**，必须显式切一下，否则就是「选的 A、跑的 B」。
 			// 优先级：本项目的默认模型（用户设过）> 本项目最近一个会话用的 > 界面上选着的
 			const wanted = options.defaultModelFor?.(workspace) ?? state.model;
@@ -61,13 +67,16 @@ export function createConversationFactory(options: {
 					state.model = current ? `${current.provider}/${current.model}` : null;
 				}
 			}
-			options.opener.register({ id, sessionPath, title, workspace });
+			options.opener.register({ id, sessionPath, engineSessionId, title, workspace });
 			state.messages[id] = [];
 			state.conversations = [
 				{ id, title, createdAt: options.now(), updatedAt: options.now(), workspace, messageCount: 0 },
 				...state.conversations,
 			];
 			state.activeId = id;
+			// 新会话从 0 开始：不先把统计清掉，第一帧快照还会带着上一个会话的上下文用量
+			state.sessionStats = null;
+			state.actions = []; // 建议不跟着新会话走
 			state.files = { root: workspace, treeVersion: (state.files?.treeVersion ?? 0) + 1 };
 			await options.onReady?.(id);
 			return id;

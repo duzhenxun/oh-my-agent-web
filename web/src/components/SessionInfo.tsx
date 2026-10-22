@@ -41,8 +41,14 @@ export function SessionInfo({ snapshot }: { snapshot: Snapshot | null }) {
 	// 活跃时长 = 会话创建到最后一次更新的跨度（wall clock，含空闲）
 	const span = activeSession ? formatSpan(activeSession.updatedAt - activeSession.startedAt) : "—";
 
+	// codex 的会话由引擎管理（没有本地文件路径），别显示「尚未落盘」这种误导文案
+	const storageLabel = sessionPath
+		? sessionPath
+		: activeSession?.engineSessionId
+			? "由引擎管理（引擎侧存储）"
+			: "（本地新建，尚未落盘）";
 	const rows: Array<[string, string]> = [
-		["会话文件", sessionPath ?? "（本地新建，尚未落盘）"],
+		["会话文件", storageLabel],
 		["ID", activeId ?? "—"],
 		["活跃时长", span],
 		["项目目录", snapshot?.files?.root ?? "—"],

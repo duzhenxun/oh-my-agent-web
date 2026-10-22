@@ -71,6 +71,16 @@
 	color: var(--text-faint);
 }
 
+/* 目录的文件夹图标：比文字小一号，和箭头贴在一起，不要各占一格 */
+.filetree-folder {
+	flex: none;
+	font-size: 12px;
+	line-height: 1;
+	margin-left: -3px;
+	margin-right: -3px;
+	opacity: 0.9;
+}
+
 .filetree-name {
 	flex: 0 1 auto;
 	min-width: 0;

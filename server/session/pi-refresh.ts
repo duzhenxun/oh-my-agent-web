@@ -5,6 +5,8 @@
  * 但首次必须立刻扫（否则侧栏空白）。缓存由扫描器负责（path+mtime），这里只管节奏。
  */
 import type { PiProject } from "../protocol.js";
+import { setPiProjects } from "../snapshot/state.js";
+import type { ServerState } from "../snapshot/state.js";
 
 export type PiRefresher = {
 	/** force = 忽略最小间隔（启动与 get_state 用） */
@@ -37,7 +39,7 @@ export function createPiRefresher(options: PiRefresherOptions): PiRefresher {
 					options.onLoaded(await options.list());
 				} catch (error) {
 					// 扫不到（pi 没装 / 目录被删）不该影响主流程
-					options.onError(`读取 pi 已有会话失败：${error instanceof Error ? error.message : String(error)}`);
+					options.onError(`读取历史会话失败：${error instanceof Error ? error.message : String(error)}`);
 				} finally {
 					inFlight = null;
 				}
@@ -46,4 +48,34 @@ export function createPiRefresher(options: PiRefresherOptions): PiRefresher {
 		},
 		lastScannedAt: () => lastScannedAt,
 	};
+}
+
+/**
+ * 会话清单刷新器（ADR-0021 §1）+ 可替换的「清单来源」。
+ *
+ * 切引擎时来源要跟着换（pi 扫磁盘 / 未来 codex 问 app-server），但**刷新节奏与缓存逻辑
+ * 完全相同**，所以来源放进一个可变槽，refresher 本身只建一次。
+ */
+export function createSessionsRefresher(options: {
+	initial: (() => Promise<PiProject[]>) | null;
+	state: ServerState;
+	minIntervalMs?: number;
+	now: () => number;
+	remember: (projects: PiProject[]) => void;
+	onChanged: () => void;
+	onError: (message: string) => void;
+}): { slot: { current: (() => Promise<PiProject[]>) | null }; refresh: (force?: boolean) => Promise<void> } {
+	const slot: { current: (() => Promise<PiProject[]>) | null } = { current: options.initial };
+	const refresher = createPiRefresher({
+		list: () => slot.current?.() ?? Promise.resolve([]),
+		minIntervalMs: options.minIntervalMs,
+		now: options.now,
+		onLoaded: (projects) => {
+			setPiProjects(options.state, projects);
+			options.remember(projects); // 记下每个会话的文件路径（ADR-0021 §2）
+			options.onChanged();
+		},
+		onError: options.onError,
+	});
+	return { slot, refresh: (force) => refresher.refresh(force) };
 }

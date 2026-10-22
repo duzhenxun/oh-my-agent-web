@@ -81,7 +81,10 @@ export function registerLiveRoutes(app: Express, deps: LiveDeps): void {
 		const gzip = /gzip/i.test(String(request.headers["accept-encoding"] ?? ""));
 		response.writeHead(200, {
 			"content-type": "text/event-stream; charset=utf-8",
-			"cache-control": "no-cache, no-transform",
+			// no-store：**不能让任何代理/缓存重放这条响应**。曾经怀疑过反向代理把
+			// 首个客户端的 `Set-Cookie` 或首帧快照缓存后重放给别人（那会让两个设备拿到同一个
+			// 客户端标识 → 互相拽着切会话）。no-transform 顺带禁掉压缩二次加工。
+			"cache-control": "no-store, no-transform",
 			connection: "keep-alive",
 			// nginx 默认会缓冲响应体，SSE 必须显式关掉，否则事件全卡在缓冲里
 			"x-accel-buffering": "no",
@@ -99,7 +102,13 @@ export function registerLiveRoutes(app: Express, deps: LiveDeps): void {
 		deps.sinks.set(clientId, sink);
 		// 能力协商：带 slim=1 的客户端由服务端决定「会话清单只在变化时带」
 		deps.clientTracker?.setSlim(clientId, request.query?.slim === "1");
-		deps.logger.info("SSE 已连接", { clients: deps.sinks.size, slim: request.query?.slim === "1" });
+		// 带上客户端标识前缀：排查「两个设备互相拽着切会话」时，一眼能看出它们是不是同一个 id
+		deps.logger.info("SSE 已连接", {
+			clients: deps.sinks.size,
+			slim: request.query?.slim === "1",
+			client: clientId.slice(0, 8),
+			from: existing ? (request.query?.client ? "query" : "cookie") : "new",
+		});
 
 		// 首屏：立刻给这个客户端一份「属于它自己」的快照
 		sink(JSON.stringify({ type: "event", event: "snapshot", snapshot: deps.snapshotFor(clientId) }));
@@ -110,13 +119,19 @@ export function registerLiveRoutes(app: Express, deps: LiveDeps): void {
 		request.on("close", () => {
 			clearInterval(beat);
 			compressor?.end();
-			deps.sinks.delete(clientId);
-			deps.clientTracker?.drop(clientId);
+			// 只删**自己**那条：同一个 clientId 重连时，新连接会覆盖 map 里的条目，
+			// 旧连接的 close 若照删不误，就会把新连接一起干掉（心跳还在、但再也收不到快照/事件）。
+			if (deps.sinks.get(clientId) === sink) {
+				deps.sinks.delete(clientId);
+				deps.clientTracker?.drop(clientId);
+			}
 			deps.logger.info("SSE 已断开", { clients: deps.sinks.size });
 		});
 	});
 
 	app.post("/api/rpc", async (request, response) => {
+		// 同上：RPC 的结果里带快照，绝不能被缓存重放
+		response.setHeader("cache-control", "no-store");
 		const clientId =
 			clientIdOf({ header: request.headers[CLIENT_HEADER], cookie: request.headers.cookie }) ?? "anonymous";
 		const frames: string[] = [];

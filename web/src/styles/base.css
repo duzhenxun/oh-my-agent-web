@@ -14,6 +14,10 @@
 	--green: #1a7f37;
 	--amber: #b06a00;
 	--red: #c62828;
+	/* 速率徽标（流式 t/s）的配色：只在这里改，两行就能换色。
+	   用蓝色（和强调色同一套），跟「选中/链接」的观感一致；不占语义色（绿/黄/红） */
+	--speed-bg: #e7f5ff;
+	--speed-fg: #1971c2;
 	--mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 	--radius: 10px;
 	--gap: 12px;
@@ -259,11 +263,6 @@ body {
 	border-color: var(--accent);
 }
 
-.btn-stop {
-	border-color: var(--red);
-	color: var(--red);
-}
-
 /* ---- 空状态 ---- */
 .empty {
 	color: var(--text-dim);
@@ -301,6 +300,8 @@ body {
 		--green: #1a7f37;
 		--amber: #9a6700;
 		--red: #cf222e;
+		--speed-bg: #e7f5ff;
+		--speed-fg: #1971c2;
 	}
 }
 
