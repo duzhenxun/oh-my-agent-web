@@ -29,7 +29,8 @@
 	flex: none;
 	padding: 0 7px;
 	border: 1px solid var(--accent-dim);
-	border-radius: 999px;
+	/* 小圆角矩形状，不用胶囊：胶囊在小字号下两侧的弧占掉半个字宽，文字显得挤 */
+	border-radius: 6px;
 	color: var(--accent);
 	font-size: 12.5px;
 	line-height: 1.6;
