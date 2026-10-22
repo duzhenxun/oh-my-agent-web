@@ -1,0 +1,45 @@
+# 最小 CI：只做「能不能编译」和「有没有低级错」这两件事。
+# 刻意不跑 prettier（`*.md` 手写、`docs/architecture/*` 是生成物、还有若干历史文件没格式化）
+# 也不跑 build —— 构建产物的正确性在本地 `npm run build` 里看得更清楚。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# 同一个分支连推多次时，取消上一轮还在跑的（省 runner，也避免旧结论盖新结论）
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: typecheck + lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 准备 Node
+        uses: actions/setup-node@v4
+        with:
+          # engines 要求 >= 22.19；跑最新的 22.x
+          node-version: 22
+          cache: npm
+
+      # 用 npm ci（严格按 package-lock 装）；node-pty 在 Linux 上会走 prebuild 或 node-gyp 回退
+      - name: 安装依赖
+        run: npm ci
+
+      # 服务端 tsconfig + 前端 tsconfig，两套都过才算过
+      - name: 类型检查（server + web）
+        run: npm run typecheck
+
+      # oxlint：只报错就退出非 0（配置见 .oxlintrc.json）
+      - name: Lint（oxlint）
+        run: npm run lint
