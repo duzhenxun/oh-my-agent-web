@@ -94,7 +94,6 @@ oh-my-agent-web/
 │     ├─ styles/        按职责拆分的 CSS（无框架，一套 CSS 变量）
 │     └─ use-*.ts       搜索 / 分支 / 分栏 / 复制等小 hooks
 ├─ scripts/             dev 双进程、图标生成
-└─ docs/architecture/   架构图（自包含 HTML，双击就能看）
 ```
 
 ## 引擎
@@ -117,8 +116,7 @@ oh-my-agent-web/
 
 ## 文档
 
-- 架构图与主链路：[`docs/architecture/README.md`](docs/architecture/README.md)（`open docs/architecture/index.html`）
-- 代码里的 `ADR-00xx` 引用是设计决策编号；具体缘由写在对应文件的头注释里。
+代码里的 `ADR-00xx` 引用是设计决策编号；具体缘由写在对应文件的头注释里。
 
 ## License
 
