@@ -59,6 +59,42 @@
 	text-overflow: ellipsis;
 }
 
+/* 抬头里的版本号：一条指向仓库的链接（点它看更新日志 / 提 issue）
+ * 平时跟那行小字一个样子，只在 hover 时给出「这是能点的」信号 */
+.newchat-version-link {
+	color: inherit;
+	text-decoration: none;
+	border-bottom: 1px solid transparent;
+}
+
+.newchat-version-link:hover {
+	color: var(--text-dim);
+	border-bottom-color: currentColor;
+}
+
+.newchat-version-link:focus-visible {
+	outline: 2px solid var(--accent, currentColor);
+	outline-offset: 2px;
+	border-radius: 3px;
+}
+
+/* 上游有新版：只在版本号后面多一个小胶囊「↑ 有新版」
+ * —— 不把版本号本身改红加粗（那是常规信息），多出来的东西才是新消息 */
+.newchat-version-badge {
+	display: inline-block;
+	position: relative;
+	top: -1px;
+	margin-left: 5px;
+	padding: 0 5px;
+	border: 1px solid var(--red);
+	border-radius: 999px;
+	color: var(--red);
+	font-size: 11px;
+	font-weight: 600;
+	line-height: 1.5;
+	white-space: nowrap;
+}
+
 /* 招呼语：跟在抬头下面，字大一点 */
 .newchat-hello {
 	margin: 0;

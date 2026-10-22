@@ -26,6 +26,7 @@ import {
 	type TerminalMeta,
 	type UiMessage,
 } from "../protocol.js";
+import { isOutdated } from "../util/upstream-version.js";
 
 export type ServerState = {
 	workspace: string;
@@ -60,8 +61,11 @@ export type ServerState = {
 	filesRootByConversation: Record<string, string>;
 	runningByConversation: Record<string, { status: RunningState["status"]; turnStartedAt: number }>;
 	pendingApproval: PendingApproval | null;
-	/** 版本号：界面（新会话抬头）要显示 `web v0.1.0 · pi v1.3.0` */
-	versions: { web: string; engine: string | null };
+	/**
+	 * 版本号：界面（新会话抬头）要显示 `web v0.1.0 · pi v1.3.0`。
+	 * `latest` 是上游最新版本（服务端查的，查不到为 null）；`outdated` 由它算出来，见 buildSnapshot。
+	 */
+	versions: { web: string; engine: string | null; latest: string | null };
 	notices: Notice[];
 	terminal: TerminalMeta | null;
 	files: FilesMeta | null;
@@ -110,7 +114,7 @@ export function createServerState(workspace: string, engine: EngineName = "pi"):
 		filesRootByConversation: {},
 		runningByConversation: {},
 		pendingApproval: null,
-		versions: { web: "unknown", engine: null },
+		versions: { web: "unknown", engine: null, latest: null },
 		notices: [],
 		terminal: null,
 		files: null,
@@ -267,7 +271,13 @@ export function buildSnapshot(
 		enabledModels: [...state.enabledModels],
 		runningByConversation: { ...state.runningByConversation },
 		pendingApproval: state.pendingApproval ? { ...state.pendingApproval } : null,
-		versions: { ...state.versions },
+		// 标不标红在这里算：快照是纯函数，界面拿到的就是一个结论，不用自己比版本号
+		versions: {
+			web: state.versions.web,
+			engine: state.versions.engine,
+			latest: state.versions.latest,
+			outdated: isOutdated(state.versions.latest, state.versions.web),
+		},
 		terminal: state.terminal ? { ...state.terminal } : null,
 		files: (() => {
 			const root = activeId ? state.filesRootByConversation[activeId] : undefined;

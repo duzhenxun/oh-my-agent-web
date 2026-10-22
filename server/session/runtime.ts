@@ -10,6 +10,7 @@ import { cancelQueuedWith, createTurnPlumbing } from "./turn-queue.js";
 import { createConversationFactory } from "./conversation-create.js";
 import { createClientView } from "./client-view.js";
 import { webVersion } from "../util/version.js";
+import { startUpstreamVersionWatch } from "../util/upstream-version.js";
 import { newConversationWith } from "./conversation-create.js";
 import { renameSessionWith } from "./rename-session.js";
 import { createSnapshotFor } from "./snapshot-for.js";
@@ -59,12 +60,19 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 	};
 	const turns = new Map<string, TurnState>();
 	const clientView = createClientView(); // 每客户端在看哪个会话（ADR-0033）
-	state.versions = { web: webVersion(), engine: engine.version?.() ?? null }; // 抬头显示的版本号
+	state.versions = { web: webVersion(), engine: engine.version?.() ?? null, latest: null }; // 抬头显示的版本号
 
 	/** sendMessage 自引用：队列排空时要能再次调用自己（对象字面量还没构建完成 → 用 ref） */
 	let apiRef: Runtime | null = null;
 
 	const pushSnapshot = () => options.emit.snapshot(buildSnapshot(state));
+
+	// 上游有没有新版本（抬头那行标红用）：后台查，拿到值才推一帧；
+	// 离线/超时一直拿不到就一直是 null —— 界面不标红，功能一个不受影响
+	startUpstreamVersionWatch((latest) => {
+		state.versions = { ...state.versions, latest };
+		pushSnapshot();
+	});
 
 	// 历史会话清单的刷新节奏（ADR-0021 §1）：来源可换（切引擎），节奏与缓存只有一份
 	const sessionsRefresher = createSessionsRefresher({

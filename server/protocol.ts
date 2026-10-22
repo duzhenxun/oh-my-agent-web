@@ -226,8 +226,12 @@ export type Snapshot = {
 	thinkingLevels: string[];
 	/** pi 已有项目与会话（ADR-0021 §1）。可选：带 `slim=1` 的客户端只在清单变了时才收到，省下上百 KB */
 	piProjects?: PiProject[];
-	/** 版本号（抬头显示）：web = agent-web 自己，engine = 引擎 SDK（拿不到为 null） */
-	versions: { web: string; engine: string | null };
+	/**
+	 * 版本号（抬头显示）：web = agent-web 自己，engine = 引擎 SDK（拿不到为 null）。
+	 * latest = 上游（GitHub `main`）最新版本，查不到为 null（离线/超时）；
+	 * outdated = 上游比本机新，抬头那行标红提醒「有新版」。都由服务端算好，界面不自己比版本号。
+	 */
+	versions: { web: string; engine: string | null; latest: string | null; outdated: boolean };
 	/** 客户端设置（快捷短语等） */
 	settings: SettingsView;
 	/** 建议操作（ADR-0022）：新一轮开始时清空 */

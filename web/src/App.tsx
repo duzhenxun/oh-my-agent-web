@@ -326,6 +326,8 @@ export function App() {
 												webVersion={snapshot.versions.web}
 												engineName={snapshot.engine}
 												engineVersion={snapshot.versions.engine}
+												latestVersion={snapshot.versions.latest}
+												outdated={snapshot.versions.outdated}
 											/>
 											<p className="newchat-hello">有什么我能帮你的吗？</p>
 										</div>
