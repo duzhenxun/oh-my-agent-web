@@ -2,7 +2,7 @@
 
 把编码智能体（pi / Codex / DeepSeek Harness）包进一个**本机网页工作台**：左边是多项目 + 会话列表，中间是对话，右边随时看文件、跑终端。
 
-单用户、只听回环、会话事实源是引擎自己的落盘文件 —— 不引数据库、不建账号体系，`omaw` 起一个进程就是一个人的工作台。
+单用户、只听回环、会话事实源是引擎自己的落盘文件 —— 不引数据库、不建账号体系，`agent-web` 起一个进程就是一个人的工作台。
 
 ## 它是什么
 
@@ -27,14 +27,14 @@ npm start            # 前台运行；Ctrl-C 退出
 
 浏览器打开 <http://127.0.0.1:25257>。
 
-装成全局命令后可以用简写 `omaw`：
+装成全局命令后，可以用简写 `omaw` 或 `agent-web`（`oh-my-agent-web` / `omaw` / `agent-web` 三个命令指向同一入口，完全等价）：
 
 ```bash
 npm i -g .
-omaw -d              # 后台启动（日志写到 <dataDir>/daemon.log）
-omaw status          # 看 pid / 端口 / 运行时长 / 会话数
-omaw restart -d      # 改完代码重启
-omaw stop
+agent-web -d         # 后台启动（日志写到 <dataDir>/daemon.log）
+agent-web status     # 看 pid / 端口 / 运行时长 / 会话数
+agent-web restart -d # 改完代码重启
+agent-web stop
 ```
 
 ### 常用参数
@@ -51,7 +51,7 @@ omaw stop
 
 数据目录里会有：`password`（设过一次就记住）、`allowed-hosts`、`settings.json`、`pi-sessions-cache.json`、`uploads/`、`logs/`、`server.lock`。
 
-> 想从手机访问：`omaw -d -H 0.0.0.0 -P 你的密码 --allow-host 你的域名`，反代 / 隧道请带上 `X-Forwarded-For`（来源校验会看它）。
+> 想从手机访问：`agent-web -d -H 0.0.0.0 -P 你的密码 --allow-host 你的域名`，反代 / 隧道请带上 `X-Forwarded-For`（来源校验会看它）。
 
 ## 开发
 
@@ -77,7 +77,7 @@ npm run dev          # 一条命令起两个进程
 oh-my-agent-web/
 ├─ server/              后端（Express + ws）
 │  ├─ index.ts          进程入口：路由、WS、静态产物、优雅退出
-│  ├─ cli.ts            omaw 命令（start / stop / restart / status / upgrade）
+│  ├─ cli.ts            agent-web / omaw 命令（start / stop / restart / status / upgrade）
 │  ├─ protocol.ts       WS 协议单源（前端通过 web/src/types.ts 复用类型）
 │  ├─ engine/           引擎适配层：pi（原生 SDK）/ codex / dsh / fake（测试）
 │  ├─ session/          会话运行时：切换、改名、删除、模型控制、审批桥

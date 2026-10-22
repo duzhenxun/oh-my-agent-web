@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * 命令行入口（ADR-0031）：`oh-my-agent-web` / 简写 **`omaw`** [命令] [选项]。
+ * 命令行入口（ADR-0031）：`oh-my-agent-web` / 简写 **`omaw`** / **`agent-web`** [命令] [选项]。
+ * 三个 bin 指向同一个文件，完全等价（`agent-web` 给不想记缩写的人用）。
  *
  * 命令：start（默认）/ stop / restart / status / version / upgrade / help
  *
@@ -34,7 +35,7 @@ import { DEFAULT_DATA_DIR_NAME } from "./util/env.js";
 import { fetchHealth, showStatus, showVersion, upgrade } from "./cli-info.js";
 import { defaultIsAlive, readLock } from "./session/lock.js";
 
-const USAGE = `用法: omaw [命令] [选项]        （omaw 是 oh-my-agent-web 的简写，二者等价）
+const USAGE = `用法: agent-web [命令] [选项]        （agent-web / omaw / oh-my-agent-web 三个命令完全等价）
 
 命令:
   start              启动（默认；前台运行，Ctrl-C 退出）

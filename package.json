@@ -4,7 +4,8 @@
 	"private": true,
 	"bin": {
 		"oh-my-agent-web": "dist/server/cli.js",
-		"omaw": "dist/server/cli.js"
+		"omaw": "dist/server/cli.js",
+		"agent-web": "dist/server/cli.js"
 	},
 	"files": [
 		"dist",
