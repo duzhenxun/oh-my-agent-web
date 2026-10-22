@@ -26,7 +26,14 @@ export type EngineEvent =
 	| { type: "text_delta"; text: string }
 	/** 模型的"思考"增量（reasoning）：单独一类，界面上折叠展示 */
 	| { type: "thinking_delta"; text: string }
-	| { type: "tool_start"; toolCallId: string; name: string; argsSummary: string }
+	| {
+			type: "tool_start";
+			toolCallId: string;
+			name: string;
+			argsSummary: string;
+			/** 完整参数（给「展开看全 + 复制」）；与摘要一样时省略 */
+			argsFull?: string;
+	  }
 	| {
 			type: "tool_end";
 			toolCallId: string;

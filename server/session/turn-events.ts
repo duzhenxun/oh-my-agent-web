@@ -150,6 +150,7 @@ export function applyEngineEvent(context: TurnEventContext, input: TurnEventInpu
 					toolCallId: event.toolCallId,
 					name: event.name,
 					argsSummary: event.argsSummary,
+					argsFull: event.argsFull,
 					startedAt: context.now(),
 				}),
 			);

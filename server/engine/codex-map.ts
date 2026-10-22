@@ -126,6 +126,7 @@ export function itemsToUiMessages(items: CodexItem[], ts: number): UiMessage[] {
 					toolCallId: item.id ?? `codex-exec-${ts}`,
 					name: "shell",
 					argsSummary: item.command ?? "",
+					argsFull: item.command ?? "",
 					status: toolStatus(item.status),
 					outputExcerpt: output.outputExcerpt,
 					truncated: output.truncated,
@@ -165,6 +166,7 @@ export function itemsToUiMessages(items: CodexItem[], ts: number): UiMessage[] {
 					toolCallId: item.id ?? `codex-tool-${ts}`,
 					name,
 					argsSummary: item.arguments === undefined ? "" : JSON.stringify(item.arguments).slice(0, 200),
+					argsFull: item.arguments === undefined ? "" : JSON.stringify(item.arguments),
 					status: toolStatus(item.status),
 					outputExcerpt: output.outputExcerpt,
 					truncated: output.truncated,
@@ -288,7 +290,13 @@ export function toModelOptions(models: EngineModelInfo[]): ModelOption[] {
 export function toolStartOf(item: CodexItem): EngineEvent | null {
 	const id = item.id ?? `codex-tool-${item.type}`;
 	if (item.type === "commandExecution") {
-		return { type: "tool_start", toolCallId: id, name: "shell", argsSummary: item.command ?? "" };
+		return {
+			type: "tool_start",
+			toolCallId: id,
+			name: "shell",
+			argsSummary: item.command ?? "",
+			argsFull: item.command ?? "",
+		};
 	}
 	if (item.type === "fileChange") {
 		return { type: "tool_start", toolCallId: id, name: "apply_patch", argsSummary: "改动工作区文件" };

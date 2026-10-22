@@ -33,15 +33,31 @@ export function resultExitCode(result: unknown): number | undefined {
 	return typeof value === "number" ? value : undefined;
 }
 
-/** 参数摘要（给界面与审批用） */
-export function summarizeArgs(args: unknown): string {
+/** 一行预览的长度：超过就截（参数再长，抬头也只有一行） */
+const SUMMARY_CHARS = 200;
+/** 完整参数的上限：不能让一条快照因参数膨胀（正常命令远小于这个数） */
+export const FULL_ARGS_CHARS = 4000;
+
+/** 把任意参数变成文本（字符串原样返回：有的引擎直接给命令串，不是 JSON） */
+function argsText(args: unknown): string {
 	if (typeof args === "string") return args;
 	try {
-		const text = JSON.stringify(args ?? {});
-		return text.length > 200 ? `${text.slice(0, 200)}…` : text;
+		return JSON.stringify(args ?? {});
 	} catch {
 		return "(无法序列化的参数)";
 	}
+}
+
+/** 参数摘要（给界面一行预览与审批用） */
+export function summarizeArgs(args: unknown): string {
+	const text = argsText(args);
+	return text.length > SUMMARY_CHARS ? `${text.slice(0, SUMMARY_CHARS)}…` : text;
+}
+
+/** 完整参数（给界面「展开了看全 + 复制」）；跟摘要一样短时调用方可以丢掉它 */
+export function fullArgs(args: unknown): string {
+	const text = argsText(args);
+	return text.length > FULL_ARGS_CHARS ? `${text.slice(0, FULL_ARGS_CHARS)}…` : text;
 }
 
 /** 同一类失败的统一出口：能把原因带给用户就带，拿不到给一句可读的兜底 */
@@ -124,7 +140,13 @@ export function mapSessionEvent(event: unknown): EngineEvent | null {
 	if (type === "tool_execution_start") {
 		const toolCallId = String(record.toolCallId ?? "");
 		const name = String(record.toolName ?? "");
-		return { type: "tool_start", toolCallId, name, argsSummary: summarizeArgs(record.args) };
+		return {
+			type: "tool_start",
+			toolCallId,
+			name,
+			argsSummary: summarizeArgs(record.args),
+			argsFull: fullArgs(record.args),
+		};
 	}
 
 	if (type === "tool_execution_end") {

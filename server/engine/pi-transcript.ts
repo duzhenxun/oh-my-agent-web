@@ -10,6 +10,7 @@
  * 这样单测可以用合成条目直接覆盖，不需要拉起 SDK。
  */
 import { TOOL_EXCERPT_CHARS, type MessageBlock, type UiMessage } from "../protocol.js";
+import { fullArgs, summarizeArgs } from "./pi-events.js";
 import { sanitizeHistoricalActions } from "../markers/actions.js";
 import { parseUsage } from "../util/usage.js";
 import { scheduledCost } from "../util/pricing-index.js";
@@ -89,7 +90,9 @@ function mapMessage(entryId: string, message: unknown, order: number): UiMessage
 					kind: "tool",
 					toolCallId: String(item.id ?? `tool-${order}-${blocks.length}`),
 					name: String(item.name ?? "unknown"),
-					argsSummary: summarize(item.arguments),
+					argsSummary: summarizeArgs(item.arguments),
+					// 摘要被截断时带一份完整的：历史里展开也要看得见整条命令
+					argsFull: fullArgs(item.arguments),
 					// 结果在后面的条目里回填；此刻只表明「调用过」
 					status: "ok",
 					outputExcerpt: "",
@@ -127,16 +130,6 @@ function addUsage(base: UiMessage["usage"], extra: NonNullable<UiMessage["usage"
 		cacheWrite: (base?.cacheWrite ?? 0) + extra.cacheWrite,
 		...(base?.cost === undefined && extra.cost === undefined ? {} : { cost }),
 	};
-}
-
-function summarize(args: unknown): string {
-	if (typeof args === "string") return args;
-	try {
-		const text = JSON.stringify(args ?? {});
-		return text.length > 200 ? `${text.slice(0, 200)}…` : text;
-	} catch {
-		return "(无法序列化的参数)";
-	}
 }
 
 /**

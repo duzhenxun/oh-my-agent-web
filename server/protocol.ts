@@ -13,6 +13,14 @@ export type ToolBlock = {
 	toolCallId: string;
 	name: string;
 	argsSummary: string;
+	/**
+	 * 完整参数（原始命令 / 完整 JSON），比 `argsSummary` 长时才有值。
+	 *
+	 * 为什么要两份：摘要是给**一行预览**用的（截到 200 字），`bash` 的长命令
+	 * 正好在那 200 字之后才关键 —— 展开了也看不见全。这一份留给展开后的
+	 * 「完整命令 + 复制」（服务端也截，上限 4000 字，不让快照被参数撞大）。
+	 */
+	argsFull?: string;
 	status: "running" | "ok" | "failed";
 	outputExcerpt: string;
 	truncated: boolean;

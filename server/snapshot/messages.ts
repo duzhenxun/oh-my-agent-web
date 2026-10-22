@@ -20,13 +20,15 @@ export function appendText(message: UiMessage, text: string): UiMessage {
 
 export function startTool(
 	message: UiMessage,
-	input: { toolCallId: string; name: string; argsSummary: string; startedAt: number },
+	input: { toolCallId: string; name: string; argsSummary: string; argsFull?: string; startedAt: number },
 ): UiMessage {
 	const block: ToolBlock = {
 		kind: "tool",
 		toolCallId: input.toolCallId,
 		name: input.name,
 		argsSummary: input.argsSummary,
+		// 摘要已经够短就不重复带一份：界面靠「有没有 argsFull」判断要不要显示「完整命令」
+		...(input.argsFull && input.argsFull !== input.argsSummary ? { argsFull: input.argsFull } : {}),
 		status: "running",
 		outputExcerpt: "",
 		truncated: false,

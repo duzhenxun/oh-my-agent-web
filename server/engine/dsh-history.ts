@@ -67,6 +67,7 @@ export function logToUiMessages(log: DshSessionLog): UiMessage[] {
 						toolCallId,
 						name: block.name ?? "tool",
 						argsSummary: args.length > 300 ? `${args.slice(0, 300)}…` : args,
+						argsFull: args,
 						status: "running" as const,
 						outputExcerpt: "",
 						truncated: false,

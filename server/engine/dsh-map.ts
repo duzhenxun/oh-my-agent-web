@@ -191,12 +191,14 @@ export function updateToEvent(update: DshUpdate): EngineEvent | null {
 			return text === "" ? null : { type: "thinking_delta", text };
 		}
 		case "tool_call": {
-			const args = update.rawInput === undefined ? "" : JSON.stringify(update.rawInput).slice(0, 300);
+			const raw = update.rawInput === undefined ? "" : JSON.stringify(update.rawInput);
 			return {
 				type: "tool_start",
 				toolCallId: update.toolCallId ?? "dsh-tool",
 				name: update.title ?? update.kind ?? "tool",
-				argsSummary: args,
+				argsSummary: raw.length > 300 ? `${raw.slice(0, 300)}…` : raw,
+				// 摘要是截过的；完整那份留给「展开看全 + 复制」
+				argsFull: raw,
 			};
 		}
 		case "tool_call_update": {
