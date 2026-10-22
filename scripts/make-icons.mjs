@@ -12,8 +12,8 @@
  *   CHROME_PATH=/path/to/chrome node scripts/make-icons.mjs   # 装在非标准位置时
  *
  * 输出（与 index.html / manifest / sw.js 里的引用一一对应）：
- *   web/public/favicon-{16,32,48}.png  圆角、透明角（标签页）
- *   web/public/favicon.ico             16/32/48 三尺寸打包
+ *   web/public/favicon-32.png           圆角、透明角（标签页用的那份 PNG）
+ *   web/public/favicon.ico             16/32/48 三尺寸打包（只有它用到 16/48）
  *   web/public/icons/icon-{192,512}.png        满幅（PWA any）
  *   web/public/icons/icon-maskable-512.png     满幅 + 安全圈（PWA maskable）
  *   web/public/icons/apple-touch-icon-180.png  iOS 主屏（满幅，系统自己切圆角）
@@ -109,13 +109,14 @@ async function main() {
 	};
 
 	try {
-		// 标签页图标：圆角砖 + 透明角，16px 也要能认出「一个里有个 > 」
-		const faviconSizes = [16, 32, 48];
+		// 标签页图标：圆角砖 + 透明角，16px 也要能认出「一个里有个 > 」。
+		// 16/32/48 三种都要画 —— 但只有 32 单独落盘：16/48 没有任何 HTML 引用，
+		// 它们唯一的去处是 favicon.ico（下面从内存里的 faviconPngs 打包），落盘只是多两个文件
 		const faviconPngs = [];
-		for (const size of faviconSizes) {
+		for (const size of [16, 32, 48]) {
 			const data = await rasterize(page, roundedSvg, size, true);
 			faviconPngs.push({ size, data });
-			await save(join(PUBLIC_DIR, `favicon-${size}.png`), data);
+			if (size === 32) await save(join(PUBLIC_DIR, "favicon-32.png"), data);
 		}
 		await save(join(PUBLIC_DIR, "favicon.ico"), buildIco(faviconPngs));
 
