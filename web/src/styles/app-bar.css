@@ -586,7 +586,7 @@
 	display: flex;
 	align-items: center;
 	gap: 8px;
-	/* 固定 24px 高：字 10px + 里面最小 12px 的圆环，正好放得下 */
+	/* 固定 24px 高：字 12px（= --statusbar-font-size 的默认值）+ 里面最小 12px 的圆环，正好放得下 */
 	height: 24px;
 	box-sizing: border-box;
 	/* 右边不留内边距：「顶部」开关要贴到窗口右沿（项目名已经挪到最左边） */
@@ -594,7 +594,11 @@
 	border-top: 1px solid var(--border);
 	background: var(--bg-elev);
 	color: var(--text-faint);
-	font-size: 12px;
+	/* 栏里**所有**文字都以它为基准（子元素一律写 em）：
+	   以前这里写死 12px，而栏内控件用 `calc(--chat-ui-font-size * k)`，于是同一行两套刻度 ——
+	   「排队 / 工作中」永远 12px，旁边的「放行 / 模型 / 强度」却随聊天字号变大变小。
+	   变量定义见 base.css（带 clamp，栏高只有 24px）。 */
+	font-size: var(--statusbar-font-size, 12px);
 	line-height: 1;
 	min-width: 0;
 	overflow: hidden;

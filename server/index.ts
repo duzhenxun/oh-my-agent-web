@@ -14,7 +14,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { PROTOCOL_VERSION, type ProtocolError, type ServerReply } from "./protocol.js";
 import { acquireLock, describeHolder, releaseLock } from "./session/lock.js";
 import { createRuntime } from "./session/runtime.js";
-import { createFileSettingsStore } from "./session/settings.js";
+import { createFileSettingsStore, readSettingsSync } from "./session/settings.js";
 import { createSender, type OutFrame } from "./snapshot/sender.js";
 import { createPiSessionsProvider, piAgentDir } from "./session/pi-sessions-provider.js";
 import { createUploadStore, uploadsDir } from "./uploads/upload-store.js";
@@ -92,6 +92,18 @@ process.on("unhandledRejection", (reason) => {
 		message: reason instanceof Error ? (reason.stack ?? reason.message) : String(reason),
 	});
 });
+// 同一个口径的另外半边：**同步抛出**的异常（最典型的是扩展塞在 setTimeout 里的渲染，
+// 比如 `token-speed.ts` 调 pi 的 theme 时抛 `Theme not initialized`）。
+// 没人 catch 的 timer 异常在 Node 里等于「杀进程」—— 一条扩展的渲染错就能把整个工作台带走，
+// 用户看到的就是服务突然没了、终端回到提示符。这里记下来、继续跑。
+//
+// 取舍：单用户本地工作台，宁可带着可能的脏状态继续（顶多某个界面块不刷新），
+// 也不要一按就死 —— 死了连日志面板都打不开。真到了没法自救的地步，用户重启就是了。
+process.on("uncaughtException", (error) => {
+	logger.error("未捕获的异常（已记录，进程继续）", {
+		message: error instanceof Error ? (error.stack ?? error.message) : String(error),
+	});
+});
 
 /** 局域网地址自动放行；域名仍要显式配 */
 const localAddresses = Object.values(networkInterfaces())
@@ -137,6 +149,9 @@ const engineWiring = createEngineWiring({
 	skillPaths: [defaultSkillsDir()],
 	// 子代理模板目录：pi 与 codex 共用同一份（codex 的 spawn 类型就是这些模板）
 	subagentAgentDir: piAgentDir(),
+	// 「下一步建议」要几条 = 设置里「想想」的那个数：pi / codex 建会话时现读（读的是盘上的
+	// settings.json，改了设置下一条会话就生效）；dsh 只能在启动时取一次（进程级 patch）
+	thinkCount: () => readSettingsSync(config.dataDir).thinkCount,
 	workspace: config.workspace,
 	piSessions,
 	onNotice: (text, level) => runtimeRef.current?.notify(text, level),

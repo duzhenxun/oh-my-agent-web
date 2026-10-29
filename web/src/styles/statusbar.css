@@ -6,7 +6,8 @@
 	background: none;
 	color: var(--text-faint);
 	font: inherit;
-	font-size: calc(var(--chat-ui-font-size, 12px) * 0.6897);
+	/* 栏内统一用 em（相对 --statusbar-font-size）：只有「次要文字」比主读数小一档 */
+	font-size: 0.87em;
 	padding: 0 3px;
 	cursor: pointer;
 }
@@ -22,7 +23,7 @@
 	display: inline-block;
 	width: 10px;
 	text-align: center;
-	font-size: calc(var(--chat-ui-font-size, 12px) * 0.7586);
+	font-size: 0.9em;
 	line-height: 1;
 }
 
@@ -157,7 +158,8 @@
  * ------------------------------------------------------------------------- */
 .is-mobile-shell .statusbar {
 	height: 32px;
-	font-size: calc(var(--chat-ui-font-size, 12px) * 0.8966);
+	/* 整条放大 5%：栏内全是 em，放大基准就够了（以前要逐颗控件各写一条 font-size） */
+	font-size: calc(var(--statusbar-font-size, 12px) * 1.05);
 	gap: 10px;
 	justify-content: flex-start;
 	/* 右侧不留内边距：「顶部」开关贴到屏幕右沿 */
@@ -169,28 +171,15 @@
 	position: static;
 	transform: none;
 	margin-left: auto;
-	font-size: calc(var(--chat-ui-font-size, 12px) * 0.8276);
 	padding: 0 4px;
 }
 
-/* 手机上的控件同样放大（桌面那版是为 24px 高的栏收过的） */
+/* 手机上的控件只放大「盒子」（桌面那版是为 24px 高的栏收过的）；
+   字号跟着基准一起涨，不必再逐颗写 */
 .is-mobile-shell .statusbar .tool-chip {
-	font-size: calc(var(--chat-ui-font-size, 12px) * 0.8966);
 	height: 22px;
 	line-height: 22px;
 	padding: 0 5px;
-}
-
-.is-mobile-shell .statusbar .tool-chip .tool-icon {
-	font-size: calc(var(--chat-ui-font-size, 12px) * 0.8966);
-}
-
-.is-mobile-shell .statusbar .thinking-value {
-	font-size: calc(var(--chat-ui-font-size, 12px) * 0.8966);
-}
-
-.is-mobile-shell .statusbar .model-caret {
-	font-size: calc(var(--chat-ui-font-size, 12px) * 0.7586);
 }
 
 .is-mobile-shell .statusbar > .status-spacer {
@@ -252,7 +241,7 @@
 	background: none;
 	color: var(--text-dim);
 	font: inherit;
-	font-size: calc(var(--chat-ui-font-size, 12px) * 0.8276);
+	/* 与「排队 / 工作中」同号：同一个栏里的读数不该有三个尺寸 */
 	line-height: 1.1;
 	cursor: pointer;
 	border-radius: 0;
@@ -297,7 +286,6 @@
 /* 手机：跟整条一起放大（圆环也大一号，手指好点） */
 .is-mobile-shell .status-context {
 	padding: 2px 7px 2px 5px;
-	font-size: calc(var(--chat-ui-font-size, 12px) * 0.8621);
 }
 
 .is-mobile-shell .status-ring {
@@ -326,8 +314,11 @@
 }
 
 /* 状态栏里是「一条扁平的栏」，不要给这些控件再套外框：字和图标就够 */
+/* 放行 / 引擎 / 模型 / 强度：跟「排队 / 工作中」**同号**（1em）。
+   以前这里是 0.79 × 聊天字号 = 11.1px，旁边排队却是写死的 12px ——
+   同一行两种刻度，改聊天字号时它们还会互相错开（用户 2026-10-29 报的那个）。 */
 .statusbar .tool-chip {
-	font-size: calc(var(--chat-ui-font-size, 12px) * 0.7931);
+	font-size: 1em;
 	padding: 0 3px;
 	border: none;
 	border-radius: 5px;
@@ -350,7 +341,7 @@
 }
 
 .statusbar .tool-chip .tool-icon {
-	font-size: calc(var(--chat-ui-font-size, 12px) * 0.7586);
+	font-size: 1em;
 }
 
 .statusbar .model-trigger {
@@ -358,9 +349,10 @@
 }
 
 .statusbar .thinking-value {
-	font-size: calc(var(--chat-ui-font-size, 12px) * 0.7931);
+	font-size: 1em;
 }
 
+/* 箭头是装饰，比文字小一档 */
 .statusbar .model-caret {
-	font-size: calc(var(--chat-ui-font-size, 12px) * 0.6897);
+	font-size: 0.87em;
 }

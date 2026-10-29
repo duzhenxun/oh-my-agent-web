@@ -34,6 +34,13 @@ export function createBuiltinEngineRegistry(options: {
 	onNotice: (text: string, level?: "info" | "warn" | "error") => void;
 	/** 技能目录（交给 pi 展开 `/skill:xxx` 用；不给就只认 pi 自己的） */
 	skillPaths?: string[];
+	/**
+	 * 「下一步建议」要几条（设置里「想想」的那个数，1~5）。
+	 *
+	 * pi / codex 都在**建会话/开 thread 时现读**（改了设置，下一条会话就生效）；
+	 * dsh 吃不到它 —— 它只能靠进程级 patch，启动时定型（见 dsh-prompt-patch.ts）。
+	 */
+	thinkCount?: () => number;
 	/** pi 的告警同时要进日志（引擎层的 notify 不带 logger） */
 	onLog?: (text: string) => void;
 	/**
@@ -67,6 +74,7 @@ export function createBuiltinEngineRegistry(options: {
 						options.onNotice(text, level);
 					},
 					...(options.skillPaths ? { skillPaths: options.skillPaths } : {}),
+					...(options.thinkCount ? { thinkCount: options.thinkCount } : {}),
 				}),
 		},
 		...(options.codex
@@ -101,6 +109,7 @@ export function createBuiltinEngineRegistry(options: {
 								client: options.codex?.client,
 								log: options.onLog,
 								...(options.codex?.subagentPolicy ? { subagentPolicy: options.codex.subagentPolicy } : {}),
+								...(options.thinkCount ? { thinkCount: options.thinkCount } : {}),
 							}),
 					},
 				]

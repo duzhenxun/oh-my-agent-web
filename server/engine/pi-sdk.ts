@@ -11,6 +11,7 @@ import {
 	SessionManager,
 	createAgentSession,
 	getAgentDir,
+	initTheme,
 } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI, InlineExtension, ToolCallEventResult } from "@earendil-works/pi-coding-agent";
 import { dirname } from "node:path";
@@ -52,6 +53,11 @@ type PiSdkEngineOptions = {
 	 * 界面上是一条正常的用户消息，模型收到的却是字面的 `/skill:xxx`。
 	 */
 	skillPaths?: string[];
+	/**
+	 * 「下一步建议」要几条（设置里「想想」的那个数，1~5）：**每条会话建的时候现读**。
+	 * 不给就按默认 4~5 条教模型（见 suggestion-guidance.ts）。
+	 */
+	thinkCount?: () => number;
 };
 
 type SessionHandle = {
@@ -236,7 +242,7 @@ function toAuthEvent(event: unknown): ProviderAuthEvent {
 /** 教模型怎么写「下一步建议」（ADR-0022）：刻意写得短（每次请求都付 token） */
 import { reloadModelRegistry } from "./model-registry-reload.js";
 import { NARRATE_GUIDANCE } from "./narrate-guidance.js";
-import { SUGGESTION_GUIDANCE } from "./suggestion-guidance.js";
+import { SUGGESTION_GUIDANCE, suggestionGuidance } from "./suggestion-guidance.js";
 import { SUBAGENT_GUIDANCE } from "./subagent-guidance.js";
 
 export { NARRATE_GUIDANCE, SUGGESTION_GUIDANCE, SUBAGENT_GUIDANCE };
@@ -246,6 +252,20 @@ import { piSdkVersion } from "./pi-version.js";
 import { renameSessionIn } from "./pi-rename.js";
 
 export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort {
+	/**
+	 * pi 的 `theme` 是个全局 Proxy：没调过 `initTheme()` 就抛
+	 * `Theme not initialized. Call initTheme() first.`（import 本身**不会**初始化它）。
+	 *
+	 * TUI 启动时自己会初始化，而这个无界面的工作台不会 —— 但扩展里那些「给终端画东西」的代码
+	 * （`getMarkdownTheme().heading()`、`new Text(..., theme.fg(...))`）照样会被调用，尤其是
+	 * 塞在 `setTimeout` 里的渲染：那个异常没人接，**直接把这个服务进程带走**（同事机器上真踩过：
+	 * 扩展 `token-speed.ts` 的定时渲染崩了整个 agent-web）。
+	 *
+	 * 所以宿主这边先初始化一次，让这类渲染退化成「画了个没人看的东西」，而不是崩服务。
+	 * 顺带也是所有 `@earendil-works/*` 导入的唯一出口（本文件）。
+	 */
+	initTheme();
+
 	const sessions = new Map<string, SessionHandle>();
 	const thinking = createPiThinking(sessions as unknown as Map<string, { session: unknown }>);
 	let approvalHandler: ApprovalHandler | null = null;
@@ -355,7 +375,11 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 			extensionFactories,
 			// 教模型「下一步建议」的写法（ADR-0022）：纯文本标记，不需要调用任何工具
 			// 「动手前先说话」：过程默认折叠，不写正文用户就不知道它在干什么
-			appendSystemPrompt: [SUGGESTION_GUIDANCE, NARRATE_GUIDANCE, ...(subagentReady ? [SUBAGENT_GUIDANCE] : [])],
+			appendSystemPrompt: [
+				suggestionGuidance(options.thinkCount?.() ?? null),
+				NARRATE_GUIDANCE,
+				...(subagentReady ? [SUBAGENT_GUIDANCE] : []),
+			],
 		});
 		await resourceLoader.reload();
 

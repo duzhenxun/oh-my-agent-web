@@ -37,6 +37,9 @@ function relativeTime(ts: number, now = Date.now()): string {
  * 「跑完了、你还没看」的**小蓝点**（`unseen`）：被 `session-unseen.ts` 记住，
  * 点开这条会话（切过去）就抹掉 —— 圆点自己不是按钮，点击落在整行上，
  * 也就是说「点它 = 打开它」，跟用户要的「一旦点击后圆点就消失」一致。
+ *
+ * 选中态（`selected`）只负责画，不负责算：哪些行被选中、Shift 连选切哪一段，
+ * 全在 `Sidebar` 里算（它才知道整条列表的可见顺序）。这里只把**修饰键**原样上报（`onSwitch`）。
  */
 export function SessionRow({
 	session,
@@ -45,6 +48,7 @@ export function SessionRow({
 	unseen = false,
 	title,
 	pinned,
+	selected = false,
 	menuPoint,
 	onOpenMenu,
 	onSwitch,
@@ -69,11 +73,17 @@ export function SessionRow({
 	unseen?: boolean;
 	title: string;
 	pinned: boolean;
+	/** 多选中的一条（Shift 连选 / Ctrl·⌘ 加减选出来的那一批）：只换样式，不加交互 */
+	selected?: boolean;
 	/** 非空时菜单就浮在这个位置（右键点出来的地方） */
 	menuPoint: MenuPoint | null;
 	/** 右键这一行：把菜单弹在鼠标处 */
 	onOpenMenu: (point: MenuPoint) => void;
-	onSwitch: () => void;
+	/**
+	 * 点了这一行。修饰键原样带出去（选中逻辑在 Sidebar）：
+	 * `shift` = 连选一段，`toggle` = Ctrl/⌘ 加减选，两个都假 = 普通点击（打开这条会话）。
+	 */
+	onSwitch: (modifiers: { shift: boolean; toggle: boolean }) => void;
 	onPin: () => void;
 	/** 提交新名字（就地编辑保存时调用） */
 	onRename: (title: string) => void;
@@ -153,7 +163,7 @@ export function SessionRow({
 	return (
 		<div
 			ref={rowRef}
-			className={`pi-row-wrap${active ? " pi-row-wrap-active" : ""}${running ? " pi-row-wrap-running" : ""}${dragOver ? " pi-row-drag-over" : ""}`}
+			className={`pi-row-wrap${active ? " pi-row-wrap-active" : ""}${selected ? " pi-row-wrap-selected" : ""}${running ? " pi-row-wrap-running" : ""}${dragOver ? " pi-row-drag-over" : ""}`}
 			draggable={draggable}
 			onDragStart={(event) => {
 				// 设一个 dataTransfer 类型：否则部分浏览器拖拽起不来，drop 也收不到内容
@@ -192,8 +202,8 @@ export function SessionRow({
 		>
 			<button
 				type="button"
-				className={`pi-row${active ? " pi-row-active" : ""}${pinned ? " pi-row-pinned" : ""}`}
-				onClick={onSwitch}
+				className={`pi-row${active ? " pi-row-active" : ""}${selected ? " pi-row-selected" : ""}${pinned ? " pi-row-pinned" : ""}`}
+				onClick={(event) => onSwitch({ shift: event.shiftKey, toggle: event.metaKey || event.ctrlKey })}
 				// 时间不进布局，只在这个悬停提示里（鼠标停一下照样能看到「3小时」）
 				title={`${session.cwd}\n${session.id}\n最后活动：${relativeTime(session.updatedAt)}`}
 			>

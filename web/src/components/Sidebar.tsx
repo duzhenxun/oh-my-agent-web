@@ -8,6 +8,8 @@ import { reorderProjects, sortProjects } from "../project-sort.ts";
 import { moveSession, renameSession, setSettings, switchConversation } from "../ws.ts";
 import { ArchivedEntryRow } from "./ArchivedEntryRow.tsx";
 import { ArchivedSection } from "./ArchivedSection.tsx";
+import { SessionBatchMenu } from "./SessionBatchMenu.tsx";
+import { SessionSelectionBar } from "./SessionSelectionBar.tsx";
 import { groupArchived, isProjectOpen } from "../archived-groups.ts";
 import { deleteSession, deleteSessions } from "../delete-session.ts";
 import { showToast } from "../toast.ts";
@@ -35,6 +37,8 @@ import { clearUnseen, clearUnseenMany } from "../session-unseen.ts";
 import { useUnseenMarks } from "../use-unseen-finish.ts";
 // 会话的手动顺序（拖动排序）：「手动动过的按位置排，其余按创建时间」——纯函数在 session-order.ts
 import { insertBefore, rankSessions, withProjectOrder, withSessionFirst } from "../session-order.ts";
+// 多选（Shift 连选 / Ctrl·⌘ 加减选）的算术 —— 纯函数在 session-selection.ts
+import { pruneSelection, rangeSelection, toggleSelection } from "../session-selection.ts";
 
 /**
  * 会话侧栏（ADR-0021 §1/§2）：**只有项目分组**，每个项目可展开/收起，
@@ -188,6 +192,18 @@ export function Sidebar({
 	const [pinnedOpen, setPinnedOpen] = useState(true);
 	/** 会话右键菜单：同上，记录会话 id + 鼠标位置 */
 	const [sessionMenu, setSessionMenu] = useState<{ id: string; point: MenuPoint } | null>(null);
+	/**
+	 * 多选（用户 2026-10-29：「Shift 连选一批 / Ctrl 加选几个，右键批量删除、批量归档」）。
+	 *
+	 * 存**数组**而不是 Set：Shift 连选要按「看得见的顺序」切一段，锚点也得能落回去。
+	 * 普通点击**不**往这里写（它只清空）：否则刚点开的会话永远带着一块选中底色，
+	 * 跟 `pi-row-active` 叠在一起看不出到底哪个是「当前会话」。
+	 */
+	const [selectedIds, setSelectedIds] = useState<string[]>([]);
+	/** Shift 连选的锚点（最后一次**不带修饰键**点到的会话；Ctrl·⌘ 点的也会成为新锚点） */
+	const selectAnchor = useRef<string | null>(null);
+	/** 批量菜单：浮在右键位置（它不属于某一行，而属于那一片选区） */
+	const [batchMenu, setBatchMenu] = useState<{ point: MenuPoint } | null>(null);
 	/**
 	 * 拖动状态（把会话拖到别的项目 / 在项目内拖动互换位置）。
 	 * 存成 React state 而不是只靠 dataTransfer：dataTransfer.getData 在 dragover 里拿不到内容，
@@ -381,6 +397,105 @@ export function Sidebar({
 			),
 		)
 		.sort((a, b) => sessionPrefs.pinned.indexOf(a.id) - sessionPrefs.pinned.indexOf(b.id));
+	/**
+	 * 每个项目这一帧要画哪几条会话（归档/置顶过滤、排序、折叠、条数上限全在这里算一次）。
+	 * **渲染与 Shift 连选共用同一份**：各算一遍的话，连选的范围迟早会和眼睛看到的顺序对不上。
+	 */
+	const rowsOf = new Map<
+		string,
+		{ expanded: boolean; visibleSessions: PiSessionSummary[]; shown: PiSessionSummary[] }
+	>();
+	for (const project of groups) {
+		const visibleSessions = rankSessions(
+			// 归档的隐藏；全局置顶的挪到最上面的「置顶」组里，这里不再重复出现
+			project.sessions.filter(
+				(session) => !sessionPrefs.archived.includes(session.id) && !sessionPrefs.pinned.includes(session.id),
+			),
+			sessionPrefs.order,
+		);
+		const expanded = showAll[project.cwd] === true;
+		rowsOf.set(project.cwd, {
+			expanded,
+			visibleSessions,
+			shown: expanded ? visibleSessions : visibleSessions.slice(0, sessionsPerProject),
+		});
+	}
+	/**
+	 * 当前**看得见**的会话顺序（从上到下）：置顶组 → 各展开项目里画出来的那几条。
+	 * Shift 连选就是在这条序列上切一段 —— 折叠起来的项目不算（看不见的不该被顺手选中），
+	 * 没展开的「还有 N 个…」也不算。
+	 */
+	const visibleSessionIds: string[] = [];
+	if (!archivedView) {
+		if (pinnedEntries.length > 0 && pinnedOpen) visibleSessionIds.push(...pinnedEntries.map((session) => session.id));
+		if (projectsOpen)
+			groups.forEach((project, index) => {
+				const plan = rowsOf.get(project.cwd);
+				if (!plan || !isOpenAt(project, index)) return;
+				visibleSessionIds.push(...plan.shown.map((session) => session.id));
+			});
+	}
+	/** 清空多选（批量菜单里的「取消选择」、切归档视图、选完干完活都走这里） */
+	const clearSelection = () => {
+		setSelectedIds([]);
+		setBatchMenu(null);
+		selectAnchor.current = null;
+	};
+	/** Shift 连选：从锚点切到这一条（含两端）；没有锚点（比如一上来就 Shift）就退化成只选这一条 */
+	const selectRange = (id: string) => {
+		const next = rangeSelection(visibleSessionIds, selectAnchor.current, id);
+		setSelectedIds(next);
+		// 没有锚点（或锚点已经看不见了）时，把这一条当新锚点，下一次 Shift 才有起点
+		if (next.length === 1) selectAnchor.current = id;
+	};
+	/** Ctrl/⌘ 加减选（锚点跟到最后点的那条，之后的 Shift 才有起点） */
+	const toggleSelected = (id: string) => {
+		setSelectedIds((current) => toggleSelection(current, id));
+		selectAnchor.current = id;
+	};
+	/**
+	 * 批量归档：**一次写完整张 `archived`**。
+	 *
+	 * 会话偏好是整表覆盖写的：逐条发的话，第二条起都会基于旧快照算，服务端一覆盖就只剩最后一条生效
+	 * （归档视图里批量还原那条注释也记的是同一个坑）。提示里给「撤销」与「查看」。
+	 */
+	const archiveSelected = () => {
+		const ids = selectedIds;
+		if (ids.length === 0) return;
+		const drop = new Set(ids);
+		const latest = latestSessionPrefs();
+		patchSessionPrefs({ archived: [...latest.archived.filter((id) => !drop.has(id)), ...ids] });
+		clearSelection();
+		showToast({
+			text: t(`已归档 ${ids.length} 条会话`, `Archived ${ids.length} session(s)`),
+			actions: [
+				{
+					label: t("撤销", "Undo"),
+					onClick: () => {
+						// 撤销也读最新一份：这中间可能又归档过别的
+						patchSessionPrefs({ archived: latestSessionPrefs().archived.filter((id) => !drop.has(id)) });
+					},
+				},
+				{ label: t("查看", "View"), onClick: () => setArchivedView(true) },
+			],
+		});
+	};
+	/** 批量删除（确认已在菜单里做过一道：第一下上膛、第二下真删） */
+	const deleteSelected = () => {
+		const ids = selectedIds;
+		if (ids.length === 0) return;
+		clearSelection();
+		deleteSessions(ids, t(`选中的 ${ids.length} 条会话`, `${ids.length} selected session(s)`));
+	};
+	/**
+	 * 选中的会话要是已经不在可见列表里了（被删 / 被归档 / 换到归档视图 / 项目被折叠），静默剔掉。
+	 * 不剔的话批量菜单会写着「已选 5 条」，实际只剩两条还在列表里 —— 那时候点「删除」就少删仨，谁都看不出来。
+	 */
+	useEffect(() => {
+		if (selectedIds.length === 0) return;
+		const next = pruneSelection(selectedIds, visibleSessionIds);
+		if (next.length !== selectedIds.length) setSelectedIds(next);
+	});
 	/* 点标题右边那枚「全部收起/展开」：一次把下面所有项目设成同一个开合状态。
 	 * 「置顶」子组跟着一起走 —— 它现在在「项目」里面，
 	 * 否则点了「全部收起」它自己还摊着，看着像没收干净。 */
@@ -455,21 +570,45 @@ export function Sidebar({
 		if (next === current) return;
 		setSettings({ sessionPrefs: { ...latest, order: withProjectOrder(latest.order, current, next) } });
 	};
-	const renderSession = (
-		session: PiSessionSummary,
-		options: { project?: PiProject; pinnedGroup?: boolean } = {},
-	) => (
+	const renderSession = (session: PiSessionSummary, options: { project?: PiProject; pinnedGroup?: boolean } = {}) => (
 		<SessionRow
 			key={session.id}
 			session={session}
 			active={session.id === activeId}
+			selected={selectedIds.includes(session.id)}
 			running={runningIds.includes(session.id)}
 			unseen={unseen[session.id] !== undefined}
 			title={titleOf(session) || "（无标题）"}
 			pinned={sessionPrefs.pinned.includes(session.id)}
 			menuPoint={sessionMenu?.id === session.id ? sessionMenu.point : null}
-			onOpenMenu={(point) => setSessionMenu({ id: session.id, point })}
-			onSwitch={() => {
+			onOpenMenu={(point) => {
+				// 右键落在「已经选中且不止一条」上 = 想动这一批 → 批量菜单（见 SessionBatchMenu）
+				if (selectedIds.length > 1 && selectedIds.includes(session.id)) {
+					setSessionMenu(null);
+					setBatchMenu({ point });
+					return;
+				}
+				// 否则按「右键了这一条」处理：先把选区收成这一条（跟 Finder / VS Code 一致），再弹单条菜单
+				setBatchMenu(null);
+				setSelectedIds([session.id]);
+				selectAnchor.current = session.id;
+				setSessionMenu({ id: session.id, point });
+			}}
+			onSwitch={({ shift, toggle }) => {
+				// Shift：从锚点连选一段（**不**切会话 —— 只是选，往往下一步就是右键批量操作）
+				if (shift) {
+					selectRange(session.id);
+					return;
+				}
+				// Ctrl/⌘：这条加减选，也不切会话
+				if (toggle) {
+					toggleSelected(session.id);
+					return;
+				}
+				// 普通点击：清空多选 + 设为新锚点 + 打开会话（原来那一套行为不变）
+				setSelectedIds([]);
+				setBatchMenu(null);
+				selectAnchor.current = session.id;
 				// 点开 = 看过了：先抹圆点（不等下一帧快照，点了就消失），再切会话
 				clearUnseen(session.id);
 				switchConversation(session.id);
@@ -565,7 +704,7 @@ export function Sidebar({
 					) : null}
 				</section>
 			) : null}
-			<div className="sidebar-head">
+			<div className={`sidebar-head${selectedIds.length > 0 ? " sidebar-head-selecting" : ""}`}>
 				{/* 标题 = 整块的开关（跟下面「文件管理」一致）：点一下把这条列表整体收起，再点展开 */}
 				<button
 					type="button"
@@ -587,6 +726,22 @@ export function Sidebar({
 					</span>
 				</button>
 				{/*
+				 * 多选时：标题旁边直接挂「已选 N 条 · 归档 · 删除」（用户 2026-10-29：「不用右键也能操作」）。
+				 *
+				 * 为什么占掉「＋ 新建项目 / ⇕ 全部收起」的位置：这一行只有侧栏那么宽，再塞三块进去
+				 * 就只能把「项目管理」挤成省略号。选着一批会话时用户正在干的事只有一件（归档/删除），
+				 * 那两颗图标属于「平时逛列表」的场景，取消选择（✕）之后就回来。
+				 * 删除仍须两下：第一下上膛、第二下真删（`useArmed`，5 秒不管就自己缩回）。
+				 */}
+				{selectedIds.length > 0 ? (
+					<SessionSelectionBar
+						count={selectedIds.length}
+						onArchive={archiveSelected}
+						onDelete={deleteSelected}
+						onClear={clearSelection}
+					/>
+				) : null}
+				{/*
 				 * 「＋ 新建项目」：**紧跟在「项目」后面、在「⇕ 全部收起」之前**（用户要求挪到这里）。
 				 * 以前它被 `margin-left: auto` 顶到这一行最右边，跟左边那几颗（项目 / ⇕ / 新会话）
 				 * 隔着一整条空白，看着像两个不相干的组；挪进来之后这一行就是一件事：
@@ -595,7 +750,7 @@ export function Sidebar({
 				 */}
 				<button
 					type="button"
-					className="sidebar-icon sidebar-icon-inline"
+					className={`sidebar-icon sidebar-icon-inline${selectedIds.length > 0 ? " sidebar-icon-away" : ""}`}
 					title={t("新建项目（选择一个本地目录）", "New project (pick a local folder)")}
 					aria-label={t("新建项目", "New project")}
 					onClick={onNewProject}
@@ -609,7 +764,7 @@ export function Sidebar({
 				 * 位置一变人还以为点错了。整块收着时点它 = 先展开列表、再把各项目都摊开。 */}
 				<button
 					type="button"
-					className="sidebar-icon sidebar-icon-inline"
+					className={`sidebar-icon sidebar-icon-inline${selectedIds.length > 0 ? " sidebar-icon-away" : ""}`}
 					title={
 						allOpen
 							? t("全部收起（只留项目名）", "Collapse all (project names only)")
@@ -698,18 +853,8 @@ export function Sidebar({
 					</div>
 				) : null}
 				{groups.map((project, index) => {
-					const expanded = showAll[project.cwd] === true;
-					// 归档的会话从列表隐藏；全局置顶的排在最上面那一段
-					// 排序（用户 2026-10-29）：**手动动过的按手动位置**（`sessionPrefs.order`），
-					// 其余按创建时间倒序 —— 规则见 session-order.ts 的 `rankSessions`
-					const visibleSessions = rankSessions(
-						// 归档的隐藏；全局置顶的挪到最上面的「置顶」组里，这里不再重复出现
-						project.sessions.filter(
-							(session) => !sessionPrefs.archived.includes(session.id) && !sessionPrefs.pinned.includes(session.id),
-						),
-						sessionPrefs.order,
-					);
-					const shown = expanded ? visibleSessions : visibleSessions.slice(0, sessionsPerProject);
+					const plan = rowsOf.get(project.cwd)!;
+					const { expanded, visibleSessions, shown } = plan;
 					const rest = visibleSessions.length - shown.length;
 					const name = aliases[project.cwd] || project.name || t("未分组", "Ungrouped");
 					const projectOpen = isOpenAt(project, index);
@@ -979,6 +1124,7 @@ export function Sidebar({
 				view={archivedView}
 				onBack={() => setArchivedView(false)}
 				onOpen={(id) => {
+					clearSelection();
 					void switchConversation(id);
 					setArchivedView(false);
 				}}
@@ -989,6 +1135,17 @@ export function Sidebar({
 					patchSessionPrefs({ archived: latestSessionPrefs().archived.filter((item) => !drop.has(item)) });
 				}}
 			/>
+			{/* 多选后的右键菜单：批量归档 / 批量删除（只对“这一批会话都成立”的动作，见组件注释） */}
+			{batchMenu ? (
+				<SessionBatchMenu
+					point={batchMenu.point}
+					count={selectedIds.length}
+					onArchive={archiveSelected}
+					onDelete={deleteSelected}
+					onClear={clearSelection}
+					onClose={() => setBatchMenu(null)}
+				/>
+			) : null}
 			{/* 项目列表收起时文件区直接撑到底：这时没有「上下两块」可拖，隐藏分割条 */}
 			{archivedView || !projectsOpen ? null : (
 				<SideSplitter open={fileOpen} onOpen={() => setFileOpen(true)} onStart={split.start} onReset={split.reset} />

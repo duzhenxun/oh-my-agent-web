@@ -261,9 +261,10 @@
 }
 
 /* ---- 状态栏里的引擎胶囊（顶栏改成竖栏时搬下来的，见 StatusBar）---- *
- * 状态栏只有 24px 高、字号 12px，所以这里不能用顶栏那套 `--ab` 尺寸：
+ * 状态栏只有 24px 高，所以这里不能用顶栏那套 `--ab` 尺寸：
  * 那套是「顶栏里所有东西一起缩」的比例，搬到底部只会算出一个更小的高。
- * 直接按状态栏那排 `tool-chip` 的观感写死一档，跟旁边那颗「放行」看起来是一家的。 */
+ * 字号**跟着状态栏的基准走**（`1em` = `--statusbar-font-size`，见 base.css）：
+ * 以前这里写死 12px，旁边「放行 / 模型」却随聊天字号缩放，同一行两种刻度。 */
 .engine-picker-in-statusbar {
 	flex: 0 1 auto;
 	min-width: 0;
@@ -280,7 +281,7 @@
 	border: none;
 	border-radius: 5px;
 	background: transparent;
-	font-size: 12px;
+	font-size: 1em;
 	line-height: 1;
 	white-space: nowrap;
 }
@@ -296,12 +297,12 @@
 .engine-picker-in-statusbar .engine-picker-btn .side-foot-icon {
 	width: 14px;
 	height: 14px;
-	font-size: 12px;
+	font-size: 1em;
 }
 
 /* 状态栏窄了就整颗幅缩：里面只剩图标、短名与箭头，都由 flex 自己收 */
 .engine-picker-in-statusbar .engine-picker-badge {
-	font-size: 10px;
+	font-size: 0.85em;
 }
 
 .engine-picker-in-statusbar .engine-picker-chevron {

@@ -109,12 +109,7 @@
 		border-radius: 0 5px 5px 0;
 		/* 颜色跟行的填充走（`--pi-row-fill`）：普通行是悬停灰，选中行是那层淡蓝。
 		   写死 `--bg-elev-2` 的话，选中行一 hover 右边就变灰 —— 正是「点了还是灰的」那个观感。 */
-		background: linear-gradient(
-			to right,
-			transparent 0,
-			var(--pi-row-fill) 20px,
-			var(--pi-row-fill) 100%
-		);
+		background: linear-gradient(to right, transparent 0, var(--pi-row-fill) 20px, var(--pi-row-fill) 100%);
 		opacity: 0;
 		pointer-events: none;
 		/* 在按钮**下面**（按钮提到 1 层）：否则底板会把图标一起盖掉 */
@@ -197,6 +192,34 @@
  * 而截图里那一条是**圆角盒子里面**独立的一小截。`left: 1px` 让开那 1px 描边，
  * 上下各让 2px，看着是嵌在里面而不是顶穿上下边。 */
 .pi-row-active::before {
+	content: "";
+	position: absolute;
+	left: 1px;
+	top: 2px;
+	bottom: 2px;
+	width: 3px;
+	border-radius: 2px;
+	background: var(--accent);
+	pointer-events: none;
+}
+
+/* ---- 多选（Shift 连选 / Ctrl·⌘ 加减选）----
+   跟「当前会话」是两件事，所以给的是一个**更浓**的底（4% → 14%）+ 略深一圈描边：
+   当前会话可以同时被选上（那就按选中的画，反正下一步是右键批量操作）。
+   底色同样走 `--pi-row-fill` —— 行尾那块悬停底板也跟着变，不会右半边露灰底。 */
+.pi-row-wrap-selected {
+	--pi-row-fill: color-mix(in srgb, var(--accent) 14%, var(--bg-elev));
+}
+
+.pi-row.pi-row-selected,
+.pi-row.pi-row-selected:hover,
+.pi-row-wrap:focus-within > .pi-row.pi-row-selected {
+	background: var(--pi-row-fill);
+	border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+
+/* 左边竖条与 `.pi-row-active` 同一套几何（两者同时命中时长得一模一样也无所谓） */
+.pi-row-selected::before {
 	content: "";
 	position: absolute;
 	left: 1px;

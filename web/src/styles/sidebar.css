@@ -200,6 +200,88 @@
 	margin-left: -4px;
 }
 
+/* ---- 多选时抬头里的「已选 N 条 · 归档 · 删除 · ✕」----
+ * 出现的条件是「有选中」，位置紧跟在「项目管理」后面（用户 2026-10-29：「不用右键也能操作」）。
+ * 宽度很紧，所以：条数用胶囊、两个动作只用两个字、✕ 借用 `.sidebar-icon` 的 22×20。 */
+.sidebar-selection {
+	display: inline-flex;
+	align-items: center;
+	gap: 3px;
+	flex: none;
+	margin-left: -4px;
+}
+
+.sidebar-selection-count {
+	flex: none;
+	padding: 1px 7px;
+	border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--accent) 12%, transparent);
+	color: var(--accent);
+	font-size: 12px;
+	font-variant-numeric: tabular-nums; /* 条数从 9 → 10 时不抽一下 */
+	line-height: 1.5;
+	white-space: nowrap;
+}
+
+.sidebar-selbtn {
+	flex: none;
+	height: 20px;
+	padding: 0 6px;
+	border: 1px solid transparent;
+	border-radius: 6px;
+	background: none;
+	color: var(--text-dim);
+	font: inherit;
+	font-size: 12px;
+	line-height: 1;
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.sidebar-selbtn:hover {
+	background: color-mix(in srgb, var(--accent) 12%, transparent);
+	color: var(--accent);
+}
+
+.sidebar-selbtn-danger {
+	color: var(--red);
+}
+
+.sidebar-selbtn-danger:hover {
+	background: color-mix(in srgb, var(--red) 12%, transparent);
+	color: var(--red);
+}
+
+/* 「再点一次确认」的中间态（`useArmed`）：与右键菜单的 `.proj-menu-item-armed` 同一套观感
+ * （红底白字），否则第二下的手感跟第一下一样，等于没确认（见 use-armed.ts）。 */
+.sidebar-selbtn-armed,
+.sidebar-selbtn-armed:hover {
+	background: var(--red);
+	border-color: var(--red);
+	color: #fff;
+	font-weight: 600;
+}
+
+/* 多选期间让位给上面那条选择条：不能用 `hidden` 属性 —— `.sidebar-icon` 的 display 是作者样式，
+ * 会盖掉 UA 的 `[hidden] { display: none }`，写上去等于没写（实测）。 */
+.sidebar-icon-away {
+	display: none;
+}
+
+/* 选着一批会话时，抬头只留「三角 + 已选 N 条 归档 删除 ✕」：
+ * 标题文字**整块让位** —— 252px 的侧栏里它会被挤成「项…」，那比不显示还难看。
+ * 标题那颗按钮本身还在（三角照样能点、`aria-label` 照样念得出来）。 */
+.sidebar-head-selecting .sidebar-title-label {
+	display: none;
+}
+
+/* 文字没了，但那颗三角（= 收起/展开整块）不能被挤没：侧栏最小 240px
+ * （见 sidebar-layout.ts 的 SIDEBAR_MIN_WIDTH），「三角 + 已选 N 条 归档 删除 ✕」大约 200px。 */
+.sidebar-head-selecting .sidebar-title {
+	flex: none;
+}
+
 /* 「全部收起/展开」按下时给个小提示：蓝色底表示「现在是全展开状态」 */
 .sidebar-icon[aria-pressed="true"]:hover {
 	color: var(--accent);

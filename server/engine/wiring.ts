@@ -9,6 +9,7 @@
  * codex 客户端构造时不 spawn：机器上没装 codex 也能正常启动，只有在切到它时才报错。
  */
 import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { PiProject } from "../protocol.js";
 import { createBuiltinEngineRegistry } from "./builtin.js";
@@ -21,6 +22,8 @@ import { createCodexSessionsProvider } from "./codex-sessions.js";
 import type { CodexClient } from "./codex-transport.js";
 import { createCodexClient } from "./codex-transport.js";
 import { createDshClient } from "./dsh-transport.js";
+import { writeDshSuggestionPatch } from "./dsh-prompt-patch.js";
+import { suggestionGuidance } from "./suggestion-guidance.js";
 import { createDshSessionsProvider } from "./dsh-sessions.js";
 import { createOpencodeSessionsProvider } from "./opencode-sessions.js";
 import { readOpencodeSessionDirs } from "./opencode-projects.js";
@@ -100,6 +103,13 @@ export function createEngineWiring(options: {
 	 * codex 的子代理模板从这里读：同一份模板，两个引擎看到的「有哪些子代理」是一致的。
 	 */
 	subagentAgentDir?: string;
+	/**
+	 * 「下一步建议」要几条（设置里「想想」的那个数，1~5）。
+	 *
+	 * pi / codex 拿到的是**惰性 getter**（建会话时现读）；dsh 只能在装配这里读一次
+	 * —— 它的系统提示是进程级 patch，启动时 compose（见 dsh-prompt-patch.ts）。
+	 */
+	thinkCount?: () => number;
 }): EngineWiring {
 	const codexClient = createCodexClient({
 		bin: options.codexBin,
@@ -112,7 +122,17 @@ export function createEngineWiring(options: {
 	 * 顺序 = 环境变量里显式给的 → 用户目录里的 `*.yml`（按文件名）。
 	 */
 	const patchDir = options.dshPatchDir;
+	/**
+	 * 「下一步建议」的写法：dsh 只能靠 patch 叠加层带进去（ACP 的 session/new 没有系统提示字段）。
+	 * 写在工作台自己的临时目录，**不**混进用户的 `dsh-patches`；排在最前面，
+	 * 用户自己写的 patch 仍有最终决定权。
+	 */
+	const suggestionPatchFile = writeDshSuggestionPatch(
+		join(tmpdir(), "oh-my-agent-web"),
+		suggestionGuidance(options.thinkCount?.() ?? null),
+	);
 	const patchFiles = [
+		suggestionPatchFile,
 		...(options.dshPatches ?? []),
 		...(patchDir && existsSync(patchDir)
 			? readdirSync(patchDir)
@@ -212,6 +232,7 @@ export function createEngineWiring(options: {
 		onNotice: options.onNotice,
 		...(options.skillPaths ? { skillPaths: options.skillPaths } : {}),
 		onLog: (text) => options.onLog(text),
+		...(options.thinkCount ? { thinkCount: options.thinkCount } : {}),
 		codex: { client: codexClient, bin: options.codexBin, subagentPolicy: codexSubagentPolicy },
 		dsh: { client: dshClient, bin: options.dshBin, model: defaultModel },
 		opencode: {

@@ -34,6 +34,7 @@ import { createCodexClient, type CodexClient, type CodexNotification } from "./c
 import { codexMultiAgentConfig, codexSubagentGuidance, createCodexSubagents } from "./codex-subagents.js";
 import { registerCodexApprovals } from "./codex-approvals.js";
 import { sanitizeHistoricalActions } from "../markers/actions.js";
+import { suggestionGuidance } from "./suggestion-guidance.js";
 import { ensureCodexProject } from "./codex-sessions.js";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -130,6 +131,11 @@ type CodexEngineOptions = {
 	log?: (text: string) => void;
 	/** 子代理策略（不给 = 不开：模型就没有 spawn 工具，与「如实声明能力」一致） */
 	subagentPolicy?: () => CodexSubagentPolicy;
+	/**
+	 * 「下一步建议」要几条（设置里「想想」的那个数，1~5）：**每次建会话现读**。
+	 * 不给就按默认 4~5 条教模型（见 suggestion-guidance.ts）。
+	 */
+	thinkCount?: () => number;
 };
 
 type CodexEngine = EnginePort & {
@@ -393,14 +399,15 @@ export function createCodexEngine(options: CodexEngineOptions = {}): CodexEngine
 							}))
 						: [],
 				}),
-				...(codexSubagentGuidance({ enabled: plan.enabled, profiles: plan.profiles })
-					? {
-							developerInstructions: codexSubagentGuidance({
-								enabled: plan.enabled,
-								profiles: plan.profiles,
-							}) as string,
-						}
-					: {}),
+				// 「下一步建议」的写法一直带（ADR-0022，否则 codex 永远出不了建议按钮）；
+				// 开了子代理就把委派说明接在后面。两者都是 **thread 级**覆盖，
+				// 只对这条新会话生效 —— 不写用户的 `~/.codex/config.toml`，Codex Desktop 不受影响。
+				developerInstructions: [
+					suggestionGuidance(options.thinkCount?.() ?? null),
+					codexSubagentGuidance({ enabled: plan.enabled, profiles: plan.profiles }),
+				]
+					.filter((part): part is string => part !== null)
+					.join("\n\n"),
 			});
 			const threadId = response?.thread?.id;
 			if (!threadId) throw new Error("codex 没有返回 thread id");

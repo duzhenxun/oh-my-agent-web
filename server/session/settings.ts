@@ -5,6 +5,7 @@
  * 归一化放在纯函数里（`normalizeQuickPhrases`），因为「用户能贴进来什么」永远想不到 ——
  * 单条超长、重复、空白、几百条，都必须在上盘前收敛。
  */
+import { readFileSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 import type { ProjectPrefs, PromptTemplate, SessionPrefs } from "../protocol.js";
@@ -334,6 +335,20 @@ export type SettingsStore = {
 
 export function settingsPath(dataDir: string): string {
 	return join(dataDir, SETTINGS_FILE);
+}
+
+/**
+ * 同步读设置（缺文件/坏文件 → 默认值，与 `createFileSettingsStore().load()` 同口径）。
+ *
+ * 只给「进程启动时就要定型」的场景用（目前只有一处：dsh 的 system prompt patch）。
+ * 平时请走异步的 SettingsStore —— 这里每调一次就读一次盘。
+ */
+export function readSettingsSync(dataDir: string): ClientSettings {
+	try {
+		return parseSettings(readFileSync(settingsPath(dataDir), "utf8"));
+	} catch {
+		return defaultSettings();
+	}
 }
 
 export function createFileSettingsStore(dataDir: string): SettingsStore {

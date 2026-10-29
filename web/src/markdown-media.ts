@@ -6,6 +6,10 @@
  *   2. 我们自己上传的 `/api/uploads/...`；
  *   3. **工作区里的图片文件**（还可能是模型刚截的图）→ 改写成 `/api/files/raw?path=`，
  *      服务端负责「只能看当前项目内」，前端不必也不该拼绝对路径。
+ *
+ * 还有一层「猜」：模型常常不写 `![]()`，只把路径写在正文里（`1. 色块：/tmp/a.png`），
+ * 于是对话里只有一串蓝字。`promoteImagePaths` 负责把这种路径提升成图片，
+ * 规则与「不动」的反例都写在它上面。
  */
 
 /** 纯函数：把 markdown 的 img src 变成可用的地址（返回 null = 不显示） */
@@ -22,6 +26,112 @@ export function imageSrcOf(src: string): string | null {
 	if (/^(javascript|data|vbscript):/i.test(local)) return null;
 	// 绝对路径或相对路径 → 交给服务端在工作区内解析
 	return `/api/files/raw?path=${encodeURIComponent(local.replace(/^\.\//, ""))}`;
+}
+
+/**
+ * 「模型只写了路径」的图，怎么在对话里直接显示出来。
+ *
+ * 事故：让模型生成两张图，它回的是 `1. 随机几何色块：/Users/…/random_1.png` —— 于是对话里
+ * 只有一串蓝色路径，用户还得自己去文件树/预览面板里翻。图片路径出现在消息里，就等于用户想看图。
+ *
+ * 只在 markdown 源码层面做一件事：把「指向图片文件的路径」改写成 `![](<path>)`，后面照常走
+ * `imageSrcOf` → `/api/files/raw` 那条既有管线（权限、大小、MIME 白名单都在服务端）。
+ * 四种写法都认：裸路径、行内代码、指向本地图片的链接、以及本来就正确的 `![]()`（原样不动）。
+ */
+
+/** 图片后缀白名单：只有这些后缀的路径才算「要显示的图」（其余扩展名一律原样保留成文字） */
+const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "bmp", "svg", "ico"]);
+
+/** 图片 token 的尾巴（供两个正则共用，避免两处各写一遍后缀列表） */
+const IMAGE_SUFFIX = "\\.(?:png|jpe?g|gif|webp|avif|bmp|svg|ico)";
+
+/** 纯函数：这一整段文字是不是一个图片文件路径（`/tmp/a.png`、`~/x.JPG`、`C:\\a.png`、`shot.webp`） */
+export function isImagePath(value: string): boolean {
+	// 链接可能被尖括号包着（`![](<…>)` 的写法），也允许反引号残留
+	const token = value
+		.trim()
+		.replace(/^<+|>+$/g, "")
+		.replace(/^`+|`+$/g, "");
+	if (token === "" || /\s/.test(token)) return false;
+	const match = /\.([A-Za-z0-9]{2,5})$/.exec(token);
+	return match ? IMAGE_EXTENSIONS.has(match[1]!.toLowerCase()) : false;
+}
+
+/** 图片路径里的文件名（当 alt；图片加载失败时也用它兜底显示） */
+function imageNameOf(path: string): string {
+	const name = path.split(/[\\/]/).pop() ?? path;
+	return name.trim() === "" ? path : name;
+}
+
+/** 拼成 markdown 图片；路径一律用 `<>` 包住（截图名里常有括号，例如 `a(1).png`） */
+function imageMarkdownOf(path: string, label?: string): string {
+	const alt = (label ?? "").trim() || imageNameOf(path);
+	return `![${alt.replace(/[[\]]/g, "")}](<${path.replace(/>/g, "%3E")}>)`;
+}
+
+/** 「像路径的图片 token」：必须有路径形状（`~/`、`/`、`C:\`），且以图片后缀结尾 */
+const IMAGE_TOKEN = new RegExp(`(?:~/|[A-Za-z]:[\\\\/]|/)[^\\s"'\`<>|*?]+${IMAGE_SUFFIX}\\b`, "gi");
+
+/**
+ * 这个 token 前面那个字符允不允许「从这里开始一个新路径」。
+ *
+ * 白名单而不是黑名单，因为要挡的其实是一堆「path 属于别的东西」的形状：
+ * `http://host/a.png` 的中间段（前面是 `:`）、`[x](/abs/a.png)` 的 dst（前面是 `(`）、
+ * 我们自己刚拼出来的 `![](</abs/a.png>)`（前面是 `<`）。宁可漏提升，不要拼出畸形 markdown。
+ */
+const TOKEN_LEAD = /^[\s，。、；：！？,;!?…—·（）【】「」『』“”‘’"'《》]$/;
+
+/** 已经是 markdown 图片/链接的 `[…](…)` 或裸路径的行内代码：把它当图 */
+function promotePlain(segment: string): string {
+	if (segment === "") return segment;
+	// 1) 链接指向本地图片：`[名字](/abs/a.png)` → `![名字](</abs/a.png>)`
+	//    负向断言 `(?<!!)`：本来就是 `![alt](path)` 的图片语法不要再包一层
+	const linked = segment.replace(/(?<!!)\[([^\]\n]*)\]\(([^)\s]+)\)/g, (whole, label: string, href: string) =>
+		isImagePath(href) ? imageMarkdownOf(href, label) : whole,
+	);
+	// 2) 光秃秃的路径：`已保存到 /tmp/a.png`
+	return linked.replace(IMAGE_TOKEN, (token: string, offset: number) => {
+		const before = offset > 0 ? linked[offset - 1]! : "";
+		if (before !== "" && !TOKEN_LEAD.test(before)) return token;
+		return imageMarkdownOf(token);
+	});
+}
+
+/** 一行里：行内代码整段是图片路径 → 图；其余部分交给 `promotePlain` */
+function promoteLine(line: string): string {
+	if (!line.includes(".")) return line;
+	let out = "";
+	let cursor = 0;
+	for (const span of line.matchAll(/(`+)([^`]+?)\1/g)) {
+		const start = span.index ?? 0;
+		out += promotePlain(line.slice(cursor, start));
+		const code = span[2] ?? "";
+		out += isImagePath(code) ? imageMarkdownOf(code) : span[0];
+		cursor = start + span[0].length;
+	}
+	return out + promotePlain(line.slice(cursor));
+}
+
+/**
+ * 纯函数：把消息里的图片路径提升成 markdown 图片（代码块内一律不动 —— 那是代码，不是内容）。
+ * 返回新字符串；没有可提升的就原样返回（同一个引用，调用方的 memo 可以直接跳过重渲染）。
+ */
+export function promoteImagePaths(text: string): string {
+	if (!new RegExp(IMAGE_SUFFIX, "i").test(text)) return text;
+	let fence: string | null = null;
+	const out = text.split("\n").map((line) => {
+		const fenceMark = /^\s*(```|~~~)/.exec(line);
+		if (fence !== null) {
+			if (fenceMark) fence = null;
+			return line;
+		}
+		if (fenceMark) {
+			fence = fenceMark[1]!;
+			return line;
+		}
+		return promoteLine(line);
+	});
+	return out.join("\n");
 }
 
 /** 代码块的语言标签（` ```ts title ` → "ts"；没有就返回空串） */
