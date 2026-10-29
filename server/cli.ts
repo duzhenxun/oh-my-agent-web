@@ -35,6 +35,7 @@ import { fileURLToPath } from "node:url";
 import { applyStoredOptions } from "./cli-config.js";
 import { migrateLegacyDataDir } from "./util/data-dir.js";
 import { DEFAULT_DATA_DIR_NAME } from "./util/env.js";
+import { prunePtyPrebuilds } from "./util/prune-pty.js";
 import { fetchHealth, showStatus, showVersion, upgrade } from "./cli-info.js";
 import { checkForUpdate, describeUpdate } from "./update-check.js";
 import { defaultIsAlive, describeHolder, readLock } from "./session/lock.js";
@@ -461,6 +462,14 @@ async function main(): Promise<void> {
 		await stopServer();
 		// 等端口真正释放再起，否则会撞 EADDRINUSE
 		await sleep(400);
+	}
+
+	// start / restart：顺手裁掉 node-pty 里别的平台的预编译产物（幂等，裁干净之后就是空转）。
+	// 这事以前放在 postinstall，但 npm 11.16+ 会把它当成「未批准的 install 脚本」逐个警告，
+	// 用户得先 approve 才轮到我们省体积 —— 挪到运行时顺便做，装包时就没有任何脚本要审了。
+	const pruned = prunePtyPrebuilds();
+	if (pruned?.removed) {
+		console.log(`[oh-my-agent-web] node-pty 已裁掉 ${pruned.removed} 个无关平台的预编译产物（保留 ${pruned.keep}）`);
 	}
 
 	// start / restart：先确认不是「已经在跑了」（三个命令名共用这一处检测）

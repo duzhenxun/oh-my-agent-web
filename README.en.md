@@ -43,6 +43,8 @@ npm -g uninstall oh-my-agent-web      # uninstall; data in ~/.oh-my-agent-web is
 
 On Linux, `node-pty` (the embedded terminal) ships prebuilds only for macOS / Windows, so Linux compiles it in place: you need `make`, `g++` and `python3`. When those are missing, both the page and the install script say exactly what's missing — the terminal won't open until then.
 
+> **`allow-scripts` notices from npm 11.16+**: newer npm lists every dependency install script you haven't approved yet (`npm warn allow-scripts ...`). This package **ships no install scripts of its own** (the old one only pruned `node-pty` prebuilds for other platforms; that now happens lazily on startup), so anything listed is a transitive dependency such as `node-pty` (native build), `protobufjs`, or `@google/genai`. It is only a notice — the install still completes. To silence it after a review: `npm approve-scripts node-pty protobufjs @google/genai` (or `npm approve-scripts --all`).
+
 ### One-line install (never touches global npm)
 
 macOS / Linux:

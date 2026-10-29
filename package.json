@@ -8,8 +8,7 @@
 	},
 	"files": [
 		"dist",
-		"web/dist",
-		"scripts/prune-prebuilds.mjs"
+		"web/dist"
 	],
 	"description": "oh-my-agent-web — 它是一个多 Agent 统一 Web 工作台，对 Pi Agent 做深度适配，同时也支持 Codex、Claude 等其他 Agent。",
 	"author": "duzhenxun",
@@ -53,7 +52,6 @@
 		"lint:fix": "oxlint --fix server web/src scripts",
 		"format": "prettier --write .",
 		"format:check": "prettier --check .",
-		"postinstall": "node scripts/prune-prebuilds.mjs",
 		"icons": "node scripts/make-icons.mjs"
 	},
 	"devDependencies": {
