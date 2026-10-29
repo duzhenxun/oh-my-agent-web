@@ -1,42 +1,55 @@
-# 发布流水线：推 `v*` 标签 → 校验版本 → 构建 → `npm publish`（Trusted Publishing / OIDC）
+# 发布流水线（Trusted Publishing / OIDC）
+#
+# 三种入口，都是「编译 → 校验 → npm publish」，仓库里不存任何 token：
+#   1. **合并/推送到 main** → 自动 `patch` +1，打 `vX.Y.Z` 附注标签并回推，然后发布（默认路径）
+#   2. 推 `v*` 标签        → 按标签版本发布（手工控版本时用：`npm version minor` 再推标签）
+#   3. 手动 Run workflow   → 直接发布 `package.json` 里当前的版本（重试/补发用）
 #
 # 为什么不用 NPM_TOKEN：
-#   token 是长期凭证，泄一次就要全轮换、还得手动换 secret；Trusted Publishing 用 GitHub 的
-#   短期 OIDC 令牌去换 npm 的一次性发布凭证 —— 仓库里不存任何密钥，npm 端还要你**本人**在网页
-#   上把「这个仓库 + 这个工作流文件名」加进白名单才认。
-#   网页端怎么配：docs/release.md（一次性，之后只剩推标签）。
+#   token 是长期凭证，泄一次就要全轮换；这里用 GitHub 的短期 OIDC 令牌换 npm 的一次性发布凭证，
+#   npm 端还要你**本人**在网页上把「这个仓库 + 这个文件名」加进白名单才认（见 docs/release.md）。
 #
-# 三个必须对齐的细节（错一个就是静默失败或回落到 token）：
+# 三个必须对齐的细节（错一个就静默失败或回落到 token）：
 #   1. `permissions: id-token: write` —— 没它 GitHub 根本不发 OIDC 令牌；
-#   2. 工作流里**不能**出现 NODE_AUTH_TOKEN / NPM_TOKEN —— 哪怕值是空串，npm 也会优先用它；
-#      所以下面也刻意不给 setup-node 传 `registry-url`（它会往 .npmrc 写
-#      `//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}`，等于给自己挖坑）；
-#   3. npm 必须 >= 11.5.1（OIDC 交换的最低版本），而 setup-node 自带的是 10.x。
+#   2. 工作流里**不能**出现 NODE_AUTH_TOKEN / NPM_TOKEN —— 哪怕空串 npm 也优先用它，
+#      所以刻意不给 setup-node 传 `registry-url`（它会写 `_authToken=${NODE_AUTH_TOKEN}`）；
+#   3. npm 必须 >= 11.5.1（OIDC 交换的最低版本），setup-node 自带的是 10.x。
+#
+# Trusted Publisher 白名单是绑**文件名**的：改/拆这个文件之前先去 npm 页面同步，
+# 否则发布会 404（`ENEEDAUTH`）。所以新增入口也留在本文件里，别另起一个 yml。
 
 name: release
 
 on:
   push:
+    branches:
+      - main
     tags:
       - "v*"
-  # 手动补发：CI 挂过、或者想把「当前 package.json 的版本」直接发出去时用
   workflow_dispatch:
 
 permissions:
-  contents: read
-  # OIDC：Trusted Publishing 的唯一凭证来源
-  id-token: write
+  contents: write # 分支发布会回推版本提交 + 标签
+  id-token: write # OIDC：Trusted Publishing 的唯一凭证来源
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release
   cancel-in-progress: false
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # 回推的版本提交不能再发一轮。GITHUB_TOKEN 推的提交本来就不会触发工作流（防递归），
+    # 这层是兜底：万一以后换成 PAT/App token，这里能挡住死循环。
+    if: >-
+      github.event_name != 'push' ||
+      github.ref_type != 'branch' ||
+      !startsWith(github.event.head_commit.message || '', 'chore(release)')
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v5
         with:
@@ -48,8 +61,20 @@ jobs:
           npm install -g npm@latest
           npm --version
 
+      # 先落版本号再发布：万一发布失败，git 里已经有 tag 可以 `gh workflow run --ref vX.Y.Z` 重试；
+      # 反过来（先发布后推标签）失败会留下「registry 有、git 没有」的版本，下次直接 E403。
+      - name: 合并到 main → 自动 +patch 并回推标签
+        id: bump
+        if: github.event_name == 'push' && github.ref_type == 'branch'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          npm version patch -m "chore(release): %s"
+          git push --follow-tags
+          node -p "'version=' + require('./package.json').version" >> "$GITHUB_OUTPUT"
+
       - name: 校验 tag 与 package.json 版本一致
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.ref_type == 'tag'
         run: |
           tag="${GITHUB_REF_NAME#v}"
           pkg="$(node -p "require('./package.json').version")"
