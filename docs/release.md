@@ -43,7 +43,14 @@ git push --follow-tags     # 标签推到 GitHub，release.yml 自动跑：校�
 手动补发（CI 挂过 / 想把当前 `package.json` 的版本直接发出去）：GitHub → Actions → `release` → **Run workflow**。
 手动触发时不做「tag 与 package.json 一致」校验，发的是默认分支上 `package.json` 里那个版本。
 
-发布成功后 npm 页面会带 **Provenance** 徽标（构建来源可溯）。
+发布成功后 npm 页面会带 **Provenance** 徽标（构建来源可溯）。查证方式：
+
+```bash
+curl -s https://registry.npmjs.org/oh-my-agent-web/<版本> | grep -o '"provenance":{[^}]*}'
+```
+
+> 刚发完那几分钟 `npm view` 可能还显示旧版本 —— 那是**本地 npm 缓存**。加 `--prefer-online`，或直接问 registry：
+> `curl -s https://registry.npmjs.org/oh-my-agent-web | grep -o '"latest":"[^"]*"'`。
 
 ## 四、踩坑对照表
 
@@ -55,6 +62,7 @@ git push --follow-tags     # 标签推到 GitHub，release.yml 自动跑：校�
 | `This command requires a newer version of npm` | npm < 11.5.1。工作流里有 `npm install -g npm@latest`，本地跑发版则先 `npm i -g npm@latest` |
 | `tag v1.2.3 与 package.json 的 1.2.2 对不上` | 工作流主动拦的：先 `npm version` 再打标签，别手工错位 |
 | 发布出来的包是空壳 | 忘了 `npm run build`：`dist/`、`web/dist/` 都在 `files` 里但都不入库，必须现构建 |
+| `npm ci` 报 `EUSAGE ... package.json and package-lock.json are in sync` | 锁文件过期（本地 `node_modules` 是新的所以看不出来）。本地跑 `npm install --package-lock-only`，提交 `package-lock.json` 后再触发 |
 
 ## 五、已知的 CI 边界
 
