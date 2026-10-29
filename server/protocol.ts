@@ -694,4 +694,7 @@ export type ServerEvent = SnapshotEvent | MessageDeltaEvent | NoticeEvent;
 
 export type ServerMessage = ServerReply | ServerEvent;
 
-export { parseClientRequest } from "./protocol-parse.js";
+// 这里**不要**再 re-export `parseClientRequest`：protocol.ts 同时是前端的类型源
+// （`web/src/types.ts` → 这里），re-export 会把 protocol-parse.ts → util/paths.ts
+// 一起拉进浏览器模块图，开发态直接白屏（`node:path` 被 externalize）。
+// 服务端自己从 `./protocol-parse.js` 直接 import。

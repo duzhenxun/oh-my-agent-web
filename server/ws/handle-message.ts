@@ -4,7 +4,8 @@
  * 只做「解析 → 分发 → 回包」；真正的活儿都在 runtime / provider 接线里。
  * 单源：请求形状校验在 protocol-parse.ts（ADR-0002 纪律①）。
  */
-import { parseClientRequest, type ProtocolError, type Snapshot } from "../protocol.js";
+import { parseClientRequest } from "../protocol-parse.js";
+import type { ProtocolError, Snapshot } from "../protocol.js";
 import type { Logger } from "../util/log.js";
 import type { Runtime } from "../session/runtime-types.js";
 
