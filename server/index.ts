@@ -472,10 +472,18 @@ async function main(): Promise<void> {
 	await new Promise<void>((resolve) => httpServer.listen(config.port, config.host, resolve));
 
 	if (foreground) {
-		// 正常日志已经不在终端刷了，这里只给一行「真的跑起来了」的确认（地址 + 怎么退）
+		// 正常日志已经不在终端刷了，这里给一行「真的跑起来了」的确认 + 最常用的四条命令。
+		// 命令名照用户实际敲的那个（aw / agent-web / oh-my-agent-web），由 cli.ts 传进来。
 		const shownHost =
 			config.host === "0.0.0.0" || config.host === "::" || config.host === "" ? "127.0.0.1" : config.host;
+		const cli = process.env.AGENT_WEB_CLI_NAME || "aw";
 		console.log(`已启动：http://${shownHost}:${config.port}   （Ctrl-C 退出）`);
+		console.log("");
+		console.log(`  后台运行：${cli} -d`);
+		console.log(`  重启 / 停止：${cli} restart · ${cli} stop`);
+		console.log(`  远程访问：${cli} -d -H 0.0.0.0 -P <密码>（用域名访问再加 --allow-host <域名>）`);
+		console.log(`  全部选项：${cli} --help`);
+		console.log("");
 	}
 
 	logger.info("agent-web 已启动", {

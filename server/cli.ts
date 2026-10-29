@@ -407,6 +407,15 @@ async function detectRunning(open: boolean): Promise<boolean> {
 	return true;
 }
 
+/** 用户敲的是哪个名字（aw / agent-web / oh-my-agent-web）：启动提示里照拄，不硬写 aw */
+function invokedName(): string {
+	const base = (process.argv[1] ?? "").split(/[\\/]/).pop() ?? "";
+	// 直接用 node 跑文件（开发、脚本、npx）时 argv[1] 是 cli.js / cli.ts，没有任何命令名可用
+	if (base === "" || base === "cli.js" || base === "cli.ts") return "aw";
+	// Windows 上 npm 的 bin 是 .cmd（aw.cmd）
+	return base.replace(/\.(cmd|exe|ps1|bat)$/i, "");
+}
+
 /** 是否被当脚本执行（npx / 全局安装时 argv[1] 是 bin 软链，必须比 realpath） */
 function invokedDirectly(): boolean {
 	const entry = process.argv[1];
@@ -471,6 +480,8 @@ async function main(): Promise<void> {
 	// 告诉服务层「终端在看着」：只留 warn / error，正常日志光进文件（见 index.ts 的 quietConsole）。
 	// 必须看 isTTY：后台子进程也走这个分支，但它的 stdout 是 daemon.log —— 那里要保留全部日志。
 	if (process.stdout.isTTY) process.env.AGENT_WEB_FOREGROUND = "1";
+	// 启动提示里的命令名（aw / agent-web / oh-my-agent-web）由实际敲的那个决定
+	process.env.AGENT_WEB_CLI_NAME = invokedName();
 	await import("./index.js");
 	const line = describeUpdate(await update);
 	if (line) console.log(line);
