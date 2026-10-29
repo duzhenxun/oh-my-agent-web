@@ -1,0 +1,81 @@
+# 发布流水线：推 `v*` 标签 → 校验版本 → 构建 → `npm publish`（Trusted Publishing / OIDC）
+#
+# 为什么不用 NPM_TOKEN：
+#   token 是长期凭证，泄一次就要全轮换、还得手动换 secret；Trusted Publishing 用 GitHub 的
+#   短期 OIDC 令牌去换 npm 的一次性发布凭证 —— 仓库里不存任何密钥，npm 端还要你**本人**在网页
+#   上把「这个仓库 + 这个工作流文件名」加进白名单才认。
+#   网页端怎么配：docs/release.md（一次性，之后只剩推标签）。
+#
+# 三个必须对齐的细节（错一个就是静默失败或回落到 token）：
+#   1. `permissions: id-token: write` —— 没它 GitHub 根本不发 OIDC 令牌；
+#   2. 工作流里**不能**出现 NODE_AUTH_TOKEN / NPM_TOKEN —— 哪怕值是空串，npm 也会优先用它；
+#      所以下面也刻意不给 setup-node 传 `registry-url`（它会往 .npmrc 写
+#      `//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}`，等于给自己挖坑）；
+#   3. npm 必须 >= 11.5.1（OIDC 交换的最低版本），而 setup-node 自带的是 10.x。
+
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  # 手动补发：CI 挂过、或者想把「当前 package.json 的版本」直接发出去时用
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # OIDC：Trusted Publishing 的唯一凭证来源
+  id-token: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: 升级 npm（OIDC 需要 >= 11.5.1）
+        run: |
+          npm install -g npm@latest
+          npm --version
+
+      - name: 校验 tag 与 package.json 版本一致
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          echo "tag=$tag package.json=$pkg"
+          if [ "$tag" != "$pkg" ]; then
+            echo "::error::tag $GITHUB_REF_NAME 与 package.json 的 $pkg 对不上：先 npm version $tag"
+            exit 1
+          fi
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 类型检查
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      # dist/ 和 web/dist/ 都在 package.json 的 files 里 —— 不构建就发出去是个空壳
+      - name: 构建
+        run: npm run build
+
+      - name: 确认产物真的进包
+        run: |
+          # 只 build 不 pack 的话，最典型的翻车是 web/dist 被 .gitignore 顺带漏掉
+          npm pack --dry-run 2>&1 | grep -E "package size|total files|dist/server/cli.js|web/dist/index.html"
+
+      - name: 发布
+        run: npm publish --access public
