@@ -1,7 +1,9 @@
 /**
  * 日志（ADR-0013）：单行 JSON、带 scope 与 level。
  *
- * 默认只写 stdout（前台运行＝直接看得见）；文件输出与按大小轮转由 `log-file.ts` 提供 sink（ADR-0013 §B）。
+ * 默认只写 stdout；文件输出与按大小轮转由 `log-file.ts` 提供 sink（ADR-0013 §B）。
+ *
+ * sink 能拿到 level：前台运行时终端只留 warn/error，正常日志光进文件（见 index.ts）。
  *
  * 刻意不引日志库（ADR-0008 依赖预算）：这里总共不到 40 行。
  */
@@ -60,7 +62,7 @@ type LoggerOptions = {
 	level: LogLevel;
 	scope?: string;
 	now?: () => number;
-	sink?: (line: string) => void;
+	sink?: (line: string, level: LogLevel) => void;
 };
 /** 纯函数：把一条日志格式化成单行 JSON（脱敏与字段形状都在这一层定） */
 function formatLogLine(entry: LogEntry): string {
@@ -76,7 +78,7 @@ export function createLogger(options: LoggerOptions): Logger {
 	const write = (level: LogLevel, message: string, ctx?: LogContext) => {
 		if (LEVEL_ORDER[level] < threshold) return;
 		const safeCtx = ctx ? redactLogContext(ctx) : undefined;
-		sink(formatLogLine({ ts: now(), level, scope, msg: message, ...(safeCtx ? { ctx: safeCtx } : {}) }));
+		sink(formatLogLine({ ts: now(), level, scope, msg: message, ...(safeCtx ? { ctx: safeCtx } : {}) }), level);
 	};
 
 	return {

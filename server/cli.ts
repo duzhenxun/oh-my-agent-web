@@ -15,11 +15,11 @@
  *   -P, --password <pwd>  AGENT_WEB_PASSWORD   非本机访问时的登录密码
  *       --allow-host <h>  AGENT_WEB_ALLOWED_HOSTS  额外允许的域名（可重复）
  *       --data-dir <dir>  AGENT_WEB_DATA_DIR   默认 ~/.oh-my-agent-web
- *   -f, --foreground      前台运行（日志直接在终端，Ctrl-C 退出）
- *   -d, --detach          后台运行（**现在就是默认**，留着给老脚本）
+ *   -d, --detach          后台运行（脱离终端，日志进 daemon.log）
+ *   -f, --foreground      前台运行（就是默认，留着给老脚本）
  *       --no-open         不要在浏览器里打开页面
  *
- * 默认行为：**后台起来 + 打开浏览器**（终端立刻还给你）；`-f` 才留在前台。
+ * 默认行为：**前台起来 + 打开浏览器**（日志直接打在终端，Ctrl-C 退出）；`-d` 才丢到后台。
  * 后台模式只是「spawn 一个脱离终端的自己 + 等它写好 server.lock」：
  * 真正的事实源仍然是锁文件，所以 stop / restart 对前台、后台一视同仁。
  *
@@ -36,15 +36,15 @@ import { applyStoredOptions } from "./cli-config.js";
 import { migrateLegacyDataDir } from "./util/data-dir.js";
 import { DEFAULT_DATA_DIR_NAME } from "./util/env.js";
 import { fetchHealth, showStatus, showVersion, upgrade } from "./cli-info.js";
-import { defaultIsAlive, readLock } from "./session/lock.js";
+import { defaultIsAlive, describeHolder, readLock } from "./session/lock.js";
 
 const USAGE = `用法: agent-web [命令] [选项]        （agent-web / aw / oh-my-agent-web 三个命令完全等价）
 
 命令:
-  start              启动（默认；后台运行并打开页面，终端立刻还给你）
-  start -f           前台运行（日志直接打在终端，Ctrl-C 退出）
+  start              启动（默认前台；已在跑就只把地址给你，不会再起一个）
+  start -d           后台运行（脱离终端，日志进 daemon.log，终端立刻还给你）
   stop               停止正在跑的实例（读 dataDir/server.lock 里的 pid）
-  restart            先停再起（默认仍后台；带 -f 则前台）
+  restart            先停再起（默认仍前台；带 -d 则后台）
   status             看状态：pid / 端口 / 已运行多久 / 引擎 / 会话数 / 工作区
   version            看版本号（-v / --version 同义）
   upgrade            升级全局安装（npm i -g <包名>@latest；private 包会拒绝并提示怎么做）
@@ -56,17 +56,17 @@ const USAGE = `用法: agent-web [命令] [选项]        （agent-web / aw / oh
   -P, --password <pwd> 访问密码            AGENT_WEB_PASSWORD
       --allow-host <h> 额外允许的域名      AGENT_WEB_ALLOWED_HOSTS（可多次 / 逗号分隔）
       --data-dir <dir> 数据目录            AGENT_WEB_DATA_DIR（默认 ~/.oh-my-agent-web）
-  -f, --foreground     前台运行（Ctrl-C 退出）
-  -d, --detach         后台运行（现在就是默认，留着给老脚本）
+  -d, --detach         后台运行（脱离终端；日志见 daemon.log）
+  -f, --foreground     前台运行（就是默认，留着给老脚本）
       --no-open        不要在浏览器里打开页面
 
 没给 --password / --allow-host 时，会读数据目录里的 password / allowed-hosts 兜底
 （设一次就一直在，重启不必重复输入）。远程第一次打开时若还没设密码，页面会让你先设一个。
 
 例：
-  aw                                                    # 后台起 + 打开页面
-  aw -f                                                 # 前台起（Ctrl-C 退出）
-  aw -H 0.0.0.0 --allow-host agent.example.com           # 后台起，供外网访问（首次打开会先让你设密码）
+  aw                                                    # 前台起 + 打开页面（Ctrl-C 退出）
+  aw -d                                                 # 后台起，终端立刻还给你
+  aw -H 0.0.0.0 --allow-host agent.example.com           # 供外网访问（首次打开会先让你设密码）
   aw status && aw restart                               # 看完状态再重启
   aw stop                                               # 停掉（前台/后台都行）`;
 
@@ -74,7 +74,7 @@ type ParsedArgs = {
 	command: "start" | "stop" | "restart" | "status" | "version" | "upgrade";
 	env: Record<string, string>;
 	help: boolean;
-	/** 前台运行（默认是后台） */
+	/** 前台运行（默认）；`-d` 关掉它 */
 	foreground: boolean;
 	/** 起来后要不要打开浏览器（`--no-open` 关掉） */
 	open: boolean;
@@ -84,7 +84,7 @@ function parseArgs(argv: string[]): ParsedArgs {
 	const env: Record<string, string> = {};
 	let command: ParsedArgs["command"] = "start";
 	let help = false;
-	let foreground = false;
+	let foreground = true;
 	let open = true;
 
 	for (let i = 0; i < argv.length; i += 1) {
@@ -334,7 +334,8 @@ async function startDetached(rawArgv: string[], open: boolean): Promise<void> {
 	const child = spawn(process.execPath, [script, ...args], {
 		detached: true, // 脱离当前终端：关掉终端不会把它一起收走
 		stdio: ["ignore", fd, fd],
-		env: process.env,
+		// 子进程的 stdout 是 daemon.log：别让 quietConsole 把它的正常日志吞了（那是后台模式唯一的现场）
+		env: { ...process.env, AGENT_WEB_FOREGROUND: "0" },
 		cwd: process.cwd(),
 		// Windows 上 detached 会连带开一个 console：不关掉就会闪一下黑框
 		windowsHide: true,
@@ -369,6 +370,40 @@ async function startDetached(rawArgv: string[], open: boolean): Promise<void> {
 	);
 	console.error(tailOf(log, 20));
 	process.exitCode = 1;
+}
+
+/**
+ * 起来之前先看锁（ADR-0007）：已经有一个在跑，就不起第二个。
+ *
+ * 为什么放在 CLI 而不是只靠 `index.ts` 里的 `acquireLock`：那边要先把会话索引、价格表
+ * 都装完才走到拿锁那一步 —— 用户敲完 `aw` 干等几秒，最后看到一条 error；`-d` 更糟，
+ * 父进程发现子进程退出，只能甩一段 daemon.log 出来。
+ *
+ * 三个命令名（`aw` / `agent-web` / `oh-my-agent-web`）本来就走同一份 cli.js，
+ * 所以这一处检测对三者完全一致。
+ *
+ * @returns true = 已经有一个在跑，本次不再启动
+ */
+async function detectRunning(open: boolean): Promise<boolean> {
+	const lock = await readLock(dataDir());
+	// 无锁 / 锁里的 pid 已经不在（陈旧锁）：照常启动，接管交给 index.ts 的 acquireLock
+	if (!lock || !defaultIsAlive(lock.pid)) return false;
+
+	const probeHost = probeHostOf();
+	const url = `http://${probeHost}:${lock.port}`;
+	const stop = stopHint(process.argv.slice(2));
+	if (await fetchHealth(probeHost, lock.port, 1500)) {
+		console.log(`已经有一个在跑，不再起第二个：\n  ${describeHolder(lock)}\n  → 打开 ${url}\n  → 停止：${stop}`);
+		if (open) openBrowser(url);
+		return true;
+	}
+
+	// 锁在、pid 也在，但端口不响应：可能还在启动（装会话索引），也可能卡死了。
+	// 两种情况都不该再起一个 —— 那样只会在拿锁/绑端口时撞得莫名其妙。
+	console.error(`已经有一个在跑，但 ${url} 暂时没响应：\n  ${describeHolder(lock)}`);
+	console.error(`  → 还在启动就等一下；卡住了就收掉它：${stop}`);
+	process.exitCode = 1;
+	return true;
 }
 
 /** 是否被当脚本执行（npx / 全局安装时 argv[1] 是 bin 软链，必须比 realpath） */
@@ -416,12 +451,17 @@ async function main(): Promise<void> {
 		await sleep(400);
 	}
 
-	// start / restart：默认**后台**跑（终端立刻还给你），`-f` 才留在前台
+	// start / restart：先确认不是「已经在跑了」（三个命令名共用这一处检测）
+	if (await detectRunning(parsed.open)) return;
+	// start / restart：默认**前台**跑（日志直接打在终端，Ctrl-C 退出），`-d` 才丢到后台
 	if (!parsed.foreground) {
 		await startDetached(process.argv.slice(2), parsed.open);
 		return;
 	}
 	if (parsed.open) openWhenReady();
+	// 告诉服务层「终端在看着」：只留 warn / error，正常日志光进文件（见 index.ts 的 quietConsole）。
+	// 必须看 isTTY：后台子进程也走这个分支，但它的 stdout 是 daemon.log —— 那里要保留全部日志。
+	if (process.stdout.isTTY) process.env.AGENT_WEB_FOREGROUND = "1";
 	await import("./index.js");
 }
 

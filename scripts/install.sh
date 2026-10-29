@@ -415,11 +415,11 @@ main() {
 	say ""
 	if [ "$NO_PATH" = "1" ]; then
 		say "  启动：$ENTRY                      （前台；Ctrl-C 退出）"
-		say "        $ENTRY                    （后台；日志在 ~/.oh-my-agent-web/daemon.log）"
+		say "        $ENTRY -d                 （后台；日志在 ~/.oh-my-agent-web/daemon.log）"
 	else
 		say "  新开一个终端，然后："
-		say "        aw                        （后台运行并打开页面；日志在 ~/.oh-my-agent-web/daemon.log）"
-		say "        aw -f                     （前台；Ctrl-C 退出）"
+		say "        aw                        （前台运行并打开页面；Ctrl-C 退出）"
+		say "        aw -d                     （后台运行；日志在 ~/.oh-my-agent-web/daemon.log）"
 	fi
 	say ""
 	say "  然后打开 ${BOLD}http://127.0.0.1:25257${OFF}"

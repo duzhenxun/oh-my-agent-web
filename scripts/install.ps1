@@ -269,13 +269,13 @@ Write-Host ''
 Write-Host '  装好了。' -ForegroundColor Green
 Write-Host ''
 if ($NoPath) {
-	Write-Host "  启动：& '$(Join-Path $HomeDir 'aw.cmd')'          （后台运行并开页）"
-	Write-Host "         & '$(Join-Path $HomeDir 'aw.cmd')' -f    （前台；Ctrl-C 退出）"
+	Write-Host "  启动：& '$(Join-Path $HomeDir 'aw.cmd')'          （前台；Ctrl-C 退出）"
+	Write-Host "         & '$(Join-Path $HomeDir 'aw.cmd')' -d    （后台；日志在 %USERPROFILE%\.oh-my-agent-web\daemon.log）"
 }
 else {
 	Write-Host '  新开一个终端，然后：'
-	Write-Host '        aw            （后台运行并打开页面；日志在 %USERPROFILE%\.oh-my-agent-web\daemon.log）'
-	Write-Host '        aw -f         （前台；Ctrl-C 退出）'
+	Write-Host '        aw            （前台运行并打开页面；Ctrl-C 退出）'
+	Write-Host '        aw -d         （后台运行；日志在 %USERPROFILE%\.oh-my-agent-web\daemon.log）'
 }
 Write-Host ''
 Write-Host '  然后打开 http://127.0.0.1:25257'

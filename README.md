@@ -77,14 +77,19 @@ powershell -c "irm https://raw.githubusercontent.com/duzhenxun/oh-my-agent-web/m
 
 | 命令 | 作用 |
 |---|---|
-| `oh-my-agent-web` | **启动（默认）**：后台跑起来 + 打开浏览器，终端立刻还给你；默认工作区 = 当前目录 |
-| `oh-my-agent-web start -f` | 前台运行，日志直接打在终端，`Ctrl-C` 退出 |
+| `oh-my-agent-web` | **启动（默认）**：前台跑起来 + 打开浏览器，日志直接打在终端，`Ctrl-C` 退出；默认工作区 = 当前目录 |
+| `oh-my-agent-web start -d` | 后台运行（脱离终端，日志进 `daemon.log`），终端立刻还给你 |
 | `oh-my-agent-web status` | 看状态：pid / 端口 / 已运行多久 / 引擎 / 会话数 / 工作区 |
-| `oh-my-agent-web restart` | 先停再起（默认仍后台；带 `-f` 则前台） |
+| `oh-my-agent-web restart` | 先停再起（默认仍前台；带 `-d` 则后台） |
 | `oh-my-agent-web stop` | 停掉正在跑的实例（前台、后台都行 —— 读的是数据目录里的锁文件，不靠猜端口） |
 | `oh-my-agent-web version` | 版本号（`-v` / `--version` 同义） |
 | `oh-my-agent-web upgrade` | 升级到最新发行版（内部就是 `npm -g install oh-my-agent-web@latest`） |
 | `oh-my-agent-web help` | 显示帮助（`-h` / `--help` 同义） |
+
+两条行为约定：
+
+- **重复启动会先检测**：已经在跑就只把地址打给你（并打开页面），不会再起第二个 —— `aw` / `agent-web` / `oh-my-agent-web` 三个名字完全一致。
+- **前台不刷日志**：终端只有一行「已启动：…」和 warn / error；装载会话索引、SSE 连接这类正常日志仍然全量写进 `logs/agent-web.log`。想盯着看就 `AGENT_WEB_LOG=info aw`，后台（`-d`）的输出在 `daemon.log`。
 
 ### 参数
 
@@ -93,7 +98,7 @@ powershell -c "irm https://raw.githubusercontent.com/duzhenxun/oh-my-agent-web/m
 | `-p, --port` | `AGENT_WEB_PORT` | `25257` | 监听端口 |
 | `-H, --host` | `AGENT_WEB_HOST` | `127.0.0.1` | 监听地址；对外访问才需要改 |
 | `-P, --password` | `AGENT_WEB_PASSWORD` | 无 | 访问密码；不设 = 只允许本机（远程首次打开会先让你设） |
-| `-f, --foreground` | — | 关（默认后台） | 前台运行，日志打在终端；`-d` / `--detach` 是旧写法，现在等于默认 |
+| `-d, --detach` | — | 关（默认前台） | 后台运行，脱离终端，日志进 `~/.oh-my-agent-web/daemon.log`；`-f` / `--foreground` 是旧写法，现在等于默认 |
 | `--no-open` | — | 开 | 不在浏览器里打开页面 |
 | `--allow-host` | `AGENT_WEB_ALLOWED_HOSTS` | 只认 loopback | 额外允许的域名 / 局域网 IP（可多次或逗号分隔） |
 | `--data-dir` | `AGENT_WEB_DATA_DIR` | `~/.oh-my-agent-web` | 设置、密码、上传、日志、锁文件都放这 |
@@ -101,13 +106,13 @@ powershell -c "irm https://raw.githubusercontent.com/duzhenxun/oh-my-agent-web/m
 | — | `AGENT_WEB_ENGINE` | `pi` | 默认引擎 |
 | — | `AGENT_WEB_APPROVAL_MODE` | `allow` | 新会话默认审批模式；`ask` 则逐次确认 |
 | — | `AGENT_WEB_TURN_TIMEOUT_MS` | 20 分钟 | 单回合看门狗超时 |
-| — | `AGENT_WEB_LOG` | `info` | `debug` / `info` / `warn` / `error` |
+| — | `AGENT_WEB_LOG` | `info`（前台终端只打 warn / error） | `debug` / `info` / `warn` / `error`；显式设了就按这个级别打到终端 |
 
 ### 常用例子
 
 ```bash
-oh-my-agent-web                                    # 后台起 + 打开页面（最常用）
-oh-my-agent-web -f                                 # 前台起，日志直接看，Ctrl-C 退出
+oh-my-agent-web                                    # 前台起 + 打开页面（最常用，Ctrl-C 退出）
+oh-my-agent-web -d                                 # 后台起，终端立刻还给你
 oh-my-agent-web -p 25258                           # 换端口（25257 被占时）
 oh-my-agent-web status && oh-my-agent-web restart  # 看完状态再重启
 oh-my-agent-web stop                               # 停掉（前台/后台都行）

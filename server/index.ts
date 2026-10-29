@@ -77,11 +77,20 @@ const {
 	cwd: process.cwd(),
 });
 let fileSink: RotatingFileSink | null = null;
+/**
+ * 前台运行（CLI 默认）：终端只留 warn / error。
+ *
+ * 以前后台才是默认，这些 info（装载会话索引、每来一个客户端一条「SSE 已连接」……）都落在
+ * daemon.log 里看不见；现在前台成了默认，再照旧打就会把用户自己的输机记录冲没。
+ * 它们仍然**全部**进轮转日志文件；显式给了 `AGENT_WEB_LOG=debug|info` 就按用户的意思正常打。
+ */
+const foreground = process.env.AGENT_WEB_FOREGROUND === "1";
+const quietConsole = foreground && !process.env.AGENT_WEB_LOG;
 const logger = createLogger({
 	level: config.logLevel,
 	scope: "app",
-	sink: (line) => {
-		process.stdout.write(`${line}\n`);
+	sink: (line, level) => {
+		if (!quietConsole || level === "warn" || level === "error") process.stdout.write(`${line}\n`);
 		fileSink?.write(line);
 	},
 });
@@ -155,7 +164,9 @@ const engineWiring = createEngineWiring({
 	workspace: config.workspace,
 	piSessions,
 	onNotice: (text, level) => runtimeRef.current?.notify(text, level),
-	onLog: (text, meta) => logger.warn(text, meta),
+	// 引擎子进程的 stderr / 诊断输出：正常运行时它是噪声（codex、dsh 都会吐），
+	// 真正要用户知道的事走 onNotice（界面提示）。所以记 info 光进文件，别占终端。
+	onLog: (text, meta) => logger.info(text, meta),
 });
 const engineCatalog = engineWiring.catalog;
 const resolved = engineWiring.resolved;
@@ -459,6 +470,13 @@ async function main(): Promise<void> {
 	});
 
 	await new Promise<void>((resolve) => httpServer.listen(config.port, config.host, resolve));
+
+	if (foreground) {
+		// 正常日志已经不在终端刷了，这里给一行「真的跑起来了」的确认（地址 + 怎么退 + 日志在哪）
+		const shownHost =
+			config.host === "0.0.0.0" || config.host === "::" || config.host === "" ? "127.0.0.1" : config.host;
+		console.log(`已启动：http://${shownHost}:${config.port}   （Ctrl-C 退出；日志在 ${logFileName(config.dataDir)}）`);
+	}
 
 	logger.info("agent-web 已启动", {
 		url: `http://${config.host}:${config.port}`,

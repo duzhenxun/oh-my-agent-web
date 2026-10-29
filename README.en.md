@@ -78,14 +78,19 @@ The three commands are completely equivalent; everything below is written as `oh
 
 | Command | What it does |
 |---|---|
-| `oh-my-agent-web` | **Start (default)**: runs in the background and opens the browser, handing the terminal straight back; default workspace = current directory |
-| `oh-my-agent-web start -f` | Run in the foreground, logs right in the terminal, `Ctrl-C` to quit |
+| `oh-my-agent-web` | **Start (default)**: runs in the foreground and opens the browser, logs right in the terminal, `Ctrl-C` to quit; default workspace = current directory |
+| `oh-my-agent-web start -d` | Run in the background (detached, logs go to `daemon.log`), handing the terminal straight back |
 | `oh-my-agent-web status` | pid / port / uptime / engine / session count / workspace |
-| `oh-my-agent-web restart` | Stop then start (background by default; `-f` for foreground) |
+| `oh-my-agent-web restart` | Stop then start (foreground by default; `-d` for background) |
 | `oh-my-agent-web stop` | Stop the running instance (foreground or background — it reads the lock file in the data dir instead of guessing a port) |
 | `oh-my-agent-web version` | Version string (`-v` / `--version` are synonyms) |
 | `oh-my-agent-web upgrade` | Upgrade to the latest release (it runs `npm -g install oh-my-agent-web@latest`) |
 | `oh-my-agent-web help` | Show help (`-h` / `--help` are synonyms) |
+
+Two behavioural rules:
+
+- **Starting twice is detected first**: if an instance is already running it only prints the URL (and opens the page) instead of starting a second one — identical for `aw` / `agent-web` / `oh-my-agent-web`.
+- **The foreground run stays quiet**: the terminal only gets one `已启动：…` line plus warn / error; normal logs (session index loading, SSE connections) still go in full to `logs/agent-web.log`. Watch them with `AGENT_WEB_LOG=info aw`; in the background (`-d`) they land in `daemon.log`.
 
 ### Flags
 
@@ -94,7 +99,7 @@ The three commands are completely equivalent; everything below is written as `oh
 | `-p, --port` | `AGENT_WEB_PORT` | `25257` | Listen port |
 | `-H, --host` | `AGENT_WEB_HOST` | `127.0.0.1` | Listen address; only change it for remote access |
 | `-P, --password` | `AGENT_WEB_PASSWORD` | none | Login password; unset = loopback only (a remote first visit asks you to set one) |
-| `-f, --foreground` | — | off (background by default) | Foreground run, logs in the terminal; `-d` / `--detach` is the old spelling and now equals the default |
+| `-d, --detach` | — | off (foreground by default) | Background run, detached, logs go to `~/.oh-my-agent-web/daemon.log`; `-f` / `--foreground` is the old spelling and now equals the default |
 | `--no-open` | — | on | Don't open the browser |
 | `--allow-host` | `AGENT_WEB_ALLOWED_HOSTS` | loopback only | Extra allowed hostnames / LAN IPs (repeatable or comma-separated) |
 | `--data-dir` | `AGENT_WEB_DATA_DIR` | `~/.oh-my-agent-web` | Settings, password, uploads, logs and the lock file live here |
@@ -102,13 +107,13 @@ The three commands are completely equivalent; everything below is written as `oh
 | — | `AGENT_WEB_ENGINE` | `pi` | Default engine |
 | — | `AGENT_WEB_APPROVAL_MODE` | `allow` | Default approval mode for new sessions; `ask` confirms every tool call |
 | — | `AGENT_WEB_TURN_TIMEOUT_MS` | 20 minutes | Per-turn watchdog timeout |
-| — | `AGENT_WEB_LOG` | `info` | `debug` / `info` / `warn` / `error` |
+| — | `AGENT_WEB_LOG` | `info` (foreground terminal: warn / error only) | `debug` / `info` / `warn` / `error`; setting it explicitly also prints that level to the terminal |
 
 ### Common examples
 
 ```bash
-oh-my-agent-web                                    # background + open the page (the usual one)
-oh-my-agent-web -f                                 # foreground, logs in your face, Ctrl-C to quit
+oh-my-agent-web                                    # foreground + open the page (the usual one, Ctrl-C to quit)
+oh-my-agent-web -d                                 # background, terminal handed straight back
 oh-my-agent-web -p 25258                           # different port (when 25257 is taken)
 oh-my-agent-web status && oh-my-agent-web restart  # check, then restart
 oh-my-agent-web stop                               # stop it (works for foreground and background)
