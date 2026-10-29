@@ -1,6 +1,6 @@
 {
 	"name": "oh-my-agent-web",
-	"version": "1.0.1",
+	"version": "1.0.2",
 	"bin": {
 		"oh-my-agent-web": "dist/server/cli.js",
 		"aw": "dist/server/cli.js",
