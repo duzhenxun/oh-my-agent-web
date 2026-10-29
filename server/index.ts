@@ -59,6 +59,8 @@ import { compressText, immutableAssets } from "./http/compress.js";
 import { fanOutSnapshot } from "./snapshot/fan-out.js";
 import { checkDataDirWritable, describeListenError } from "./util/startup.js";
 import { migrateLegacyDataDir } from "./util/data-dir.js";
+import { packageMeta } from "./util/version.js";
+import { styleText } from "node:util";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 /** 开发态对外端口（Vite）；dev 脚本用它告诉后端可信来源 */
@@ -414,6 +416,64 @@ const httpServer = createServer(app);
 // 启动
 // ---------------------------------------------------------------------------
 
+// ============================================================================
+// 启动提示（前台）
+// ============================================================================
+
+/** 只在真终端上上色：管道 / 重定向 / 日志里不能带 ANSI */
+function paint(format: Parameters<typeof styleText>[0], text: string): string {
+	return process.stdout.isTTY && !process.env.NO_COLOR ? styleText(format, text) : text;
+}
+
+/**
+ * 终端显示宽度：双宽字符（中日韩 / 全角）算 2 列。
+ *
+ * `padEnd` 数的是**字符**，而 `-P <密码>` 里的中文占 4 列 —— 直接用 padEnd，那一行的说明列
+ * 会比其它行往右偏 3 格，看着就是错的。
+ */
+function displayWidth(text: string): number {
+	let width = 0;
+	for (const char of text) {
+		const code = char.codePointAt(0) ?? 0;
+		const wide =
+			(code >= 0x1100 && code <= 0x115f) || // 韩文字母
+			(code >= 0x2e80 && code <= 0xa4cf) || // CJK 部首 … 巫文（含全角空格）
+			(code >= 0xac00 && code <= 0xd7a3) || // 韩文音节
+			(code >= 0xf900 && code <= 0xfaff) || // CJK 兼容表意
+			(code >= 0xfe30 && code <= 0xfe6f) || // CJK 兼容形式
+			(code >= 0xff00 && code <= 0xff60) || // 全角标点 / 字母
+			(code >= 0xffe0 && code <= 0xffe6); // 全角符号
+		width += wide ? 2 : 1;
+	}
+	return width;
+}
+
+/** 按显示宽度右补空格（对齐用） */
+function padToWidth(text: string, width: number): string {
+	return text + " ".repeat(Math.max(0, width - displayWidth(text)));
+}
+
+/**
+ * 前台启动后的那一屏：版本 + 地址 + 四条常用命令。
+ *
+ * 为什么是「命令在左、说明在右」：命令这一列能对齐就好看；说明列里中文多，所以只左对齐。
+ */
+function printStartBanner(options: { cli: string; version: string; url: string }): void {
+	const { cli, version, url } = options;
+	const COMMAND_WIDTH = 32;
+	const row = (command: string, note: string) =>
+		`  ${paint("cyan", padToWidth(command, COMMAND_WIDTH))} ${paint("dim", note)}`;
+	console.log("");
+	console.log(`  ${paint("bold", `oh-my-agent-web ${version}`)}  ${paint("dim", "·")}  ${paint("green", "已启动")}`);
+	console.log(`  ${paint("underline", url)}  ${paint("dim", "（Ctrl-C 退出）")}`);
+	console.log("");
+	console.log(row(`${cli} -d`, "后台运行（日志进 daemon.log）"));
+	console.log(row(`${cli} restart  /  ${cli} stop`, "重启 / 停止"));
+	console.log(row(`${cli} -H 0.0.0.0 -P <密码>`, "远程访问（用域名再加 --allow-host）"));
+	console.log(row(`${cli} --help`, "全部选项"));
+	console.log("");
+}
+
 async function main(): Promise<void> {
 	// 旧数据目录（~/.agent-web）自动搬到新目录：dev 直接跑本文件时也要搬
 	migrateLegacyDataDir({ dataDir: config.dataDir, log: (line) => logger.info(line) });
@@ -472,18 +532,15 @@ async function main(): Promise<void> {
 	await new Promise<void>((resolve) => httpServer.listen(config.port, config.host, resolve));
 
 	if (foreground) {
-		// 正常日志已经不在终端刷了，这里给一行「真的跑起来了」的确认 + 最常用的四条命令。
+		// 正常日志已经不在终端刷了，这屏就是「真的跑起来了」 + 最常用的几条命令。
 		// 命令名照用户实际敲的那个（aw / agent-web / oh-my-agent-web），由 cli.ts 传进来。
 		const shownHost =
 			config.host === "0.0.0.0" || config.host === "::" || config.host === "" ? "127.0.0.1" : config.host;
-		const cli = process.env.AGENT_WEB_CLI_NAME || "aw";
-		console.log(`已启动：http://${shownHost}:${config.port}   （Ctrl-C 退出）`);
-		console.log("");
-		console.log(`  后台运行：${cli} -d`);
-		console.log(`  重启 / 停止：${cli} restart · ${cli} stop`);
-		console.log(`  远程访问：${cli} -d -H 0.0.0.0 -P <密码>（用域名访问再加 --allow-host <域名>）`);
-		console.log(`  全部选项：${cli} --help`);
-		console.log("");
+		printStartBanner({
+			cli: process.env.AGENT_WEB_CLI_NAME || "aw",
+			version: packageMeta().version,
+			url: `http://${shownHost}:${config.port}`,
+		});
 	}
 
 	logger.info("agent-web 已启动", {
