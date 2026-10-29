@@ -457,6 +457,7 @@ function padToWidth(text: string, width: number): string {
  * 前台启动后的那一屏：版本 + 地址 + 四条常用命令。
  *
  * 为什么是「命令在左、说明在右」：命令这一列能对齐就好看；说明列里中文多，所以只左对齐。
+ * 文案统一用英文：终端里混排中英在等宽字体下宽度不好算（`padToWidth` 只做兜底）。
  */
 function printStartBanner(options: { cli: string; version: string; url: string }): void {
 	const { cli, version, url } = options;
@@ -464,13 +465,13 @@ function printStartBanner(options: { cli: string; version: string; url: string }
 	const row = (command: string, note: string) =>
 		`  ${paint("cyan", padToWidth(command, COMMAND_WIDTH))} ${paint("dim", note)}`;
 	console.log("");
-	console.log(`  ${paint("bold", `oh-my-agent-web ${version}`)}  ${paint("dim", "·")}  ${paint("green", "已启动")}`);
-	console.log(`  ${paint("underline", url)}  ${paint("dim", "（Ctrl-C 退出）")}`);
+	console.log(`  ${paint("bold", `oh-my-agent-web ${version}`)}  ${paint("dim", "·")}  ${paint("green", "started")}`);
+	console.log(`  ${paint("underline", url)}  ${paint("dim", "(Ctrl-C to exit)")}`);
 	console.log("");
-	console.log(row(`${cli} -d`, "后台运行（日志进 daemon.log）"));
-	console.log(row(`${cli} restart  /  ${cli} stop`, "重启 / 停止"));
-	console.log(row(`${cli} -H 0.0.0.0 -P <密码>`, "远程访问（用域名再加 --allow-host）"));
-	console.log(row(`${cli} --help`, "全部选项"));
+	console.log(row(`${cli} -d`, "run in background (logs to daemon.log)"));
+	console.log(row(`${cli} restart  /  ${cli} stop`, "restart / stop"));
+	console.log(row(`${cli} -H 0.0.0.0 -P <password>`, "remote access (add --allow-host for a domain)"));
+	console.log(row(`${cli} --help`, "all options"));
 	console.log("");
 }
 

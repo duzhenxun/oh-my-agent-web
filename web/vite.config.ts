@@ -8,6 +8,8 @@ import { mermaidSlim } from "./mermaid-slim-plugin.ts";
  * root 显式设为 web/：脚本从仓库根用 `--config web/vite.config.ts` 调用，cwd 是仓库根。
  * fs.allow 需要放开仓库根：`web/src/types.ts` 是 `server/protocol.ts` 的 shim（跨目录导入协议单源）。
  */
+const BACKEND_PORT = process.env.AGENT_WEB_BACKEND_PORT ?? "25258";
+
 export default defineConfig({
 	root: "web",
 	// mermaidSlim 只在 build 生效：把用不到的图型和 elkjs/cytoscape/katex 换成空壳（ADR-0040）
@@ -22,7 +24,7 @@ export default defineConfig({
 		strictPort: true,
 		fs: { allow: [".."] },
 		proxy: {
-			"/api": { target: "http://127.0.0.1:25258", xfwd: true },
+			"/api": { target: `http://127.0.0.1:${BACKEND_PORT}`, xfwd: true },
 		},
 	},
 });
