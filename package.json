@@ -29,7 +29,8 @@
 		"codex-web",
 		"opencode-web",
 		"claude-code-web",
-		"web-ui"
+		"web-ui",
+		"pi-web-ui"
 	],
 	"type": "module",
 	"license": "MIT",
