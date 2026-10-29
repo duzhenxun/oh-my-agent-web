@@ -1,0 +1,229 @@
+/* 已归档入口（在主列表底部） */
+.archived-entry {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	width: 100%;
+	border: none;
+	background: none;
+	color: var(--text-faint);
+	font: inherit;
+	font-size: 14px;
+	text-align: left;
+	padding: 6px;
+	margin-top: 4px;
+	cursor: pointer;
+}
+
+.archived-entry:hover {
+	color: var(--text);
+	background: var(--bg-elev-2);
+}
+
+/* 归档视图：占满列表区，顶部一条返回栏 */
+.archived-view {
+	flex: 1 1 auto;
+	min-height: 0;
+	height: auto;
+	/* 打开归档视图时文件区会让位，这里能吃满剩余高度 */
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.archived-view-head {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex: none;
+	padding: 2px 0;
+}
+
+.archived-back {
+	width: 22px;
+	height: 22px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--bg-elev);
+	color: var(--text-dim);
+	font: inherit;
+	cursor: pointer;
+	padding: 0;
+}
+
+.archived-view-title {
+	font-size: 15px;
+	font-weight: 600;
+	color: var(--text);
+}
+
+.archived-view-list {
+	flex: 1 1 auto;
+	min-height: 120px;
+	overflow: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.archived-group-title {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	color: var(--text-faint);
+	font-size: 14px;
+	font-weight: 600;
+	padding: 4px 6px 2px;
+}
+
+/* 分组标题本体做成按钮：整行（三角 + 文件夹 + 名字）都能点，展开 / 收起 */
+.archived-group-toggle {
+	flex: 0 1 auto;
+	min-width: 0;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	border: none;
+	background: none;
+	color: inherit;
+	font: inherit;
+	font-weight: inherit;
+	padding: 0;
+	cursor: pointer;
+	text-align: left;
+}
+
+.archived-group-toggle:hover .archived-group-name {
+	color: var(--text);
+}
+
+.archived-group-name {
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* 每个项目分组右上角的「全选 / 全不选」：默认淡一点，鼠标进到这一组才明显 */
+.archived-group-select {
+	flex: none;
+	font-size: 13px;
+	padding: 1px 7px;
+	opacity: 0.55;
+}
+
+.archived-group:hover .archived-group-select,
+.archived-group-select:focus-visible {
+	opacity: 1;
+}
+
+.archived-open {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	border: none;
+	background: none;
+	color: var(--text);
+	font: inherit;
+	font-size: 15px;
+	text-align: left;
+	padding: 4px 6px;
+	border-radius: 6px;
+	cursor: pointer;
+}
+
+.archived-open:hover {
+	background: var(--bg-elev-2);
+}
+
+.archived-time {
+	flex: none;
+	color: var(--text-faint);
+	font-size: 13px;
+}
+
+/* 归档视图打开时，项目列表整块让位（连空壳也不占 flex 空间） */
+.sidebar-list-hidden {
+	display: none;
+}
+
+/* ---- 侧栏列表里的「已归档 · N」入口 ----
+ * 跟项目行同一层：同样的文件夹图标位置、同样的字号与粗细，只是颜色淡一档
+ * （它是「另一个列表」，不是项目本身）。 */
+.archived-row-entry {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	width: 100%;
+	min-width: 0;
+	margin-top: 2px;
+	/* 左边 6px：跟项目行里 <summary> 自带的那点缩进对齐（量出来差 6px），
+	 * 这样档案盒图标和 📁 落在同一条竖线上。 */
+	padding: 3px 4px 3px 6px;
+	border: none;
+	border-radius: 6px;
+	background: none;
+	color: var(--text-dim);
+	font: inherit;
+	font-size: 15px;
+	font-weight: 600;
+	text-align: left;
+	cursor: pointer;
+}
+
+.archived-row-entry:hover {
+	color: var(--text);
+	background: var(--bg-elev-2);
+}
+
+/* 归档视图开着时高亮（正常情况下列表已被归档视图顶替，这一行看不到） */
+.archived-row-entry-on {
+	color: var(--accent);
+}
+
+.archived-row-entry-name {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* 图标走 .proj-chevron（和项目行同一个盒子），里面的 svg 填满它 */
+.archived-row-entry .proj-folder {
+	width: 100%;
+	height: 100%;
+}
+
+/* ---- 归档视图：批量选择 ---- */
+.archived-bulk {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex: none;
+	padding: 4px 6px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--bg-elev);
+}
+
+.archived-bulk-count {
+	font-size: 14px;
+	color: var(--text-dim);
+}
+
+.archived-row-on {
+	background: color-mix(in srgb, var(--accent) 10%, transparent);
+	border-radius: 6px;
+}
+
+.archived-row input[type="checkbox"] {
+	flex: none;
+	margin: 0;
+}

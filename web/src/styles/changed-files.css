@@ -1,0 +1,119 @@
+/*
+ * 「这一轮改动的文件」那一排 chip（助手消息尾注上方）。
+ *
+ * 视觉取「文件树的文件名」那一套：一个很小的类型徽标 + 文件名，边框描边、无重底色 ——
+ * 它是一排入口，不是警告条；十来个文件排两行时也不能把消息尾巴压过正文。
+ * 位置：正文之后、尾注（token / 时间）之前，见 ChangedFiles.tsx 的头注释。
+ */
+.msg-files {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-top: 10px;
+	padding-top: 8px;
+	border-top: 1px dashed var(--border);
+	min-width: 0;
+}
+
+/* 「改动 N 个文件」：先说明这排是什么，再列文件；不然一排小胶囊看着像标签云 */
+.msg-files-label {
+	flex: none;
+	color: var(--text-faint);
+	font-size: 13px;
+	margin-right: 2px;
+}
+
+.msg-file {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	max-width: 100%;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--bg-elev);
+	color: var(--text-dim);
+	font: inherit;
+	font-size: 13px;
+	padding: 2px 8px 2px 6px;
+	cursor: pointer;
+	min-width: 0;
+}
+
+.msg-file:hover:not(:disabled) {
+	border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+	color: var(--text);
+	background: var(--bg-elev-2);
+}
+
+/* 工作区之外的路径：列出来但不给点（右侧预览读不了），压暗 + 默认光标 */
+.msg-file-off {
+	cursor: default;
+	opacity: 0.55;
+}
+
+/* 类型徽标：三档配色够用了（代码 / 样式 / 文本），不为了几个扩展名引一堆变量 */
+.msg-file-badge {
+	flex: none;
+	font-family: var(--mono);
+	font-size: 10px;
+	line-height: 1;
+	letter-spacing: 0.02em;
+	padding: 3px 3px 2px;
+	border-radius: 4px;
+	border: 1px solid var(--border);
+	color: var(--text-faint);
+	min-width: 20px;
+	text-align: center;
+}
+
+.msg-file-badge-code {
+	border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+	color: var(--accent);
+	background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.msg-file-badge-style {
+	border-color: color-mix(in srgb, var(--amber) 40%, var(--border));
+	color: var(--amber);
+	background: color-mix(in srgb, var(--amber) 8%, transparent);
+}
+
+.msg-file-badge-text {
+	border-color: var(--border);
+	color: var(--text-faint);
+}
+
+/* 文件名：长了就从中间截断（扩展名要留住，靠 title 看全路径） */
+.msg-file-name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	min-width: 0;
+}
+
+/* 手机：不换行，改成**横向滚动**的一条。
+   12 个文件换行要占 7 行（实测），把消息尾巴撑得比正文还长；
+   横向一条 + 左侧「改动 N 个文件」固定住，既能看出有几个，也不吃版面。 */
+.is-mobile-shell .msg-files {
+	flex-wrap: nowrap;
+	overflow-x: auto;
+	padding-bottom: 4px;
+	scrollbar-width: none;
+}
+
+.is-mobile-shell .msg-files::-webkit-scrollbar {
+	display: none;
+}
+
+.is-mobile-shell .msg-files-label {
+	position: sticky;
+	left: 0;
+	background: var(--bg);
+	padding-right: 6px;
+	z-index: 1;
+}
+
+.is-mobile-shell .msg-file {
+	flex: none;
+}

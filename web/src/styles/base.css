@@ -1,0 +1,440 @@
+/* ---- 变量（必须先定义后引用：未定义的 var() 会让整条声明失效）---- */
+/*
+ * `:root` 就是**默认色板**「清亮白」：3 浅 + 3 深的其余 5 套在 styles/theme.css 里，
+ * 由 `<html data-theme="...">` 覆盖（切主题 = 换一组变量，见 web/src/theme.ts）。
+ * 加新变量时三处一起加：这里（默认值）+ theme.css 的 5 套色板 + 用到它的样式。
+ */
+:root {
+	/* 浅色主题：背景白、文字深（对比度按 WCAG AA 取的值） */
+	--bg: #ffffff;
+	--bg-elev: #f7f8fa;
+	--bg-elev-2: #eef1f5;
+	/* 「软面」：贴在大面板里的小块（列表行 / 代码块）。以前只有引用没有定义 = 一直透明 */
+	--bg-soft: #f7f8fa;
+	--border: #e2e6ec;
+	--border-strong: #cfd6df;
+	--text: #1b2530;
+	--text-dim: #4a5a6a;
+	--text-faint: #7b8794;
+	--accent: #1f6feb;
+	--accent-dim: #9dc0f5;
+	/* 主色块上的文字色：深色主题里主色很亮，得反成深字 */
+	--on-accent: #ffffff;
+	--green: #1a7f37;
+	/**
+	 * 对话区「周边文字」的字号：过程卡（思考 / 工具）、输入区工具行、底部状态栏都吃它，
+	 * 由「设置 → 外观 → 聊天字体大小」推导。
+	 *
+	 * 为什么用 `calc(... * 1)` 而不是直接用 var：这是一处**可调的系数**——
+	 * 现在 1 = 跟正文同号（以前这些地方写死 14 或 14.5px，正文调小以后它们比正文还大，
+	 * 看着像没跟着变）。想让周边比正文大半档，把 1 改成 1.1 就行，不用翻几十条规则。
+	 */
+	--chat-ui-font-size: calc(var(--chat-font-size, 14px) * 1);
+	--amber: #b06a00;
+	/* 「插队」标签的颜色：**红黄**（色相约 44°，amber 是 36° —— 那个在浅色底上发红，用户反馈"泛红"）。
+	   语义色不扩清单（绿/黄/红之外不再加），它是一处专门用途的取色，所以单开一个名字。 */
+	--steer: #b38300;
+	--red: #c62828;
+	--yellow: #d9a441;
+	/* 速率徽标（流式 t/s）的配色：只在这里改，两行就能换色。
+	   用蓝色（和强调色同一套），跟「选中/链接」的观感一致；不占语义色（绿/黄/红） */
+	--speed-bg: #e7f5ff;
+	--speed-fg: #1971c2;
+	--mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+	--radius: 10px;
+	--gap: 0px; /* 试验：整体栏间距归零 */
+	/**
+	 * 顶栏缩放系数（局部变量）：默认 1 = 原尺寸，只有 `.appbar` 里把它改成
+	 * `var(--appbar-scale, 1)`（见 app-bar.css），于是共用类（`.side-foot-icon` 等）
+	 * 在顶栏里跟着缩、在弹窗 Tab / 侧栏底部保持原样。
+	 * `--appbar-scale` 本身由「设置 → 外观 → 顶栏高度」写到 `<html>` 上。
+	 */
+	--ab: 1;
+	/* 顶栏底部的投影（见 app-bar.css）：浅色主题用黑色低透明度；
+	   深色主题自己覆盖成更浓的，否则黑底上的黑影等于没有 */
+	--appbar-shadow-line: rgb(0 0 0 / 6%);
+	--appbar-shadow: rgb(0 0 0 / 12%);
+}
+
+/* ---- 布局 ---- */
+* {
+	box-sizing: border-box;
+}
+
+html,
+body {
+	margin: 0;
+	height: 100%;
+	/* 工作台是「一屏铺满，各区自己滚」的布局：**文档本身就不要再滚**。
+	   没有这一条时，只要内部有一处比视口高一点（状态栏换行、面板最小高度、
+	   提示条多一行），文档就会被撑出滚动条：触控板使劲往下拖能把顶栏整条拖出屏幕，
+	   下面露出一大块白，松手再弹回来 —— 看着像整个网页被拽走。 */
+	overflow: hidden;
+	/* 顺带把触控板 / 触摸的「橡皮筋」也关掉：既然不滚了，就别再弹那一下 */
+	overscroll-behavior: none;
+	background: var(--bg);
+	color: var(--text);
+	font:
+		16px/1.6 -apple-system,
+		BlinkMacSystemFont,
+		"Segoe UI",
+		"PingFang SC",
+		"Microsoft YaHei",
+		sans-serif;
+}
+
+#root {
+	height: 100%;
+}
+
+.app {
+	height: 100%;
+	display: flex;
+	flex-direction: column; /* 顶栏一层，三栏在它下面 */
+	gap: var(--gap);
+	padding: var(--gap);
+	min-width: 0;
+	/* 万一有子项溢出（比自己高），在 .app 这一层就裁掉：
+	   不让它把文档撑高去换一个整页滚动条 —— 那只会拖出底部空白 */
+	overflow: hidden;
+}
+
+/* 右侧「工作区」列：顶栏 / 对话流 / 提示 / 输入区 竖向排布 */
+.workspace {
+	flex: 1 1 auto;
+	display: flex;
+	flex-direction: column;
+	gap: var(--gap);
+	min-width: 0;
+	min-height: 0;
+}
+
+.topbar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+	flex: none;
+}
+
+.brand {
+	font-weight: 600;
+	letter-spacing: 0.02em;
+}
+
+.topbar-spacer {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.main {
+	flex: 1 1 auto;
+	overflow-y: auto;
+	position: relative; /* 内部浮层的定位参照（滚动区本身就是那个祖先容器） */
+	min-height: 0;
+	min-width: 0;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: var(--bg); /* 对话区用白底 */
+	/* 底部比其余三边少 4px：对话流末尾已经有尾注自己的留白，再叠一整份 --gap 会显得空。
+	   用 max() 兜底：`--gap` 调到 ≤4px 时 calc 会算出负数，而**负 padding 会让整条声明失效**，
+	   结果四边内边距一起没了（文字直接顶到边框上）。 */
+	padding: var(--gap) var(--gap) max(0px, calc(var(--gap) - 4px));
+}
+
+/* ---- 状态芯片 ---- */
+.chip {
+	flex: none;
+	padding: 2px 8px;
+	border-radius: 999px;
+	border: 1px solid var(--border);
+	color: var(--text-dim);
+	font-size: 14px;
+}
+
+.chip-open,
+.chip-run-streaming {
+	border-color: var(--accent-dim);
+	color: var(--accent);
+}
+
+.chip-closed,
+.chip-run-error {
+	border-color: var(--red);
+	color: var(--red);
+}
+
+.chip-run-awaiting_approval {
+	border-color: var(--amber);
+	color: var(--amber);
+}
+
+.chip-quiet {
+	color: var(--text-faint);
+	max-width: 40ch;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.mono,
+.tool-output {
+	font-family: var(--mono);
+}
+
+/* ---- 提示条与错误条 ---- */
+.notices {
+	flex: none;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	min-width: 0;
+}
+
+.notice {
+	border-left: 3px solid var(--border-strong);
+	padding: 4px 10px;
+	font-size: 15px;
+	color: var(--text-dim);
+	background: var(--bg-elev);
+	border-radius: 0 6px 6px 0;
+	overflow-wrap: anywhere;
+}
+
+.notice-warn {
+	border-color: var(--amber);
+	color: var(--amber);
+}
+
+.notice-error {
+	border-color: var(--red);
+	color: var(--red);
+}
+
+.error-bar {
+	flex: none;
+	color: var(--red);
+	font-size: 15px;
+}
+
+/* ---- 输入区 ---- */
+/* 边框画在**这一层**（不是 textarea 上）：因为「N 条注释」那颗要待在框**里面**
+   （以前它挂在 `.composer` 外面单独一行，看着像浮在输入框上面另一样东西）。
+   于是 `.composer` = 一个带边框的竖排容器：可选的一行注释胶囊 + textarea + 贴底的按钮组。 */
+.composer {
+	position: relative;
+	flex: none;
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	min-width: 0;
+	background: var(--bg-elev);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+}
+
+/* 聚焦高亮跟着整个框走：textarea 自己已经没有边框了 */
+.composer:focus-within {
+	outline: 1px solid var(--accent-dim);
+}
+
+.composer-input {
+	flex: 1 1 auto;
+	min-width: 0;
+	/* 边框和底色都在外面那层 `.composer` 上，这里只负责排字 */
+	resize: none;
+	background: none;
+	color: var(--text);
+	border: none;
+	border-radius: 0;
+	/* 右侧给右下角那组按钮让位：按钮是绝对定位的，文字不会自己绕开它。
+	   宽度由 Composer 里的 ResizeObserver 实测写进 --composer-actions-w：
+	   1 个按钮（发送 / 停止）与 3 个按钮（排队 + 插队 + 停止）宽度差一倍多，写死一个数必被压字。 */
+	padding: 10px calc(var(--composer-actions-w, 104px) + 14px) 10px 12px;
+	/* 单行起步，随内容向上长（JS 控制 height，这里给上下限与滚动） */
+	min-height: 44px;
+	max-height: 240px;
+	overflow-y: auto;
+	line-height: 1.5;
+	font: inherit;
+}
+
+/* 「发送」按钮贴在输入框内部右下角。
+   不能用垂直居中（top: 50%）：框里上面多了一行注释胶囊 / 展开的列表之后，
+   居中的按钮会飘到列表中间去。 */
+.composer-actions {
+	position: absolute;
+	right: 8px;
+	bottom: 7px;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.btn.btn-send {
+	border-radius: 8px;
+	padding: 4px 10px;
+	font-size: 14px;
+	font-weight: 600;
+	/* 没输入时是灰的：不可点、也不抢注意力 */
+	background: var(--bg-elev-2);
+	color: var(--text-faint);
+	border: 1px solid var(--border);
+	cursor: not-allowed;
+}
+
+/* 有内容才变亮（主色底 + 反白字；文字色走 --on-accent，深色主题要反成深字才看得清） */
+.btn.btn-send:not(:disabled) {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: var(--on-accent);
+	cursor: pointer;
+}
+
+.btn.btn-send:not(:disabled):hover {
+	background: color-mix(in srgb, var(--accent) 88%, #ffffff);
+}
+
+.composer-input:focus {
+	outline: none;
+}
+
+.btn {
+	flex: none;
+	background: var(--bg-elev-2);
+	color: var(--text);
+	border: 1px solid var(--border-strong);
+	border-radius: 8px;
+	padding: 8px 14px;
+	cursor: pointer;
+	font: inherit;
+}
+
+.btn:hover:not(:disabled) {
+	border-color: var(--accent-dim);
+}
+
+.btn:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+
+.btn-primary {
+	background: var(--accent-dim);
+	border-color: var(--accent);
+}
+
+/* ---- 空状态 ---- */
+.empty {
+	color: var(--text-dim);
+	min-width: 0;
+}
+
+.empty code {
+	font-family: var(--mono);
+	background: var(--bg-elev-2);
+	border-radius: 4px;
+	padding: 1px 5px;
+	color: var(--accent);
+}
+
+.empty-hint {
+	margin-left: 8px;
+	color: var(--text-faint);
+	font-size: 15px;
+}
+
+/* 主题切换：色板全部在 styles/theme.css（`<html data-theme>` 决定），
+   这里以前有一段 `@media (prefers-color-scheme: light)` 的重复变量 —— 两套配色打架，
+   现在统一由「设置 → 外观」显式选择，不再跟系统偏好偷偷较劲。 */
+
+/* 模型选择器（ADR-0020 §P2）：外观跟芯片一致，但可点开 */
+.chip-select {
+	appearance: none;
+	background: var(--bg-elev-2);
+	color: var(--text);
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	padding: 2px 8px;
+	font-size: 14px;
+	max-width: 26ch;
+	cursor: pointer;
+}
+
+.chip-select:hover {
+	border-color: var(--accent-dim);
+}
+
+/* ---- 原生 <select> 的焦点态统一 ----
+   浏览器给 select 的默认焦点框是一圈又粗又蓝的 UA outline（方角、配色和整站不搭，
+   实测在窄侧栏里像给控件套了个蓝框）。这里统一换掉：细描边 + 淡光晕，
+   键盘（:focus-visible）依然清楚可见，鼠标点选后也不刺眼。 */
+select:focus {
+	outline: none;
+	border-color: var(--accent-dim);
+}
+
+select:focus-visible {
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+/* 审批模式芯片（P4）：放行状态用暖色提醒，别让人忘了自己关掉了审批 */
+.chip-warn {
+	border-color: color-mix(in srgb, var(--yellow, #d9a441) 60%, transparent);
+	color: var(--yellow, #d9a441);
+}
+
+/* ---- 滚动条：细一点，并且给滚动条留出固定空间（否则会压住右侧文字/状态）---- */
+* {
+	scrollbar-width: thin;
+	scrollbar-color: var(--border-strong) transparent;
+}
+
+::-webkit-scrollbar {
+	width: 8px;
+	height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+	background: var(--border-strong);
+	border-radius: 8px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: var(--text-faint);
+}
+
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+/* 消息区 / 大纲 / 预览：预留滚动条位置，内容不会被盖住 */
+.main,
+.outline-panel-list,
+.preview-body,
+.tool-output {
+	scrollbar-gutter: stable;
+}
+
+/* 底部状态栏里的「顶部栏」开关 */
+/* 「顶部」开关：不要边框，当普通文字用（悬浮才给一点底色） */
+.status-toggle {
+	border: none;
+	border-radius: 5px;
+	background: none;
+	color: var(--text-faint);
+	font: inherit;
+	font-size: 13px;
+	padding: 1px 4px;
+	cursor: pointer;
+}
+
+.status-toggle:hover {
+	color: var(--text);
+	background: var(--bg-elev-2);
+}
+
+/* `hidden` 属性打不过作者样式里的 display:flex，得显式关掉 */
+.appbar[hidden] {
+	display: none;
+}

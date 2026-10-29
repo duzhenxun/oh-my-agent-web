@@ -1,0 +1,94 @@
+/* ---- 代码高亮（highlight.js 的最小配色，避免再引一份主题文件 → 依赖预算）----
+ *
+ * 配色按**浅色主题**定（界面是白底）：以前这里用的是一套深色主题色
+ * （字符串 #a5d6ff、数字 #79c0ff 之类），白底上几乎看不清 ——
+ * JSON 预览尤其明显。现在换成 VS Code Light+ / GitHub Light 那一套：
+ *   键 = 深蓝、字符串 = 暗红、数字 = 深绿、注释 = 灰绿、函数 = 橄榄、类型 = 青。
+ */
+.hljs-comment,
+.hljs-quote {
+	color: #6a737d;
+	font-style: italic;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-doctag {
+	color: #0033b3;
+}
+
+/* 字符串：暗红（JSON 里的值、代码里的字面量） */
+.hljs-string,
+.hljs-regexp {
+	color: #a31515;
+}
+
+/* 键 / 属性名：深蓝，和字符串区分开（JSON 一眼能看出哪是键） */
+.hljs-attr,
+.hljs-attribute,
+.hljs-property,
+.hljs-selector-attr {
+	color: #0451a5;
+}
+
+/* 数字 / 常量：深绿 */
+.hljs-number,
+.hljs-built_in,
+.hljs-type,
+.hljs-symbol {
+	color: #098658;
+}
+
+/* 函数 / 标题：橄榄 */
+.hljs-title,
+.hljs-title.function_,
+.hljs-section {
+	color: #795e26;
+}
+
+/* 类名 / 选择器：青 */
+.hljs-title.class_,
+.hljs-class .hljs-title,
+.hljs-selector-id,
+.hljs-selector-class,
+.hljs-bullet,
+.hljs-link {
+	color: #267f99;
+}
+
+/* 变量 / 模板字符串 / 参数：深藏青 */
+.hljs-variable,
+.hljs-template-variable,
+.hljs-params {
+	color: #001080;
+}
+
+/* 标签名（HTML/XML）：深青 */
+.hljs-tag,
+.hljs-name {
+	color: #0b7285;
+}
+
+.hljs-meta,
+.hljs-meta .hljs-keyword {
+	color: #6a737d;
+}
+
+.hljs-deletion {
+	color: #82071e;
+	background: rgb(255, 129, 130, 0.16);
+}
+
+.hljs-addition {
+	color: #116329;
+	background: rgb(46, 160, 67, 0.15);
+}
+
+.hljs-emphasis {
+	font-style: italic;
+}
+
+.hljs-strong {
+	font-weight: 600;
+}

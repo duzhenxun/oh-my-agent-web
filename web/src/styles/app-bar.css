@@ -1,0 +1,929 @@
+/* 顶部区域（appbar）：横跨整窗，右侧放模型/技能/设置。
+ *
+ * 内部**分两段**：`.appbar-side`（左段，宽度按自己内容定、**与侧栏宽度无关**，见下面的注释）
+ * 与后面那一串入口（子代理徽标 / 菜单 / 分栏）。两段之间不画边框，
+ * 靠左段自己的伪元素画一条「接上侧栏右边框」的分段线。
+ *
+ * 整条栏及里面所有元素的大小由一个系数控：`--ab` = 「设置 → 外观 → 顶栏高度」的百分比
+ * （默认 1.15 = 设置里的「标准 / 100%」，见 appbar-scale.ts 的 `CSS_PER_HUNDRED_PERCENT`）。
+ * 里面每处尺寸都写成 `calc(<原值> * var(--ab))`，连字号与行高也是 ——
+ * 只缩内边距的话，内联文字的行盒会把栏高顶回去（「高度没变」）。
+ * `--ab` 只在 `.appbar` 里改值，其它地方恒为 1：`.side-foot-icon` 这类共用类
+ * 在顶栏里会跟着缩，在弹窗 Tab / 侧栏底部保持原样。
+ *
+ * 底边除 1px 边框外加一条极淡的阴影（往下 2px、柔散 6px）：顶栏和对话区都是浅色时，
+ * 一条 1px 线分不清是「栏的边界」还是「内容的边框」，带点投影才看得出上面是浮着的一层。 */
+.appbar {
+	flex: none;
+	display: flex;
+	align-items: center;
+	--ab: var(--appbar-scale, 1);
+	/* 字号 / 行高跟着缩：行高用 em 是因为它要跟**自己的**字号走（1.6 = base.css 的 16px/1.6） */
+	font-size: calc(1em * var(--ab));
+	line-height: calc(1em * 1.6);
+	gap: calc(8px * var(--ab));
+	/* 上下内边距**抽成变量**（用户：「顶栏高度还是太高，再改小点，字号别动」）：
+	 * 判据不是字号，而是这一条栏的总高 —— 里面那排入口本身 24px 高，上下各留 6px 就是 36px 的栏，
+	 * 看上去像一条「空得发胖」的带子。现在各留 2px（缩放后约 1.7px），栏高落到 28px 上下，
+	 * 字一个都没变小，只是不再空着一圈。
+	 *
+	 * 为什么用变量：`.appbar-side::after`（分段线）、`.appbar-split-divider` / `.appbar-divider`
+	 * （两条竖线）都靠 `margin/top/bottom: calc(-1 * 本值)` 把顶栏的内边距「吃掉」才能顶到栏的两头，
+	 * 所以这个数改一处、那三处必须跟着改 —— 抽成变量就只有一个地方了。 */
+	--appbar-pad-y: calc(2px * var(--ab));
+	/* 左右内边距下放到两段自己身上：左边那段要占满「侧栏宽度」，
+	   而分段线必须正好落在 x = 侧栏宽度 上（顶栏自己有 padding 就会错位） */
+	padding: var(--appbar-pad-y) 0;
+	border-bottom: 1px solid var(--border);
+	background: var(--bg-elev);
+	/* 阴影要盖在下面的三栏上：不定位的话会被 .app-main 的背景/边框覆盖掉 */
+	position: relative;
+	z-index: 4;
+	/* 颜色抽成变量（`--appbar-shadow`）：深色主题要更浓一点才看得见，
+	   而模糊半径里的 `--ab` 必须留在**这里**算 —— 写在 `:root` 的变量里
+	   会按 `:root` 的 `--ab`（=1）解析，顶栏缩小后阴影就不跟着缩了。 */
+	box-shadow:
+		/* 贴着栏底的一条窄阴影 + 一层大一点的柔散（两层叠起来才像「浮在上面」） */
+		0 1px 0 var(--appbar-shadow-line, rgb(0 0 0 / 6%)),
+		0 calc(4px * var(--ab)) calc(12px * var(--ab)) var(--appbar-shadow, rgb(0 0 0 / 12%));
+	min-width: 0;
+}
+
+.app-main {
+	flex: 1 1 auto;
+	min-height: 0;
+	min-width: 0;
+	display: flex;
+	gap: 8px;
+	/* 底部不留白：状态栏是最下面那条横贯全窗的栏（和顶栏对称） */
+	padding: 8px 8px 0;
+	/* 定位参照：侧栏收起后那颗舌形「展开」箭头（`.side-expand`）要跟展开态的
+	 * 「收起」箭头（`.side-collapse`，参照 `.side-host`）落在**同一个高度** ——
+	 * 两者参照的其实都是「内容行顶边 + 8px」，顶栏在不在都一样。 */
+	position: relative;
+}
+
+/* ---- 顶栏左段：宽度按内容定，**与侧栏宽度无关** ----
+ * 内边距跟侧栏的 `--side-pad` 对齐（10px）：品牌图标与「项目」左边缘在同一条竖线上。
+ *
+ * 以前宽度由 App 内联写成 `sideWidth`（与 `.side-host` 同一个数），拖宽侧栏时上面这段
+ * 跟着一起变，品牌名忽长忽短 —— 用户要求「顶部这个宽度要固定，下面的侧边栏变化跟上面
+ * 没有关系」，所以改成跟内容走（见下面的 `.appbar-side-fixed`）。左沿仍然对齐，
+ * 但右沿那道分段线不再“接上侧栏右边框”：它现在只是**这一段自己的右边界**。
+ */
+.appbar-side {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: calc(8px * var(--ab));
+	min-width: 0;
+	padding: 0 calc(10px * var(--ab));
+	/* 供下面那道分段线定位；`stretch` 让它能拉满顶栏高度（两种状态都画得一样长） */
+	position: relative;
+	align-self: stretch;
+}
+
+/* 分段线：**收起态也要有** ——（用户要求）
+ * 它是「左边那一路（品牌 / 新会话 / 全屏）| 会话标题」之间的分界。
+ * 以前这条线挂在 `.appbar-side-fixed`（只在侧栏展开时加）的 `::after` 上，
+ * 侧栏一收起就凭空少一截，顶栏看着像被切成两半却没画线。
+ * 现在挂在 `.appbar-side` 上，展开 / 收起都画；位置仍是 `right: 0`（这一组的右沿）。
+ *
+ * 注意：它是**这一段自己的边界**，不再跟侧栏右边框对齐 —— 左段宽度已经与侧栏解耦，
+ * 拖侧栏时这条线不动（用户要的正是这个）。 */
+.appbar-side::after {
+	content: "";
+	position: absolute;
+	/* 往上 / 下各「吃掉」顶栏的内边距：线要顶到栏的两头 */
+	top: calc(-1 * var(--appbar-pad-y));
+	bottom: calc(-1 * var(--appbar-pad-y));
+	/* **必须 right: 0**：定位参照的是 padding box，而侧栏那条 1px 边框画在它 border box 的
+	   最后一格 [width-1, width] 里。写成 -1px 就会落到 [width, width+1] —— 上下两条线差 1px，
+	   放大能看出来（用户就是这么发现的）。 */
+	right: 0;
+	width: 1px;
+	background: var(--border);
+	pointer-events: none;
+}
+
+/* 手机上这一段是「☰ + 图标」的抽屉开关，不跟着侧栏分栏，也就不画这条线 */
+.is-mobile-shell .appbar-side::after {
+	display: none;
+}
+
+/* 展开态：宽度 = **内容宽**（`max-content`），拖侧栏不影响它。
+ *
+ * 为什么不用 `width: auto` + 内容：`container-type: inline-size` 原本是为了那条
+ * `@container appbar-side`（品牌名隐藏）的查询，那条规则已经删了，这里也就不需要容器；
+ * 保留容器的话，`inline-size` 包含性会让“按内容定宽”失效（内容不参与尺寸计算）。
+ *
+ * `max-width` 是唯一的让步：自定义顶栏名称很长 / 窗口很窄时，先缩品牌名（省略号），
+ * 不把整条顶栏吃光（右边还有会话标题与入口排）。
+ *
+ * 分段线为什么用 `::after` 而不是 `border-right`：`align-self: stretch` 只能拉满到顶栏的
+ * **内容盒**（上下各有内边距），画成边框就只得到一小段。伪元素从内边距外再往上/下多伸一点
+ * （`--ab` 同步缩），正好接到顶栏上下沿。 */
+.appbar-side-fixed {
+	box-sizing: border-box;
+	/* 按内容定宽：品牌 + 新会话 + 全屏，挤不动也不跟着侧栏变 */
+	width: max-content;
+	/* 上限两重取小：
+	 *   - `100vw - 240px`：窄窗（双栏 401~430）时给右边那排入口留够位置 ——
+	 *     只按 50vw 算的话，430px 窗口里这一段能占到 215px，最后两颗图标会被切掉；
+	 *   - 420px：自定义顶栏名称很长时不让它把整条栏吃光。
+	 * 超出部分由品牌名的省略号收（`.brand-name`）。 */
+	max-width: min(calc(100vw - 240px), 420px);
+}
+
+/* 左段里的「新会话」**紧跟在品牌后面**（不再 `margin-left: auto` 贴到分段线那边）。
+ * 用户：「蓝线向左右滑动时，顶部不要动」—— 以前它是 `margin-left: auto`，也就是被推到
+ * 左段的最右边：左段宽度 = 侧栏宽度，一拖分割线，它就跟着左右滑（品牌名却不动），
+ * 看上去像顶栏里有一块在“跟着跑”。现在它在品牌右边一个 gap（8×缩放）的位置，
+ * 而品牌的左边缘、顶栏的左内边距都不随侧栏宽度变 —— **拖多宽它都不动**。
+ * 代价：侧栏拖得很宽时，胶囊右边会空出一截；但顶栏的分段线 / 标题区跟着动是本来就该动的，
+ * 那颗按钮不是量尺。 */
+.appbar-side .newchat-pill {
+	margin-left: 0;
+}
+
+/* 以前这里有一条 `.appbar .appbar-side-fixed .newchat-pill { display: none }`：
+ * 展开态把顶栏这颗收掉、交给侧栏抬头。现在反过来 —— **顶栏常驻**（用户要求放到顶部），
+ * 只有整条顶栏被藏起来（`appbarHidden`）时，才由侧栏抬头补一颗（见 Sidebar.tsx 里的条件渲染）。
+ * 所以这里不再需要任何 `display: none`：那一处已经由 JS 决定画不画了。 */
+
+/* ---- 顶栏左段末尾那一组：全屏那颗 ----
+ *
+ * 这里以前还有一道竖线（`.appbar-divider`）把「品牌 / 新会话」跟全屏分开，
+ * 用户不要了（「全屏左边那条竖线不要」）：那段里两道线挨得太近，看着像多出来一根。 */
+.appbar-side-end {
+	display: inline-flex;
+	align-items: center;
+	/* 这一段本来就窄：再宽一点品牌名就要多截两三个字 */
+	gap: calc(6px * var(--ab));
+	flex: none;
+	/* 拉满顶栏内容高度 */
+	align-self: stretch;
+}
+
+/* 展开态「新会话」那颗不在这一段（它在侧栏抬头，见 `.appbar-side-fixed .newchat-pill`），
+ * 没有它顶着，这一组得自己靠右 —— 收起态则由 `.newchat-pill` 的 auto 外边距负责。 */
+.appbar-side-fixed .appbar-side-end {
+	margin-left: auto;
+}
+
+/* ---- 顶栏左段里的小方按钮（目前是全屏那颗）----
+ * 框画成小的方按钮（图标 + 两倍内边距 ≈ 28px）：它挨着「品牌 / 新会话」那条线，
+ * 光图标会糊在里面；带一圈细边和浅底，才看得出是能按的。
+ * 手机上手指要按得住，尺寸另见 responsive.css。 */
+.appbar-side-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	/* 4px：右边这段本来就窄，方框比原来的 5px 再收一档（≈24px） */
+	padding: calc(4px * var(--ab));
+	border: 1px solid var(--border);
+	border-radius: calc(8px * var(--ab));
+	background: var(--bg-elev);
+	color: var(--text);
+	line-height: 1;
+	cursor: pointer;
+}
+
+.appbar-side-btn:hover {
+	background: var(--bg-elev-2);
+	color: var(--text);
+}
+
+.appbar-side-btn-icon {
+	display: block;
+	width: calc(16px * var(--ab));
+	height: calc(16px * var(--ab));
+}
+
+/* 打开着就亮一下（跟顶栏那排入口的 `side-foot-btn-on` 一个口径） */
+.appbar-side-btn-on {
+	border-color: var(--accent-dim);
+	background: color-mix(in srgb, var(--accent) 12%, transparent);
+	color: var(--accent);
+}
+
+/* 左段窄了**不再把品牌名收回**（用户：「图标旁边的标题容易被隐藚，改一下，绕对不自动隐藏」）。
+ * 以前这里有一条 `@container appbar-side (max-width: 230px) { .brand-name { display: none } }`：
+ * 侧栏拖到 250px 以下、或者「新会话」胶囊挤进来，名字就凭空消失，
+ * 屏幕上一就只剩一个图标 —— 那看起来像渲染坏了，而不是「地方不够所以省了」。
+ * 现在只有一条路：**省略号**（`.brand-name` 本来就 `min-width: 0` + `text-overflow`）。
+ * 挤的时候先缩名字，再不够就把会话标题 / 入口排的文案拿走（下面那些 620 / 900 / appbar-main 的规则）。
+ * 唯一还只画图标的场合是**手机单栏壳**（`.is-mobile-shell`，见 app-bar-mobile.css）：
+ * 那是整套布局的形态，不是「宽度一变就隐藚」。 */
+
+/* 右侧一列：上边是「对话 + 右侧面板」，下边是状态栏（只占这一栏，左边那栏底部是文件管理） */
+.right-col {
+	flex: 1 1 auto;
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	min-height: 0;
+}
+
+.right-upper {
+	flex: 1 1 auto;
+	display: flex;
+	/* 对话区与右侧面板之间不留缝：靠各自的 1px 边框分隔 */
+	gap: 0;
+	min-width: 0;
+	min-height: 0;
+}
+
+/* ---- 「跟工作区换个位置」：对话跑到右边 ----
+ * 只反过来画（`row-reverse`），DOM 顺序不动 —— 焦点顺序、无障碍树、标签顺序都还是
+ * “对话在前”。随之要跟着换边的只有两样：中间那道 1px 分隔线，和面板那条拖拽热区
+ * （面板跑到左边后，它的右边缘才是分隔线）。 */
+.right-upper-flip {
+	flex-direction: row-reverse;
+}
+
+.right-upper-flip .workspace {
+	border-right: none;
+	border-left: 1px solid var(--border-strong);
+}
+
+.right-upper-flip .preview-panel > .preview-resizer {
+	left: auto;
+	right: -3px;
+}
+
+/* 对调后对话区贴窗口右边：右边那道外框也不需要了（它现在是外边缘，不是分界） */
+.right-upper-flip > .workspace {
+	border-right: none;
+}
+
+/* appbar 里的三个入口：横排、带图标与文字 */
+.appbar-menu {
+	display: flex;
+	align-items: center;
+	/* 入口之间的间距（用户：「紧凑点」）：6px → 2px。
+	 * 这一排 9 个入口靠的就是「图标 + 文字」本身区分，不需要再留很宽的气；
+	 * 每个按钮自己还有左右内边距（见下面 `.side-foot-btn`），两者叠起来已经看得出是各自一颗。 */
+	gap: calc(2px * var(--ab));
+	flex: none;
+	/* 贴右：会话标题在的时候这块本来就没有余地（标题 `flex: 1` 会占满），
+	   标题一让位（见下面那条 ≤320px 的容器查询）就靠它把这排入口顶到右边 ——
+	   不然整排会跟着左段飘到中间，右边留一大块空白。 */
+	margin-left: auto;
+}
+
+/* ---- 标题一侧的整组（会话名 + 子代理徽标 + 入口排 + 分栏）----
+ * 它自己就是**尺寸容器**：下面那几条 `@container appbar-main (...)` 量它。
+ *
+ * 为什么容器不能是 `.appbar`：`.appbar` ≈ 窗口宽，左段（与侧栏等宽）吃掉的那 200~520px
+ * 在它眼里不存在 —— 侧栏一拖宽，入口排还以为自己有地方放文案，就把中间的会话标题
+ * 挤成几个像素（更早的时候还会把入口排整排挤出窗口）。
+ *
+ * `align-self: stretch`：里面那些竖线（`.appbar-divider` / `.appbar-split-divider`）是
+ * `align-self: stretch` + 负 margin 画满整条栏的，包一层后不能让它们变短。
+ * `min-width: 0`：它自己也要能被挤，否则溢出又跑到窗口外面去了。 */
+.appbar-main {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	align-items: center;
+	gap: calc(8px * var(--ab));
+	align-self: stretch;
+	container-type: inline-size;
+	container-name: appbar-main;
+}
+
+.appbar-menu .side-foot-row {
+	display: flex;
+	/* 入口之间真正看得见的那条缝由两层组成：这个 gap + 每颗按钮的左右内边距。
+	 * 用户又嫌宽（「左右的距离再调小一点」）：4 → 2，宽度省给中间那路口会话名。 */
+	gap: calc(2px * var(--ab));
+}
+
+.appbar-menu .side-foot-btn {
+	flex: none;
+	/* 图标与文字的间距也收一档（5 → 3 → 2）：紧凑之后这一颗的内部留白成了主要宽度来源 */
+	gap: calc(2px * var(--ab));
+	/* 左右内边距 9 → 6 → 4：9 颗入口 × 两侧 ≈ 又省下 34px（按默认缩比算），
+	 * 而 4px 在悬停浅底时仍然看得出按钮的边界（图标本身就带一圈留白）。 */
+	padding: calc(4px * var(--ab)) calc(4px * var(--ab));
+	border-radius: calc(7px * var(--ab));
+	font-size: calc(12px * var(--ab));
+}
+
+.appbar-menu .side-foot-btn:hover {
+	background: var(--bg);
+}
+
+/* ---- 顶栏这一排入口**不画边框** ----
+ * 一排五个描边框看着像五个开关/输入框，其实只是「点开某个面板」的入口；
+ * 去掉框，只留图标本身，悬停给一点浅底（`.side-foot-btn` 的默认样式在侧栏底部 / 弹窗 Tab
+ * 那两处照旧带框 —— 那里是成组的动作，框是有意义的。这里只覆盖顶栏这一份）。
+ * 激活态（分栏开着 / 面板开着）仍然靠 `-on` 的底色 + 强调色认出来，不需要描边。 */
+.appbar .appbar-menu .side-foot-btn,
+.appbar .appbar-menu .side-foot-btn:hover,
+.appbar .appbar-panel-btn,
+.appbar .appbar-panel-btn:hover,
+.appbar .appbar-menu .side-foot-btn.side-foot-btn-on,
+.appbar .appbar-panel-btn.side-foot-btn-on {
+	border-color: transparent;
+}
+
+.appbar .appbar-menu .side-foot-btn,
+.appbar .appbar-panel-btn {
+	background: transparent;
+}
+
+/* ---- 「临时会话」用**虚线**标出「临时性」（用户 2026-10-29 提的）----
+ * 它跟「新会话」用的是同一枚 💬（全站一个图标，见 `TempChatButton`），光看图标分不出来；
+ * 虚线描边在这套界面里就是「草稿 / 不落盘」的既成语感（草稿卡片、临时会话提示条都用它），
+ * 所以这一排只给它一颗虚线，别的入口照旧不画框 —— 一眼就知道这颗开出来的是**关掉就没**的。
+ *
+ * 两个坑都写在这儿：
+ *  1. 必须用 `border` 简写连宽度/颜色一起给：上面那条「这一排不画边框」把 border-color
+ *     设成了 transparent，只改 border-style 是画不出来的；
+ *  2. hover 那句也得单独写：上面那条带 `:hover` 的规则比它更specific，不覆盖就会在悬停时
+ *     被改回透明 —— 边框「碰一下就没了」。
+ * 颜色跟着强调色走一半（45% 落进边框色）：够看得出是虚线，又不至于比图标本身还抢眼。 */
+.appbar .appbar-menu .tempchat-btn {
+	border: 1px dashed color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+
+.appbar .appbar-menu .tempchat-btn:hover {
+	border-color: var(--accent-dim);
+}
+
+.appbar .appbar-menu .side-foot-btn:hover,
+.appbar .appbar-panel-btn:hover {
+	background: var(--bg-elev-2);
+	color: var(--text);
+}
+
+/* 激活态（分栏开着 / 面板开着）：浅蓝底 + 强调色 —— 是「亮着」而不是「一个框」，
+   跟「新会话」那颗胶囊同一个色系，一排里不会看成输入框 */
+.appbar .appbar-menu .side-foot-btn.side-foot-btn-on,
+.appbar .appbar-panel-btn.side-foot-btn-on {
+	background: color-mix(in srgb, var(--accent) 12%, transparent);
+	color: var(--accent);
+}
+
+/* 顶栏中间：当前会话的名字（占着原来那块「以后放全局搜索」的预留区）。
+ * 左对齐 —— 它跟下面的对话区共用同一条左边线，「正在看哪条会话」这条信息与正文同起一行，
+ * 比居中更像面包屑。字号比正文小一档、颜色用 --text-dim：它是定位，不是内容。 */
+.appbar-slot {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	align-items: center;
+	border-radius: 8px;
+	border: 1px dashed transparent;
+	/* 窄了就靠省略号自己收（会话名是唯一的内容，没有副标题可让位）；
+	   分栏一开这块会被面板标签条挤薄，`min-width: 0` 是让它真能缩 */
+	overflow: hidden;
+}
+
+.appbar-title {
+	display: inline-flex;
+	/* 居中对齐（不是 baseline）：前面那枚图标若跟着 baseline 走会往上浮一截 */
+	align-items: center;
+	/* 图标与名字贴得近一点（用户：「跟文案靠近一点」）：6 → 3（缩放后 ≈2.5px）。
+	 * 图标现在是 1.15em、跟标题同高，再留 5px 的气就看着像两件不相干的东西。 */
+	gap: calc(3px * var(--ab));
+	min-width: 0;
+	max-width: 100%;
+	/* 会话名：跟着 `--ab` 等比缩 —— 默认（「标准」1.15）下落地 ≈17.8px，切到「紧凑」（0.85）≈13.2px。
+	   这里存的是**未缩放的基准值**（15.5px），当年是在 0.85 默认下定的；
+	   2026-10-29 默认改成 115% 后整体跟着变大，基准值不改 —— 要小就选「紧凑」。 */
+	font-size: calc(15.5px * var(--ab));
+	line-height: 1.4;
+}
+
+/* 顶栏标题前面的**会话图标**：一枚蓝色双气泡（`ConversationIcon`），**不要底色**。
+ * 这里挂的是「当前这条会话」，所以图标是气泡而不是文件夹
+ * （用户：「这上面属于会话的标题，放文件夹不合适吧」——先后放过开/合的文件夹都被点了名）。
+ * 形态按用户最新要求：「蓝色双气泡，不要淡蓝底，大小再大一些，跟文案差不多大」——
+ * 所以不再套那块 20px 的主色淡底（那是「标签」的语汇，压在标题前面显得重），
+ * 只留纯图标 + 主色，尺寸直接跟**标题字号**走：`.appbar-title` 的 `font-size`
+ * 是 `15.5 × --ab`（默认缩放 ≈13.2px），图标取 `1.15em` ≈ 15px ——
+ * 视觉上跟旁边那行标题一样高（SVG 里图形只占 viewBox 的 ~75%，所以要比字号稍大一点点）。
+ * 项目路径仍在标题的悬停提示里。 */
+.appbar-title-badge {
+	flex: none;
+	display: grid;
+	place-items: center;
+	color: var(--accent);
+	/* 现在是**按钮**（点一下让 AI 按内容重新起名）：去掉浏览器默认的按钮壳，
+	   只留图标本身 —— 它长得必须还像「标题前面那枚气泡」，而不是一个控件。 */
+	padding: 0;
+	margin: 0;
+	border: 0;
+	background: none;
+	cursor: pointer;
+	border-radius: calc(5px * var(--ab));
+}
+
+/* 悬停 / 键盘聚焦时才给一点「这里能点」的暗示（淡底 + 轻微放大）——
+   平时保持裸图标，否则标题前面总挂着一块颜色，看着变重了 */
+.appbar-title-badge:hover:not(:disabled),
+.appbar-title-badge:focus-visible {
+	background: color-mix(in oklab, var(--accent) 14%, transparent);
+	transform: scale(1.06);
+}
+
+.appbar-title-badge:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
+}
+
+.appbar-title-badge:disabled {
+	cursor: progress;
+}
+
+/* 正在起名：图标做一次一次「呼吸」—— 模型那一两秒里得有东西在动，否则像没点上 */
+.appbar-title-badge-busy .appbar-title-badge-icon {
+	animation: appbar-title-badge-pulse 1s ease-in-out infinite;
+}
+
+@keyframes appbar-title-badge-pulse {
+	0%,
+	100% {
+		opacity: 1;
+		transform: scale(1);
+	}
+	50% {
+		opacity: 0.45;
+		transform: scale(0.92);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.appbar-title-badge-busy .appbar-title-badge-icon {
+		animation: none;
+		opacity: 0.6;
+	}
+}
+
+.appbar-title-badge-icon {
+	display: block;
+	width: 1.15em;
+	height: 1.15em;
+}
+
+/* 双击后就地改名的输入框：直接长成标题的样子（同一个字号 / 同一行高），
+   只是多一圈强调色描边 —— 不弹窗、不换行，眼睛不用离开这条线 */
+.appbar-title-input {
+	flex: 1 1 auto;
+	min-width: 0;
+	/* 宽一点：长标题改名时别逼着人在一个 300px 的小框里左右挪（右边那排入口本来也够不着） */
+	max-width: calc(600px * var(--ab));
+	font: inherit;
+	/* 字号跟 `.appbar-title` 一模一样：否则双击改名的一瞬间字会跳一下 */
+	font-size: calc(15.5px * var(--ab));
+	line-height: 1.4;
+	padding: 0 calc(6px * var(--ab));
+	border: 1px solid var(--accent-dim);
+	border-radius: calc(6px * var(--ab));
+	background: var(--bg);
+	color: var(--text);
+	outline: none;
+}
+
+.appbar-title-input:focus {
+	border-color: var(--accent);
+}
+
+.appbar-title-name {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--text-dim);
+}
+
+/* 无缝隙布局：顶栏与三栏、三栏彼此都贴在一起，只用 1px 边框分隔 */
+.app {
+	gap: 0;
+	padding: 0;
+}
+
+.app-main {
+	gap: 0;
+	padding: 0;
+}
+
+/* 左右两栏：去掉外圆角与外边框，改成彼此之间的分隔线 */
+.sidebar,
+.workspace,
+.preview-panel,
+.preview-rail {
+	border-radius: 0;
+	border-top: none;
+	border-bottom: none;
+}
+
+.sidebar {
+	border-left: none;
+}
+
+/*
+ * 两条竖向分栏线：**左边（侧栏｜对话）与右边（对话｜右面板）必须是同一根线**
+ * —— 同宽、同色、都从顶到底。原来两条都写 `--border`，但左边那条出自 `.sidebar` 自己的
+ * 右边框、右边那条出自 `.workspace` 的右边框，中间再夹着面板的透明拖拽条，
+ * 于是右边看着比左边深一档（旁边还是终端黑底，更显）。这里统一成 `--border-strong`：
+ * 都是 1px，颜色一致，也比原来那档更清楚。
+ */
+.sidebar + .workspace {
+	border-left: 1px solid var(--border-strong);
+}
+
+.workspace {
+	border-right: 1px solid var(--border-strong);
+}
+
+.preview-panel,
+.preview-rail {
+	border-right: none;
+}
+
+/* 中间的对话区不需要外框（贴边） */
+.workspace {
+	padding: 0;
+}
+
+.workspace .topbar,
+.workspace .main {
+	border-radius: 0;
+	border-left: none;
+	border-right: none;
+}
+
+/* 贴边布局下正文与输入区需要一点内边距，否则文字/按钮顶到边缘被裁 */
+.workspace {
+	padding: 0 16px 10px 20px; /* 左侧多一点：消息与工具卡的左边距太小会显得贴边 */
+}
+
+.workspace .main {
+	padding: 4px 0 0;
+}
+
+/* 对话区（含 workspace 背景）整体用白底 */
+.workspace,
+.workspace .main {
+	background: var(--bg);
+}
+
+/* 对话区：去掉上下边框（只留左右分隔由栏边界提供） */
+.workspace .main {
+	border-top: none;
+	border-bottom: none;
+	border-radius: 0;
+}
+
+/* ---- 状态栏（窗口最底部的一条）---- */
+.statusbar {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	/* 固定 24px 高：字 10px + 里面最小 12px 的圆环，正好放得下 */
+	height: 24px;
+	box-sizing: border-box;
+	/* 右边不留内边距：「顶部」开关要贴到窗口右沿（项目名已经挪到最左边） */
+	padding: 0 0 0 10px;
+	border-top: 1px solid var(--border);
+	background: var(--bg-elev);
+	color: var(--text-faint);
+	font-size: 12px;
+	line-height: 1;
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+}
+
+.status-item {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.status-spacer {
+	flex: 1 1 auto;
+}
+
+.status-dot {
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: var(--text-faint);
+	flex: none;
+}
+
+.status-dot-open {
+	background: var(--green);
+}
+
+.status-dot-closed {
+	background: var(--red);
+}
+
+.status-dot-connecting {
+	background: var(--amber);
+}
+
+/* 滚动条要贴着面板右边缘：workspace 右侧不留内边距，把留白挪到内容自己身上 */
+.workspace {
+	padding: 0 0 10px 20px;
+}
+
+.workspace .main {
+	padding-right: 0;
+}
+
+/* 待发/提示条离滚动条一点距离（否则文字会顶到滚动条上）
+   状态栏不在此列：它在滚动区下方，留这 14px 会在右下角空出一块。
+   **正文与输入区不在这里**了：它们的呼吸带改由 chat.css 的 padding-left/right 负责 ——
+   用 margin 做这件事在「限宽居中」时会算歪（margin 不参与居中），而且 14px 挡不住覆盖式滚动条。
+   **提示条（`.notices`）也跟着移走了**：它现在要跟聊天列一起限宽居中，留一条 14px 的
+   margin 会把居中量算歪（见 chat.css 顶部那段）。 */
+.workspace .sent-queue {
+	margin-right: 14px;
+}
+
+/* 顶栏品牌：文字 + 一个小图标（放在文字右边）。
+   `flex: 0 1 auto` + `min-width: 0`：宽度不够时先压品牌名（省略号），
+   而不是把「新会话」和右边两颗图标挤扁 —— 那两颗是操作入口，品牌名只是自称。 */
+.brand {
+	display: inline-flex;
+	align-items: center;
+	gap: calc(6px * var(--ab));
+	flex: 0 1 auto;
+	min-width: 0;
+}
+
+.brand-icon {
+	/* 比文字大一点，但不能抢戏（文字 16px × 缩放系数） */
+	width: calc(20px * var(--ab));
+	height: calc(20px * var(--ab));
+	border-radius: calc(5px * var(--ab));
+	flex: none;
+}
+
+/* 品牌名是长英文（oh-my-agent-web）：窄屏上宁可截断，也不能被挤成竖排四行 */
+.brand-name {
+	min-width: 0;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* 顶栏「全屏 / 分栏」两颗按钮：与模型/技能/设置同一套尺寸与边框
+   （圆角 7px、字号 12px、图标 18px —— 跟 .appbar-menu .side-foot-btn 对齐，
+   否则这两颗会比左边那排图标入口大一圈，看着像两套控件）。
+   这两颗**只画图标**（文案在 title 里）：留着字要多占一截，而两个动作本来就一眼认得。
+   全屏在左段（跟侧栏开关挨着），分栏在右段最右 —— 两者都是「这一屏怎么摆」，位置各归其位。 */
+.appbar-panel-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: calc(5px * var(--ab));
+	flex: none;
+	padding: calc(4px * var(--ab)) calc(6px * var(--ab));
+	border-radius: calc(7px * var(--ab));
+	font-size: calc(12px * var(--ab));
+	cursor: pointer;
+}
+
+.appbar-panel-icon {
+	width: calc(18px * var(--ab));
+	height: calc(18px * var(--ab));
+	flex: none;
+}
+
+/* ---- 分栏铺到顶（顶栏让位）----
+ * 分栏打开时，右侧面板会升到窗口最顶上（见 preview-panel.css 的 `.app-split` 那几条），
+ * 于是顶栏的右半段就归它了：这里把顶栏的右内边距设成「面板左边缘 → 窗口右边」的宽度，
+ * 「模型 / MCP / 子代理 / 设置 / 分栏」这一串就跟着中间那块屏往左移，停在分栏线上。
+ * —— 之所以只用 padding 而不是重排 DOM：顶栏仍然是一条，左边的「品牌 / 新会话 / 侧栏开关」不受影响，
+ * 中间那个弹性留白（.appbar-slot）自动变窄。
+ */
+.app-split .appbar {
+	padding-right: var(--split-w, 0px);
+}
+
+/* 对调 + 侧栏收起：面板贴到窗口最左边，它升到顶栏的标签条会盖住
+ * 「品牌 / 新会话 / 侧栏开关」那一组。这一组必须留在原地（用户要求），所以：
+ *   - 顶栏整体抬到面板之上（`z-index` 比面板的 6 高一层）；
+ *   - 但顶栏只给**左边那一路**铺底色（`--top-lane`），其余部分透明 ——
+ *     面板的标签条在它下面，才不会被一条不透明的栏整片盖掉。
+ * 只在「对调 + 侧栏收起」时生效：侧栏展开时那一组本来就在侧栏上方，不需要动。 */
+.app-split.app-flip.app-collapsed .appbar {
+	z-index: 7;
+	/* 底色分两段画：`[0, --top-lane)` 是品牌那一组的地盘，
+	 * `[--split-w, 100%]` 是对话列；中间那段（面板标签条）留空，让下面的标签露出来。
+	 * 不能整条透明 —— 对话列那一截会露出下面的 ──bg，深色主题下顶栏会变成两截色。 */
+	background:
+		linear-gradient(var(--bg-elev), var(--bg-elev)) 0 0 / var(--top-lane, 0px) 100% no-repeat,
+		linear-gradient(var(--bg-elev), var(--bg-elev)) var(--split-w, 0px) 0 / calc(100% - var(--split-w, 0px)) 100%
+			no-repeat;
+	/* 抬上来之后，中间那段透明区**不能吃点击** —— 否则面板标签条上的「＋」「标签」
+	 * 全被这条隐形的栏挡住（用户点了没反应）。所以整条栏让点击穿过去，
+	 * 只让它自己的子元素（品牌组 / 标题 / 那排入口）重新接管。 */
+	pointer-events: none;
+}
+
+.app-split.app-flip.app-collapsed .appbar > * {
+	pointer-events: auto;
+}
+
+/* 对话换到右边（`.app-flip`）时，**让位跟着换到左边**：
+ * 面板贴着侧栏，它升到顶栏的那条标签条占的是「侧栏 → 分栏线」那一段，
+ * 于是顶栏用左内边距让出这段（`--split-w` 这时量的是「面板右边缘 → 窗口左边」）。
+ * 品牌那一段不跟着跑（它是“这个应用”的位置，永远贴着窗口左上角）—— 让它脱离流，
+ * 固定在左沿；不然它会被推到对话列那边，看起来像应用名跑到中间去了。
+ * 那道「顶栏 | 标签条」的竖线由标题自己的左边框接替（正好落在分栏边界上）。 */
+.app-split.app-flip .appbar {
+	padding-right: 0;
+	padding-left: var(--split-w, 0px);
+}
+
+.app-split.app-flip .appbar > .appbar-side {
+	position: absolute;
+	left: 0;
+	top: 0;
+	bottom: 0;
+	/* **压在面板之上**：侧栏收起时面板贴到窗口最左边，它升到顶栏的标签条会盖住
+	 * 品牌 / 新会话 / 侧栏开关这一组。这组必须留在原地（用户要求），所以抬高一层，
+	 * 再由 `--top-lane` 把标签条推到它右边去（见 preview-panel.css）。 */
+	z-index: 7;
+}
+
+/* 分栏那条竖线：换边后它落在**面板右边缘**（= 顶栏内容盒的起点），
+ * 所以把那条线本身放到最前面（`order: -1`），而不是另画一条短的 ——
+ * 它 `align-self: stretch`，正好拉满顶栏高度，跟下面 `.workspace` 的左边框接成一条。 */
+.app-split.app-flip .appbar-split-divider {
+	order: -1;
+}
+
+/*
+ * 顶栏与右侧标签条之间那根竖线：正好落在分栏的边界上（顶栏最后一个元素）。
+ *
+ * 以前它只有 18×缩放 那么高、颜色也浅一档，看着就是顶栏里多出来一小截「竖着的小横线」——
+ * 而它本该是**下面那条「对话｜面板」分栏线的上延**（两者在同一条竖直位置上）。
+ * 所以：拉满整条顶栏（负 margin 吃掉顶栏自己的上下内边距，线才真的顶到两头），
+ * 颜色跟另外两道分栏线统一成 `--border-strong`，三段接起来就是一条从窗口顶到底的线。
+ */
+.appbar-split-divider {
+	flex: none;
+	align-self: stretch;
+	width: 1px;
+	height: auto;
+	margin: calc(-1 * var(--appbar-pad-y)) 0;
+	background: var(--border-strong);
+}
+
+/*
+ * 「面板入口（… 设置）｜ 分栏」之间那道竖线。
+ *
+ * 颜色 / 高度**必须跟分栏展开时那根一模一样**（`--border-strong`、拉满整条顶栏）：
+ * 这一颗按钮点开后面板会升到顶栏那一行，届时这条线换成 `.appbar-split-divider` 继续画在
+ * 同一个位置 —— 两态颜色不同的话，一点分栏就会看到这条线「变色 + 变位置」。
+ * （左段那条分段线是另一回事：它接的是侧栏边框，跟着 `--border` 走。）
+ */
+.appbar-divider {
+	flex: none;
+	align-self: stretch;
+	width: 1px;
+	height: auto;
+	margin: calc(-1 * var(--appbar-pad-y)) 0;
+	background: var(--border-strong);
+}
+
+/* ---- 顶栏右侧那组自己当尺寸容器：挤窄了自动只留图标 ----
+ * 量的是 **`.appbar-main`（标题 + 徽标 + 入口排 + 分栏）的可用宽度** —— 不是窗口宽：
+ * 左段（`.appbar-side`，按内容定宽、最多 420px）已经把那部分吃掉了。口径不对就是
+ * 「侧栏一拖宽，标题就没了」（以前量的是 `.appbar` 自己的内容盒 ≈ 窗口宽）。
+ * 这件事用容器查询判断，不用 JS 猜阈值（面板在拖、在铺开，猜出来的数字总要慢一帧，
+ * 而且「猜窄了就收、收完又够宽」会来回抖）。
+ * 760px 这个值就是「带文案时至少要多少」：入口排实测约 494px + 会话标题约 180px
+ * + 子代理徽标 / 两道竖线 / 间距约 80px ≈ 754。不到 760 就换成只留图标（约 230px），
+ * 把省下的 260px 全给标题 —— 标题是「现在在跟谁聊」，比入口的文案重要。
+ * （以前这个阈值写的是 900，但那时量的是**整窗宽**，口径不同、数值不能照搬：
+ * 1280px 的笔记本配上 260px 侧栏，可用宽度只有 1012 —— 用 900 会让文案白白消失。）
+ * 分栏铺开时 `.appbar` 自己会多让出 `--split-w`，`appbar-main` 跟着变窄 —— 同一套规则照样生效。
+ * 注意：`.appbar` 自己**仍保留** `container-type`：下面那条 620px 量的是左段（品牌名），要的就是它。
+ */
+.appbar {
+	container-type: inline-size;
+}
+
+/* 连标题都塞不下了（入口排已经是只留图标，还是不到 320px）：标题先让位。
+ * 会话名在左侧清单里本来就有一条（当前那条高亮），截成「这..」反而像渲染坏了 ——
+ * 跟手机壳（≤400px）里那条 `.is-mobile-shell .appbar-slot .appbar-title { display: none }`
+ * 同一个理由。此时会话名那块不再撑开空间，入口排要自己贴右（否则会跟着飘到左段后面）。 */
+@container appbar-main (max-width: 320px) {
+	.appbar-slot {
+		display: none;
+	}
+}
+
+/* 极限窄（窗口 401~430px，双栏但只剩一条缝）：入口排再收一档，
+ * 否则 8 颗图标会把最后一颗挤出窗口。规格与手机壳那套一致（`app-bar-mobile.css`）。
+ * 用容器查询而不是媒体查询：分栏铺开时可用宽度也会掉到这里，处理方式应当一样。 */
+@container appbar-main (max-width: 300px) {
+	.appbar .appbar-menu .side-foot-btn,
+	.appbar .appbar-panel-btn {
+		padding: calc(3px * var(--ab)) calc(4px * var(--ab));
+	}
+
+	.appbar .appbar-menu .side-foot-icon {
+		width: calc(15px * var(--ab));
+		height: calc(15px * var(--ab));
+	}
+}
+
+@container appbar-main (max-width: 760px) {
+	.appbar .appbar-menu .side-foot-label {
+		display: none;
+	}
+
+	/* 只留图标时把内边距收一档，跟 ≤900px 那套同一规格 */
+	.appbar .appbar-menu .side-foot-btn {
+		padding: calc(4px * var(--ab)) calc(5px * var(--ab));
+	}
+}
+
+/* 窗口变窄时品牌名同样**不再隐藚**（同一条用户要求，理由见上面 ≤230px 那段的注释）。
+ * 以前这里有一条 `@container (max-width: 620px)` 把收起态 / 手机的品牌名收掉；
+ * 现在哪怕只剩几个字也拿省略号顶着 ——「叫什么」这件事不该跟着窗口宽度消失。 */
+
+/* 顶栏的「新会话」：一颗**实心主色**胶囊，**常驻顶栏左段**（展开态贴分段线右边、
+   收起态 / 手机紧跟品牌名后面）。只有整条顶栏被藏起来时它才换到侧栏抬头
+   （`appbarHidden`，见 Sidebar.tsx）；尺寸统一跟顶栏缩放系数 --ab 走。
+   实心而不是淡底 + 主色字：同一套理由写在 sidebar.css 那条注释里
+   —— 淡底在浅色主题下几乎与栏底同色，用户反馈「不太明显」。两处必须一致，
+   否则侧栏展开 / 收起之间这颗胶囊会「变色」，又成了“按钮自己跑了”。
+   （以前侧栏「项目」头上还有过一颗虚线描边的「临时对话」，后来去掉；那颗是另一件事 ——
+   现在叫「临时会话」（`TempChatButton`），开的是**右边那条临时聊天**，位置在右边那排入口里、
+   「技能」的左边，样式跟隔壁入口同一个模子，跟这颗「新会话」不在一处。）
+   `flex: none`：顶栏左段挤的时候**先让品牌名走省略号**，这颗主操作不许被压成一条空胶囊。 */
+.appbar .newchat-pill {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	gap: calc(5px * var(--ab));
+	min-width: 0;
+	border-radius: 999px;
+	border: 1px solid transparent;
+	background: var(--accent);
+	color: var(--on-accent);
+	font: inherit;
+	font-size: calc(12px * var(--ab));
+	font-weight: 600;
+	/* 竖向 5.5px：算上 1.15 的行高，胶囊最终 ~23px 高 —— 跟旁边那排入口按钮（24px）齐平 */
+	padding: calc(5.5px * var(--ab)) calc(10px * var(--ab));
+	/* **行高必须收**：不写就继承顶栏那段的行高（实测 label 高 21.8px），
+	   胶囊被撑到 30.5px 高 —— 比旁边那排入口按钮（24px）整整高出一头，
+	   用户看到的「太大了」主要就是这一截。1.15 让高度回到 22px 上下，跟那排齐平。 */
+	line-height: 1.15;
+	box-shadow: 0 calc(1px * var(--ab)) calc(2px * var(--ab)) color-mix(in srgb, var(--accent) 35%, transparent);
+	cursor: pointer;
+}
+
+.appbar .newchat-pill:hover {
+	background: color-mix(in srgb, var(--accent) 88%, var(--text));
+	box-shadow: 0 calc(2px * var(--ab)) calc(6px * var(--ab)) color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.appbar .newchat-pill-icon {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	/* 比旁边那排入口的图标（15px）小一档：胶囊里的 emoji 自带一圈留白，同字号会显得更胖 */
+	font-size: calc(11.5px * var(--ab));
+	line-height: 1;
+}
+
+.appbar .newchat-pill-label {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* 顶栏三个入口的图标：emoji 的天然大小不一致（⚙ 比 🤖 小），统一字号与行高 */
+.side-foot-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: calc(18px * var(--ab));
+	height: calc(18px * var(--ab));
+	font-size: calc(15px * var(--ab));
+	line-height: 1;
+	flex: none;
+}
+
+/* 手机：顶栏要在一行里放得下「☰ + 图标 + 💬 + 四个入口」
+   —— 品牌文字和「新会话」文字收起来（都有 title），入口只留图标 */

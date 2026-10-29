@@ -1,0 +1,440 @@
+/*
+ * MCP 面板（一级面板，排在「插件」后面）。
+ *
+ * 左列表（项目 / 全局两组）+ 右详情，跟「模型」面板同一套 master/detail 逻辑：
+ * 左边只回答「有哪些服务器、开没开」，右边回答「这一台到底怎么配的、连不连得上」。
+ * 中间那条线可左右拖（列宽写进 `--mcp-list-width`，双击复位）：列表窄的时候连服务器名
+ * 都要截断，加宽是刚需。用自己的一套变量而不复用模型面板的，是为了各记各的宽度。
+ *
+ * 右栏的「添加 MCP / 市场」两张整页表单在 mcp-panes.css 里（400 行护栏）。
+ */
+.mcp {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	flex: 1 1 auto;
+	min-height: 0;
+}
+
+.mcp-shell {
+	display: grid;
+	/* 列宽由组件写入 --mcp-list-width（可拖）；窄屏断点会覆盖成「上下两段」 */
+	grid-template-columns: minmax(160px, var(--mcp-list-width, 220px)) 7px minmax(0, 1fr);
+	flex: 1 1 auto;
+	min-height: 0;
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	overflow: hidden;
+	background: var(--bg);
+}
+
+/* ---- 左列 ---- */
+.mcp-list {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	min-height: 0;
+	padding: 8px;
+	background: var(--bg-soft);
+}
+
+.mcp-list-scroll {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	overflow: auto;
+	min-height: 0;
+	flex: 1 1 auto;
+}
+
+.mcp-group {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+}
+
+.mcp-group-head {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 13px;
+	letter-spacing: 0.03em;
+	color: var(--text-faint);
+	padding: 2px 2px 0;
+}
+
+.mcp-group-head > span:first-child {
+	font-weight: 600;
+	color: var(--text-dim);
+}
+
+.mcp-list-path {
+	font-size: 12px;
+	color: var(--text-faint);
+	padding: 0 2px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.mcp-item {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	width: 100%;
+	text-align: left;
+	padding: 5px 8px;
+	border: 1px solid transparent;
+	border-radius: 8px;
+	background: none;
+	color: inherit;
+	font: inherit;
+	font-size: 14px;
+	cursor: pointer;
+}
+
+.mcp-item:hover {
+	background: var(--bg);
+}
+
+.mcp-item-on {
+	background: var(--bg);
+	border-color: var(--accent);
+}
+
+/* 停用的只压暗一点：还能点开看配置、再开回来 */
+.mcp-item-off .mcp-item-name {
+	color: var(--text-faint);
+}
+
+.mcp-item-name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	min-width: 0;
+}
+
+.mcp-dot {
+	flex: none;
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	border: 1px solid var(--border-strong);
+	background: none;
+}
+
+.mcp-dot-on {
+	background: var(--green);
+	border-color: var(--green);
+}
+
+/* ---- 开关：跟插件面板同一种「换了文案的胶囊按钮」 ---- */
+.mcp-switch {
+	flex: none;
+	margin-left: auto;
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	background: none;
+	color: var(--text-faint);
+	font: inherit;
+	font-size: 12px;
+	padding: 1px 8px;
+	cursor: pointer;
+}
+
+.mcp-switch:hover:not(:disabled) {
+	color: var(--text);
+}
+
+.mcp-switch:disabled {
+	cursor: default;
+	opacity: 0.6;
+}
+
+.mcp-switch-on {
+	background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+	border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+	color: var(--text);
+}
+
+/* ---- 左栏底部：添加 / 市场两个入口（表单本身在右栏） ---- */
+.mcp-left-actions {
+	display: flex;
+	gap: 6px;
+	flex: none;
+	margin-top: auto;
+}
+
+.mcp-left-actions > .btn {
+	flex: 1 1 0;
+	min-width: 0;
+}
+
+/* 左右可拖的分割线：拖动 = 改左栏宽度，双击复位。
+   线自己画（1px，悬浮变强调色），所以左栏的 border-right 已经去掉，不会出现双线。 */
+.mcp-list-resizer {
+	display: flex;
+	align-items: stretch;
+	justify-content: center;
+	cursor: col-resize;
+	touch-action: none;
+	background: var(--bg-soft);
+}
+
+.mcp-list-resizer::before {
+	content: "";
+	width: 1px;
+	background: var(--border);
+}
+
+.mcp-list-resizer:hover::before,
+.mcp-list-resizer:active::before {
+	width: 2px;
+	background: var(--accent);
+}
+
+/* ---- 右详情 ---- */
+.mcp-detail {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	min-width: 0;
+	min-height: 0;
+	overflow: auto;
+	padding: 10px 18px 16px 14px;
+	scrollbar-gutter: stable;
+}
+
+.mcp-detail-head {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-wrap: wrap;
+	flex: none;
+}
+
+/* 作用域小标签：跟插件面板那个「已停用 / 已过滤」同一套观感，但不跨文件依赖那边的类名 */
+.mcp-badge {
+	font-size: 12px;
+	font-weight: 400;
+	padding: 0 6px;
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	color: var(--text-faint);
+}
+
+.mcp-detail-name {
+	font-size: 15px;
+	font-weight: 600;
+}
+
+.mcp-body {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	min-width: 0;
+}
+
+/* 一行一条：左边固定宽度的键，右边可以折行、可以放控件 */
+.mcp-row {
+	display: grid;
+	grid-template-columns: 120px minmax(0, 1fr);
+	gap: 8px;
+	align-items: start;
+	padding: 3px 0;
+	border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+
+.mcp-row:first-child {
+	border-top: none;
+}
+
+.mcp-row-key {
+	font-size: 13px;
+	color: var(--text-faint);
+	overflow-wrap: anywhere;
+}
+
+.mcp-row-value {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 6px;
+	font-size: 14px;
+	color: var(--text-dim);
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.mcp-value {
+	min-width: 0;
+	overflow-wrap: anywhere;
+	font-size: 13px;
+}
+
+.mcp-state-on {
+	color: var(--green);
+	font-weight: 600;
+}
+
+.mcp-state-off {
+	color: var(--text-faint);
+	font-weight: 600;
+}
+
+/* 引用了哪个宿主机变量、本机有没有 —— 没有的标红，因为「连不上」八成就是它 */
+.mcp-ref {
+	display: inline-flex;
+	align-items: center;
+	font-size: 12px;
+	padding: 0 6px;
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	color: var(--text-faint);
+	margin-left: 4px;
+}
+
+.mcp-ref-ok {
+	border-color: color-mix(in srgb, var(--green) 45%, var(--border));
+	color: var(--green);
+}
+
+.mcp-ref-missing {
+	border-color: color-mix(in srgb, var(--red) 45%, var(--border));
+	color: var(--red);
+}
+
+.mcp-exposure {
+	background: var(--bg);
+	color: var(--text);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	padding: 3px 6px;
+	font: inherit;
+	font-size: 13px;
+}
+
+.mcp-tools {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	min-width: 0;
+}
+
+.mcp-tool {
+	font-family: var(--mono);
+	font-size: 12px;
+	padding: 0 6px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--bg-soft);
+	color: var(--text-dim);
+	/* 只在整词放不下时才断：`${FIGMA_INKE_TOKEN}` 这种不该被从中间劈开 */
+	overflow-wrap: break-word;
+	word-break: normal;
+}
+
+.mcp-stderr {
+	margin: 0;
+	max-height: 140px;
+	overflow: auto;
+	white-space: pre-wrap;
+	font-family: var(--mono);
+	font-size: 12px;
+	color: var(--text-dim);
+	background: var(--bg-soft);
+	border-radius: 8px;
+	padding: 6px 8px;
+	min-width: 0;
+}
+
+.mcp-diagnostics {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	border-top: 1px dashed var(--border);
+	padding-top: 8px;
+}
+
+/* ---- 底栏：已开启 n/N + 刷新 ---- */
+.mcp-bar {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex: none;
+	flex-wrap: wrap;
+}
+
+/* 窄屏（单栏）：列表在上、详情在下，整块一起滚。
+   不沿用「列表占 40% 高」那套 —— 手机上那点高度只够看一个分组，
+   真内容全被压进列表自己的滚动条里，用户会以为「就这么点东西」。 */
+@media (max-width: 640px) {
+	.mcp-shell {
+		display: flex;
+		flex-direction: column;
+		overflow: auto;
+	}
+
+	.mcp-list {
+		flex: none;
+		border-bottom: 1px solid var(--border);
+	}
+
+	/* 上下两段时没有左右可拖的东西，线收起来 */
+	.mcp-list-resizer {
+		display: none;
+	}
+
+	.mcp-list-scroll {
+		flex: none;
+		overflow: visible;
+	}
+
+	.mcp-detail {
+		flex: none;
+		overflow: visible;
+		padding: 10px 12px 14px;
+	}
+
+	.mcp-row {
+		grid-template-columns: minmax(0, 1fr);
+		gap: 2px;
+	}
+}
+
+/* 还没读到配置时的极简态（加载中 / 读不到）：不给它撑满整块空白，
+   就一行字 + 一颗重试按钮，读到了自然换成左右两栏 */
+.mcp-boot {
+	gap: 8px;
+	justify-content: center;
+	align-items: flex-start;
+	padding: 18px 4px;
+}
+
+.mcp-boot-actions {
+	display: flex;
+	gap: 6px;
+}
+
+/* ---- OAuth 授权那一块 ---- */
+.mcp-auth {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-wrap: wrap;
+	min-width: 0;
+}
+
+.mcp-auth-ok {
+	color: var(--green);
+	font-weight: 600;
+	font-size: 14px;
+}
+
+/* 授权页地址很长（带 PKCE 与回调端口），给个可截断的等宽小字 */
+.mcp-auth-url {
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}

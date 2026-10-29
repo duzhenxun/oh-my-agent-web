@@ -1,0 +1,152 @@
+/* 手机顶栏：文案显示全 + 一排塞得下（从 app-bar.css 拆出：400 行护栏，ADR-0010） */
+/* 手机：品牌名不写（只留小图标），省出的宽度给「新会话」与右侧四个入口 */
+.is-mobile-shell .appbar {
+	gap: calc(6px * var(--ab));
+	/* 上下内边距跟桌面同一个变量（`--appbar-pad-y`）：两条竖线靠它顶到栏的两头，
+	   两边不一致就会出现「线比栏短一截」。手机上左右留着 8px 方便按。 */
+	padding: var(--appbar-pad-y) calc(8px * var(--ab));
+}
+
+/* 手机上顶栏左段不再是「与侧栏等宽的一段」（侧栏是抽屉，盖在内容上）：
+   宽度跟内容走，也不画那条分段线 —— 内边距 / 间距全交给上面那条 .appbar 管 */
+.is-mobile-shell .appbar-side {
+	gap: calc(6px * var(--ab));
+	padding: 0;
+	border-right: none;
+}
+
+.is-mobile-shell .appbar .brand {
+	gap: calc(4px * var(--ab));
+}
+
+.is-mobile-shell .appbar .brand-name {
+	display: none;
+}
+
+.is-mobile-shell .appbar .brand-icon {
+	width: calc(18px * var(--ab));
+}
+
+/* 顶栏那颗「新会话」：只留文字（💬 气泡在窄屏上很占地方，文字已经说清楚了） */
+.is-mobile-shell .appbar .newchat-pill-icon {
+	display: none;
+}
+
+/* 手机 / 平板：抽屉抬头里的「新会话」**不用另外藏** ——
+   它只在顶栏被藏起来时才会渲染（`Sidebar` 的 `appbarHidden` 条件，见 Sidebar.tsx）；
+   顶栏在的时候那一行里根本没有这颗，也就不会同一屏出现两份。 */
+
+.is-mobile-shell .appbar .newchat-pill {
+	padding: calc(4px * var(--ab)) calc(10px * var(--ab));
+	gap: calc(4px * var(--ab));
+}
+
+/* 四个入口（模型/技能/推送/设置）只留图标 */
+.is-mobile-shell .appbar .appbar-menu .side-foot-label {
+	display: none;
+}
+
+/* 顶栏中间那颗「会话名」：**手机上就在第一行里**（用户要求：不要第二行、不要文件夹图标）。
+ *
+ * 宽度只给它一小段（`flex-basis` 96px，最多 42%），名字长了省略号收尾 ——
+ * 手机上这一行还要装 ☰ / 新会话 / 一排入口，所以给它一个**下限**（约 5~6 个字，
+ * `flex-basis: 96px`、`flex-shrink: 0`）：图标多到装不下时它不再往小里挤，
+ * 而是让入口排自己去横滑。**上限不设**（以前那个 `max-width: 42%` 删了）：
+ * 设置里关掉几个入口、或者大屏平板上右边很空时，剩下的宽度**全部**归它，
+ * 名字就能多显示几个字，实在还长才用省略号。
+ *
+ * 双击改名 / 右键菜单不用动：`rename` 的输入框就在这同一块里长出来。
+ *
+ * `display: flex` 是必须的：app-bar.css 里 `@container appbar-main (max-width: 320px)`
+ * 会把这块整块藏掉 —— 那是给「桌面窗口窄到极点」用的，当时手机上也是靠它藏的。
+ * 容器查询不加权重，这条（两个类）盖得住它。
+ */
+.is-mobile-shell .appbar-slot {
+	display: flex;
+	/* shrink 0.05（近似「不让」）：正常显示时它基本不被压缩，宽度归零的风险留给
+	   极窄屏（280px 那种分屏）：入口排缩到 0 之后，它才好跟着让，不至于把窗口顶出横滚。 */
+	flex: 1 0.05 calc(135px * var(--ab));
+	min-width: 0;
+}
+
+/* 没标题的界面（新会话）不留空：这一块整块隐掉，宽度全给入口排。
+   `:empty` 在这里可靠——标题和右键菜单都是条件渲染，没有内容时里面真的一个节点都没有。 */
+.is-mobile-shell .appbar-slot:empty {
+	display: none;
+}
+
+.is-mobile-shell .appbar .appbar-slot .appbar-title {
+	display: inline-flex;
+	max-width: 100%;
+	font-size: calc(13.5px * var(--ab));
+}
+
+/* 标题前那枚会话徽标：手机也保留（用户要求「会话名左边也加上一个图片，跟桌面版一样」）。
+   徽标大小随标题字号走（手机上 `.appbar-title` 是 13.5px，徽标 1.15em ≈ 15.5px），
+   占的宽度从名字里让出来。不再 `display:none`。 */
+
+/* 改名的那几秒：把入口排让出来（名字长得能把 100px 填满三次，挤在一个小框里没法改）。
+   退出编辑（回车 / Esc / 失焦）后自动回来 —— 状态变成 `.appbar-title` 就又不匹配了。 */
+.is-mobile-shell .appbar:has(.appbar-title-input) .appbar-menu {
+	display: none;
+}
+
+/* 改名时那个输入框跟着这一小块的宽度走，不要桌面那个 600px 的上限 */
+.is-mobile-shell .appbar .appbar-slot .appbar-title-input {
+	max-width: none;
+	width: 100%;
+	font-size: calc(13.5px * var(--ab));
+}
+
+/* 改名时半径内那一块不再限宽（它现在是整行里唯一的宽东西） */
+.is-mobile-shell .appbar:has(.appbar-title-input) .appbar-slot {
+	max-width: none;
+}
+
+/* 入口排：名字占走一截后它会装不下，**让它自己横滑**，
+   而不是把最后一颗按钮顶出窗口（也正因为这样，名字才能稳定占住那一小段）。 */
+.is-mobile-shell .appbar-main .appbar-menu {
+	flex: 0 1 auto;
+	min-width: 0;
+}
+
+.is-mobile-shell .appbar-main .appbar-menu .side-foot-row {
+	min-width: 0;
+	overflow-x: auto;
+	/* 这一行本来就只露一排图标，滚动条一占地方就看不见图标了（手势照样能滑） */
+	scrollbar-width: none;
+}
+
+.is-mobile-shell .appbar-main .appbar-menu .side-foot-row::-webkit-scrollbar {
+	display: none;
+}
+
+.is-mobile-shell .appbar .appbar-menu .side-foot-row {
+	gap: calc(2px * var(--ab));
+}
+
+.is-mobile-shell .appbar .appbar-menu .side-foot-btn {
+	padding: calc(3px * var(--ab)) calc(4px * var(--ab));
+}
+
+.is-mobile-shell .appbar .appbar-menu .side-foot-icon {
+	width: calc(15px * var(--ab));
+	height: calc(15px * var(--ab));
+}
+
+/* 分栏 / 全屏：只画图标（文案在 title 里），手机上把内边距 / 图标再收一档 */
+.is-mobile-shell .appbar .appbar-panel-btn {
+	padding: calc(3px * var(--ab)) calc(4px * var(--ab));
+}
+
+.is-mobile-shell .appbar .appbar-panel-icon {
+	width: calc(15px * var(--ab));
+	height: calc(15px * var(--ab));
+}
+
+/* 超窄屏（≤340px，老机型/分屏）：文案保住「新会话」，右侧入口再收一档 */
+@media (max-width: 340px) {
+	.appbar .appbar-menu .side-foot-btn {
+		padding: calc(3px * var(--ab)) calc(3px * var(--ab));
+	}
+}

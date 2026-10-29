@@ -1,0 +1,368 @@
+/* ---- 「添加到会话」：正文底色 + 编号徽标 + 输入框**里面**那颗「N 条注释」 ----
+ * 组件：components/AnnotationMarks.tsx（正文里那层漂着的编号）
+ *       components/AnnotationSummary.tsx（输入框里那颗胶囊 + 列表 + 就地写评论）
+ *       components/SelectionToolbar.tsx（选中文字后那颗「添加到会话」）
+ *
+ * 位置：胶囊归 `Composer` 摆（在 `.composer` 的边框之内、输入框上方），
+ * 所以下面有几条带 `.composer >` 前缀的规则。
+ *
+ * 配色沿用选区工具栏那套：淡底色 + 主色编号 + 阴影很轻，别抢正文的注意力。
+ * 徽标的坐标由 JS 算（见 AnnotationMarks 的注释），这里只管长相和层级。
+ */
+
+/* 徽标浮层是 .messages 的绝对定位子元素，所以它自己得是定位容器 */
+.messages {
+	position: relative;
+}
+
+.annot-marks {
+	position: absolute;
+	inset: 0;
+	/* 只让编号可点，别的一律透过去（不然整块正文点不着、选区也拉不了） */
+	pointer-events: none;
+	z-index: 3;
+}
+
+/* 正文底色：CSS Custom Highlight API 画的，不进 DOM（所以不会跟 React 打架） */
+::highlight(annot-mark) {
+	background: color-mix(in srgb, var(--accent) 20%, transparent);
+	color: inherit;
+}
+
+.annot-mark {
+	position: absolute;
+	transform: translate(-50%, -50%);
+	pointer-events: auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 18px;
+	height: 18px;
+	padding: 0 4px;
+	border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+	border-radius: 999px;
+	background: var(--accent);
+	color: var(--on-accent);
+	font-size: 11px;
+	font-variant-numeric: tabular-nums;
+	line-height: 1;
+	cursor: pointer;
+	box-shadow: 0 1px 4px color-mix(in srgb, #000 18%, transparent);
+	transition: transform 120ms ease;
+}
+
+.annot-mark:hover {
+	transform: translate(-50%, -50%) scale(1.12);
+}
+
+/* 手机上编号别太小（指头要能点中），但也不能挡住正文 */
+.is-mobile-shell .annot-mark {
+	min-width: 20px;
+	height: 20px;
+	font-size: 12px;
+}
+
+/* 从列表「跳过来」时给那一整条消息闪一下边框：正文里已经滚到跟前了，得让人知道是这条 */
+.msg.annot-flash {
+	animation: annot-flash 1.2s ease-out;
+	border-radius: 10px;
+}
+
+@keyframes annot-flash {
+	from {
+		box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 60%, transparent);
+	}
+	to {
+		box-shadow: 0 0 0 2px transparent;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.msg.annot-flash {
+		animation: none;
+	}
+	.annot-mark:hover {
+		transform: translate(-50%, -50%);
+	}
+}
+
+/* ---- 输入框**里面**那颗胶囊 ---- */
+.annot-summary {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 6px;
+	padding: 0 2px 6px;
+	min-width: 0;
+}
+
+/* 待在 `.composer` 的边框之内时：上面留一点呼吸，左右跟输入框的文字对齐一档 */
+.composer > .annot-summary {
+	padding: 8px 10px 0;
+}
+
+/* 框里的列表不能长得太高（它不是弹层，展开后会把输入框自己顶到看不见） */
+.composer > .annot-summary .annot-list {
+	max-height: 168px;
+}
+
+.annot-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	background: var(--bg-elev);
+	color: var(--text-dim);
+	font: inherit;
+	font-size: 13px;
+	line-height: 1.4;
+	padding: 4px 12px;
+	cursor: pointer;
+}
+
+.annot-chip:hover {
+	background: var(--bg-elev-2);
+	color: var(--text);
+}
+
+.annot-chip-icon {
+	display: inline-flex;
+	align-items: center;
+	font-size: 11px;
+	opacity: 0.75;
+}
+
+.annot-chip-caret {
+	width: 0;
+	height: 0;
+	border-left: 4px solid transparent;
+	border-right: 4px solid transparent;
+	border-top: 4px solid currentColor;
+	transition: transform 120ms ease;
+}
+
+.annot-chip-caret-open {
+	transform: rotate(180deg);
+}
+
+/* ---- 点开后的列表：一行一条，太多就内部滚 ---- */
+.annot-list {
+	list-style: none;
+	margin: 0;
+	padding: 4px;
+	width: 100%;
+	max-width: 640px;
+	max-height: 220px;
+	overflow: auto;
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	background: var(--bg-elev);
+	box-sizing: border-box;
+}
+
+.annot-row {
+	padding: 4px 6px;
+	border-radius: 8px;
+}
+
+.annot-row + .annot-row {
+	border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+
+.annot-row-focus {
+	background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.annot-row-main {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	width: 100%;
+	border: none;
+	background: none;
+	color: var(--text);
+	font: inherit;
+	font-size: 13px;
+	text-align: left;
+	padding: 2px 0;
+	cursor: pointer;
+	min-width: 0;
+}
+
+.annot-row-main:hover .annot-excerpt {
+	color: var(--accent);
+}
+
+.annot-index {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 16px;
+	height: 16px;
+	padding: 0 4px;
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--accent) 18%, transparent);
+	color: var(--accent);
+	font-size: 11px;
+	font-variant-numeric: tabular-nums;
+}
+
+.annot-excerpt {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--text-dim);
+}
+
+/* 评论那一行：现在它是个按钮（点一下就地改），所以要把按钮的默认长相全抹掉 */
+.annot-comment {
+	display: block;
+	width: calc(100% - 24px);
+	margin: 2px 0 2px 24px;
+	padding: 2px 4px;
+	border: none;
+	border-radius: 6px;
+	background: none;
+	color: var(--text);
+	font: inherit;
+	font-size: 13px;
+	text-align: left;
+	overflow-wrap: anywhere;
+	cursor: text;
+}
+
+.annot-comment:hover {
+	background: color-mix(in srgb, var(--border) 45%, transparent);
+}
+
+/* 就地写/改评论：一行输入 + 一颗 ✓（跟正文里那颗编号同一套配色） */
+.annot-edit {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin: 4px 0 2px 24px;
+}
+
+.annot-edit-input {
+	/* 不再拉满整行：评论是「一句注脚」，一行长到 600px 反倒像个写信的框；
+	   窄屏（输入框本身就窄）时自动退回 100%，不会溢出 */
+	flex: 1 1 auto;
+	/* 不再拉满整行：评论是「一句注脚」，一行长到 600px 反倒像个写信的框；
+	   窄屏（输入框本身就窄）时用满剩下的那点位置，不溢出 */
+	max-width: 240px;
+	min-width: 0;
+	background: var(--bg);
+	color: var(--text);
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	padding: 3px 7px;
+	font: inherit;
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+.annot-edit-input:focus {
+	outline: 1px solid var(--accent-dim);
+}
+
+.annot-edit-input::placeholder {
+	color: var(--text-faint);
+}
+
+.annot-action-ok {
+	border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+	background: var(--accent);
+	color: var(--on-accent);
+}
+
+.annot-action-ok:hover {
+	border-color: var(--accent);
+	color: var(--on-accent);
+	filter: brightness(1.06);
+}
+
+.annot-row-actions {
+	display: flex;
+	/* 窄屏（手机 / 侧边临时聊天的输入框）里三颗按钮一行放不下：整行折，
+	   不要让按钮里的字自己被拆成一列字（「改 评 论」那样） */
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-left: 24px;
+}
+
+.annot-action {
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: none;
+	color: var(--text-dim);
+	font: inherit;
+	font-size: 12px;
+	padding: 2px 8px;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.annot-action:hover {
+	border-color: var(--border-strong);
+	color: var(--text);
+}
+
+.annot-action-remove:hover {
+	color: #d64545;
+	border-color: color-mix(in srgb, #d64545 50%, var(--border));
+}
+
+/* ---- 「标注」那一步的小输入框（选区工具栏的变体）---- */
+.sel-toolbar-comment {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 3px 3px 3px 10px;
+	border-radius: 999px;
+}
+
+.sel-toolbar-input {
+	border: none;
+	background: none;
+	color: var(--text);
+	font: inherit;
+	font-size: 13px;
+	line-height: 1.6;
+	padding: 4px 0;
+	/* 窄一点（用户要求「再短一点」）：它只装一句注解，没必要占半行宽；
+	   真写长了输入框会自己横向滚，不会把字吐出去 */
+	width: min(34vw, 240px);
+	outline: none;
+}
+
+.sel-toolbar-input::placeholder {
+	color: var(--text-faint);
+}
+
+.sel-toolbar-ok {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	border: none;
+	border-radius: 999px;
+	background: var(--accent);
+	color: var(--on-accent);
+	font-size: 12px;
+	cursor: pointer;
+}
+
+.sel-toolbar-ok:hover {
+	filter: brightness(1.08);
+}
+
+/* 手机上输入框给宽一点：一行短了根本看不出自己写了什么 */
+.is-mobile-shell .sel-toolbar-input {
+	width: min(52vw, 220px);
+	font-size: 14px;
+}

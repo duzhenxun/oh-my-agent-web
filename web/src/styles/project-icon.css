@@ -1,0 +1,486 @@
+/* 项目行的小图标（合着/打开的文件夹）：从 sidebar.css 拆出，守 400 行护栏 */
+/* 项目前面的图标：收起 = 合着的文件夹，展开 = 打开的文件夹（比箭头直观） */
+.proj-chevron {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 16px;
+	height: 16px;
+	margin-right: 6px;
+	color: var(--text-faint);
+}
+
+.proj-folder {
+	width: 100%;
+	height: 100%;
+	display: block;
+}
+
+/* 展开态稍微亮一点，暗示「这个正开着」 */
+.proj-chevron-open {
+	color: var(--text-dim);
+}
+
+.proj-head:hover .proj-chevron {
+	color: var(--text);
+}
+
+.proj-head {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.proj-name {
+	font-weight: 600;
+	color: var(--text);
+}
+
+/* 行尾那颗「⋯」**浮在行上**，不再占布局宽度。
+ * 以前它是 flex 里的一格（20px + 4px gap，常驻）——即使 `opacity: 0` 也照样把项目名
+ * 提前 24px 截掉，于是出现「右边明明还很空，名字却已经 … 了」（用户就是这么说的）。
+ * 现在它绝对定位在行尾、只在 hover / focus-within 时显形，名字因此能用满整行；
+ * 代价是 hover 那一刻长名字的省略号位置会左移一点（见下面给名字补的 padding-right），
+ * 比「平时就少 24px」划算得多。
+ *
+ * **有 📌 的行例外**（`:has(.proj-pin)`）：那颗图钉是常显的真实内容，
+ * 浮起来的「⋯」会正好压在它身上，所以这类行仍让「⋯」留在流里、跟在图钉后面
+ * ——名字少那 24px，但不会出现图钉和按钮叠成一团。 */
+.proj-more {
+	position: absolute;
+	right: 3px;
+	top: 50%;
+	transform: translateY(-50%);
+	opacity: 0;
+	/* 藏起来时别吃鼠标：否则名字末尾那片会被这颗透明按钮抢走 hover */
+	pointer-events: none;
+}
+
+/* 带图钉的行：回到「跟在流里」的老样子（位置见 sidebar.css 的宽度/高度） */
+.proj-head:has(.proj-pin) .proj-more {
+	position: static;
+	transform: none;
+}
+
+/* 「运行中」/ 一颗圆点也是常显内容：浮起来的「⋯」会正好压在它们身上，
+ * 所以这几类行同样让「⋯」留在流里，跟在角标后面（名字少 24px，但不会叠成一团） */
+.proj-head:has(.proj-busy) .proj-more,
+.proj-head:has(.proj-unseen) .proj-more {
+	position: static;
+	transform: none;
+}
+
+.proj-head:hover .proj-more,
+.proj-head:focus-within .proj-more {
+	opacity: 1;
+	pointer-events: auto;
+}
+
+/* 名字不再为浮起来的「⋯」让位（用户：「大不了被压住就行了」）：
+ * 以前 hover 时给名字补 `padding-right: 22px`，长名字的截断点会跟着左移一截，
+ * 看着像文字在跳；现在名字只按自己的盒子硬截断，末尾那几个字就压在「⋯」下面 ——
+ * 反正那颗按钮只在悬停时出现，松手就没。 */
+
+/* 当前会话：左侧竖条 + 高亮底（与参考实现一致） */
+.pi-row {
+	position: relative;
+	/* 左边留 10px：选中时那道竖条就画在这一段里（伪元素，见 session-row.css），
+	 * 不用 `border-left` —— 边框会被圆角抵成直角，而用户要的是「圆角盒子 + 嵌在里面的竖条」 */
+	padding-left: 10px;
+	/* **整圈圆角**（以前是 `0 6px 6px 0`：左侧两角方形的缘故就是左边那道边框） */
+	border-radius: 6px;
+}
+
+/* 选中态（淡底 + 细蓝边 + 左竖条）统一在 `session-row.css` 里定义：
+ * 那里才能用「比悬停 / 聚焦更高」的选择器把它压住（点完行内按钮就拿到焦点，
+ * 以前一聚焦就被那套灰底盖掉，看起来像没选中）。 */
+.pi-row-active .pi-row-title {
+	color: var(--text);
+}
+
+/* ---- 侧栏容器：可收起 + 可拖宽（状态见 web/src/sidebar-layout.ts）---- */
+.side-host {
+	position: relative;
+	flex: none;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.side-host > .sidebar {
+	flex: 1 1 auto;
+	min-height: 0;
+	width: 100%;
+}
+
+/* 拖拽条：**整条摆在侧栏外侧**（`right: -8px` → 只占分割线右边那 8px），宽度 8px。
+ *
+ * 以前是 `right: -3px` + 7px 宽：一半压回侧栏里，正好盖住侧栏自己的滚动条
+ * （滚动条画在 border box 右侧 8px 内），于是「拖滚动条」和「调宽度」抢同一块像素 ——
+ * 想滚列表却把侧栏拉宽了。挪出去以后：滚动条归滚动条，边缘归边缘。
+ * 外面那 8px 落在对话区的左内边距上（正文不会贴这么左），不挡内容。 */
+.side-resizer {
+	position: absolute;
+	top: 0;
+	right: -8px;
+	width: 8px;
+	height: 100%;
+	cursor: col-resize;
+	/* 不能盖住模态（模型/技能/设置面板）：拖宽手柄只属于侧栏这一层 */
+	z-index: 5;
+	background: transparent;
+}
+
+/* 命中区还是 8px（好抓），但**画出来只有 2px**：
+ * 以前 hover 整个 8px 都刷成强调色，看着像侧栏边上贴了一条蓝胶带。
+ * 现在细线压在分割线上（resizer 从侧栏右边缘起算，所以 left:0 正好骑在那条 1px 边框上），
+ * 看起来像「这条线可以拖」，而不是「这里多了个色块」。 */
+.side-resizer::after {
+	content: "";
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: 0;
+	width: 2px;
+	margin-left: -1px;
+	border-radius: 2px;
+	background: transparent;
+	/* 宽度也一起过渡：hover 时这条线会从 2px 长到 4px（「变粗了 = 能抓」）。
+	 * 中间那颗 ↔ 胶囊把手已经去掉（用户 2026-10-29：「这个不要」），
+	 * 所以「能拖」这件事全靠这条线的粗细与颜色来说。 */
+	transition:
+		background 0.12s ease,
+		width 0.12s ease,
+		margin-left 0.12s ease,
+		box-shadow 0.12s ease;
+}
+
+/* 悬停时线中间那颗「↔」胶囊把手（`::before`）**已去掉**（用户 2026-10-29：「这个不要」）。
+ * 当初加它是怕「光把 1px 线染成主色太含蓄」，可它每 hover 一次就在分割线中间冒出一块
+ * 蓝胶布，比线本身更抢眼。现在把职责交回给线：悬停/拖动时线从 2px 变到 4px + 一圈淡晕，
+ * 「这条能拖」照样看得出来，视觉上也不再凭空多出一块东西。
+ * 命中区还是那 8px（好抓），跟画出来的粗细无关。 */
+
+/* 拖动期间：整页禁掉文字选择，光标保持 col-resize。
+   否则鼠标一偏就顺手把侧栏/对话里的文字拖成蓝底选中，松手还留着。 */
+.is-resizing,
+.is-resizing * {
+	user-select: none !important;
+	-webkit-user-select: none !important;
+	cursor: col-resize !important;
+}
+
+/* hover / 拖动：线变粗变亮（**没有把手了**，粗线自己就是「能拖」的提示）。
+ * 拖动中鼠标可能已经飘出 8px 命中区：靠 html 上的类名把这条线留住。 */
+.side-resizer:hover::after,
+.side-resizer:active::after,
+.is-resizing .side-resizer::after {
+	/* 4px：去了把手之后靠粗一点的线来吸住眼睛（原来 3px 更像「高亮了一下」） */
+	width: 4px;
+	margin-left: -2px;
+	background: var(--accent);
+	/* 一圈同色淡晕：单染 4px 在深色主题下还不够显眼 */
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+/* 收起后的小竖条按钮 */
+.side-expand {
+	flex: none;
+	width: 26px;
+	align-self: stretch;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: var(--bg-elev);
+	color: var(--text-dim);
+	font: inherit;
+	font-size: 17px;
+	cursor: pointer;
+}
+
+.side-expand:hover {
+	color: var(--accent);
+	border-color: var(--accent-dim);
+}
+
+/* ---- 收起态：活动栏（类 VS Code）---- */
+.activity-bar {
+	flex: none;
+	width: 44px;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 4px;
+	padding: 6px 0;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: var(--bg-elev);
+}
+
+.activity-btn {
+	width: 32px;
+	height: 32px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border: none;
+	border-radius: 8px;
+	background: none;
+	color: var(--text-dim);
+	font: inherit;
+	font-size: 17px;
+	cursor: pointer;
+}
+
+.activity-btn:hover {
+	background: var(--bg-elev-2);
+	color: var(--text);
+}
+
+/* 运行中的会话：**只画一颗转圈**（用户 2026-10-29：「运行中」几个字去掉 ——
+   那三个字要吃掉 30 多 px，而这一行该多显示的是标题）。
+   状态同时给了 `title` + `aria-label`，悬停与读屏都还能知道它在跑。 */
+.pi-running {
+	flex: none;
+	/* 行里用的是 `align-items: baseline`（标题与尾巴上的点对齐文字基线）；
+	   而这个盒子里现在只有一颗没有文字的转圈 —— 没有基线可言，会沉下去一截，
+	   所以像 `.pi-unseen` 那样单独居中。 */
+	align-self: center;
+	display: inline-flex;
+	align-items: center;
+	color: var(--accent);
+}
+
+.pi-ring {
+	width: 9px;
+	height: 9px;
+	border-radius: 50%;
+	border: 1.5px solid color-mix(in srgb, var(--accent) 30%, transparent);
+	border-top-color: var(--accent);
+	animation: pi-spin 0.8s linear infinite;
+}
+
+@keyframes pi-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.pi-ring {
+		animation: none;
+		border-top-color: var(--accent);
+	}
+}
+
+/* 会话行：「跑完了、你还没看」的小蓝点（session-unseen.ts 记住，点开就抹掉）。
+ * 位置在**标题后面**、运行中那颗转圈原来的那一格；点它等于点整行（打开这条会话）。
+ * `align-self: center` 是因为 `.pi-row` 用的是 `align-items: baseline`：
+ * 一个空的 7px 盒子没有基线，不校正的话会跟文字底部对齐，看着像沉下去一截。 */
+.pi-unseen {
+	flex: none;
+	align-self: center;
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: var(--accent);
+	/* 一圈淡淡的光晕：让它在灰白底上也能一眼看到（跟项目行那颗同一套） */
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+/* 项目行：折叠时把组内的「在跑」顶上来 —— **只画一颗转圈，不写文字**
+   （用户 2026-10-29：「运行中」几个字去掉就行；项目名本来就长，多这三个字会把名字挤没）。
+   状态同时给了 `title` + `aria-label`，鼠标悬停和读屏都还能知道它在跑。 */
+.proj-busy {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	color: var(--accent);
+}
+
+.proj-busy-ring {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	border: 1.5px solid color-mix(in srgb, var(--accent) 30%, transparent);
+	border-top-color: var(--accent);
+	animation: pi-spin 0.8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.proj-busy-ring {
+		animation: none;
+	}
+}
+
+/* 项目行：折叠时提示「跑完了、还没看」——同色的小蓝点，点击项目行就消失 */
+.proj-unseen {
+	flex: none;
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: var(--accent);
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+/* 分割线上那颗「收起」小箭头：贴在侧栏最上面、**骑在分割线上**（压着线）。
+ * 它盖在拖拽条（7px）中间，所以按下时要 stopPropagation，否则会被当成一次拖动。
+ *
+ * 可见度：原来 opacity 0.55 + --text-faint，淡到几乎看不见（用户反馈「找不到」）——
+ * 现在底色、边框、箭头都提亮一档，默认就能看清，hover 再变主色。 */
+.side-collapse {
+	position: absolute;
+	top: 8px;
+	right: -10px;
+	z-index: 6;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 18px;
+	height: 34px;
+	padding: 0;
+	border: 1px solid var(--border-strong, var(--border));
+	border-radius: 999px;
+	background: var(--bg);
+	color: var(--text-dim);
+	cursor: pointer;
+	opacity: 0.92;
+	box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+	transition:
+		opacity 0.12s ease,
+		color 0.12s ease,
+		border-color 0.12s ease;
+}
+
+.side-collapse svg {
+	width: 12px;
+	height: 12px;
+	stroke-width: 2.2; /* 箭头本身也加粗一点：12px 下 1.8 太细，扫一眼看不到 */
+}
+
+.side-collapse:hover,
+.side-collapse:focus-visible {
+	opacity: 1;
+	color: var(--accent);
+	border-color: var(--accent-dim);
+}
+
+/* 手机：抽屉的「收起」也是这颗（用户：「手机版的也一样哦」）。
+ *
+ * 位置（用户 2026-10-30：「放在屏幕中间，方便我用手去点」）：原来是「顶栏底边 + 8px」，
+ * 拇指得往上勾；现在整屏**垂直居中**（`top: 50%`），横向仍贴在抽屉右边缘内侧 4px。
+ * 两条细节必须一起写，否则它会“跟着列表滚走”：
+ *   ① `position: fixed`：抽屉自己就是那个滚动容器（`.side-host { overflow-y: auto }`），
+ *      绝对定位的子孙是**跟着内容滚**的 —— 写 absolute 时往下滑两行，手柄就滑没了；
+ *   ② 横向不能用 `right`：fixed 的 `right` 是屏幕右边，不是抽屉右边。得拿抽屉宽度算
+ *      （`--drawer-w`，见 responsive.css），抽屉右边缘内缩 4px。
+ *
+ * 也顺手修过一次“超宽”（同一天更早：「超过宽度了，都出来左右的滚动条了」）：
+ * 以前这里是 `right: -12px`，手柄凸到抽屉外面，把 `.side-host` 撑成 296 → 308，
+ * 于是在抽屉里左右一拖就滑出白条、还多一条横向滚动条。现在收在边内，`overflow-x: hidden` 兜底。
+ *
+ * 尺寸：20×32（用户：「按钮有点大，调小点」）—— 跟「展开」那颗完全同值，
+ * 收起/展开本来就该是同一颗钮的两个面。 */
+.is-mobile-shell .side-collapse {
+	position: fixed;
+	top: 50%;
+	right: auto;
+	/* **挪到抽屉外面**（用户 2026-10-30：「这个收起的标跟那个（行尾的 ⋯）压在一块儿了」）：
+	 * 抽屉右边缘再往右 2px —— 落在那条 1/3 的遮罩上。为什么这儿最安全：
+	 *   ① 行尾那颗「⋯」在抽屉**里面**（right: 0，36px），挪出来就没有任何重叠；
+	 *   ② 这块区域本来「点一下就是收起抽屉」（`.side-backdrop`），
+	 *      所以手柄压在这儿不会抢走别的手势，还顺势跟遮罩成了同一个动作。 */
+	left: calc(var(--drawer-w, clamp(260px, 76vw, 340px)) + 2px);
+	transform: translateY(-50%);
+	width: 20px;
+	height: 32px;
+	/* 按压式（用户：「改成按压式的，按住它弹出来」）：
+	 * 平时是半透明的一小片（看得见、但不像按钮），按住的那一下才「弹」出来 ——
+	 * 变实、变大一点、变主色，松开就执行收起。 */
+	opacity: 0.45;
+	transition:
+		opacity 0.12s ease,
+		transform 0.12s ease,
+		color 0.12s ease,
+		border-color 0.12s ease,
+		box-shadow 0.12s ease;
+}
+
+.is-mobile-shell .side-collapse:active {
+	opacity: 1;
+	transform: translateY(-50%) scale(1.12);
+	color: var(--accent);
+	border-color: var(--accent-dim);
+	box-shadow: 0 2px 10px rgb(0 0 0 / 22%);
+}
+
+/*
+ * 「展开项目列表」：舌形小箭头，**侧栏一收起就在**（顶栏在不在都一样）。
+ *
+ * 以前它只在「顶栏也藏起来」时出现（那时顶栏左上角那颗方图标也跟着没了，才补一颗兜底）。
+ * 现在桌面上的收起 / 展开都走这一对舌形箭头（`side-collapse` / `side-expand`），
+ * 用户的要求是「有没有顶部都一样，位置也一样」：两颗都挂在**内容行顶边 + 8px**。
+ * 这颗的定位参照因此是 `.app-main`（见 app-bar.css），而不是窗口 ——
+ * 用 `fixed` 的话顶栏一显一隐它就整体上下跳一个顶栏的高度。
+ *  - 贴边、半圆「舌形」、只有 16px 宽 —— 它压着正文左边那条呼吸带，不该看着像一整颗按钮；
+ *  - hover / 聚焦时向右长到 22px 并变主色，好按也不挡事。
+ */
+.side-expand {
+	position: absolute;
+	left: 0;
+	top: 8px;
+	z-index: 30; /* 压过正文与滚动条，但低于弹窗（60+）与提示（toast） */
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 16px;
+	height: 34px;
+	padding: 0;
+	border: 1px solid var(--border-strong, var(--border));
+	border-left: none;
+	border-radius: 0 999px 999px 0;
+	background: var(--bg);
+	color: var(--text-dim);
+	cursor: pointer;
+	opacity: 0.9;
+	box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+	transition:
+		opacity 0.12s ease,
+		width 0.12s ease,
+		color 0.12s ease,
+		border-color 0.12s ease;
+}
+
+.side-expand svg {
+	width: 12px;
+	height: 12px;
+	stroke-width: 2.2;
+}
+
+.side-expand:hover,
+.side-expand:focus-visible {
+	opacity: 1;
+	width: 22px;
+	color: var(--accent);
+	border-color: var(--accent-dim);
+}
+
+/* 手机：**屏幕左边垂直居中**的一颗悬浮钮（用户 2026-10-30：「放下居中，方便用手点」），
+ * 尺寸收到 20×32（同一条：「按钮有点大，调小点」，原来 24×40）。
+ * 用 `fixed` 而不是继承桌面那套「绝对定位在 `.app-main` 顶边 + 8px」：
+ * 它此刻是「贴屏幕左边缘的悬浮钮」，消息怎么滚它都不该动；
+ * `top: 8px` 那种落点是为鼠标准备的，拇指够不到。 */
+.is-mobile-shell .side-expand {
+	position: fixed;
+	top: 50%;
+	left: 0;
+	transform: translateY(-50%);
+	width: 20px;
+	height: 32px;
+}
+
+.is-mobile-shell .side-expand:hover,
+.is-mobile-shell .side-expand:focus-visible {
+	width: 20px;
+}

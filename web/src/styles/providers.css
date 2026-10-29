@@ -1,0 +1,805 @@
+/*
+ * 模型管理（provider 左列表 + 右详情）。
+ *
+ * 左边只放 provider，右边放这个 provider 的表单与模型表 —— 别再把「引擎可用模型」
+ * 平铺进来：那是运行时清单，与「我配了什么」不是一回事。
+ */
+.prov-shell {
+	display: grid;
+	/* 列宽由组件写入 --prov-list-width（可拖）；手机断点会覆盖成单列 */
+	grid-template-columns: minmax(140px, var(--prov-list-width, 190px)) 6px minmax(0, 1fr);
+	gap: 0;
+	flex: 1 1 auto;
+	min-height: 0;
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	overflow: hidden;
+	background: var(--bg);
+}
+
+.prov-list {
+	/* 容器查询的参照：左栏宽度用户可拖（190 ~ 420），
+	   窄的时候状态只留一个圆点，宽的时候才把文字带上。 */
+	container-type: inline-size;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	min-height: 0;
+	padding: 10px 8px 8px;
+	background: var(--bg-soft);
+}
+
+.prov-list-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	font-size: 13px;
+	text-transform: uppercase;
+	letter-spacing: 0.03em;
+	color: var(--text-faint);
+	padding: 2px 4px;
+}
+
+/* 分组标题 = 开合开关（跟侧栏「项目 / 文件管理」同一交互）：
+ * 长得仍像一行小标题，但整行可点、hover 有反馈，左边一枚小三角。 */
+.prov-list-toggle {
+	width: 100%;
+	border: none;
+	border-radius: 6px;
+	background: none;
+	font: inherit;
+	font-size: 13px;
+	text-transform: uppercase;
+	letter-spacing: 0.03em;
+	color: var(--text-faint);
+	cursor: pointer;
+	text-align: left;
+	transition:
+		color 0.12s ease,
+		background 0.12s ease;
+}
+
+.prov-list-toggle:hover {
+	color: var(--text-dim);
+	background: var(--bg-elev);
+}
+
+.prov-list-toggle-label {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+}
+
+.prov-list-scroll {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	overflow: auto;
+	min-height: 0;
+	flex: 1 1 auto;
+}
+
+.prov-item {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	width: 100%;
+	min-width: 0;
+	text-align: left;
+	padding: 5px 8px;
+	border: 1px solid transparent;
+	border-radius: 7px;
+	background: none;
+	color: inherit;
+	font: inherit;
+	font-size: 14px;
+	cursor: pointer;
+}
+
+/* 悬浮是「一条浅底」，选中是「浅底 + 左侧一道主色竖线」——
+   不再给每行描边框：列表里三十来行时，一圈圈边框会显得很吵。 */
+.prov-item:hover {
+	background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.prov-item-on,
+.prov-item-on:hover {
+	background: color-mix(in srgb, var(--accent) 8%, transparent);
+	border-color: transparent;
+	box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.prov-item-name {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	flex: 1 1 auto;
+	min-width: 0;
+	font-size: 14px;
+	font-weight: 600;
+	white-space: nowrap;
+	overflow: hidden;
+}
+
+/* 名字本身才是可省略的那一段：徽标/状态不参与收缩 */
+.prov-item-label {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* 订阅行与普通行共用名称样式，只用小徽标区分来源。 */
+.prov-sub-badge {
+	padding: 0 4px;
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	background: var(--bg-elev);
+	color: var(--text-faint);
+	font-size: 10px;
+	font-weight: 500;
+	line-height: 14px;
+	white-space: nowrap;
+}
+
+.prov-add {
+	margin-top: auto;
+	width: 100%;
+}
+
+.prov-builtin {
+	font-size: 13px;
+	line-height: 1.4;
+	color: var(--text-faint);
+	padding: 2px 4px;
+}
+
+.prov-detail {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	min-width: 0;
+	min-height: 0;
+	/* 右侧留一点呼吸位：滚动条是覆盖式的，完全不留给会压住输入框和右侧按钮。 */
+	padding: 10px 20px 18px 12px;
+	/* 非覆盖式滚动条（Windows/Linux）也给它留固定槽位，避免抖动 */
+	scrollbar-gutter: stable;
+	overflow: auto;
+}
+
+/* 详情面板统一改成内部单层滚动：外层只负责裁切，
+   滚动条贴在详情区最右侧，内容通过 padding-right 与它保持距离。 */
+.prov-detail-panel {
+	overflow: hidden;
+	padding-right: 0;
+}
+
+.prov-detail.prov-detail-panel > .side-panel {
+	flex: 1 1 auto;
+	min-height: 96px;
+	overflow: auto;
+	/* 20px 是内容到滚动条的净距离；覆盖式 / 经典滚动条都不会压住输入框。 */
+	padding: 0 20px 20px 0;
+	scrollbar-gutter: stable;
+}
+
+.prov-models {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	border-top: 1px solid var(--border);
+	padding-top: 8px;
+	min-height: 0;
+	flex: 0 0 auto;
+}
+
+/* 两段式里才限制高度并钉在下方：表头（模型 / 批量测试 / 导入模型）永远可见 */
+.prov-detail-split .prov-models {
+	flex: 0 0 auto;
+	max-height: min(46%, 420px);
+}
+
+.prov-models-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 14px;
+	font-weight: 600;
+}
+
+.prov-models-scroll {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	overflow: auto;
+	min-height: 0;
+}
+
+.prov-model-row {
+	/* 固定列：名称 / 耗时 / 状态 / 操作 —— 耗时那列必须对齐，不能随名字长短漂移 */
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 92px auto auto;
+	align-items: center;
+	gap: 8px;
+	padding: 5px 6px;
+	border-radius: 7px;
+}
+
+.prov-model-row:hover {
+	background: var(--bg-soft);
+}
+
+.prov-model-name {
+	font-size: 15px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	min-width: 0;
+	flex: 0 1 auto;
+}
+
+.prov-model-spec {
+	font-size: 13px;
+	color: var(--text-faint);
+	white-space: nowrap;
+	justify-self: end;
+}
+
+@media (max-width: 720px) {
+	/* 手机上分左右两栏没法用：改成「上面列表、下面详情」 */
+	.prov-shell {
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-rows: auto minmax(0, 1fr);
+	}
+
+	.prov-list {
+		border-right: none;
+		border-bottom: 1px solid var(--border);
+		max-height: 34vh;
+	}
+
+	.prov-resizer {
+		display: none;
+	}
+
+	/* 里层的两列（列表 / 详情）本来由 shell 决定，这里保证详情不再被挤窄 */
+	.prov-detail {
+		min-height: 0;
+	}
+}
+
+/* 详情区里的面板去掉外框（弹窗里不再套一层卡片） */
+.prov-detail .side-panel {
+	/* 底部留白：按钮那一行不要贴着容器底边 */
+	padding: 0 0 16px;
+	border: none;
+	background: none;
+}
+
+.prov-detail .import-foot {
+	position: static;
+	/* 与上方提示、下方容器边都留出距离：之前是「贴提示 + 贴底边」 */
+	margin-top: 12px;
+	margin-bottom: 14px;
+}
+
+/* 左栏：provider 块（选中时把模型摊在下面） */
+.prov-block {
+	display: flex;
+	flex-direction: column;
+	border-radius: 8px;
+}
+
+/* 选中态交给行本身（浅底 + 左侧竖线），外层块不再铺一层底色 */
+.prov-block-on {
+	background: none;
+}
+
+.prov-block .prov-item {
+	padding: 6px 8px;
+	border: none;
+	border-radius: 8px;
+}
+
+.prov-item-warn {
+	font-size: 12px;
+	font-weight: 400;
+	color: var(--text-faint);
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	padding: 0 5px;
+}
+
+/* 订阅登录（OAuth）已连上：和「无 key」同一个位置，但语义相反，用强调色区分 */
+.prov-item-sub {
+	font-size: 12px;
+	font-weight: 400;
+	color: var(--accent);
+	border: 1px solid currentColor;
+	border-radius: 999px;
+	padding: 0 5px;
+	white-space: nowrap;
+}
+
+.prov-item-sub-stale {
+	color: var(--warn, var(--text-faint));
+}
+
+/* 高度用 grid 的 0fr → 1fr 过渡，不需要测量内容高度；反向点击会从中途平滑折返。 */
+.prov-models-collapse {
+	display: grid;
+	grid-template-rows: 0fr;
+	opacity: 0;
+	transition:
+		grid-template-rows 180ms cubic-bezier(0.4, 0, 0.2, 1),
+		opacity 120ms ease-out;
+}
+
+.prov-models-collapse-open {
+	grid-template-rows: 1fr;
+	opacity: 1;
+}
+
+.prov-models-collapse-inner {
+	min-height: 0;
+	overflow: hidden;
+}
+
+.prov-models-inline {
+	display: flex;
+	flex-direction: column;
+	gap: 0;
+	/* 一条虚线把「这个 provider 的模型」和上面的行绑在一起：
+	   只靠缩进时，列表一长就分不清哪些是子项。 */
+	margin: 1px 4px 4px 13px;
+	padding: 2px 0 2px 9px;
+	border-left: 1px dashed var(--border-strong);
+}
+
+.prov-inline-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 3px 6px;
+	border: none;
+	border-radius: 6px;
+	background: none;
+	color: inherit;
+	cursor: pointer;
+	text-align: left;
+	font-size: 14px;
+}
+
+.prov-inline-row:hover {
+	background: var(--bg-soft);
+}
+
+.prov-inline-name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.prov-dot {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: var(--border);
+	flex: none;
+}
+
+.prov-dot-on {
+	background: var(--accent);
+}
+
+/* 左栏名称行：名字可以省略，徽标 / 状态不参与收缩（它们本来就不该被挤变形） */
+.prov-item-name {
+	flex-wrap: nowrap;
+	min-width: 0;
+}
+
+.prov-item-name > span:not(.prov-item-label) {
+	flex: none;
+}
+
+/* 字段标题行：文字 + 右侧小按钮（如「从 API 获取」） */
+.prov-field-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+}
+
+/* 表单里的「从 API 获取」选择框（复用导入模型的样式，限制高度可滚） */
+.prov-picker {
+	margin-top: 6px;
+	gap: 8px;
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	flex: 0 0 auto;
+}
+
+.prov-picker-filter {
+	width: 100%;
+	padding: 6px 8px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--bg);
+	color: var(--text);
+	font-size: 15px;
+}
+
+.prov-picker .import-list {
+	max-height: 260px;
+	overflow: auto;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+}
+
+.import-row-head {
+	font-weight: 600;
+	border-bottom: 1px solid var(--border);
+}
+
+/* 模型行：显示名 + id（重名时靠 id 区分） */
+.prov-model-open {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 1px;
+	min-width: 0;
+}
+
+.prov-model-title {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	max-width: 100%;
+}
+
+.prov-model-id {
+	font-size: 13px;
+	color: var(--text-faint);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	max-width: 100%;
+}
+
+.prov-model-open:hover .prov-model-id {
+	color: var(--text-dim);
+}
+
+/* provider 行首的展开三角：点一下展开模型列表，再点一下收起 */
+.prov-caret {
+	display: inline-block;
+	width: 0;
+	height: 0;
+	margin-right: 6px;
+	border-top: 4px solid transparent;
+	border-bottom: 4px solid transparent;
+	border-left: 5px solid currentColor;
+	opacity: 0.55;
+	transition: transform 180ms cubic-bezier(0.4, 0, 0.2, 1);
+	vertical-align: middle;
+}
+
+.prov-caret-open {
+	transform: rotate(90deg);
+}
+
+.prov-sub-state {
+	font-size: 12px;
+	color: var(--text-faint);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.prov-sub-state-on {
+	color: var(--accent);
+}
+
+/* 右栏详情：授权链接、设备码、粘贴框 */
+.subs-detail {
+	gap: 8px;
+}
+
+.subs-block {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--bg);
+	padding: 8px;
+	min-width: 0;
+}
+
+.subs-link {
+	font-size: 14px;
+	color: var(--accent);
+	overflow-wrap: anywhere;
+}
+
+.subs-code {
+	font-size: 22px;
+	letter-spacing: 3px;
+	text-align: center;
+	color: var(--text);
+}
+
+.subs-options {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.subs-actions {
+	display: flex;
+	gap: 6px;
+}
+
+.subs-state {
+	font-size: 13px;
+	color: var(--text-faint);
+}
+
+.subs-state-on {
+	color: var(--accent);
+}
+
+/* ---- 服务商列表：订阅 / 官方内置 / 自定义共用一个列表和顶部开关 ---- */
+.prov-list-body {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-height: 0;
+	flex: 1 1 auto;
+}
+
+/* 收起整块：隐藏列表，「添加服务商」按钮仍留在外面。 */
+.prov-list-body-closed {
+	display: none;
+}
+
+/* ---- 「添加服务商」面板（三种来源：订阅 / 官方内置 / 自己输入）----
+   左栏默认只列能用的，没配的都在这里按来源分组，找起来比在长列表里翻快。 */
+.prov-add-pane {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	min-height: 0;
+	padding: 2px 0 16px;
+}
+
+.prov-add-list {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	overflow: auto;
+	min-height: 0;
+}
+
+.prov-add-row {
+	display: flex;
+	align-items: baseline;
+	gap: 10px;
+	width: 100%;
+	padding: 8px 10px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--bg-elev);
+	color: var(--text);
+	font: inherit;
+	font-size: 14px;
+	text-align: left;
+	cursor: pointer;
+}
+
+.prov-add-row:hover {
+	border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+	background: color-mix(in srgb, var(--accent) 6%, var(--bg-elev));
+}
+
+.prov-add-name {
+	font-weight: 600;
+}
+
+/* 名字后面的说明（几个模型 / 只能订阅登录 / 需额外配置）：靠右、淡一档 */
+.prov-add-row .prov-item-sub {
+	margin-left: auto;
+}
+
+/* ---- 列表里那一行右侧的状态（已连接 / 未连接）----
+   以前是第二行的描边胶囊，把行高撑高一倍；现在改成单行右侧的纯文字 + 一个小圆点。 */
+.prov-item-state {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	flex: none;
+	color: var(--text-faint);
+	font-size: 12px;
+	white-space: nowrap;
+}
+
+.prov-item-state::before {
+	content: "";
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: currentColor;
+	opacity: 0.5;
+}
+
+.prov-item-state-on {
+	color: var(--green, #1a7f37);
+}
+
+.prov-item-state-on::before {
+	opacity: 1;
+}
+
+/* 没有模型可展开的行：留一个与三角等宽的占位，名字才对得齐 */
+.prov-caret-empty {
+	width: 9px;
+	opacity: 0;
+}
+
+/* 状态「需要留意」（订阅过期）：换成警示色，别和「已登录」混淆 */
+.prov-item-state-warn {
+	color: var(--amber, #b26a00);
+}
+
+/* ---- 窄栏（默认 190px）：状态只留一个圆点 ----
+   名字本来就长（Kimi Code (subscription)），再挤一句 "Signed in" 就只剩 "Kimi Cod…" 了。
+   圆点的颜色 + title 已经能说明状态；把栏拖宽后文字自动回来（@container）。 */
+@container (max-width: 250px) {
+	.prov-item-state,
+	.prov-item-state-on,
+	.prov-item-state-warn {
+		font-size: 0;
+		gap: 0;
+	}
+
+	/* 圆点靠右一点点，和名字之间不至于糊在一起 */
+	.prov-item-state::before {
+		width: 7px;
+		height: 7px;
+	}
+}
+
+/* 左栏模型列表：当前模型用整行浅底 + 右侧小勾表示，
+   不再复用服务商那种「左侧蓝色竖线」，两者一眼能区分。 */
+.prov-inline-row-on,
+.prov-inline-row-on:hover {
+	background: color-mix(in srgb, var(--accent) 8%, transparent);
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 32%, transparent);
+}
+
+.prov-inline-row-on::after {
+	content: "✓";
+	margin-left: auto;
+	padding-left: 4px;
+	color: var(--accent);
+	font-size: 12px;
+	font-weight: 700;
+	line-height: 1;
+}
+
+.prov-inline-row-on .prov-inline-name {
+	color: var(--text);
+}
+
+/* 那一行里的外链：跟在状态后面，别做成按钮 */
+.prov-add-link {
+	margin-left: 10px;
+	color: var(--accent);
+	font-size: 12px;
+	text-decoration: none;
+	flex: none;
+}
+
+.prov-add-link:hover {
+	text-decoration: underline;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.prov-models-collapse,
+	.prov-caret {
+		transition: none;
+	}
+}
+
+/* ---------------------------------------------------------------------------
+ * 非 pi 引擎的模型面板用到的两个零件（整块的布局复用 pi 那一套 prov-shell）
+ *
+ * 徽标 / 说明句是唯一「两边长得一样但来源不同」的东西：
+ * 徽标是引擎的短标签（CODEX / CC），说明句要写明「这堆模型不归本工作台管」。
+ * ------------------------------------------------------------------------- */
+.prov-engine-badge {
+	flex: none;
+	padding: 1px 6px;
+	border-radius: 5px;
+	border: 1px solid var(--border);
+	font-size: 10px;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	color: var(--text-dim);
+}
+
+.prov-engine-note {
+	margin: 0;
+	font-size: 12px;
+	line-height: 1.55;
+	color: var(--text-dim);
+}
+
+/* ==========================================================================
+ * 非 pi 引擎的「模型」面板（左供应商 / 右详情，布局复用上面的 prov-shell）
+ *
+ * 与 pi 的差别只在**右栏内容**：那边是 provider 表单（可编辑），这边是引擎报上来的
+ * 只读模型表 + 测速。所以只补右栏这几行，左栏完全借用 pi 那一套类名。
+ * ========================================================================== */
+.engine-model-list {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+}
+
+.engine-model-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 7px 10px;
+	border-radius: 8px;
+	border: 1px solid transparent;
+	min-width: 0;
+}
+
+.engine-model-row:hover {
+	background: var(--bg-elev-2);
+}
+
+.engine-model-row-on {
+	border-color: var(--accent);
+	background: var(--bg-elev-2);
+}
+
+.engine-model-name {
+	flex: none;
+	max-width: 40%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 14px;
+}
+
+.engine-model-id {
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--text-dim);
+	font-size: 12px;
+}
+
+/* 测速结果 / 按钮：贴行尾，固定一档宽度，不跟着模型名抖动 */
+.engine-model-probe {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 6px;
+	flex: none;
+	margin-left: auto;
+	min-width: 150px;
+}
+
+.engine-model-probe .prov-latency {
+	max-width: none;
+}

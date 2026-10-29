@@ -1,0 +1,458 @@
+/*
+ * 右侧分栏工作区新增的三块内容：工具落地页 / 网页 / 临时聊天 / 文件树。
+ *
+ * 为什么单开一个文件：`.preview-panel` 那套（标签、拖宽、全屏）在 preview-panel.css 里，
+ * 这里只放「面板里装什么」。两块地方的内边距与分隔线都跟预览面板保持一致，
+ * 换页时不会跳一下。
+ */
+
+/* ---- 工具落地页（没有标签时） ---- */
+.work-landing {
+	flex: 1 1 auto;
+	min-height: 0;
+	min-width: 0;
+	overflow: auto;
+	padding: calc(10px * var(--ab, 1)) calc(12px * var(--ab, 1));
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.work-landing-head {
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--text-dim);
+	/* 跟参考稿一样：一个小标题「工具」，下面一排卡片 */
+	padding: 2px 2px 0;
+}
+
+.work-landing-grid {
+	display: grid;
+	/* 四张卡片排成 2×2：620px 面板里两列刚好，铺开变宽时自动变成更多列 */
+	grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+	gap: 8px;
+}
+
+.work-tool-card {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 2px;
+	padding: 10px 12px;
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	background: var(--bg);
+	color: var(--text);
+	cursor: pointer;
+	text-align: left;
+	font: inherit;
+	transition:
+		border-color 0.12s ease,
+		background 0.12s ease;
+}
+
+.work-tool-card:hover {
+	border-color: var(--accent-dim);
+	background: var(--bg-elev-2);
+}
+
+.work-tool-icon {
+	font-size: 15px;
+	line-height: 1.2;
+}
+
+.work-tool-label {
+	font-size: 14px;
+	font-weight: 600;
+}
+
+.work-tool-hint {
+	font-size: 12px;
+	line-height: 1.4;
+	color: var(--text-faint);
+}
+
+/* 标签栏里的「＋」：一个**画出来的圆角方块 + 加号**（用户给的样子）——
+ * 以前是一根光秃秃的加号，周围什么都没有，不点上去根本看不出它是个按钮。
+ * 尺寸/圆角/描边在下面按状态微调，但「有框」这件事是一致的。 */
+.preview-tab-add {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	padding: 0;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: none;
+	color: var(--text-dim);
+	line-height: 1;
+	cursor: pointer;
+}
+
+.preview-tab-add-icon {
+	width: 13px;
+	height: 13px;
+	display: block;
+}
+
+.preview-tab-add:hover {
+	border-color: var(--border-strong);
+	color: var(--text);
+}
+/* ---- 网页页：地址栏 + iframe ---- */
+.work-web {
+	flex: 1 1 auto;
+	min-width: 0;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.work-web-bar {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.work-web-input {
+	flex: 1 1 auto;
+	min-width: 0;
+	padding: 4px 8px;
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	background: var(--bg);
+	color: var(--text);
+	font: inherit;
+	font-size: 12px;
+}
+
+.work-web-input:focus {
+	outline: none;
+	border-color: var(--accent-dim);
+}
+
+.work-web-note {
+	flex: none;
+	font-size: 12px;
+	color: var(--text-faint);
+}
+
+.work-web-note-error {
+	color: var(--red);
+}
+
+.work-web-frame {
+	flex: 1 1 auto;
+	min-height: 0;
+	width: 100%;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: #fff;
+}
+
+.work-web-start {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	padding: 8px 2px;
+}
+
+.work-web-suggestions {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+	gap: 8px;
+}
+
+/* ---- 文件树页 ---- */
+.work-files {
+	flex: 1 1 auto;
+	min-width: 0;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.work-files-head {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.work-files-root {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 12px;
+	color: var(--text-faint);
+	/* 工作区绝对路径很长：右端省略，编辑器式的「…/项目名」读法靠 title 悬停补全 */
+}
+
+.work-files-body {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: auto;
+}
+
+/* ---- 临时聊天 ----
+ * 现在它**复用主对话那套组件**（`MessageList` + `Composer`），这里只做容器适配：
+ *   - `.work-chat-stream` 是滚动层，里面就是 `.messages`；
+ *   - `.composer-wrap` 在主的 `.workspace` 里有左右那两条「呼吸带」，这里由面板自己的
+ *     内边距负责，所以只补一点点，不要再叠一层。
+ * 其它尺寸/配色全部来自主对话那一份样式 —— 两边要长得一模一样就得共用，不要在这里另写。 */
+.work-chat-main {
+	gap: 0;
+}
+
+.work-chat-main .work-chat-stream {
+	padding: 0;
+	gap: 0;
+}
+
+.work-chat-main .messages {
+	/* 面板比主对话窄：顶部那 32px 的留白和左右 padding 都收一档 */
+	padding-top: 12px;
+	padding-bottom: 8px;
+}
+
+.work-chat-main .composer-wrap {
+	/* 输入框自带边框，贴着滚动条太挤 */
+	margin-top: 6px;
+}
+
+/* 临时聊天那条提示条：主对话里它的左右边距是「镜像输入框的 padding」算出来的，
+   在面板里没有那套宽度设定 —— 直接贴着面板内边距放，跟输入框左右对齐。 */
+.work-chat-main .ephemeral-banner {
+	margin: 0 0 6px;
+}
+
+.work-chat {
+	flex: 1 1 auto;
+	min-width: 0;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.work-chat-stream {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 2px;
+}
+
+.work-chat-empty {
+	margin: auto;
+	max-width: 260px;
+	text-align: center;
+	font-size: 13px;
+	line-height: 1.6;
+	color: var(--text-faint);
+}
+
+/* 用户靠右、助手靠左：跟主聊天同一个读法，切到这边不用重新适应 */
+
+/* 手机上这套整体是整宽单栏（见 responsive.css 的 .is-mobile-shell .preview-panel）：
+   iframe 与聊天都比桌面窄，卡片列宽收到一列更稳 */
+.is-mobile-shell .work-landing-grid,
+.is-mobile-shell .work-web-suggestions {
+	grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+}
+
+/* 网页页的「不行就别硬撑」提示：字号比常规 hint 再小一档，免得两条提示把首屏占满 */
+.work-web-caveat {
+	font-size: 11px;
+	line-height: 1.5;
+	opacity: 0.85;
+}
+
+/* ---- 标签拖拽换序 + 右键菜单 ---- */
+/* 鼠标上按住就能拖：光标给 grab，选中文字要禁掉（否则拖动时会拖出一条蓝色选区）。
+ *
+ * `touch-action` 必须是 **pan-x**，不能是 none：手机上标签一多，手指横滑要交给浏览器的
+ * 横向滚动（`.preview-tabs-strip` 的 overflow-x），写成 none 会把整个手势吃掉 ——
+ * 表现就是「标签排滑不动」。触屏上的拖拽排序因此不做（见 PreviewPanel 里
+ * `onTabPointerDown` 对 `pointerType === "touch"` 的跳过），鼠标 / 笔仍可拖。 */
+.preview-tab {
+	cursor: grab;
+	-webkit-user-select: none;
+	user-select: none;
+	touch-action: pan-x;
+}
+
+/* 标签之间的缝里起手也一样：这一层只横滑，不接管竖向 */
+.preview-tabs-strip {
+	touch-action: pan-x;
+}
+
+.preview-tab-dragging {
+	cursor: grabbing;
+	opacity: 0.55;
+}
+
+/* 拖拽中里面的按钮别抢手指事件 */
+.preview-tab-dragging .preview-tab-name,
+.preview-tab-dragging .preview-tab-x {
+	pointer-events: none;
+}
+
+/* 右键菜单：贴着指针出现，跟引擎切换浮层一个层级语义（都在正文之上） */
+.preview-tab-menu {
+	position: fixed;
+	z-index: 70;
+	min-width: 168px;
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	padding: 4px;
+	background: var(--bg);
+	border: 1px solid var(--border-strong);
+	border-radius: 9px;
+	box-shadow: 0 10px 26px rgb(0 0 0 / 14%);
+}
+
+.preview-tab-menu-item {
+	text-align: left;
+	font: inherit;
+	font-size: 13px;
+	line-height: 1.4;
+	padding: 6px 9px;
+	border: none;
+	border-radius: 6px;
+	background: none;
+	color: var(--text);
+	cursor: pointer;
+}
+
+.preview-tab-menu-item:hover:not(:disabled) {
+	background: var(--bg-elev-2);
+}
+
+/* 不可用的项（第一项没有「左侧」、最后一项没有「右侧」）：留着但点不动，
+   比把菜单项删掉好 —— 菜单每次长度一样，肌肉记忆不会错位 */
+.preview-tab-menu-item:disabled {
+	color: var(--text-faint);
+	opacity: 0.55;
+	cursor: default;
+}
+
+/* ---- 标签栏右侧那两颗小按钮（铺开 / 全屏）----
+ * 原来它们吃 `.btn-tiny` 的 3px 8px 内边距：一个图标、一个字形，量出来的高度与宽度都不一样
+ * （截图里就是一大一小）。这里统一成固定的小方块：等高（20px）、等比收窄，
+ * 图标自身也用同一把尺子，别让 SVG 把按钮顶高。
+ */
+.preview-tabs .preview-tool-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	/* 定死成 18×18：图标与字形本来宽度不同，靠内容撑就会出现 1~2px 的差 */
+	width: 18px;
+	height: 18px;
+	padding: 0;
+	font-size: 11px;
+	line-height: 1;
+	/* 8px 圆角在 18px 的方块上会圆成药丸：收到 5px，和参考图里那种「圆角方块」一致 */
+	border-radius: 5px;
+}
+
+.preview-tabs .preview-tool-btn .preview-wide-icon,
+.preview-tabs .preview-tool-btn .preview-tool-icon {
+	width: 10px;
+	height: 10px;
+	display: block;
+}
+
+/* 面板**升到顶栏那一行**（分栏 / 铺开）时，这两颗就长在顶栏里了：
+   尺寸必须跟顶栏的入口按钮（`.appbar-panel-btn`：图标 18 / 内边距 4-6 / 圆角 7）
+   一模一样，而且要用同一个缩放系数 `--appbar-scale` ——
+   不然「点开面板」这个动作会让这两颗图标突然缩水一圈，跟旁边的图标对不上。 */
+.app-split .preview-tabs .preview-tool-btn,
+.app-wide-lift .preview-tabs .preview-tool-btn {
+	width: auto;
+	height: auto;
+	padding: calc(4px * var(--appbar-scale, 1)) calc(6px * var(--appbar-scale, 1));
+	border-radius: calc(7px * var(--appbar-scale, 1));
+	font-size: calc(12px * var(--appbar-scale, 1));
+	/* 底色与描边也抄顶栏那两颗（`.appbar-panel-btn` / `.side-foot-btn`）：
+	   浅一档的底色 + `--border`。原来用的是 `.btn` 的 `--bg-elev-2` / `--border-strong`，
+	   于是「点开面板」前后这两颗会突然变深一档，看着像换了一套控件。 */
+	background: var(--bg-elev);
+	border: 1px solid var(--border);
+	color: var(--text-dim);
+}
+
+/* 「＋」新建标签：面板升到顶栏那一行时，它跟旁边那两颗按钮同一排，
+ * 高度必须一样 —— 原来是 `font-size 13 + padding 3px` 撑出来的 19px，比邻座矮 5px，
+ * 看着像被压扁了。这里定成跟工具按钮同一个盒子（30/26 × 顶栏缩放 + 2px 边框 = 27.5×24.1）。 */
+.app-split .preview-tab-add,
+.app-wide-lift .preview-tab-add {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: calc(30px * var(--appbar-scale, 1) + 2px);
+	height: calc(26px * var(--appbar-scale, 1) + 2px);
+	padding: 0;
+	font-size: calc(18px * var(--appbar-scale, 1));
+	line-height: 1;
+	border-radius: calc(7px * var(--appbar-scale, 1));
+}
+
+/* 「＋」的图标尺寸跟旁边那两颗按钮里的图标**一模一样**（18 × 顶栏缩放 = 15.3），
+   这样三者并排时宽度、高度、墨迹都是同一套 */
+.app-split .preview-tab-add .preview-tab-add-icon,
+.app-wide-lift .preview-tab-add .preview-tab-add-icon {
+	width: calc(18px * var(--appbar-scale, 1));
+	height: calc(18px * var(--appbar-scale, 1));
+}
+
+.app-split .preview-tabs .preview-tool-btn .preview-wide-icon,
+.app-wide-lift .preview-tabs .preview-tool-btn .preview-wide-icon,
+.app-split .preview-tabs .preview-tool-btn .preview-tool-icon,
+.app-wide-lift .preview-tabs .preview-tool-btn .preview-tool-icon {
+	width: calc(18px * var(--appbar-scale, 1));
+	height: calc(18px * var(--appbar-scale, 1));
+	display: block;
+}
+
+/* ---- 标签条这几颗小图标**不画边框、不限底色**（用户要求，2026-10-28）----
+ * 「＋ / ⇄ / ◫」原来各是一个浅描边浅底的小方块，一排看过去像三个输入框；
+ * 它们只是动作入口，裸图标 + 悬停浅底就够读。激活态（铺开 / 文件列表开着）
+ * 仍靠 `.btn-wide-on` 的底色 + 强调色认出来。
+ * 注意 `.app-split / .app-wide-lift` 那几条为了「升到顶栏那一行」显式写了
+ * `background: var(--bg-elev); border: 1px solid var(--border)`，
+ * 所以这里要连同它们一起覆盖（同层选择器，靠后面胜出）。 */
+.preview-tabs .preview-tool-btn,
+.preview-tab-add,
+.app-split .preview-tabs .preview-tool-btn,
+.app-wide-lift .preview-tabs .preview-tool-btn {
+	background: transparent;
+	border-color: transparent;
+}
+
+.preview-tabs .preview-tool-btn:hover,
+.preview-tab-add:hover {
+	background: var(--bg-elev-2);
+	border-color: transparent;
+	color: var(--text);
+}
+
+.preview-tabs .preview-tool-btn.btn-wide-on {
+	/* 激活态用浅蓝底（跟顶栏那几颗同一个色系）：看得出在亮着，又不至于像个输入框 */
+	background: color-mix(in srgb, var(--accent) 12%, transparent);
+	border-color: transparent;
+	color: var(--accent);
+}

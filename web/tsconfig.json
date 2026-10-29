@@ -1,0 +1,18 @@
+{
+	"compilerOptions": {
+		"target": "ES2022",
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"lib": ["ES2023", "DOM", "DOM.Iterable"],
+		"jsx": "react-jsx",
+		"strict": true,
+		"esModuleInterop": true,
+		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": true,
+		"noEmit": true,
+		// web/src/types.ts 是 server/protocol.ts 的 shim，用显式 .ts 扩展名导入（ADR-0002 纪律①）
+		"allowImportingTsExtensions": true,
+		"types": []
+	},
+	"include": ["src/**/*.ts", "src/**/*.tsx", "mermaid-slim-plugin.ts", "vite.config.ts"]
+}

@@ -1,0 +1,138 @@
+/* ---- 新会话抬头（输入框上方：图标 / 名字 / 版本号）----
+ * 只在「当前会话还没有消息」时出现；消息一多这行自动消失，不长期占地方。
+ * 组件：components/NewChatMeta.tsx
+ */
+/* 空会话：整块（抬头 + 招呼语）在对话区居中 */
+.newchat-hero {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 16px;
+	min-height: 100%;
+	padding: 24px 12px;
+}
+
+.newchat-meta {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	min-width: 0;
+}
+
+/* 左图右文：图标在左，右边一列（名字大字在上、版本号小字在下） */
+.newchat-brand {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	min-width: 0;
+}
+
+.newchat-icon {
+	width: 38px;
+	height: 38px;
+	border-radius: 10px;
+	flex: none;
+}
+
+.newchat-brand-text {
+	display: flex;
+	flex-direction: column;
+	/* 标题在左、版本号居中放在它正下方（对齐全靠这两行的容器，别再让它贴左边） */
+	align-items: center;
+	gap: 1px;
+	min-width: 0;
+}
+
+.newchat-name {
+	font-size: 22px;
+	font-weight: 700;
+	line-height: 1.15;
+	color: var(--text);
+	white-space: nowrap;
+}
+
+.newchat-versions {
+	color: var(--text-faint);
+	font-size: 14px;
+	line-height: 1.3;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	text-align: center;
+	max-width: 100%;
+}
+
+/* 抬头里的「开源项目」：一条指向仓库的链接（新标签打开，点它看更新日志 / 提 issue）
+ * 平时跟那行小字一个样子，只在 hover 时给出「这是能点的」信号 */
+.newchat-version-link {
+	color: inherit;
+	text-decoration: none;
+	border-bottom: 1px solid transparent;
+}
+
+.newchat-version-link:hover {
+	color: var(--text-dim);
+	border-bottom-color: currentColor;
+}
+
+.newchat-version-link:focus-visible {
+	outline: 2px solid var(--accent, currentColor);
+	outline-offset: 2px;
+	border-radius: 3px;
+}
+
+/* 上游有新版：只在版本号后面多一个小胶囊「↑ 有新版 · 点此升级」
+ * —— 不把版本号本身改红加粗（那是常规信息），多出来的东西才是新消息。
+ * 它是个按钮：点一下 = 在右侧面板开终端、把升级命令敲进去并回车。 */
+.newchat-version-badge {
+	display: inline-block;
+	position: relative;
+	top: -1px;
+	margin-left: 5px;
+	padding: 0 5px;
+	border: 1px solid var(--red);
+	border-radius: 999px;
+	background: transparent;
+	color: var(--red);
+	font: inherit;
+	font-size: 11px;
+	font-weight: 600;
+	line-height: 1.5;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.newchat-version-badge:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--red) 12%, transparent);
+}
+
+.newchat-version-badge:focus-visible {
+	outline: 2px solid var(--accent, currentColor);
+	outline-offset: 2px;
+}
+
+/* 没接安装回调（或升级中）：只当个标记，不给「能点」的错觉 */
+.newchat-version-badge:disabled {
+	cursor: default;
+	opacity: 0.85;
+}
+
+/* 招呼语：跟在抬头下面，字大一点 */
+.newchat-hello {
+	margin: 0;
+	color: var(--text-dim);
+	font-size: 24px;
+	font-weight: 600;
+	line-height: 1.4;
+	text-align: center;
+}
+
+.is-mobile-shell .newchat-hero {
+	gap: 14px;
+	padding: 16px 8px;
+}
+
+.is-mobile-shell .newchat-hello {
+	font-size: 21px;
+}

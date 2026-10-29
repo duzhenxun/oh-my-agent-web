@@ -1,0 +1,422 @@
+/* ---- 会话行：右键菜单 / 行尾「⋯」（两者弹的是同一张菜单） ---- */
+.pi-row-wrap {
+	position: relative;
+	display: flex;
+	align-items: center;
+	min-width: 0;
+	/* 「这一行被填起来时的颜色」——**悬停底和行尾底板共用这一个变量**：
+	 * 以前底板写死 `--bg-elev-2`，于是点中一行（蓝底蓝条）后鼠标留在行上时，
+	 * 右边 64px 被盖成灰的，整行看上去就是「没选中 / 还是 hover」。
+	 * 变量挂在外层，`.pi-row-wrap-active` 改一处，行内两层颜色就一起变。 */
+	--pi-row-fill: var(--bg-elev-2);
+}
+
+/* 当前会话（点中的那一行）：填充色换成那一层淡蓝（与 `session-row.css` 里 `.pi-row-active` 同一个配方） */
+.pi-row-wrap-active {
+	--pi-row-fill: color-mix(in srgb, var(--accent) 4%, var(--bg-elev));
+}
+
+/* 拖到某条会话上（项目内互换位置的投放目标）：一条细实线标出「插到这里」 */
+.pi-row-wrap.pi-row-drag-over::before {
+	content: "";
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: -1px;
+	height: 2px;
+	border-radius: 1px;
+	background: var(--accent, #4f8cff);
+	pointer-events: none;
+}
+
+.pi-row-wrap > .pi-row {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+/* 行内按钮（只有「更多 ⋯」这一颗了：那颗「🗄 快速归档」已按用户要求删掉）。
+   两条硬要求，互相拉扯：
+   ① 不能靠 `display` 切换 —— 指针落下的那一帧重排，手机上 click 会落到刚冒出来的按钮上
+      （「点一下没反应」就是这么来的）；
+   ② 又不要一直占着行宽 —— 平时就该看不见。
+   解法：**绝对定位到「时间」那一格上**，鼠标移上去时按钮出现、时间让位，
+   行宽全程不变（不重排、不抖动），标题也不会被挤窄。 */
+.pi-more {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 20px;
+	height: 20px;
+	border: none;
+	border-radius: 5px;
+	background: none;
+	color: var(--text-faint);
+	font: inherit;
+	line-height: 1;
+	cursor: pointer;
+	padding: 0;
+	visibility: hidden;
+	opacity: 0;
+	transition: opacity 90ms linear;
+}
+
+.pi-more {
+	font-size: 15px;
+}
+
+.pi-more:hover {
+	background: var(--bg-elev-2);
+	color: var(--text);
+}
+
+/* 桌面（真的能悬停）：行内按钮绝对定位到行尾 */
+@media (hover: hover) {
+	.pi-more {
+		position: absolute;
+		top: 50%;
+		right: 0;
+		transform: translateY(-50%);
+	}
+
+	.pi-row-wrap:hover .pi-more,
+	.pi-row-wrap:focus-within .pi-more {
+		visibility: visible;
+		opacity: 1;
+	}
+
+	/* 行尾不再有时间那一格（用户：「会话后面的时间不要了吧，这样能多显示一些」），
+	   标题平时就吃满整行。
+	   悬停时「⋯」绝对定位到行尾，**不给标题补右内边距** —— 补 padding 会让长标题的
+	   截断点跟着左移，看着像文字在跳。改由下面那块**不透明底板**把字盖干净。 */
+
+	/* 悬停时的行尾底板（用户：「后面的图标要出来一个不透明的背景，不要显示出文案来」）。
+	   为什么不用「给按钮自己加个背景」：按钮只有 20px 宽、还带 5px 圆角，字会从四角的圆弧里
+	   透出来 —— 截图里就是这种「字穿在图标的框里」的脏感。所以直接铺一整块：
+	   - 右侧 20px（那颗「⋯」的位置）**全不透明**，图标干干净净压在底上；
+	   - 再往左 20px 从「全不透明」渐到透明，接住标题的尾巴 —— 否则底板左沿就是一条直上直下的硬边；
+	   - 只内缩 1px：让开 `.pi-row` 自己那圈边框和圆角。
+	   颜色直接用行悬停底（`--bg-elev-2`），跟底色是同一块色，看不出有块板子。
+	   `opacity` **不做过渡**：标题那层淡出在悬停时会被关掉（见下一条），两边一起瞬间切换，
+	   不会闪过一两帧「字冒出来又被盖住」。 */
+	.pi-row-wrap::after {
+		content: "";
+		position: absolute;
+		top: 1px;
+		right: 1px;
+		bottom: 1px;
+		width: 44px;
+		border-radius: 0 5px 5px 0;
+		/* 颜色跟行的填充走（`--pi-row-fill`）：普通行是悬停灰，选中行是那层淡蓝。
+		   写死 `--bg-elev-2` 的话，选中行一 hover 右边就变灰 —— 正是「点了还是灰的」那个观感。 */
+		background: linear-gradient(
+			to right,
+			transparent 0,
+			var(--pi-row-fill) 20px,
+			var(--pi-row-fill) 100%
+		);
+		opacity: 0;
+		pointer-events: none;
+		/* 在按钮**下面**（按钮提到 1 层）：否则底板会把图标一起盖掉 */
+		z-index: 0;
+	}
+
+	.pi-row-wrap:hover::after,
+	.pi-row-wrap:focus-within::after {
+		opacity: 1;
+	}
+
+	/* 运行中的行不露按钮（见下条），也就没有底板的事 —— 否则会平白在「运行中」角标上压一块色块 */
+	.pi-row-wrap-running::after {
+		display: none;
+	}
+
+	/* 悬停时标题自己的淡出**让给底板**：两层淡化叠在一起，字会灰得太快。
+	   平时（没悬停）仍然靠标题那层 `mask` 柔和收尾。 */
+	.pi-row-wrap:hover .pi-row-title,
+	.pi-row-wrap:focus-within .pi-row-title {
+		mask-image: none;
+		-webkit-mask-image: none;
+	}
+
+	/* 标题被截断时：悬停让它**慢慢往后滑一段**（用户 2026-10-29）。
+	   位移与时长由 SessionRow 量好写进两个变量（`--pi-title-shift` / `--pi-title-dur`）：
+	   滑到位后最后一个字正好露在行尾底板（「🗄 ⋯」那 64px）左边。
+	   延迟 320ms：拿鼠标扫过列表时不该全场一起滚（真要看，停一下就行）。
+	   只在 `@media (hover: hover)` 里生效：手机上没悬停，也不会卡一半停在中间。 */
+	.pi-row-wrap:hover .pi-row-title-text {
+		transform: translateX(var(--pi-title-shift, 0px));
+		transition: transform var(--pi-title-dur, 2s) linear 320ms;
+	}
+
+	/* Tab 到行内按钮时（没有 hover）也让行亮起来，跟鼠标悬停同一个面 —— 
+	   否则底板单独浮在一块没有底色的行上，看上去像个孤立的色块。
+	   **只染上下右三条边**：写成 `border-color` 简写会把当前会话左边那道蓝条一并染灰。 */
+	.pi-row-wrap:focus-within > .pi-row {
+		background: var(--pi-row-fill);
+		border-top-color: var(--border);
+		border-right-color: var(--border);
+		border-bottom-color: var(--border);
+	}
+
+	.pi-more {
+		z-index: 1;
+	}
+
+	/* 运行中的行**不露按钮**：那一格正被「运行中」角标占着，按钮会直接压在字上。
+	   想在这时归档 / 改名：行上右键（同一张菜单，不走这颗按钮）。
+	   优先级高于上面的悬停显示（多一个类），所以只在本条内取消。 */
+	.pi-row-wrap-running:hover .pi-more,
+	.pi-row-wrap-running:focus-within .pi-more {
+		visibility: hidden;
+		opacity: 0;
+	}
+}
+
+/* ---- 当前会话（点中的那一行）----
+ *
+ * 用户给了一张截图要那种观感：**淡蓝底 + 细蓝边 + 左侧一道竖条**。
+ *
+ * 两件事必须一起做，否则看起来就是「点了没选中」：
+ *  ① 颜色不能再用 `--bg-elev-2`（那跟悬停的灰底几乎是同一个色）；
+ *  ② **不能被悬停 / 聚焦那两套盖掉** —— 点一行之后它自己就拿到了焦点
+ *    （`.pi-row-wrap:focus-within > .pi-row` 那条），而点击后鼠标又常常还停在行上。
+ *    所以这里把三条路径（选中 / 选中+hover / 选中+focus）全列出来，
+ *    底色统一走 **`--pi-row-fill`**（定义在 `.pi-row-wrap` / `.pi-row-wrap-active`）——
+ *    行尾那块悬停底板的颜色也来自同一个变量，于是点了之后整行（含图标那块）
+ *    一直是淡蓝，不会右半边变灰。
+ */
+.pi-row.pi-row-active,
+.pi-row.pi-row-active:hover,
+.pi-row-wrap:focus-within > .pi-row.pi-row-active {
+	background: var(--pi-row-fill);
+	border-color: color-mix(in srgb, var(--accent) 16%, var(--border));
+}
+
+/* 左侧那道竖条：用伪元素而不是 `border-left` —— 边框会被行自己的圆角拉成直角，
+ * 而截图里那一条是**圆角盒子里面**独立的一小截。`left: 1px` 让开那 1px 描边，
+ * 上下各让 2px，看着是嵌在里面而不是顶穿上下边。 */
+.pi-row-active::before {
+	content: "";
+	position: absolute;
+	left: 1px;
+	top: 2px;
+	bottom: 2px;
+	width: 3px;
+	border-radius: 2px;
+	background: var(--accent);
+	pointer-events: none;
+}
+
+/* 会话右键菜单：只管外观；定位走 .proj-menu-floating（portal 到 body + fixed） */
+.pi-menu {
+	width: 210px;
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	padding: 4px;
+	border: 1px solid var(--border-strong, var(--border));
+	border-radius: 8px;
+	background: var(--bg-elev-2);
+	box-shadow: 0 12px 32px rgb(0 0 0 / 45%);
+}
+
+/* ---- 已归档会话（折叠区，可恢复）---- */
+.archived {
+	flex: none;
+	border-top: 1px solid var(--border);
+	margin-top: 4px;
+	padding-top: 4px;
+}
+
+.archived-head {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	width: 100%;
+	border: none;
+	background: none;
+	color: var(--text-faint);
+	font: inherit;
+	font-size: 14px;
+	text-align: left;
+	padding: 4px 6px;
+	border-radius: 6px;
+	cursor: pointer;
+}
+
+.archived-head:hover {
+	background: var(--bg-elev-2);
+	color: var(--text);
+}
+
+.archived-caret {
+	width: 10px;
+	color: var(--text-faint);
+}
+
+.archived-list {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	max-height: 180px;
+	overflow: auto;
+	padding: 2px 0 4px;
+}
+
+/* 归档会话行：**缩进一级**。它是上面「📁 项目 · N」那一行的子集，
+ * 跟组标题左对齐会看着像同级；缩进的量 = 组标题的文件夹图标（16px）+ 它到文字的间距，
+ * 于是勾选框正好落在项目名左边一档，一眼看出从属关系。 */
+.archived-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 2px 6px 2px 28px;
+	min-width: 0;
+}
+
+.archived-title {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	/* 归档行也是「会话名」，跟着侧栏会话字号走（比列表里小一档：它是个次级清单）。
+	 * 系数 0.93：会话名默认 14px → 约 13px（原来是 12px × 0.97；默认字号改成 14 后
+	 * 同样是 0.97 会乘出 13.58px，跟旁边列表的字面差太少，看不出“次级”）。 */
+	font-size: calc(var(--side-session-font-size, 14px) * 0.93);
+	color: var(--text-dim);
+}
+
+/* 手机模式（单栏 `is-mobile-shell`）：**没有「悬停」这一步**。
+   - 「⋯」**不再整列常显**（用户：一屏十几颗「⋯」，「都折叠了」）——
+     以前这里写的是 `visibility: visible`，于是每一行行尾都挂一颗方框，比项目名还显眼。
+
+   折叠之后留一条**点得到**的路，而不是「藏起来就没了」：
+   - 平时 `visibility: hidden` + `position: absolute`，不占行宽（标题因此能吃满整行）；
+   - 只在**当前会话**这一行露出来 —— 你点过的那一条才需要「改名 / 归档」；
+   - 露出来时按钮自己铺一块 `--pi-row-fill` 实心底：否则标题尾巴会从「⋯」的笔画里透出来。
+   - 运行中的行不露（那一格尾巴是「运行中」角标，会正好被压住）；这条会话要操作：
+     顶栏标题那块右键 / 长按，弹的是同一张菜单。
+
+   **不用 `:hover` 来露**（`@media (hover: hover)` 那套只给桌面）：手机上一按就会套上
+   hover，按钮在 click 结算前冒出来，那一下就会落到刚出现的「⋯」上 —— 也就是
+   「点一下没反应，反而弹出菜单」。跟着「谁是当前会话」走，点击先结算、下一帧才显形，没这个坑。 */
+.is-mobile-shell .pi-more {
+	position: absolute;
+	top: 50%;
+	right: 0;
+	transform: translateY(-50%);
+	z-index: 2;
+	width: 36px;
+	height: 36px;
+	font-size: 18px;
+	border-radius: 8px;
+	background: var(--pi-row-fill);
+	visibility: hidden;
+	opacity: 0;
+}
+
+.is-mobile-shell .pi-row-wrap-active:not(.pi-row-wrap-running) .pi-more {
+	visibility: visible;
+	opacity: 1;
+}
+
+/* 手机上按下去也会套上 `:hover`（没有真悬停）：这里把底改回行自己的填色，
+   否则一碰就闪成一块灰，看着像整行少了半边。 */
+.is-mobile-shell .pi-more:hover {
+	background: var(--pi-row-fill);
+	color: var(--text);
+}
+
+.is-mobile-shell .pi-row-wrap,
+.is-mobile-shell .pi-row {
+	min-height: 40px;
+}
+
+/* 手机上也不再有「多久之前」那一格了（全列表都不画，见 SessionRow）：
+    drawers 只占 2/3 宽，这一格正是标题被截成「当前在线活…」的主因；
+   列表本身按时间倒序，真要看时间悬停 / 点开会话里有完整的。 */
+
+.is-mobile-shell .pi-row {
+	align-items: center;
+}
+
+/* 切会话的等待提示：点下去立刻有反馈。
+   外网 / 手机上「切换会话」要走一个来回（几百毫秒），只变高亮会被当成没点上。
+   150ms 内切完就不显示（快的时候不闪）。 */
+.switch-hint {
+	position: fixed;
+	/* 屏幕正中（用户 2026-10-30：「这些字都给我放在屏幕的上下居中的位置」）：
+	 * 原来是「顶栏底边 + 8px」贴着顶栏的一颗小胶囊，视线在正文上时根本注意不到。 */
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	z-index: 50;
+	padding: 4px 12px;
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	background: var(--bg-elev-2);
+	color: var(--text-dim);
+	font-size: 14px;
+	line-height: 1.4;
+	white-space: nowrap;
+	pointer-events: none;
+	box-shadow: 0 6px 18px rgb(0 0 0 / 35%);
+	opacity: 0;
+	animation: switch-hint-in 120ms ease-out 150ms forwards;
+}
+
+/* 「等待服务端快照…」那句占位也搬到屏幕正中（同上）：它以前是消息流里的第一行，
+ * 贴着顶栏出现，看着像“卡在没有内容的一页”。
+ * 用 `fixed` 整屏居中 + `pointer-events: none`：它只是提示，不该抢到任何点击。 */
+.workspace .main > .empty {
+	position: fixed;
+	inset: 0;
+	z-index: 20;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0 28px;
+	text-align: center;
+	pointer-events: none;
+}
+
+/* 两行同时出现时（刷新 / 切会话最容易撞上）：**「本地缓存 · 正在同步…」在上面**、
+ * 「等待服务端快照…」在下面，各往中间外侧让 34px —— 两行不会叠在一起，
+ * 而单独出现时它们各自仍然是正中的（这条只在两者都在时才生效）。 */
+.app:has(.main > .empty) .switch-hint {
+	transform: translate(-50%, calc(-50% - 34px));
+}
+
+.app:has(.switch-hint) .main > .empty {
+	transform: translateY(34px);
+}
+
+@keyframes switch-hint-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+/* 就地改名的输入框：和标题同一行同一字号，看起来像「标题变成了可编辑的」 */
+.pi-row-title-input {
+	flex: 1 1 auto;
+	min-width: 0;
+	/* 标题那层「尾巴淡出」**不要**：输入框自己会左右滚，正在打的字被蒙掉一半会很怪 */
+	mask-image: none;
+	-webkit-mask-image: none;
+	border: none;
+	border-bottom: 1px solid var(--accent);
+	border-radius: 0;
+	background: transparent;
+	color: var(--text);
+	font: inherit;
+	font-size: 13px;
+	line-height: 1.2;
+	padding: 0 0 1px;
+	outline: none;
+}

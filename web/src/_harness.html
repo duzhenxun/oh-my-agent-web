@@ -1,0 +1,57 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<link rel="stylesheet" href="styles.css" />
+		<style>
+			html,
+			body {
+				margin: 0;
+				height: 100%;
+			}
+			.app-main {
+				display: flex;
+				gap: 0;
+				padding: 0;
+				height: 400px;
+			}
+			.preview-panel {
+				flex: 1 1 auto;
+				background: #fafafa;
+				border-right: none;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="app-main">
+			<div class="workspace" id="ws" style="width: 390px; flex: 0 0 390px">
+				<section class="agents-strip" id="strip">
+					<header class="agents-strip-bar">
+						<button type="button" class="agents-strip-toggle">
+							<span class="agents-strip-name">子代理</span><span class="agents-strip-count">4 个已结束</span>
+						</button>
+					</header>
+				</section>
+				<div class="composer-wrap" id="cw">
+					<div class="composer-topbar" id="topbar">
+						<div class="composer-tools" id="tools">
+							<span class="tool-chip">🤖 DeepSeek V4.1 Flash 1017 ▾</span>
+							<span class="tool-chip">⚡ 高 ▾</span>
+							<span class="tool-sep"></span>
+							<button type="button" class="tool-chip">🧩 模板</button>
+							<span class="tool-sep"></span>
+							<button type="button" class="tool-chip" id="think">💡 想想</button>
+						</div>
+						<span class="tool-sep"></span>
+						<div class="quick-row" id="quick">
+							<button type="button" class="quick-chip">继续</button
+							><button type="button" class="quick-chip">总结一下</button>
+						</div>
+					</div>
+					<div class="composer" style="min-height: 40px; border: 1px solid #ddd; border-radius: 10px"></div>
+				</div>
+			</div>
+			<div class="preview-panel"></div>
+		</div>
+	</body>
+</html>

@@ -1,0 +1,92 @@
+{
+	"name": "oh-my-agent-web",
+	"version": "0.8.0",
+	"bin": {
+		"oh-my-agent-web": "dist/server/cli.js",
+		"aw": "dist/server/cli.js",
+		"agent-web": "dist/server/cli.js"
+	},
+	"files": [
+		"dist",
+		"web/dist",
+		"scripts/prune-prebuilds.mjs"
+	],
+	"description": "oh-my-agent-web — 它是一个多 Agent 统一 Web 工作台，对 Pi Agent 做深度适配，同时也支持 Codex、Claude 等其他 Agent。",
+	"author": "duzhenxun",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/duzhenxun/oh-my-agent-web.git"
+	},
+	"homepage": "https://github.com/duzhenxun/oh-my-agent-web#readme",
+	"bugs": {
+		"url": "https://github.com/duzhenxun/oh-my-agent-web/issues"
+	},
+	"keywords": [
+		"oh-my-agent-web",
+		"agent-web",
+		"agent-web-ui",
+		"coding-agent",
+		"pi-web",
+		"codex-web",
+		"opencode-web",
+		"claude-code-web",
+		"web-ui"
+	],
+	"type": "module",
+	"license": "MIT",
+	"engines": {
+		"node": ">=22.19.0",
+		"npm": ">=9"
+	},
+	"scripts": {
+		"dev": "node scripts/dev.mjs",
+		"dev:server": "node --import tsx --watch server/index.ts",
+		"dev:web": "vite --config web/vite.config.ts",
+		"build": "npm run build:server && npm run build:web",
+		"build:server": "tsc -p tsconfig.server.json",
+		"build:web": "vite build --config web/vite.config.ts",
+		"start": "node dist/server/cli.js",
+		"stop": "node dist/server/cli.js stop",
+		"restart": "node dist/server/cli.js restart",
+		"typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p web/tsconfig.json --noEmit",
+		"lint": "oxlint server web/src scripts",
+		"lint:fix": "oxlint --fix server web/src scripts",
+		"format": "prettier --write .",
+		"format:check": "prettier --check .",
+		"postinstall": "node scripts/prune-prebuilds.mjs",
+		"icons": "node scripts/make-icons.mjs"
+	},
+	"devDependencies": {
+		"@types/express": "^5.0.0",
+		"@types/node": "^22.10.0",
+		"@types/react": "^19.0.0",
+		"@types/react-dom": "^19.0.0",
+		"@types/web-push": "^3.6.4",
+		"@vitejs/plugin-react": "^6.0.0",
+		"@xterm/addon-fit": "^0.11.0",
+		"@xterm/xterm": "^6.0.0",
+		"highlight.js": "~11.11.0",
+		"mermaid": "^12.2.0",
+		"oxlint": "^1.0.0",
+		"playwright-core": "^1.64.1",
+		"prettier": "^3.4.0",
+		"react": "^19.3.1",
+		"react-dom": "^19.3.1",
+		"react-markdown": "^10.1.0",
+		"rehype-highlight": "^7.0.2",
+		"remark-gfm": "^4.0.1",
+		"tsx": "^4.19.0",
+		"typescript": "^5.7.0",
+		"vite": "^8.0.0"
+	},
+	"dependencies": {
+		"@earendil-works/pi-ai": "1.4.0",
+		"@earendil-works/pi-coding-agent": "1.4.0",
+		"@earendil-works/pi-mcp": "1.4.0",
+		"express": "^5.3.0",
+		"web-push": "^3.6.7"
+	},
+	"optionalDependencies": {
+		"node-pty": "^1.1.0"
+	}
+}

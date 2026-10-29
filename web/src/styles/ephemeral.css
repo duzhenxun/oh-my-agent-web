@@ -1,0 +1,111 @@
+/*
+ * 临时对话提示条（= pi 的 `--no-session`：会话只活在内存里）。
+ *
+ * 这条提示必须一直可见、不能被滚走：它说的是一件「代价很大」的事 ——
+ * 关掉之后这些对话就真没了。所以它挂在输入框正上方，跟「保存为正式对话」按钮在同一行。
+ *
+ * 宽度**抱内容**（用户：「这个长条有点太长了，宽度到关闭那就行」）：
+ * 右边就停在「✕ 关闭」后面，不再撑满输入框那么宽、空出一大片。
+ * 以前写的是「跟输入框一模一样宽」（理由是对齐），但一条短提示撑成一整行很像没画完的补丁；
+ * 现在左边仍与输入框同一条线（靠 `--ephemeral-inset-*` 那套 margin），只是右边提前收住。
+ *
+ * 对齐靠的是**镜像 `.composer-wrap` 的左右 padding**（见 chat.css 顶部那段）：
+ * 输入框的左右边界 = `.workspace` 内容宽 − 它的 padding。所以这里把同两个值搬成 margin，
+ * 自己 `width: fit-content` 撑着内容 —— 左边严丝合缝，右边到按钮为止。
+ * `chat.css` 里那几个模式（限宽居中 / 满宽 / 手机）改了多少，这里要跟着改。
+ *
+ * 百分比在自定义属性里是**用到时才解析**的，而这里的 margin 和那边 padding 的百分比
+ * 都相对同一个「`.workspace` 内容宽」算，所以同一个表达式能得到同一个像素值。
+ */
+.ephemeral-banner {
+	/* 输入框的左/右留白（与 .composer-wrap 的 padding 同表达式） */
+	--ephemeral-inset-left: max(16px, calc((100% - var(--chat-max-width, 100%)) / 2));
+	--ephemeral-inset-right: max(30px, calc((100% - var(--chat-max-width, 100%)) / 2));
+
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	/* 左边让出跟输入框一样的量，下边留 6px 别跟输入区贴死；右边让 `margin-right: auto` 收住 */
+	margin: 0 auto 6px var(--ephemeral-inset-left);
+	/* 抱内容：宽度到「✕ 关闭」为止（用户要求），不再撑满整条输入框 */
+	width: fit-content;
+	/* 但也不能超过输入框那一档边界：文案长了就自己换行，不往右撑破 */
+	max-width: calc(100% - var(--ephemeral-inset-left) - var(--ephemeral-inset-right));
+	padding: 6px 8px 6px 12px;
+	border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+	border-radius: 12px;
+	background: color-mix(in srgb, var(--accent) 8%, transparent);
+	color: color-mix(in srgb, var(--accent) 82%, var(--text));
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+.ephemeral-banner-text {
+	flex: 0 1 auto;
+	min-width: 0;
+}
+
+.ephemeral-save {
+	flex: none;
+	cursor: pointer;
+	font: inherit;
+	font-size: 12px;
+	padding: 4px 12px;
+	border-radius: 999px;
+	border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+	background: color-mix(in srgb, var(--accent) 6%, var(--bg-elev));
+	color: var(--accent);
+	white-space: nowrap;
+}
+
+.ephemeral-save:hover {
+	background: color-mix(in srgb, var(--accent) 16%, var(--bg-elev));
+	border-color: var(--accent);
+}
+
+/* 「✕ 关闭」：同一行右侧的次要动作。刻意做得比「保存」更轻（无边框、灰字），
+ * 因为点下去是**丢内容**，不该长得像主按钮骗人去点。 */
+.ephemeral-close {
+	flex: none;
+	cursor: pointer;
+	font: inherit;
+	font-size: 12px;
+	padding: 4px 8px;
+	border-radius: 999px;
+	border: 1px solid transparent;
+	background: transparent;
+	color: color-mix(in srgb, var(--accent) 70%, var(--text));
+	white-space: nowrap;
+}
+
+.ephemeral-close:hover {
+	background: color-mix(in srgb, #d9534f 14%, transparent);
+	border-color: color-mix(in srgb, #d9534f 45%, transparent);
+	color: #d9534f;
+}
+
+/* 满宽档：chat.css 把输入框的左留白收到 12px（那两截空带在铺满时是浪费），这里跟上 */
+:root[data-chat-width="full"] .ephemeral-banner {
+	--ephemeral-inset-left: 12px;
+}
+
+/* 窄屏 / 单栏：输入框那档 padding 会收到 4px 左右（responsive.css），这里跟上，
+ * 左右都收到 4px（抱内容后右边不再需要那套镜像留白）、按钮换行、文字不被挤成两三截 */
+.is-mobile-shell .ephemeral-banner {
+	flex-wrap: wrap;
+	margin: 0 auto 6px 4px;
+	max-width: calc(100% - 8px);
+}
+
+@media (max-width: 560px) {
+	.ephemeral-banner {
+		flex-wrap: wrap;
+		margin: 0 auto 6px 4px;
+		max-width: calc(100% - 8px);
+		font-size: 12px;
+	}
+
+	.ephemeral-save {
+		margin-left: auto;
+	}
+}

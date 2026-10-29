@@ -1,0 +1,171 @@
+/* ---- 已排队 / 已引导的消息（输入框上方的一条）---- */
+.sent-queue {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding: 6px 10px;
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	background: var(--bg-elev);
+	font-size: calc(var(--chat-ui-font-size, 12px) * 0.9655);
+}
+
+.sent-queue-head {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	color: var(--text-faint);
+	font-size: calc(var(--chat-ui-font-size, 12px) * 0.931);
+}
+
+.sent-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+}
+
+.sent-tag {
+	flex: none;
+	padding: 0 7px;
+	border: 1px solid var(--accent-dim);
+	/* 小圆角矩形状，不用胶囊：胶囊在小字号下两侧的弧占掉半个字宽，文字显得挤 */
+	border-radius: 6px;
+	color: var(--accent);
+	font-size: calc(var(--chat-ui-font-size, 12px) * 0.8621);
+	line-height: 1.6;
+}
+
+.sent-tag-queue {
+	border-color: color-mix(in srgb, var(--accent-dim) 80%, var(--border-strong));
+	color: color-mix(in srgb, var(--accent) 55%, var(--text-faint));
+}
+
+/**
+ * 「插队」标签：**偏红的黄**（主题里的 `--steer` 令牌，深浅色主题各自有一套）。
+ *
+ * 为什么不用主色：主色是"可以点的东西"（按钮 / 链接 / 当前会话），而插队是"提前送来的一句话" ——
+ * 语义上更接近"提示 / 打断"，黄橙正好是这个意思；也顺手把它跟蓝色系的「排队」分开。
+ * 为什么不用 `--amber`：那是"警告黄"，在浅色底上偏红、看着像报错；`--steer` 是同一类里更黄的一档。
+ * 待发条（还没插进去）与已投递的气泡**同一个颜色**：它们本来就是同一句话的两个阶段，
+ * 颜色表示"这是一条插队"，文字（插队 / 已插队）才表示阶段。
+ */
+.sent-tag-steer {
+	border-color: color-mix(in srgb, var(--steer) 55%, var(--border-strong));
+	background: color-mix(in srgb, var(--steer) 12%, transparent);
+	color: var(--steer);
+}
+
+/* 「插队」小标：贴在用户气泡的**左上角**。
+ * 以前在右下角：那里是气泡尾巴 + 右对齐布局，信号最弱，长消息里更往上找不着。
+ * 放到左上角（正文开头处）一眼能看到；气泡顶部多留一条距离，不压住第一行正文
+ * （见 messages.css 的 .msg-user.msg-steer）。 */
+/* 「插队」消息的抬头：和待发条（pending-item）一个形状 —— 我 + 标签 + 右侧 ↩/×，
+   区别只是它已经在对话里了。放在这里（而不是 messages.css）是因为它和待发条是一对。 */
+.msg-steer-head {
+	gap: 6px;
+	margin-bottom: 4px;
+}
+
+/* 收起态：整条压成一行（标签 + 首行 + ▸ + 时间），底色/虚线跟待发条同源 */
+.msg-user.msg-steer-collapsed {
+	display: flex;
+	justify-content: flex-end;
+	/* `.messages` 的 `--gap` 现在是 0（整体栏间距归零），折叠行又只有一圈虚线框：
+	   连着折叠两三条时会糊成一块"表格"，所以自己补上下留白（相邻两条之间 2×4px）。
+	   正常消息不用补 —— 它们有气泡/卡片自己的视觉重量。 */
+	margin: 4px 0;
+}
+
+.steer-collapsed-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	max-width: min(100%, 520px);
+	padding: 3px 8px;
+	border: 1px dashed color-mix(in srgb, var(--accent-dim) 55%, var(--border-strong));
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--accent) 4%, var(--bg-elev));
+	color: var(--text-faint);
+	font: inherit;
+	font-size: calc(var(--chat-ui-font-size, 12px) * 0.8966);
+	line-height: 1.6;
+	cursor: pointer;
+	text-align: left;
+}
+
+.steer-collapsed-row:hover {
+	border-color: var(--accent-dim);
+	color: var(--text-dim);
+}
+
+/* 首行文字：可能很长，必须能截断（flex 子项要 min-width:0 才会缩） */
+.steer-collapsed-text {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.steer-collapsed-open {
+	flex: none;
+	opacity: 0.7;
+}
+
+.sent-text {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--text-dim);
+}
+
+/* 「插队 / 排队」待发条目：排在最后一轮后面，形状与用户消息一致，
+   但**包一个小框**、并且刻意不用已发消息那种蓝：待发是中转状态，得一眼区分开。 */
+/**
+ * 待发条（排队 / 插队）：它排在对话流末尾，**上下都和下面的输入区靠得很近**。
+ *
+ * `.messages` 的 `--gap` 是 0，只靠那边一条 `padding-bottom` 兜着不够（贴着输入框上边框时
+ * 那一圈虚线框看着像输入区的一部分）。这里自带一点上下留白：两种待发都是同样的距离。
+ */
+.pending-sends {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin: 6px 0 10px;
+}
+
+/* 注意选择器要写成 `.msg.msg-user.pending-*`：消息区里有一条 `.msg.msg-user{background:0 0;border:none;padding:0}`
+   （用户消息的底色/边框交给里面的 .msg-bubble），待发行没那层 bubble，
+   不提高特指度就会被它抹平——表现就是「完全看不到框」。 */
+.msg.msg-user.pending-item {
+	background: var(--bg-elev);
+	border: 1px dashed var(--border-strong);
+	border-radius: 10px;
+	padding: 10px 12px;
+	/* 待发正文不是 Markdown，必须显式继承聊天字号；抬头 / 标签 / 按钮再按比例缩小。 */
+	font-size: var(--chat-ui-font-size, 12px);
+	/* 不整块降透明度；只把正文压淡（否则连框一起糊掉，反而看不出是个框） */
+	color: var(--text-dim);
+}
+
+.pending-item .msg-head {
+	margin-bottom: 2px;
+}
+
+/* 排队：**极淡的蓝**（等这一轮结束才发，离「要发生」还远）。
+   和「插队」同色系、只靠**深浅 + 虚/实线**分层：
+     排队 = accent 4% + 虚线（还早）
+     插队 = accent 7% + 实线（马上要进这一轮）
+   为什么不换别的色相：整站只有 accent 一套蓝，多开一个色相（晒色/绿/紫）反而要额外解稀
+   「这个颜色是什么意思」，而排队需要的只是「比灰多一点存在感」。 */
+.msg.msg-user.pending-queue {
+	background: color-mix(in srgb, var(--accent) 4%, var(--bg-elev));
+	border-color: color-mix(in srgb, var(--accent-dim) 55%, var(--border-strong));
+}
+
+/* 插队：淡蓝实线（马上要插进当前这一轮；比已发消息 / 输入框那种蓝淡一档） */
+.msg.msg-user.pending-steer {
+	background: color-mix(in srgb, var(--accent) 7%, var(--bg-elev));
+	border-color: var(--accent-dim);
+	border-style: solid;
+}

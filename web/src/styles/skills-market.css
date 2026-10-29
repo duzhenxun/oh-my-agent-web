@@ -1,0 +1,222 @@
+/*
+ * 技能库（SkillHub）与安装页（Git 仓库 / 手动创建）。
+ *
+ * 从 skills.css 拆出来（400 行护栏）：那边是「左列表右详情」的骨架，
+ * 这里是两张整页表单 —— 参考 `/Users/dds/data/git/oh-my-skills` 的安装页布局：
+ * 页签 → 搜索 + 分类 → 卡片列表（每张卡带「未安装 / 作者 / 下载 / 收藏」）。
+ */
+
+/* ---- 安装方式页签 ---- */
+.skills-tabs {
+	display: flex;
+	gap: 6px;
+	flex: none;
+	flex-wrap: wrap;
+}
+
+.skills-tab {
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--bg-soft);
+	color: var(--text-dim);
+	font: inherit;
+	font-size: 13px;
+	padding: 3px 12px;
+	cursor: pointer;
+}
+
+.skills-tab:hover {
+	color: var(--text);
+}
+
+.skills-tab-on {
+	background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+	border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+	color: var(--text);
+	font-weight: 600;
+}
+
+/* ---- 技能库 ---- */
+.skills-hub {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	min-width: 0;
+}
+
+.skills-hub-search {
+	display: flex;
+	gap: 6px;
+	flex: none;
+}
+
+.skills-hub-search > .skills-input {
+	flex: 1 1 auto;
+	padding: 6px 10px;
+	font-size: 14px;
+}
+
+/* 分类：一行小胶囊，选中用主色描边（跟参考实现的彩色分类卡一个意思，但更省地方） */
+.skills-hub-cats {
+	display: flex;
+	gap: 6px;
+	flex-wrap: wrap;
+	flex: none;
+}
+
+.skills-cat {
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	background: var(--bg-soft);
+	color: var(--text-dim);
+	font: inherit;
+	font-size: 13px;
+	padding: 2px 12px;
+	cursor: pointer;
+}
+
+.skills-cat:hover {
+	color: var(--text);
+}
+
+.skills-cat-on {
+	background: color-mix(in srgb, var(--accent) 14%, var(--bg));
+	border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+	color: var(--text);
+	font-weight: 600;
+}
+
+.skills-hub-meta {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+	flex: none;
+}
+
+.skills-hub-list {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	min-width: 0;
+}
+
+/* 卡片：标题行（名字 + 一排小标签）→ 描述 → 底行（slug / 详情 / 安装） */
+.skill-card {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	background: var(--bg-soft);
+	padding: 9px 11px;
+	min-width: 0;
+}
+
+.skill-card:hover {
+	background: var(--bg-elev-2);
+}
+
+.skill-card-head {
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+.skill-card-name {
+	font-size: 15px;
+	font-weight: 600;
+	color: var(--text);
+	overflow-wrap: anywhere;
+}
+
+.skill-card-desc {
+	margin: 0;
+	font-size: 13px;
+	line-height: 1.65;
+	color: var(--text-dim);
+	display: -webkit-box;
+	-webkit-line-clamp: 3;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+	overflow-wrap: anywhere;
+}
+
+.skill-card-foot {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.skills-hub-more {
+	display: flex;
+	justify-content: center;
+	flex: none;
+}
+
+/* ---- Git 仓库 / 手动创建 ---- */
+.skills-install-pane {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	min-width: 0;
+}
+
+.skills-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-wrap: wrap;
+	flex: none;
+}
+
+.skills-row > .skills-input {
+	flex: 1 1 260px;
+}
+
+.skills-textarea {
+	min-height: 150px;
+	resize: vertical;
+	font-family: var(--mono);
+	font-size: 13px;
+	line-height: 1.6;
+}
+
+.skills-repo-list {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	/* 一个仓库动辄二十个技能：给它自己的滚动条，别把整页顶下去 */
+	max-height: min(46vh, 420px);
+	overflow: auto;
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	background: var(--bg-soft);
+	padding: 8px 10px;
+	min-width: 0;
+}
+
+.skills-repo-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 3px 0;
+	border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+	min-width: 0;
+}
+
+.skills-repo-row:first-of-type {
+	border-top: none;
+}
+
+@media (max-width: 640px) {
+	.skills-row > .skills-input {
+		flex: 1 1 100%;
+	}
+
+	.skill-card-desc {
+		-webkit-line-clamp: 4;
+	}
+}

@@ -1,0 +1,224 @@
+/* ---- markdown 正文里的「代码块」与「图片」（分区：markdown 渲染）---- */
+
+.md-pre {
+	position: relative;
+	margin: 10px 0;
+}
+
+.md-pre pre {
+	margin: 0;
+	padding: 10px 12px;
+	overflow-x: auto;
+	background: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	font-size: 1em; /* 跟正文一起缩放（--chat-font-size） */
+	line-height: 1.55;
+}
+
+/* 语言标签：贴在代码块右上角，不挡字（右侧留 8px，滚动手感不变） */
+.md-lang {
+	position: absolute;
+	top: 6px;
+	right: 8px;
+	z-index: 1;
+	padding: 0 6px;
+	border-radius: 999px;
+	background: var(--bg-elev-2);
+	color: var(--text-faint);
+	font-size: 13px;
+	letter-spacing: 0.04em;
+	text-transform: lowercase;
+	pointer-events: none;
+}
+
+/* 图片：不超出正文宽度，点击在原地弹预览（见 image-viewer.ts） */
+.md-img-btn {
+	display: block;
+	max-width: 100%;
+	margin: 8px 0;
+	padding: 0;
+	border: 0;
+	background: none;
+	cursor: zoom-in;
+}
+
+.md-img {
+	display: block;
+	max-width: 100%;
+	max-height: 520px;
+	margin: 0;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--bg);
+}
+
+.md-img-blocked {
+	color: var(--text-faint);
+	font-size: 14px;
+}
+
+/* mermaid 图（ADR-0029）：右上有 SVG / 源代码 切换，失败时显示报错而不是空白 */
+.mermaid-block {
+	margin: 10px 0;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--bg);
+	overflow: hidden;
+}
+
+.mermaid-head {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 4px 8px;
+	border-bottom: 1px solid var(--border);
+	background: var(--bg-elev);
+}
+
+.mermaid-lang {
+	color: var(--text-faint);
+	font-size: 13px;
+	letter-spacing: 0.04em;
+}
+
+.mermaid-btn {
+	border: 1px solid transparent;
+	border-radius: 6px;
+	background: none;
+	color: var(--text-dim);
+	font: inherit;
+	font-size: 14px;
+	padding: 2px 8px;
+	cursor: pointer;
+}
+
+.mermaid-btn-on {
+	background: var(--bg-elev-2);
+	border-color: var(--border);
+	color: var(--text);
+}
+
+.mermaid-btn:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+
+.mermaid-svg {
+	display: flex;
+	/* safe：图比容器宽时从左边开始排，别把左侧内容挤到滚不到的地方 */
+	justify-content: safe center;
+	align-items: flex-start;
+	padding: 12px 10px;
+	overflow: auto;
+	/* 高图（一图技术图谱那种）别把整页撑到底，图内自己滚 */
+	max-height: min(70vh, 720px);
+	background: var(--bg);
+}
+
+/* svg 的宽度由组件按「最小缩放比 0.8」算好写进 style，这里只兜底 */
+.mermaid-svg svg {
+	max-width: 100%;
+	height: auto;
+}
+
+/* 浅色底上的 mermaid：文字统一深色，别让图里冒出近白色字 */
+.mermaid-svg .nodeLabel,
+.mermaid-svg .edgeLabel,
+.mermaid-svg .cluster-label,
+.mermaid-svg text {
+	fill: var(--text);
+}
+
+.mermaid-svg .edgeLabel rect,
+.mermaid-svg .edgeLabel .labelBkg {
+	fill: var(--bg-elev-2);
+	opacity: 1;
+}
+
+.mermaid-source {
+	margin: 0;
+	padding: 8px 10px;
+	font-size: 14px;
+	line-height: 1.55;
+	color: var(--text-dim);
+	overflow: auto;
+	max-height: min(70vh, 720px);
+}
+
+.mermaid-error {
+	padding: 6px 10px;
+	border-top: 1px solid var(--border);
+	color: var(--red);
+	font-size: 14px;
+}
+
+/* ---- 表格（GFM 表格）：之前完全没有样式，看起来像一堆竖线文字 ---- */
+.md table {
+	display: block;
+	width: max-content;
+	max-width: 100%;
+	overflow-x: auto; /* 宽表格自己横向滚动，不撑破消息气泡 */
+	border-collapse: collapse;
+	margin: 10px 0;
+	font-size: 1em; /* 跟正文一起缩放 */
+	line-height: 1.5;
+}
+
+.md thead {
+	background: var(--bg-elev-2);
+}
+
+.md th,
+.md td {
+	border: 1px solid var(--border);
+	padding: 5px 10px;
+	text-align: left;
+	vertical-align: top;
+}
+
+.md th {
+	font-weight: 600;
+	color: var(--text);
+	white-space: nowrap;
+}
+
+.md tbody tr:nth-child(even) td {
+	background: color-mix(in srgb, var(--bg-elev-2) 45%, transparent);
+}
+
+/* 单元格里的行内代码不要换行成一坨 */
+.md td code,
+.md th code {
+	white-space: nowrap;
+}
+
+/* ---- 消息里的文件路径（可点 → 右侧预览）----
+   报告类回复常贴一段产物清单；以前只能自己去文件树里翻，现在点一下就能看。 */
+.md-path {
+	display: inline;
+	padding: 0 2px;
+	border: none;
+	border-radius: 4px;
+	background: none;
+	color: var(--accent);
+	font: inherit;
+	font-family: var(--mono);
+	text-align: left;
+	cursor: pointer;
+	text-decoration: underline;
+	text-decoration-style: dotted;
+	text-underline-offset: 2px;
+}
+
+.md-path:hover {
+	background: color-mix(in srgb, var(--accent) 12%, transparent);
+	text-decoration-style: solid;
+}
+
+/* 路径清单（目录树 / 产物列表）：逐行渲染，保留等宽与换行 */
+.md-path-block {
+	display: block;
+	white-space: pre;
+	overflow-x: auto;
+}

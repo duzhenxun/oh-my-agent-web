@@ -1,0 +1,333 @@
+/*
+ * MCP 面板右栏的两种「编辑页」：添加 MCP / MCP 市场。
+ *
+ * 从 mcp.css 拆出来（400 行护栏）：那边是「左列表 + 右详情」的骨架，
+ * 这边是两张整页表单，改动节奏完全不一样。
+ */
+/* ==========================================================================
+ * 右栏的两种「编辑页」：添加 MCP / MCP 市场
+ * 都是竖排的一列块（标题 → 控制 → 内容 → 说明），跟详情页那套「一行一条」不同，
+ * 所以单独一套类名，不跟 .mcp-row 混用。
+ * ========================================================================== */
+.mcp-detail-pane {
+	padding: 10px 18px 16px 16px;
+}
+
+.mcp-add-pane,
+.mcp-market {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	min-width: 0;
+}
+
+.mcp-add-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+/* 市场链接：一行小字，指向 glama / smithery / mcp.so / 官方注册中心 */
+.mcp-catalog-link {
+	color: var(--accent);
+	font-size: 13px;
+	text-decoration: none;
+}
+
+.mcp-catalog-link:hover {
+	text-decoration: underline;
+}
+
+/* ---- 作用域：一直可见（存错文件比打错字更难查） ---- */
+.mcp-scope-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-wrap: wrap;
+	font-size: 13px;
+}
+
+.mcp-scope-tabs {
+	display: inline-flex;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	overflow: hidden;
+	flex: none;
+}
+
+.mcp-scope-tab {
+	border: none;
+	background: none;
+	color: var(--text-faint);
+	font: inherit;
+	font-size: 13px;
+	padding: 3px 12px;
+	cursor: pointer;
+}
+
+.mcp-scope-tab:hover {
+	color: var(--text);
+}
+
+.mcp-scope-tab-on {
+	background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+	color: var(--text);
+	font-weight: 600;
+}
+
+.mcp-scope-path {
+	color: var(--text-faint);
+	font-size: 12px;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.mcp-add-label {
+	font-size: 14px;
+	color: var(--text-dim);
+	font-weight: 600;
+}
+
+/* 那个「什么都收」的大框：最小 120px，等高到能看见一整段 JSON */
+.mcp-add-text {
+	width: 100%;
+	min-height: 120px;
+	resize: vertical;
+	background: var(--bg);
+	color: var(--text);
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	padding: 8px 10px;
+	font-family: var(--mono);
+	font-size: 13px;
+	line-height: 1.6;
+}
+
+.mcp-add-text:focus {
+	outline: none;
+	border-color: var(--accent-dim);
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.mcp-add-actions {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+/* 主按钮：写配置这件事值得一个实心按钮（其余都是描边小按钮） */
+.btn-primary-add {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: var(--on-accent);
+}
+
+.btn-primary-add:disabled {
+	opacity: 0.5;
+}
+
+/* 「会写成什么」——提交前先看一眼 */
+.mcp-add-preview {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	border: 1px dashed var(--border);
+	border-radius: 10px;
+	padding: 8px 10px;
+	background: var(--bg-soft);
+}
+
+.mcp-add-preview-row {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	min-width: 0;
+}
+
+.mcp-add-preview-row > .mcp-value {
+	color: var(--text-dim);
+	font-size: 13px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* 解析提示：改名了 / 丢了哪个字段 / 需要补什么 */
+.mcp-add-notes {
+	margin: 0;
+	padding-left: 18px;
+	font-size: 13px;
+	line-height: 1.7;
+	color: var(--text-faint);
+}
+
+/* ---- 支持的格式：一行一个，点一下填进框里 ---- */
+.mcp-add-samples {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.mcp-sample {
+	display: grid;
+	grid-template-columns: 96px minmax(0, 1fr) auto;
+	align-items: baseline;
+	gap: 8px;
+	text-align: left;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--bg-soft);
+	color: var(--text-dim);
+	font: inherit;
+	font-size: 13px;
+	padding: 5px 8px;
+	cursor: pointer;
+}
+
+.mcp-sample:hover {
+	border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+	color: var(--text);
+}
+
+.mcp-sample-label {
+	font-weight: 600;
+	color: var(--text);
+}
+
+.mcp-sample-value {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 12px;
+}
+
+.mcp-sample-hint {
+	color: var(--text-faint);
+	font-size: 12px;
+	white-space: nowrap;
+}
+
+/* ---- 市场 ---- */
+.mcp-market-bar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.mcp-market-source,
+.mcp-market-search {
+	background: var(--bg);
+	color: var(--text);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	padding: 4px 8px;
+	font: inherit;
+	font-size: 13px;
+	min-width: 0;
+}
+
+.mcp-market-search {
+	flex: 1 1 220px;
+}
+
+.mcp-market-list {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	min-width: 0;
+}
+
+.mcp-market-card {
+	display: flex;
+	flex-direction: column;
+	gap: 5px;
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	background: var(--bg-soft);
+	padding: 8px 10px;
+	min-width: 0;
+}
+
+.mcp-market-card:hover {
+	background: var(--bg-elev-2);
+}
+
+.mcp-market-card-head {
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+.mcp-market-title {
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--text);
+	overflow-wrap: anywhere;
+}
+
+.mcp-market-desc {
+	margin: 0;
+	font-size: 13px;
+	line-height: 1.6;
+	color: var(--text-dim);
+	display: -webkit-box;
+	-webkit-line-clamp: 3;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+	overflow-wrap: anywhere;
+}
+
+.mcp-market-target {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.mcp-market-target > .mcp-value {
+	font-size: 12px;
+	color: var(--text-dim);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	min-width: 0;
+}
+
+.mcp-market-needs {
+	font-size: 12px;
+	color: var(--text-faint);
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex-wrap: wrap;
+}
+
+.mcp-market-actions {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	justify-content: flex-end;
+	flex-wrap: wrap;
+}
+
+/* 窄屏：格式示例那一行放不下三列，收成两行 */
+@media (max-width: 640px) {
+	.mcp-sample {
+		grid-template-columns: minmax(0, 1fr) auto;
+	}
+
+	.mcp-sample-value {
+		grid-column: 1 / -1;
+		order: 3;
+	}
+
+	.mcp-sample-hint {
+		display: none;
+	}
+}

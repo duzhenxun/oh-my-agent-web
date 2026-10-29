@@ -1,0 +1,119 @@
+/* ---- 图片预览浮层（components/ImageViewer.tsx）----
+ * 对话里点图片原地弹大图，不再开新标签页（ADR-0013 只禁「不必要的模态」；
+ * 这一层是用户主动点开的查看层，Esc/点空白即走，不拦任何流程）。
+ * 放大后图超出视口 → 在这一层里滚动，滚轮/滚动事件不外泄（overscroll-behavior: contain）。
+ */
+.image-viewer-backdrop {
+	position: fixed;
+	inset: 0;
+	/* 盖过审批弹窗（50）与侧栏拖拽条（5）：看图时底下什么都不该点得到 */
+	z-index: 60;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 10px;
+	padding: 3vmin;
+	background: rgb(0 0 0 / 82%);
+	overscroll-behavior: contain;
+}
+
+/* 舞台：只负责「框住可视区 + 必要时滚动」，尺寸上限留给图片本身 */
+.image-viewer-stage {
+	display: flex;
+	overflow: auto;
+	max-width: 94vw;
+	/* 给下方工具条留位置（工具条 ~40px + 间距） */
+	max-height: 84vh;
+	overscroll-behavior: contain;
+}
+
+.image-viewer-img {
+	/* margin:auto（而不是 align/justify-center）：放大溢出时左上角仍然能滚到 */
+	margin: auto;
+	max-width: 94vw;
+	max-height: 84vh;
+	object-fit: contain;
+	border-radius: 8px;
+	background: var(--bg);
+	box-shadow: 0 12px 40px rgb(0 0 0 / 45%);
+	cursor: default;
+}
+
+.image-viewer-close {
+	position: absolute;
+	top: 14px;
+	right: 16px;
+	width: 34px;
+	height: 34px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border: 1px solid var(--border-strong);
+	border-radius: 50%;
+	background: rgb(0 0 0 / 55%);
+	color: #fff;
+	font-size: 22px;
+	line-height: 1;
+	cursor: pointer;
+}
+
+.image-viewer-close:hover {
+	background: rgb(0 0 0 / 75%);
+	border-color: var(--accent-dim);
+}
+
+/* 底部工具条：缩小 / 当前比例（点了回到适应窗口） / 放大 / 下载 */
+.image-viewer-tools {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 5px 8px;
+	border: 1px solid var(--border-strong);
+	border-radius: 10px;
+	background: rgb(0 0 0 / 60%);
+	/* 工具条不跟着图片滚走 */
+	flex: none;
+}
+
+.image-viewer-tool,
+.image-viewer-zoom {
+	min-width: 30px;
+	height: 28px;
+	padding: 0 8px;
+	border: 0;
+	border-radius: 7px;
+	background: transparent;
+	color: #fff;
+	font-size: 15px;
+	line-height: 1;
+	cursor: pointer;
+}
+
+.image-viewer-zoom {
+	min-width: 56px;
+	color: var(--text-dim);
+	font-variant-numeric: tabular-nums;
+}
+
+.image-viewer-tool:hover:not(:disabled),
+.image-viewer-zoom:hover {
+	background: rgb(255 255 255 / 14%);
+	color: #fff;
+}
+
+.image-viewer-tool:disabled {
+	opacity: 0.35;
+	cursor: default;
+}
+
+.image-viewer-download {
+	font-size: 14px;
+}
+
+.image-viewer-divider {
+	width: 1px;
+	height: 16px;
+	margin: 0 3px;
+	background: rgb(255 255 255 / 22%);
+}

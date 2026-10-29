@@ -1,0 +1,819 @@
+/* ---- 文件面板（M4）与预览 ---- */
+.file-panel {
+	flex: none;
+	width: 260px;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	min-width: 0;
+	min-height: 0;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: var(--bg-elev);
+	padding: 8px;
+}
+
+.file-panel-head {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-weight: 600;
+	flex: none;
+}
+
+.chip-on {
+	border-color: var(--accent-dim);
+	color: var(--accent);
+}
+
+.filetree {
+	flex: 1 1 auto;
+	overflow: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	min-height: 0;
+	min-width: 0;
+}
+
+.filetree-root {
+	color: var(--text-faint);
+	font-size: 14px;
+	padding: 2px 4px 6px;
+	overflow-wrap: anywhere;
+}
+
+.filetree-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	width: 100%;
+	background: none;
+	border: none;
+	color: var(--text-dim);
+	font: inherit;
+	font-size: 15px;
+	text-align: left;
+	padding: 3px 6px;
+	border-radius: 6px;
+	cursor: pointer;
+	min-width: 0;
+}
+
+.filetree-row:hover {
+	background: var(--bg-elev-2);
+	color: var(--text);
+}
+
+/* 右侧面板里**正在看**的那个文件：左侧一道强调条 + 淡底色。
+   不抢 git 状态的字体颜色（M / A / U 那套名字颜色是另一回事，两个信息应该同时看得到） */
+.filetree-row.filetree-row-on {
+	background: color-mix(in srgb, var(--accent) 10%, transparent);
+	box-shadow: inset 2px 0 0 var(--accent);
+	color: var(--text);
+}
+
+.filetree-icon {
+	flex: none;
+	width: 10px;
+	color: var(--text-faint);
+}
+
+/* 目录的文件夹图标：跟类型小标同一个盒子宽度，上下居中；
+ * 合着的一档偏淡，打开的那一档亮一点（形状本身也不一样：folder / folder-open） */
+.filetree-folder {
+	flex: none;
+	display: block;
+	width: 15px;
+	height: 15px;
+	margin-left: -1px;
+	margin-right: -1px;
+	color: var(--text-faint);
+}
+
+/* 打开的那个亮一档：配合「开口」的形状，扫一眼就知道是展开着的 */
+.filetree-folder-open {
+	color: var(--text-dim);
+}
+
+/* 有改动的目录：图标跟名字同一个色（连图标一起变色，比只染名字更容易扫到） */
+.filetree-row.filetree-dir.filetree-modified .filetree-folder,
+.filetree-row.filetree-dir.filetree-deleted .filetree-folder,
+.filetree-row.filetree-dir.filetree-conflicted .filetree-folder,
+.filetree-row.filetree-dir.filetree-added .filetree-folder,
+.filetree-row.filetree-dir.filetree-untracked .filetree-folder,
+.filetree-row.filetree-dir.filetree-renamed .filetree-folder {
+	color: color-mix(in srgb, var(--text) 72%, var(--amber));
+}
+
+.filetree-dir .filetree-icon {
+	/* 三角和文件夹贴一起更紧凑（原来两边各留 6px 的 gap） */
+	margin-right: -3px;
+}
+
+.filetree-name {
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.filetree-hint,
+.filetree-empty {
+	color: var(--text-faint);
+	font-size: 14px;
+}
+
+.filetree-error,
+.file-preview-error {
+	color: var(--red);
+	font-size: 14px;
+	overflow-wrap: anywhere;
+}
+
+/* 「按文件名匹配到 xxx」：不是错误，但也不能一声不响地打开另一个文件 */
+.file-preview-note {
+	color: var(--text-faint);
+	font-size: 13px;
+	padding: 0 2px 6px;
+	overflow-wrap: anywhere;
+}
+
+/* 路径只写了个文件名、又对不上唯一文件：把候选列出来，点一下就能打开 */
+.file-preview-candidates {
+	list-style: none;
+	margin: 6px 0 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.file-preview-candidates button {
+	background: none;
+	border: 0;
+	padding: 2px 0;
+	color: var(--accent);
+	font: inherit;
+	font-size: 13px;
+	text-align: left;
+	cursor: pointer;
+	overflow-wrap: anywhere;
+}
+
+.file-preview-candidates button:hover {
+	text-decoration: underline;
+}
+
+.file-preview {
+	width: min(920px, 94vw);
+	max-height: 86vh;
+	display: flex;
+	flex-direction: column;
+}
+
+.file-preview-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	/* 面板窄（特别是右边常驻文件列表占掉一截）时，这排按钮**折行**，
+	   而不是横向顶出去：溢出的部分会在右边画到文件列表上 */
+	flex-wrap: wrap;
+	row-gap: 6px;
+	margin-bottom: 8px;
+	min-width: 0;
+}
+
+.file-preview-path {
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 15px;
+}
+
+.file-preview-meta {
+	flex: none;
+	color: var(--text-faint);
+	font-size: 14px;
+}
+
+/* 文件头里的「文件列表」开关（从标签条挪进来的那颗）：
+ * 不给 flex: none 的话它会被旁边那排按钮挤成 18px，图标直接被押进去；
+ * 图标尺寸也要单独写 —— `.preview-tool-btn` 原本只在 `.preview-tabs` 里定了尺寸。 */
+.file-preview-head .preview-tool-btn {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.file-preview-head .preview-tool-btn .preview-tool-icon {
+	width: 14px;
+	height: 14px;
+	display: block;
+}
+
+.file-preview-body {
+	margin: 0;
+	overflow: auto;
+	background: var(--bg);
+	/* 内容区不再描边：面板本身就没有边框，这里再来一圈会在右边多出一条竖线 */
+	border: none;
+	border-radius: 0;
+	padding: 8px 10px;
+	font-size: 15px;
+	line-height: 1.55;
+	min-height: 0;
+}
+
+/* 一行 = [折叠三角][行号][正文]。
+ * 这三者之间**不放 gap**：折叠三角和行号是「同一列信息」，要贴着（gap: 10px 时两位数行号
+ * 会离三角很远，看着像两块）；间距改由各自的 margin 控，正文那边留 6px。 */
+.file-preview-line {
+	display: flex;
+	gap: 0;
+	white-space: pre;
+}
+
+/* 折叠三角：整体往左挪一点（贴着内容区左边缘），命中区仍是 14px 见方 */
+.file-fold {
+	margin-left: -4px;
+}
+
+/* 行号列：宽度由外层按「最大行号位数」写进 --ln-w（两位数就窄一点），右对齐贴着正文 */
+.file-preview-no {
+	flex: none;
+	width: calc(var(--ln-w, 3ch) + 0.9ch);
+	text-align: right;
+	color: var(--text-faint);
+	user-select: none;
+}
+
+.file-preview-text {
+	flex: 1 1 auto;
+	min-width: 0;
+	margin-left: 7px;
+	overflow-wrap: anywhere;
+}
+
+/* 选中行（选中多行添加到对话） */
+.file-preview-line-on {
+	background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.file-preview-no {
+	background: none;
+	border: none;
+	cursor: pointer;
+	color: var(--text-faint);
+	font: inherit;
+	padding: 0 4px 0 0;
+}
+
+.file-preview-no:hover {
+	color: var(--accent);
+}
+
+.file-preview-hint {
+	margin-top: 6px;
+	color: var(--text-faint);
+	font-size: 14px;
+}
+
+/* 文件行：hover 出「@ 提及」按钮（对齐参考实现的交互） */
+.filetree-item {
+	position: relative;
+	display: flex;
+	align-items: center;
+	min-width: 0;
+}
+
+.filetree-item > .filetree-row {
+	flex: 1 1 auto;
+	min-width: 0;
+	/* 给右侧按钮留出位置，避免长文件名把按钮挤掉 */
+	padding-right: 54px;
+}
+
+.filetree-mention {
+	position: absolute;
+	right: 2px;
+	top: 50%;
+	transform: translateY(-50%);
+	display: none;
+	align-items: center;
+	gap: 3px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--bg-elev-2);
+	color: var(--accent);
+	font: inherit;
+	font-size: 14px;
+	padding: 1px 6px;
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.filetree-item:hover .filetree-mention,
+.filetree-mention:focus-visible {
+	display: inline-flex;
+}
+
+.filetree-mention:hover {
+	border-color: var(--accent-dim);
+	background: var(--bg-elev);
+}
+
+/* 预览弹窗：可拖右下角缩放 + 全屏 + md 预览/源码切换 */
+.file-preview {
+	resize: both;
+	overflow: hidden;
+	min-width: 520px;
+	min-height: 320px;
+}
+
+/* 全屏：直接铺满视口（用 fixed + inset，避免被 .modal 的 max-height 限制住） */
+.modal.file-preview-full {
+	position: fixed;
+	inset: 10px;
+	width: calc(100vw - 20px) !important;
+	height: calc(100vh - 20px) !important;
+	max-width: none;
+	max-height: none;
+	resize: none;
+}
+
+.file-preview-md {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: auto;
+	padding: 4px 8px 12px;
+	background: var(--bg);
+	border: none;
+	border-radius: 0;
+}
+
+.preview-mode {
+	display: inline-flex;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	overflow: hidden;
+}
+
+.preview-mode button {
+	border: none;
+	background: none;
+	color: var(--text-dim);
+	font: inherit;
+	font-size: 14px;
+	padding: 3px 10px;
+	cursor: pointer;
+}
+
+.preview-mode-on {
+	background: var(--bg-elev-2);
+	color: var(--text);
+	font-weight: 600;
+}
+
+/* 正文行可点选（原来只有行号能点，用户根本发现不了） */
+.file-preview-line-clickable {
+	cursor: pointer;
+}
+
+.file-preview-line-clickable:hover {
+	background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+/* 头部只显示文件名（完整路径放 title），并让「源码/预览」不被挤成两行 */
+.file-preview-path {
+	flex: 0 1 auto;
+	min-width: 0;
+	max-width: 42%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.preview-mode button {
+	white-space: nowrap;
+}
+
+/* ---- 代码 / JSON 预览的折叠三角 ---- */
+.file-fold {
+	flex: none;
+	width: 12px;
+	height: 12px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border: none;
+	background: none;
+	color: var(--text-faint);
+	font-size: 12px;
+	line-height: 1;
+	padding: 0;
+	cursor: pointer;
+	user-select: none;
+}
+
+.file-fold:hover {
+	color: var(--accent);
+}
+
+/* 没有可折叠块的行：留个等宽占位，保持行号对齐 */
+.file-fold-empty {
+	cursor: default;
+	visibility: hidden;
+}
+
+/* 折叠后那一行末尾的「⋯ N 行已折叠」 */
+.file-fold-summary {
+	flex: none;
+	margin-left: 8px;
+	padding: 0 6px;
+	border-radius: 999px;
+	background: var(--bg-elev-2);
+	color: var(--text-faint);
+	font-size: 13px;
+	user-select: none;
+}
+
+/* ---- 视频 / 音频播放 ---- */
+.file-media {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 10px;
+	background: #0d1117; /* 跟播放器黑底一致，四周不留白缝 */
+	border-radius: 0;
+	min-height: 0;
+	overflow: auto;
+}
+
+.file-video {
+	max-width: 100%;
+	max-height: min(70vh, 620px);
+	background: #000;
+	border-radius: 0;
+}
+
+.file-audio {
+	width: min(560px, 100%);
+}
+
+/* ---- 「改动」页顶：把 +N −M 塞进按钮里（不用再点开才知道动了多少）---- */
+.preview-mode-diff {
+	display: inline-flex;
+	gap: 6px;
+	margin-left: 6px;
+	font-size: 13px;
+	font-variant-numeric: tabular-nums;
+}
+
+.preview-mode-plus {
+	color: var(--green);
+}
+
+.preview-mode-minus {
+	color: var(--red);
+}
+
+/* ---- 改动视图（git diff）----
+ * 配色照 git：加绿、删红、hunk 头淡蓝；左侧两列行号（旧/新），跟 git 一样
+ * 「删的行只有旧号、加的行只有新号」，一眼看出对哪一行动的手。 */
+.file-diff {
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	overflow: auto;
+	padding: 10px 12px 14px;
+}
+
+.file-diff-summary {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex: none;
+	padding-bottom: 8px;
+	border-bottom: 1px dashed var(--border);
+	margin-bottom: 8px;
+	font-size: 14px;
+}
+
+.file-diff-added {
+	color: var(--green);
+	font-weight: 600;
+}
+
+.file-diff-removed {
+	color: var(--red);
+	font-weight: 600;
+}
+
+.file-diff-base {
+	color: var(--text-faint);
+}
+
+.file-diff-empty {
+	padding: 18px 16px;
+	color: var(--text-faint);
+	font-size: 15px;
+}
+
+.file-diff-note {
+	margin-top: 8px;
+	color: var(--amber);
+	font-size: 14px;
+}
+
+.file-diff-body {
+	margin: 0;
+	padding: 0;
+	border: none;
+	background: none;
+	font-size: 14px;
+	line-height: 1.55;
+	min-height: 0;
+}
+
+.diff-line {
+	display: flex;
+	gap: 8px;
+	/* pre-wrap 而不是 pre：面板可能只有 600px 宽，长行横向滚动看不清 +/- 的上下文，
+	 * 折行反倒更像在编辑器里看 diff（行号与 +/- 仍跟首行对齐） */
+	white-space: pre-wrap;
+}
+
+.diff-no {
+	flex: none;
+	width: 3.4em;
+	text-align: right;
+	color: var(--text-faint);
+	user-select: none;
+	font-variant-numeric: tabular-nums;
+}
+
+.diff-no-empty {
+	width: 3.4em;
+}
+
+.diff-sign {
+	flex: none;
+	width: 1ch;
+	user-select: none;
+}
+
+.diff-text {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+/* 加行：淡绿底 + 绿字（对比度按浅色主题调的，深色主题靠 color-mix 自适应） */
+.diff-line-add {
+	background: color-mix(in srgb, var(--green) 12%, transparent);
+	box-shadow: inset 3px 0 0 var(--green);
+}
+
+.diff-line-add .diff-sign,
+.diff-line-add .diff-text {
+	color: var(--green);
+}
+
+/* 删行：淡红底 + 红字 */
+.diff-line-del {
+	background: color-mix(in srgb, var(--red) 10%, transparent);
+	box-shadow: inset 3px 0 0 var(--red);
+}
+
+.diff-line-del .diff-sign,
+.diff-line-del .diff-text {
+	color: var(--red);
+}
+
+/* hunk 头 / 文件头 / 提示行：压一档、不抢正文 */
+.diff-line-hunk {
+	color: var(--accent);
+	background: color-mix(in srgb, var(--accent) 8%, transparent);
+	padding: 2px 0;
+	margin: 4px 0;
+	font-size: 14px;
+}
+
+.diff-line-meta,
+.diff-line-note {
+	color: var(--text-faint);
+	font-size: 14px;
+}
+
+/* ---- 自动换行开关（文件预览页顶那个折行图标）----
+ * 面板通常只有 600px 宽，长行横着滚就只剩前半行 —— 这个开关默认开（见 ui-prefs 的 WRAP_KEY）。 */
+.preview-wrap {
+	padding: 3px 6px;
+	line-height: 0;
+}
+
+.preview-wrap svg {
+	width: 15px;
+	height: 15px;
+}
+
+/* 关掉时压一档：跟「源码/改动」那些文字按钮区分开，一眼看出它是个开关 */
+.preview-wrap-on {
+	color: var(--accent);
+	border-color: var(--accent-dim);
+	background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+/* 换行模式：`pre-wrap` 覆盖 .file-preview-line 的 `pre`，长行折行显示 */
+.file-preview-body-wrap .file-preview-line {
+	white-space: pre-wrap;
+}
+
+/* ---- 文件树的类型小标（GO / {} / PY / SH …）----
+ * 固定宽度（两三个字母的字宽），这样不同文件名的左边缘仍然对齐；
+ * 颜色只是一点点色相提示，不抢文件名。 */
+.filetree-type {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 15px;
+	border-radius: 3px;
+	font-family: var(--mono);
+	font-size: 9px;
+	font-weight: 700;
+	letter-spacing: 0.02em;
+	line-height: 1;
+	color: var(--text-faint);
+	background: color-mix(in srgb, var(--text-faint) 12%, transparent);
+}
+
+.filetype-go {
+	color: #00acd7;
+	background: color-mix(in srgb, #00acd7 14%, transparent);
+}
+
+.filetype-ts {
+	color: #3f8fd4;
+	background: color-mix(in srgb, #3f8fd4 14%, transparent);
+}
+
+.filetype-js {
+	color: #b58b00;
+	background: color-mix(in srgb, #d4b106 18%, transparent);
+}
+
+.filetype-json {
+	color: #8a9a00;
+	background: color-mix(in srgb, #a5b400 16%, transparent);
+}
+
+.filetype-py {
+	color: #4b7bb5;
+	background: color-mix(in srgb, #3776ab 16%, transparent);
+}
+
+.filetype-sh {
+	color: var(--green);
+	background: color-mix(in srgb, var(--green) 14%, transparent);
+}
+
+.filetype-md {
+	color: var(--text-dim);
+	background: color-mix(in srgb, var(--text-dim) 14%, transparent);
+}
+
+.filetype-style {
+	color: #c06bb8;
+	background: color-mix(in srgb, #c06bb8 14%, transparent);
+}
+
+.filetype-markup {
+	color: #d1723f;
+	background: color-mix(in srgb, #d1723f 14%, transparent);
+}
+
+.filetype-data {
+	color: #8b74c9;
+	background: color-mix(in srgb, #8b74c9 14%, transparent);
+}
+
+.filetype-sql {
+	color: #3f9c8f;
+	background: color-mix(in srgb, #3f9c8f 14%, transparent);
+}
+
+.filetype-rs {
+	color: #c1663c;
+	background: color-mix(in srgb, #c1663c 14%, transparent);
+}
+
+.filetype-jvm {
+	color: #b8743a;
+	background: color-mix(in srgb, #b8743a 14%, transparent);
+}
+
+.filetype-c {
+	color: #5b7fbd;
+	background: color-mix(in srgb, #5b7fbd 14%, transparent);
+}
+
+.filetype-text {
+	color: var(--text-faint);
+	background: color-mix(in srgb, var(--text-faint) 12%, transparent);
+}
+
+/* ---- 文件树的 git 改动标记 ----
+ * 文件：整行名字按状态变色 + 右侧一个字母（M / A / U / R / D）；
+ * 目录：只染「有没有改动」，右侧打一个点（目录自己不能被 commit，写字母反而误导）。 */
+.filetree-row.filetree-modified .filetree-name {
+	color: var(--amber);
+}
+
+.filetree-row.filetree-added .filetree-name,
+.filetree-row.filetree-untracked .filetree-name {
+	color: var(--green);
+}
+
+.filetree-row.filetree-deleted .filetree-name {
+	color: var(--red);
+	text-decoration: line-through;
+	text-decoration-thickness: 1px;
+}
+
+.filetree-row.filetree-renamed .filetree-name {
+	color: var(--accent);
+}
+
+.filetree-row.filetree-conflicted .filetree-name {
+	color: var(--red);
+	font-weight: 600;
+}
+
+/* 目录行：只说「里面有人改了」，所以统一一档淡暖色 + 右侧一个点；
+ * 具体是改/加/删看点的颜色。**不能**继承文件的删除线/红字 ——
+ * 目录本身没被删，只是它底下少了个文件。 */
+.filetree-row.filetree-dir.filetree-modified .filetree-name,
+.filetree-row.filetree-dir.filetree-untracked .filetree-name,
+.filetree-row.filetree-dir.filetree-added .filetree-name,
+.filetree-row.filetree-dir.filetree-deleted .filetree-name,
+.filetree-row.filetree-dir.filetree-renamed .filetree-name,
+.filetree-row.filetree-dir.filetree-conflicted .filetree-name {
+	color: color-mix(in srgb, var(--text) 72%, var(--amber));
+	font-weight: 500;
+	text-decoration: none;
+}
+
+/* 标记钉在行右端（跟「@ 提及」同一个位置）：鼠标进这一行时让位给按钮，
+ * 平时不跟文件名挤在一起，长名字也不会把 M 顶掉。 */
+.filetree-status {
+	position: absolute;
+	right: 8px;
+	top: 50%;
+	transform: translateY(-50%);
+	font-family: var(--mono);
+	font-size: 12px;
+	font-weight: 700;
+	line-height: 1;
+	padding: 0 1px;
+	pointer-events: none;
+}
+
+/* 悬浮时「@ 提及」按钮要盖在这个位置上：把标记藏起来，别叠着两个字 */
+.filetree-item:hover .filetree-status,
+.filetree-item:focus-within .filetree-status {
+	visibility: hidden;
+}
+
+.filetree-status-modified {
+	color: var(--amber);
+}
+
+.filetree-status-added,
+.filetree-status-untracked {
+	color: var(--green);
+}
+
+.filetree-status-deleted,
+.filetree-status-conflicted {
+	color: var(--red);
+}
+
+.filetree-status-renamed {
+	color: var(--accent);
+}
+
+/* 目录的小圆点：不占字母宽度，给个 6px 的实心点就够醒目 */
+.filetree-status-dot {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	margin-right: 5px;
+	background: currentColor;
+}

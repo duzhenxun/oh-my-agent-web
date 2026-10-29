@@ -1,0 +1,579 @@
+/* ---- 项目菜单 ---- */
+/* 两种打开方式：项目名上点右键（手机长按），或点行尾那个「⋯」。
+   菜单浮窗本身由 .proj-menu / .proj-menu-floating 负责。 */
+
+/* 触摸屏（手机 / 平板）：没有「悬停」，所以不能靠 `:hover` 冒按钮（第一下的 click 会落到
+   「刚冒出来的按钮」上 → 弹菜单）。但也不能反过来让**每一行都常挂一颗**（用户：
+   「三个点也是都折叠了」——一列十几个方框，比项目名还显眼）。
+   折中：**只有你点开过的那一个项目**（`details[open]`）露出来 —— 点项目行原本就是「展开」，
+   这个动作顺手把它的「⋯」带出来；其余项目那枚一直藏着，要操作它们：点一下展开（⋯ 就出现），
+   或长按 / 右键弹同一张菜单。 */
+@media (hover: none), (pointer: coarse) {
+	/* 触屏上**不要这颗「⋯」**（用户 2026-10-30：「会话后面已经没有那三个点、没有那个方框了，
+	   项目上面还有」）。以前这里是「一直显示」→「展开的那个项目显示」，两版都在列表里挂着一个
+	   带边框的方框，比项目名还扎眼；跟会话行那种「只在当前项才露」的规矩也对不上，
+	   因为项目行没有「当前项」这个概念（顶多同时展开好几个）。
+	   现在彻底收掉：开菜单走**长按项目行**（见 Sidebar.tsx 的 `onPointerDown` 那段计时器，
+	   弹的是同一张项目菜单），或者右键（有鼠标时）。 */
+	.proj-head .proj-more {
+		display: none;
+	}
+
+	/* 长按时浏览器可能顺手起一个「选文字 / 长按预览」：项目行是操作入口、不是可复制正文，
+	   这里把系统的长按菜单和选中都关掉，免得盖住我们自己的菜单。 */
+	.proj-head {
+		-webkit-touch-callout: none;
+		-webkit-user-select: none;
+		user-select: none;
+	}
+
+	/* 触屏不要框（用户 2026-10-29：「手机版里面不需要这个边框」）：
+	 * 宽屏那边的悬停反馈是一层 `--bg-elev-2` 淡底色，触摸屏的 `:hover` 在抬手后还会
+	 * **粘住**，于是点完菜单关上，那颗「⋯」上又挂着一个浅色方块 —— 换个框继续难看。
+	 * 所以粗指针设备上把悬停底色也去掉，只留字色变蓝这个反馈。 */
+	.proj-head .proj-more:hover {
+		background: transparent;
+	}
+
+	/* 菜单项给手指留够高度（现在手机上也能打开了） */
+	.proj-menu-item {
+		min-height: 36px;
+		font-size: 15px;
+	}
+}
+
+.proj-menu {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	margin: 2px 0 6px 6px;
+	padding: 4px;
+	border: 1px solid var(--border-strong, var(--border));
+	border-radius: 8px;
+	background: var(--bg-elev-2);
+	box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+}
+
+.proj-menu-item {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	width: 100%;
+	border: none;
+	border-radius: 6px;
+	background: none;
+	color: var(--text-dim);
+	font: inherit;
+	font-size: 14px;
+	text-align: left;
+	padding: 5px 8px;
+	cursor: pointer;
+}
+
+.proj-menu-item:hover:not(:disabled) {
+	background: var(--bg-elev);
+	color: var(--text);
+}
+
+.proj-menu-item:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+
+.proj-menu-danger {
+	color: var(--red);
+}
+
+/* 「再点一次确认」的中间态（`useArmed`）：完全红底白字。
+ * 去掉 `window.confirm` 之后，**必须**让人一眼看出「已经上腔了」，
+ * 否则第二下的手感跟第一下一样，等于没确认。
+ * 两个类一起写：菜单项与归档视图那颗 `btn btn-danger` 共用这个中间态。 */
+.proj-menu-item.proj-menu-item-armed,
+.btn.btn-danger.proj-menu-item-armed {
+	background: var(--red);
+	border-color: var(--red);
+	color: #fff;
+	font-weight: 600;
+}
+
+.proj-menu-item.proj-menu-item-armed:hover,
+.btn.btn-danger.proj-menu-item-armed:hover {
+	background: color-mix(in srgb, var(--red) 86%, #000);
+	color: #fff;
+}
+
+/* 「还有 N 个…」现在是个按钮：文字左对齐、hover 有反馈 */
+.pi-row-more {
+	width: 100%;
+	background: none;
+	border: none;
+	color: var(--text-faint);
+	font: inherit;
+	font-size: 14px;
+	text-align: left;
+	cursor: pointer;
+	padding: 3px 8px;
+	border-radius: 6px;
+}
+
+.pi-row-more:hover {
+	color: var(--accent);
+	background: var(--bg-elev-2);
+}
+
+/* 置顶标记：跟在项目名后面，小一点、别抢注意力 */
+.proj-pin {
+	flex: none;
+	font-size: 12px;
+	line-height: 1;
+	opacity: 0.85;
+}
+
+/* 「新建项目」目录选择器 */
+.new-project {
+	width: min(720px, 94vw);
+	/* 不再写死高度：写死 640px 会顶破 .modal 的 max-height: 80vh，
+	   于是内容溢出、跑上去盖住「本地目录 + 关闭键」那一行 */
+	height: auto;
+	max-height: min(640px, 84vh);
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	padding: 14px 16px 16px;
+}
+
+.new-project-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex: none;
+	/* 标题与下面那排之间拉一条分隔线，避免「挤在一起像被切掉」 */
+	padding-bottom: 8px;
+	border-bottom: 1px solid var(--border);
+}
+
+/* 路径栏：第一行「在哪儿」（输入框撑满 + 跳转） */
+.new-project-bar {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex: none;
+	margin-top: 2px;
+}
+
+/* 第二行「做什么」：次级操作靠左，主按钮固定贴右（不再靠 flex-wrap 随机折行） */
+.new-project-actions {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex: none;
+	flex-wrap: wrap;
+}
+
+.new-project-input {
+	flex: 1 1 auto;
+	min-width: 0;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--bg);
+	color: var(--text);
+	font-size: 15px;
+	padding: 6px 9px;
+}
+
+.new-project-list {
+	flex: 1 1 auto;
+	min-height: 120px;
+	overflow: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.new-project-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 2px 4px;
+	border-radius: 6px;
+}
+
+.new-project-row:hover {
+	background: var(--bg-elev-2);
+}
+
+.new-project-name {
+	display: flex;
+	align-items: center;
+	gap: 7px;
+	flex: 1 1 auto;
+	min-width: 0;
+	text-align: left;
+	background: none;
+	border: none;
+	color: var(--text);
+	font: inherit;
+	font-size: 15px;
+	cursor: pointer;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	padding: 3px 2px;
+}
+
+/* 图标槽固定 14px：名字全部左对齐，不会因图标宽窄而参差 */
+.new-project-icon {
+	display: inline-flex;
+	flex: none;
+	width: 14px;
+	height: 14px;
+	color: var(--text-faint);
+}
+
+.new-project-icon svg {
+	width: 100%;
+	height: 100%;
+}
+
+.new-project-foot {
+	flex: none;
+	border-top: 1px solid var(--border);
+	padding-top: 6px;
+}
+
+/* ---- 侧栏底部：文件区（会话在上、文件在下）---- */
+.side-files {
+	flex: none;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	/* 这条线就是会话区与文件区之间的分隔线（拖拽手柄不占高度、不画线）。
+	   用负 margin 顶到侧栏两边、再用等量 padding 把内容挪回来：
+	   否则它会跟着侧栏的 10px 内边距缩进去，看起来是「断开的半条线」。 */
+	border-top: 1px solid var(--border);
+	margin-left: calc(var(--side-pad, 10px) * -1);
+	margin-right: calc(var(--side-pad, 10px) * -1);
+	padding-left: var(--side-pad, 10px);
+	padding-right: var(--side-pad, 10px);
+	padding-top: 0;
+	margin-top: 0;
+}
+
+/* 项目列表收起时：文件区吃掉剩下的全部高度（不再用拖拽定死的那点高度），
+ * 否则标题栏下面会空出一整块，看着像面板没铺满。 */
+.side-files-fill {
+	flex: 1 1 auto;
+	min-height: 0;
+}
+
+.side-files-head {
+	display: flex;
+	align-items: center;
+	gap: 0;
+	flex: none;
+	min-width: 0;
+	/* 这一行自己就是**尺寸容器**：右边那排小工具的间距要跟着「侧栏拖多宽」松 / 紧
+	   （宽了才敢把图标摆松，窄了得收回去，否则一排会被挤出去）。
+	   量的是这一行自己的宽度，不是窗口宽度 —— 侧栏是可拖宽的。
+	   查询写在 files-toolbar.css（`.files-toolbar` 是它的后代）。 */
+	container-type: inline-size;
+	container-name: side-files-head;
+}
+
+/* 文件区标题：文字 + 右边一枚三角（顺序跟侧栏「项目」一致），标题本身可点（展开/收起）。
+ * 与侧栏「项目」标题同尺寸、同亮度（14.5px / 600 / --text-dim），
+ * 三角也共用 sidebar.css 里的 .sidebar-title-caret（别在各自文件里再写一份）。 */
+.side-files-title {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	color: var(--text-dim);
+	font-size: 15px;
+	font-weight: 600;
+	border: none;
+	background: none;
+	font-family: inherit;
+	line-height: inherit;
+	padding: 0;
+	cursor: pointer;
+}
+
+.side-files-title:hover {
+	color: var(--accent);
+}
+
+/* 项目下拉那一行：下拉框 + 右边的 git 分支（不是仓库时只有下拉框） */
+.side-files-select-row {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex: none;
+	width: 100%;
+	min-width: 0;
+}
+
+/* 分支标签在下拉框右边：空间不够时先压标签，别把下拉框挤没 */
+.side-files-select-row .files-branch {
+	flex: 0 1 auto;
+	min-width: 0;
+	max-width: 92px;
+}
+
+/* 分支名自己一层：省略号只对「文本元素」生效，flex 里的裸文本会被硬切掉半个字 */
+.files-branch-name {
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* 项目下拉（自绘版，见 FilesRootSelect.tsx）：合着的那一条还是原来那个样子，
+ * 只是箭头换成细描边 SVG —— 点开的列表用的是项目菜单浮层，六套皮肤自动跟着变。
+ *
+ * **颜色跟右边那颗分支标签一致**（用户 2026-10-29 晚：“不要用蓝色背景…跟旁边分支一样颜色样式就行”）：
+ * 早先为了“显眼一档”给它上过一层淡强调底色，实际看着像一块被选中的高亮，比标题还抢眼；
+ * 现在退回**无底色 + 普通描边**，只保留「正在看的项目」该有的字重（它是可点的主对象，字不能跟着分支一起变淡）。
+ * 强调色只留给悬停 / 展开那一下的描边变化。 */
+.side-files-root {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex: 1 1 auto;
+	min-width: 112px;
+	border: 1px solid var(--border);
+	border-radius: 7px;
+	/* 透明而不是 `var(--bg-elev)`：这条坐在侧栏底色上，两种底色只要有一点差就会看成一块淡色块 */
+	background: none;
+	color: var(--text);
+	font: inherit;
+	font-size: 14px;
+	font-weight: 600;
+	line-height: 1.4;
+	padding: 3px 8px;
+	cursor: pointer;
+	text-align: left;
+	transition:
+		border-color 0.12s ease,
+		background-color 0.12s ease,
+		color 0.12s ease;
+}
+
+/* 悬停 / 展开：跟分支标签同一套反馈（灰框 + 一层浅底），不再用强调色 */
+.side-files-root:hover,
+.side-files-root-open {
+	border-color: var(--border-strong, var(--border));
+	background: var(--bg-elev-2);
+	color: var(--text);
+}
+
+.side-files-root-label {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.side-files-root-caret {
+	flex: none;
+	width: 12px;
+	height: 12px;
+	/* 跟分支标签里那颗图标同一个色（`--text-faint`）：强调色留给悬停，不再常驻 */
+	color: var(--text-faint);
+	stroke: currentColor;
+	stroke-width: 1.6;
+	fill: none;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	transition: transform 0.12s ease;
+}
+
+.side-files-root-open .side-files-root-caret {
+	transform: rotate(180deg);
+}
+
+/* 展开的列表：宽度跟着「落点」走，最长 320px；项目多的仓库内部滚动 */
+.files-root-menu {
+	/* 具体宽度由组件按按钮宽度内联写入（200–320），这里只兜住上限与滚动 */
+	max-width: min(320px, calc(100vw - 16px));
+	max-height: min(60vh, 420px);
+	overflow: auto;
+}
+
+.files-root-option {
+	align-items: baseline;
+}
+
+/* 打勾那一格固定宽度：没有勾的项文字也左对齐，不会一深一浅 */
+.files-root-check {
+	flex: none;
+	width: 10px;
+	color: var(--accent);
+	font-size: 12px;
+	line-height: 1;
+}
+
+.files-root-option-label {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.files-root-option-on {
+	color: var(--accent);
+	font-weight: 600;
+}
+
+/* 「跟随当前会话」与项目清单之间的一条细分隔线 */
+.files-root-sep {
+	height: 1px;
+	margin: 3px 4px;
+	background: var(--border);
+}
+
+.side-files-body {
+	flex: 1 1 auto;
+	min-height: 0;
+	display: flex;
+	overflow: hidden;
+	/* 吃掉侧栏自己的右内边距：里面那两个滚动区（文件树 / 搜索结果）的滚动条
+	 * 才贴到侧栏的边上 —— 否则滚动条会停在距边 10px 处「飘在中间」，
+	 * 而右边的路径文字又一直顶到它身上（用户提的就是这个）。 */
+	margin-right: calc(-1 * var(--side-pad, 10px));
+}
+
+/* 滚动条贴边之后，内容要往回让一点，否则文字就被滚动条压着了 */
+.side-files-body .filetree,
+.side-files-body .files-search-list {
+	padding-right: 6px;
+}
+
+.side-files-body .filetree {
+	flex: 1 1 auto;
+}
+
+/* 搜索结果列表顶替文件树时要能吃满这块高度（滚动在列表自己身上） */
+.side-files-body .files-search-list {
+	flex: 1 1 auto;
+	min-height: 0;
+}
+
+/* 文件区标题栏的终端按钮（点一下在右侧打开当前项目的终端） */
+/* 「>_」终端入口：不要边框，当一枚小字按钮用 */
+.side-files-term {
+	flex: none;
+	border: none;
+	border-radius: 5px;
+	background: none;
+	color: var(--text-faint);
+	font: inherit;
+	font-family: ui-monospace, monospace;
+	font-size: 13px;
+	padding: 1px 5px;
+	cursor: pointer;
+	line-height: 1.3;
+}
+
+.side-files-term:hover {
+	color: var(--accent);
+	background: var(--bg-elev-2);
+}
+
+/* 会话区与文件区之间的拖拽手柄。
+   它**不占高度、也不自己画线** —— 那条分隔线就是「文件管理」的 border-top，
+   所以上面不会再多出一块空白（之前是 10px 手柄 + 侧栏 8px flex 间距）。 */
+.side-split {
+	position: relative;
+	flex: none;
+	height: 0;
+	/* 侧栏是 flex column + gap: 8px：前后两条间距都用负 margin 抵掉，
+	   让「文件管理」的 border-top 正好贴在会话列表下边 */
+	margin: -8px 0 -8px;
+	cursor: row-resize;
+	background: transparent;
+}
+
+/* 透明热区：以那条线为中心上下各 4px，只负责接 pointer 事件（看得见的是 border-top） */
+.side-split::before {
+	content: "";
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: -4px;
+	height: 8px;
+}
+
+/* 悬停 / 拖动时把那 1px 变成一条 3px 的强调色（不改变占位，不抽动） */
+.side-split::after {
+	content: "";
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: 0;
+	height: 1px;
+	background: transparent;
+	transition:
+		height 0.12s ease,
+		background 0.12s ease;
+}
+
+.side-split:hover::after,
+.side-split:active::after {
+	height: 3px;
+	background: var(--accent-dim);
+}
+
+/* 浮窗版项目菜单：portal 到 body，按锚点算坐标（不再被侧栏滚动容器裁掉） */
+.proj-menu-floating {
+	position: fixed;
+	z-index: 90;
+	/* 内联版的 margin 在这里必须清掉（否则位置会偏出去） */
+	margin: 0;
+	width: 220px;
+	max-height: min(70vh, 560px);
+	overflow: auto;
+}
+
+/* 「居中于触发器」的浮层（新会话那一排：项目 / 分支）带一小截指着按钮的尾巴。
+   画法直接跟模型选择器那颗（`.model-menu-arrow`）对齐：旋转 45° 的方块 + 两条与浮层描边
+   同色的边，一半压在浮层边上，于是那条 1px 边框在尾巴处「断开」，读起来是「浮层从按钮长出来的」，
+   而不是凭空浮在对话上。坐标（left/top）由 JS 给出 —— 它是浮层的**兄弟节点**而不是子元素，
+   所以浮层自己的 `overflow: auto`（分支多了就地滚）一点都不用让位。 */
+.proj-menu-arrow {
+	position: fixed;
+	/* 盖在浮层（z-index: 90）上：要把那条底边在尾巴处盖断 */
+	z-index: 91;
+	width: 10px;
+	height: 10px;
+	background: var(--bg-elev-2);
+	/* 默认：浮层在按钮**上方**，尾巴挂着它的底边、朝下指着按钮 */
+	border-right: 1px solid var(--border-strong, var(--border));
+	border-bottom: 1px solid var(--border-strong, var(--border));
+	border-bottom-right-radius: 2px;
+	transform: rotate(45deg);
+	pointer-events: none;
+}
+
+/* 浮层在按钮**下方**（没往上翻）时，尾巴挂到顶边、朝上 */
+.proj-menu-arrow-top {
+	border-right: none;
+	border-bottom: none;
+	border-top: 1px solid var(--border-strong, var(--border));
+	border-left: 1px solid var(--border-strong, var(--border));
+	border-bottom-right-radius: 0;
+	border-top-left-radius: 2px;
+}
+
+/* 文件预览的右键菜单：比侧栏菜单宽一点（「追加选中的 12 行到对话」这种中文标签更长），
+ * 也不占侧栏那 220px 的死宽度。 */
+.ctx-menu {
+	width: auto;
+	min-width: 230px;
+	max-width: 340px;
+}

@@ -1,0 +1,181 @@
+/* ---------------------------------------------------------------------------
+ * 非 pi 引擎的「插件 / MCP」面板（EnginePluginsView / EngineMcpView）
+ *
+ * 一块面板给四个引擎共用，所以样式只描述结构（头部一行来源、列表行、动作区），
+ * 不掺 pi 那套 provider / exposure 配色。宽度与 pi 面板一致（都用外层 modal 的 body）。
+ * ------------------------------------------------------------------------- */
+.engine-panel {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	min-height: 0;
+	height: 100%;
+	overflow: auto;
+	padding: 4px 2px 12px;
+}
+
+.engine-panel-head {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-wrap: wrap;
+	padding-bottom: 8px;
+	border-bottom: 1px solid var(--border);
+}
+
+.engine-panel-engine {
+	flex: none;
+	padding: 1px 7px;
+	border-radius: 5px;
+	border: 1px solid var(--border);
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--text-dim);
+}
+
+.engine-panel-source {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-family: var(--mono);
+	font-size: 12px;
+	color: var(--text-dim);
+}
+
+.engine-panel-count {
+	font-size: 12px;
+	color: var(--text-dim);
+}
+
+.engine-panel-refresh {
+	margin-left: auto;
+	flex: none;
+}
+
+.engine-panel-error {
+	padding: 7px 10px;
+	border-radius: 8px;
+	border: 1px solid var(--red);
+	color: var(--red);
+	font-size: 13px;
+	line-height: 1.5;
+	white-space: pre-wrap;
+}
+
+.engine-panel-notice,
+.engine-panel-note-text {
+	padding: 7px 10px;
+	border-radius: 8px;
+	background: var(--bg-elev-2);
+	color: var(--text-dim);
+	font-size: 13px;
+	line-height: 1.55;
+}
+
+.engine-panel-add {
+	display: flex;
+	gap: 8px;
+	align-items: flex-start;
+}
+
+.engine-panel-add textarea,
+.engine-panel-add input {
+	flex: 1;
+	min-width: 0;
+	padding: 7px 9px;
+	border-radius: 8px;
+	border: 1px solid var(--border);
+	background: var(--bg);
+	color: var(--text);
+	font-family: var(--mono);
+	font-size: 12px;
+	resize: vertical;
+}
+
+.engine-panel-list {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.engine-panel-row {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding: 9px 11px;
+	border-radius: 9px;
+	border: 1px solid var(--border);
+	background: var(--bg-soft);
+}
+
+.engine-panel-row-main {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+}
+
+.engine-panel-row-name {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 14px;
+	font-weight: 600;
+}
+
+.engine-panel-tag {
+	flex: none;
+	padding: 0 6px;
+	border-radius: 999px;
+	border: 1px solid var(--border-strong);
+	font-size: 11px;
+	color: var(--text-faint);
+}
+
+.engine-panel-row-cmd {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-family: var(--mono);
+	font-size: 12px;
+	color: var(--text-dim);
+}
+
+.engine-panel-row-note {
+	font-size: 12px;
+	line-height: 1.5;
+	color: var(--text-faint);
+}
+
+.engine-panel-row-actions {
+	display: flex;
+	gap: 6px;
+	margin-top: 2px;
+}
+
+.engine-panel-empty {
+	padding: 14px 2px;
+	font-size: 13px;
+	color: var(--text-dim);
+}
+
+.engine-panel-foot {
+	margin-top: auto;
+	padding-top: 8px;
+	font-size: 12px;
+	color: var(--text-faint);
+}
+
+/*
+ * MCP 面板复用了 engine-panel 的标题行（引擎徽标 / 来源文件 / 计数 / 刷新），
+ * 但主体是 pi 那套「左列表 + 右详情」的 mcp-shell（自己滚动）。
+ * 外层因此**不能**再滚动，否则两个滚动条打架、右栏还会被裁掉。
+ */
+.engine-panel.engine-panel-mcp {
+	overflow: hidden;
+}

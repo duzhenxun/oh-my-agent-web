@@ -1,0 +1,46 @@
+/* 弹窗 Tab 拖拽排序；顶栏的跟随动画由 PanelOrderRow 用 FLIP 完成。 */
+.big-tab {
+	position: relative;
+	cursor: grab;
+	user-select: none;
+	-webkit-user-select: none;
+	/* 横向拖 = 排序，竖向拖仍然交给页面滚动 */
+	touch-action: pan-y;
+}
+
+.big-tab-reordering,
+.big-tab-settling {
+	will-change: transform;
+	transition:
+		transform 180ms cubic-bezier(0.2, 0, 0, 1),
+		box-shadow 180ms ease,
+		background-color 180ms ease;
+}
+
+.big-tab-dragging {
+	z-index: 4;
+	cursor: grabbing;
+	transition: none;
+	background: var(--bg-elev);
+	border-color: var(--accent-dim);
+	box-shadow: 0 3px 12px color-mix(in srgb, var(--text) 16%, transparent);
+}
+
+.big-tab-settling {
+	z-index: 4;
+	cursor: grabbing;
+}
+
+html.is-panel-tab-dragging,
+html.is-panel-tab-dragging * {
+	cursor: grabbing !important;
+	user-select: none !important;
+	-webkit-user-select: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.big-tab-reordering,
+	.big-tab-settling {
+		transition: none;
+	}
+}

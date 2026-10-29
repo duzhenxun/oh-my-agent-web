@@ -1,0 +1,208 @@
+/* 输入区右侧动作按钮（引导 / 排队 / 停止 / 发送）*/
+/* 引导 / 排队 / 停止：三个按钮**同一尺寸**（引导原来是主按钮尺寸，显得格外大） */
+.btn.btn-send,
+.btn.btn-queue,
+.btn.btn-stop {
+	padding: 6px 14px;
+	font-size: 15px;
+	line-height: 1.4;
+	border-radius: 8px;
+	min-height: 30px;
+	/* 三个按钮宽度也一致，切换「引导/排队/停止」时不会左右跳 */
+	min-width: 72px;
+	justify-content: center;
+}
+
+/* 「引导」：会让当前回合改道的动作 → 暖色底，提醒它和「排队」不是一回事 */
+.btn.btn-queue {
+	background: color-mix(in srgb, var(--yellow, #d9a441) 16%, var(--bg-elev));
+	border-color: color-mix(in srgb, var(--yellow, #d9a441) 55%, var(--border));
+	color: color-mix(in srgb, var(--yellow, #d9a441) 78%, var(--text));
+}
+
+.btn.btn-queue:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--yellow, #d9a441) 26%, var(--bg-elev));
+	border-color: var(--yellow, #d9a441);
+}
+
+/* 「停止」：危险动作 → 红色描边 + 红色浅底（原来只有描边，贴在输入框里像是没底色） */
+.btn.btn-stop {
+	background: color-mix(in srgb, var(--red) 14%, var(--bg-elev));
+	border-color: var(--red);
+	color: var(--red);
+}
+
+.btn.btn-stop:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--red) 24%, var(--bg-elev));
+}
+
+/* ---- 斜杠命令面板（输入框上方弹出）----
+   和「@ 提及」「模板库」一样是**贴着输入框的浮层**：不占布局高度，弹出时不把对话挤上去。 */
+.slash-panel {
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 100%;
+	z-index: 40;
+	margin-bottom: 6px;
+	display: flex;
+	flex-direction: column;
+	max-height: min(52vh, 420px);
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	background: var(--bg-elev);
+	box-shadow: 0 10px 30px rgb(0 0 0 / 12%);
+	overflow: hidden;
+}
+
+.slash-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px;
+	border-bottom: 1px solid var(--border);
+	color: var(--text-faint);
+	font-size: 12px;
+}
+
+.slash-count {
+	margin-left: auto;
+	font-variant-numeric: tabular-nums;
+}
+
+.slash-list {
+	overflow-y: auto;
+	padding: 4px;
+	scrollbar-width: thin;
+}
+
+.slash-row {
+	display: grid;
+	grid-template-columns: auto auto 1fr;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	padding: 6px 8px;
+	border: none;
+	border-radius: 8px;
+	background: none;
+	color: var(--text);
+	font: inherit;
+	font-size: 14px;
+	text-align: left;
+	cursor: pointer;
+}
+
+/* 键盘高亮与鼠标悬停同一套观感：用户分不清"现在选的是哪个"就会敲错命令 */
+.slash-row-on,
+.slash-row:hover {
+	background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+}
+
+.slash-name {
+	color: var(--accent);
+	font-size: 13px;
+	white-space: nowrap;
+}
+
+.slash-kind {
+	flex: none;
+	padding: 0 6px;
+	border: 1px solid var(--border-strong);
+	border-radius: 6px;
+	color: var(--text-faint);
+	font-size: 11px;
+	line-height: 1.6;
+	white-space: nowrap;
+}
+
+/* 「发给 Agent」：不是本地执行，颜色淡一档，和「本地」区分开 */
+.slash-kind-agent {
+	border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+	color: var(--accent);
+}
+
+.slash-desc {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--text-dim);
+}
+
+.slash-empty {
+	padding: 12px;
+	color: var(--text-faint);
+	font-size: 13px;
+	text-align: center;
+}
+
+/* 手机：面板占满宽度也没问题，但「说明」那一列会被压没，改成两行堆叠 */
+@media (max-width: 720px) {
+	.slash-row {
+		grid-template-columns: auto 1fr;
+	}
+
+	.slash-desc {
+		grid-column: 1 / -1;
+		white-space: normal;
+	}
+}
+
+/* 「已停用」的技能在候选里颜色淡一档：仍然可选（插进去之后 pi 会说不认识/已停用） */
+.slash-kind-off {
+	border-color: var(--border);
+	color: var(--text-faint);
+}
+
+/* ---- 「@ 提及」面板（复用 .slash-panel 的浮层外观，只换行内布局）----
+   和斜杠面板同一个位置、同一套观感：用户不该觉得这是两个不同的东西。
+   一行三格：类型小标 · 文件名 · 路径（路径淡一档，眼睛先看到名字）。 */
+.mention-group {
+	padding: 6px 8px 2px;
+	color: var(--text-faint);
+	font-size: 12px;
+	letter-spacing: 0.02em;
+}
+
+.mention-row {
+	grid-template-columns: 24px auto 1fr;
+	gap: 10px;
+}
+
+.mention-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	font-size: 13px;
+	line-height: 1;
+}
+
+.mention-name {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--text);
+}
+
+.mention-path {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--text-faint);
+	font-size: 13px;
+}
+
+/* 手机：名字那一行放不下「名字 + 路径」，路径挪到第二行（同 .slash-desc 的处理） */
+@media (max-width: 720px) {
+	.mention-row {
+		grid-template-columns: 24px 1fr;
+	}
+
+	.mention-path {
+		grid-column: 1 / -1;
+	}
+}

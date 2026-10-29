@@ -1,0 +1,287 @@
+/* ---- 模型选择器（P6）：按厂家分组 + 筛选框 ---- */
+
+.model-picker {
+	position: relative;
+	min-width: 0;
+}
+
+.model-trigger {
+	max-width: 260px;
+	min-width: 0;
+	gap: 5px;
+}
+
+.model-trigger-label {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	min-width: 0;
+}
+
+.model-caret {
+	flex: none;
+	color: var(--text-faint);
+	font-size: 12px;
+}
+
+/* 菜单向上弹（触发按钮在最底部，向下会出界）；坐标由组件按按钮位置现算（fixed），
+   因为底部状态栏是 overflow:hidden，绝对定位的子元素会被直接裁掉。
+   手机在下面的 .is-mobile-shell 里改回底部抽屉。 */
+.model-menu {
+	position: fixed;
+	z-index: 20;
+	width: min(300px, 78vw);
+	max-height: 52vh;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: 6px;
+	border: 1px solid var(--border-strong, var(--border));
+	border-radius: 10px;
+	background: var(--bg-elev);
+	box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
+}
+
+/* 「连接感」：指着下方触发胶囊的小尾巴。
+   旋转 45° 的方块 + 两条与菜单描边同色的边 —— 它有一半压在菜单的底边上，
+   于是那条 1px 边框在尾巴处「断开」，读起来就是菜单从这个按钮长出来的，而不是浮在半空。
+   left 由 JS 给出（是尾巴中心的坐标），菜单被夹到视口边缘时仍然指对地方。 */
+.model-menu-arrow {
+	position: absolute;
+	bottom: -5px;
+	width: 10px;
+	height: 10px;
+	margin-left: -5px;
+	background: var(--bg-elev);
+	border-right: 1px solid var(--border-strong, var(--border));
+	border-bottom: 1px solid var(--border-strong, var(--border));
+	border-bottom-right-radius: 2px;
+	transform: rotate(45deg);
+	pointer-events: none;
+}
+
+.model-filter {
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--bg);
+	color: var(--text);
+	font: inherit;
+	font-size: 15px;
+	padding: 6px 9px;
+	flex: none;
+}
+
+.model-list {
+	overflow: auto;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.model-list {
+	gap: 0;
+}
+
+.model-group-title {
+	position: sticky;
+	top: 0;
+	background: var(--bg-elev);
+	color: var(--text-faint);
+	font-size: 13px;
+	letter-spacing: 0.06em;
+	padding: 6px 4px 3px;
+}
+
+.model-item {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	width: 100%;
+	background: none;
+	border: none;
+	border-radius: 7px;
+	color: var(--text-dim);
+	font: inherit;
+	font-size: 15px;
+	text-align: left;
+	padding: 6px 8px;
+	cursor: pointer;
+	min-width: 0;
+}
+
+.model-item:hover {
+	background: var(--bg-elev-2);
+	color: var(--text);
+}
+
+.model-item-on {
+	color: var(--text);
+	font-weight: 600;
+}
+
+.model-check {
+	flex: none;
+	width: 12px;
+	color: var(--accent);
+}
+
+.model-label {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	min-width: 0;
+}
+
+.model-empty {
+	color: var(--text-faint);
+	font-size: 14px;
+	padding: 8px;
+}
+
+/* 思考强度选择器（P4）：跟在模型选择器后面 */
+.thinking-picker {
+	gap: 3px;
+	cursor: pointer;
+}
+
+/* 整个胶囊都是「热点」：透明 select 铺满，外观由 .thinking-value / .thinking-caret 画 */
+.thinking-picker {
+	position: relative;
+	cursor: pointer;
+}
+
+.thinking-select {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	opacity: 0;
+	border: none;
+	background: none;
+	color: inherit;
+	font: inherit;
+	cursor: pointer;
+	outline: none;
+	appearance: none;
+}
+
+/* 键盘焦点：焦点环画在胶囊上（原生 select 是透明的，看不见） */
+.thinking-picker:focus-within {
+	outline: 2px solid var(--accent-dim);
+	outline-offset: 1px;
+}
+
+.thinking-caret {
+	flex: none;
+	font-size: 10px;
+	color: var(--text-faint);
+}
+
+/* 手机上打开时的遮罩（点一下关闭）；桌面上不显示 */
+.model-sheet-backdrop {
+	display: none;
+}
+
+/* 抽屉上的关闭按钮，桌面态不需要（点外面或再点触发按钮就能关） */
+.model-sheet-close {
+	display: none;
+}
+
+/* 模型菜单在手机上：整宽底部抽屉，而不是向上弹出的小浮层 */
+.is-mobile-shell .model-sheet-backdrop {
+	display: block;
+	position: fixed;
+	inset: 0;
+	z-index: 30;
+	background: rgb(0 0 0 / 45%);
+}
+
+.is-mobile-shell .model-menu {
+	position: fixed;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	top: auto;
+	width: 100vw;
+	/* 旧版 Edge/Chromium 不认 dvh：先给 vh，下面那行再覆盖（PR3） */
+	max-height: 72vh;
+	max-height: 72dvh;
+	border-radius: 14px 14px 0 0;
+	border: none;
+	border-top: 1px solid var(--border-strong, var(--border));
+	padding: 10px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+	z-index: 31;
+	box-shadow: 0 -12px 40px rgb(0 0 0 / 45%);
+}
+
+.is-mobile-shell .model-sheet-close {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	align-self: flex-end;
+	border: 1px solid var(--border);
+	background: var(--bg-soft);
+	color: var(--text);
+	border-radius: 999px;
+	padding: 6px 14px;
+	font-size: 15px;
+	cursor: pointer;
+}
+
+/* 每条模型行加大点击高度，手机上更好点 */
+.is-mobile-shell .model-item {
+	padding-top: 11px;
+	padding-bottom: 11px;
+	font-size: 17px;
+}
+
+/* 一行 = 「模型按钮 + 图钉」：图钉只在悬浮时出现，钉住的常亮 */
+.model-row {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	min-width: 0;
+}
+
+.model-row .model-item {
+	flex: 1;
+	min-width: 0;
+}
+
+.model-pin {
+	flex: none;
+	background: none;
+	border: none;
+	border-radius: 6px;
+	font: inherit;
+	font-size: 12px;
+	line-height: 1;
+	padding: 4px 4px;
+	cursor: pointer;
+	opacity: 0;
+	filter: grayscale(1);
+	transition: opacity 0.12s ease;
+}
+
+.model-row:hover .model-pin,
+.model-pin:focus-visible {
+	opacity: 0.7;
+}
+
+.model-pin-on {
+	opacity: 1;
+	filter: none;
+}
+
+.model-pin:hover {
+	opacity: 1;
+}
+
+/* 触屏没有 hover：图钉一直亮着，否则「设默认」这个功能在手机上点不到 */
+.is-mobile-shell .model-pin {
+	opacity: 0.55;
+	font-size: 14px;
+	padding: 6px;
+}

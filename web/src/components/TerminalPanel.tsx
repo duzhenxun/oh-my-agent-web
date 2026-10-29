@@ -1,0 +1,180 @@
+import { useEffect, useRef, useState } from "react";
+import { FitAddon } from "@xterm/addon-fit";
+import { Terminal } from "@xterm/xterm";
+import "@xterm/xterm/css/xterm.css";
+import { basename } from "../path-utils.ts";
+import { useT } from "../use-language.ts";
+
+/**
+ * 终端面板（ADR-0027）：xterm + SSE。
+ *
+ * 三件事：
+ *   1. 打开时 POST /api/terminal/start 起 PTY（cwd = 当前会话工作区）；
+ *   2. SSE 读输出、键盘输入 POST 回去、尺寸变化报给服务端（否则 vim 显示会错位）；
+ *   3. 关闭时 POST /api/terminal/stop，**不留孤儿 shell**。
+ */
+export function TerminalPanel({
+	termId,
+	cwd,
+	initialCommand = null,
+	standalone = false,
+	active = true,
+	onClose,
+}: {
+	/** 终端 id：多终端互不干扰，切换标签不重建 */
+	termId: string;
+	cwd?: string | null;
+	/**
+	 * 建好 PTY 后自动敲进去的命令（末尾自动补回车）。
+	 * 用在抬头「↑ 有新版」→ 点一下就开终端跑升级，省得人复制粘贴；普通终端不传（null）。
+	 */
+	initialCommand?: string | null;
+	/** 独立使用时才显示内部标题栏；嵌入面板默认不显示（标签上已有信息） */
+	standalone?: boolean;
+	/** 是否当前激活的标签：切回来时要 refit + 抢回焦点（否则键盘打不进去） */
+	active?: boolean;
+	onClose: () => void;
+}) {
+	const t = useT();
+	const hostRef = useRef<HTMLDivElement>(null);
+	const [error, setError] = useState<string | null>(null);
+	const [ready, setReady] = useState(false);
+
+	// 切回这个标签时：重新 fit（隐藏期间容器宽高是 0）+ 把焦点还给终端
+	const refitRef = useRef<(() => void) | null>(null);
+	useEffect(() => {
+		if (!active) return;
+		// 下一帧再动，等 display 从 none 变回 flex
+		const timer = setTimeout(() => refitRef.current?.(), 30);
+		return () => clearTimeout(timer);
+	}, [active]);
+
+	useEffect(() => {
+		const host = hostRef.current;
+		if (!host) return;
+		const term = new Terminal({
+			fontSize: 12,
+			// 补上 Windows 字体：SFMono/Menlo 都没有，缺了就落到 Courier New，TUI 制表符会错位
+			fontFamily: '"Cascadia Mono", Consolas, "Courier New", ui-monospace, SFMono-Regular, Menlo, monospace',
+			theme: { background: "#0d1117", foreground: "#c9d1d9" },
+			cursorBlink: true,
+			scrollback: 2000,
+		});
+		const fit = new FitAddon();
+		term.loadAddon(fit);
+		term.open(host);
+		fit.fit();
+
+		let source: EventSource | null = null;
+		let observer: ResizeObserver | null = null;
+		let disposed = false;
+		let started = false;
+		// 先注册输入：/api/terminal/start 是异步的，等它回来之前敲的字不能丢
+		const pending: string[] = [];
+		term.onData((data) => {
+			if (!started) {
+				pending.push(data);
+				return;
+			}
+			void fetch("/api/terminal/input", {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ id: termId, data }),
+			});
+		});
+		// 尺寸变化 → 服务端（否则 vim / top 的布局会错）
+		term.onResize(
+			({ cols, rows }) =>
+				void fetch("/api/terminal/resize", {
+					method: "POST",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify({ id: termId, cols, rows }),
+				}),
+		);
+
+		void (async () => {
+			const response = await fetch("/api/terminal/start", {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ id: termId, cols: term.cols, rows: term.rows, ...(cwd ? { cwd } : {}) }),
+			});
+			const body = (await response.json()) as { error?: { message?: string } };
+			if (disposed) return;
+			if (!response.ok) {
+				setError(body.error?.message ?? `HTTP ${response.status}`);
+				return;
+			}
+			setReady(true);
+			// start 成功：把「输入已就绪」打开，并把启动前敲的字补发出去
+			// （之前漏了这句：所有按键都被当成"未启动"塞进 pending，永远发不出去 → 输入丢失）
+			started = true;
+			for (const chunk of pending.splice(0)) {
+				void fetch("/api/terminal/input", {
+					method: "POST",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify({ id: termId, data: chunk }),
+				});
+			}
+			// 预置命令（如有）：补一个回车 = 人自己敲了一遍。必须等 start 回来后再发，
+			// 否则 PTY 还没起来，这句只会被塞进 pending（顺序也对，排在用户已敲的字之后）
+			if (initialCommand) {
+				void fetch("/api/terminal/input", {
+					method: "POST",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify({ id: termId, data: `${initialCommand}\r` }),
+				});
+			}
+			// SSE 收输出
+			source = new EventSource(`/api/terminal/stream?id=${encodeURIComponent(termId)}`);
+			source.onmessage = (event) => {
+				try {
+					term.write(JSON.parse(event.data) as string);
+				} catch {
+					term.write(event.data);
+				}
+			};
+			// 存在 effect 作用域里：卸载时要 disconnect（以前它建在 async 回调里，清理拿不到）
+			observer = new ResizeObserver(() => fit.fit());
+			observer.observe(host);
+			refitRef.current = () => {
+				fit.fit();
+				term.focus();
+			};
+			term.focus();
+		})();
+
+		return () => {
+			disposed = true;
+			observer?.disconnect();
+			source?.close();
+			// 必须带 id：服务端 `/api/terminal/stop` 是「按 id 杀进程」，空 id 直接 no-op，
+			// 否则关掉面板后那个 shell 会一直留在服务端（孤儿进程）。
+			void fetch("/api/terminal/stop", {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ id: termId }),
+			});
+			term.dispose();
+		};
+	}, [cwd, termId, initialCommand]);
+
+	return (
+		<aside className={`terminal-panel${standalone ? "" : " terminal-panel-embedded"}`}>
+			{standalone ? (
+				<div className="terminal-head">
+					<span>
+						⌨ {t("终端", "Terminal")}
+						{cwd ? ` · ${basename(cwd)}` : ""}
+					</span>
+					<span className="side-panel-count">{ready ? t("PTY 已启动", "PTY running") : t("启动中…", "Starting…")}</span>
+					<span className="topbar-spacer" />
+					<button type="button" className="btn btn-tiny" onClick={onClose}>
+						{t("关闭", "Close")}
+					</button>
+				</div>
+			) : null}
+			{error ? <div className="file-preview-error">{error}</div> : null}
+			<div className="terminal-host" ref={hostRef} />
+		</aside>
+	);
+}

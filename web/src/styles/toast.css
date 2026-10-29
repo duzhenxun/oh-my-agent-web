@@ -1,0 +1,112 @@
+/* 轻提示（底部居中）：归档这类「一按就生效、但可能误触」的动作配一条可撤销的提示。
+ * 配色全走主题变量，六套皮肤自动跟着变。
+ *
+ * 宽度**跟着对话列走**（用户：「长度需要跟着聊天内容宽度设置的一样，一行放不下就换行」）：
+ * 以前这里是 `max-width: 680px` + 单行省略号，稍长一点的两三行提示（比如「已归档 · 撤销」
+ * 那种带动作的）就被切成一截。fixed 元素里的 `100%` 是窗口不是对话列，所以宽度由 `ToastHost.tsx`
+ * 量出 `.composer-wrap` 那一格后写成内联 `left / width`（下面 `-in-column` 那个类只管
+ * 把窗口居中的 `transform` 和作为兵底的上限撑开）。 */
+.toast-host {
+	position: fixed;
+	left: 50%;
+	bottom: calc(38px + env(safe-area-inset-bottom, 0px)); /* 让开底部状态栏 */
+	transform: translateX(-50%);
+	z-index: 120;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 8px;
+	pointer-events: none; /* 只让提示自己可点，不挡下面的界面 */
+	/* 兵底（量不到对话列时，比如分栏铺开）：按窗口算，别贴边 */
+	max-width: min(680px, calc(100vw - 24px));
+}
+
+/* 量到对话列了：左边界和宽度已经是内联值，窗口居中的位移和兵底上限都得撑开 */
+.toast-host.toast-host-in-column {
+	transform: none;
+	max-width: none;
+}
+
+.toast {
+	pointer-events: auto;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	min-width: 0;
+	padding: 8px 10px 8px 14px;
+	border: 1px solid var(--border-strong, var(--border));
+	border-radius: 10px;
+	background: var(--bg-elev-2);
+	color: var(--text);
+	font-size: 14px;
+	/* 长文案靠换行消化，不靠把提示条撑出对话列 */
+	max-width: 100%;
+	box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+	animation: toast-in 0.14s ease-out;
+}
+
+@keyframes toast-in {
+	from {
+		opacity: 0;
+		transform: translateY(6px);
+	}
+
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+/* 文案可能很长（播报类的一整句）：**换行**而不是省略号 —— 一行放不下就折成两行、三行。
+ * `overflow-wrap: anywhere` 还是留着：一条长 URL / 长路径中间没有空格，得能硬断。 */
+.toast-text {
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow-wrap: anywhere;
+	white-space: normal;
+}
+
+.toast-action {
+	flex: none;
+	border: none;
+	background: none;
+	color: var(--accent);
+	font: inherit;
+	font-weight: 600;
+	padding: 2px 6px;
+	border-radius: 6px;
+	cursor: pointer;
+}
+
+.toast-action:hover {
+	background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.toast-close {
+	flex: none;
+	border: none;
+	background: none;
+	color: var(--text-faint);
+	font: inherit;
+	font-size: 16px;
+	line-height: 1;
+	padding: 0 4px;
+	border-radius: 6px;
+	cursor: pointer;
+}
+
+.toast-close:hover {
+	color: var(--text);
+	background: var(--bg-elev);
+}
+
+/* 手机上宽度收一点，别贴着两边（手机的“对话列”≈整屏，量到的内联宽度已经够用，
+ * 这里只是给兵底那条加个更紧的上限） */
+.is-mobile-shell .toast-host {
+	bottom: calc(52px + env(safe-area-inset-bottom, 0px));
+	max-width: calc(100vw - 16px);
+}
+
+.is-mobile-shell .toast-host.toast-host-in-column {
+	max-width: none;
+}

@@ -1,0 +1,331 @@
+/* 顶栏「智能体引擎」切换：一个按钮 + 一个浮层（列表风格对齐「智能体引擎」面板） */
+.engine-picker {
+	position: relative;
+	flex: none;
+	display: flex;
+}
+
+.engine-picker-btn {
+	flex: none;
+	gap: calc(6px * var(--ab));
+	padding: calc(4px * var(--ab)) calc(9px * var(--ab));
+	border-radius: calc(7px * var(--ab));
+	font-size: calc(12px * var(--ab));
+	color: var(--text-dim);
+}
+
+.engine-picker-btn:hover,
+.engine-picker-btn.side-foot-btn-on {
+	background: var(--bg);
+	color: var(--text);
+	border-color: var(--accent-dim);
+}
+
+.engine-picker-icon {
+	display: block;
+	width: 100%;
+	height: 100%;
+}
+
+/* 短标签（PI / FAKE / CODEX）：**只是一行蓝字**，不再套描边胶囊 ——
+   机器图标已经说明「这是引擎」，再给文字加个框只是多一圈线。
+   名字（pi 原生引擎 / DeepSeek Harness）也不写进胶囊了：顶栏位置金贵，
+   短标签 + 机器图标已经说清了是哪个引擎，全名在浮层里看得更全。 */
+.engine-picker-badge {
+	flex: none;
+	color: var(--accent);
+	font-size: calc(10px * var(--ab));
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	line-height: 1.5;
+}
+
+.engine-picker-chevron {
+	flex: none;
+	width: calc(12px * var(--ab));
+	height: calc(12px * var(--ab));
+	opacity: 0.7;
+}
+
+/* ---------------- 浮层 ---------------- */
+.engine-pop {
+	/* 坐标（left/top）由 JS 现算：**水平居中于触发胶囊**并夹进视口（见 belowPopoverAnchor）。
+	   以前是 `position: absolute; right: 0` 贴着胶囊右边缘 —— 340px 的卡片挂在
+	   一个一百多像素的胶囊上，于是整块往下左支出一大截，看着不像「从我点的那个东西长出来的」。 */
+	position: fixed;
+	z-index: 60;
+	width: min(340px, calc(100vw - 24px));
+	/* 高度封顶 + 内层滚动：**这一层不能 overflow** —— 小尾巴是它的子元素，一裁就没了
+	   （以前这里写着 overflow: auto，于是「朝上的尾巴」始终是隐形的，直到改成朝下也还是被裁） */
+	display: flex;
+	flex-direction: column;
+	max-height: min(60vh, 420px);
+	padding: 8px;
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	background: var(--bg-elev);
+	box-shadow: 0 12px 32px rgb(0 0 0 / 22%);
+}
+
+/* 真正滚动的那一层：内容（抬头 / 选项 / 提示）在这里排 */
+.engine-pop-scroll {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	min-height: 0;
+	overflow: auto;
+}
+
+/* 朝上的小尾巴：与模型菜单 / 子代理浮层同一套做法（旋转 45° 的方块 + 两条与描边同色的边），
+   一半压在浮层顶边上，那条 1px 边框在尾巴处「断开」，读起来就是「从胶囊掉下来的」。
+   left 由 JS 给出（尾巴**中心**的坐标）：浮层被夹到视口边缘时，尾巴仍然指得准。 */
+.engine-pop-arrow {
+	position: absolute;
+	top: -5px;
+	width: 10px;
+	height: 10px;
+	margin-left: -5px;
+	background: var(--bg-elev);
+	border-top: 1px solid var(--border);
+	border-left: 1px solid var(--border);
+	border-top-left-radius: 2px;
+	transform: rotate(45deg);
+	pointer-events: none;
+}
+
+.engine-pop-head {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	padding: 2px 4px 4px;
+	min-width: 0;
+}
+
+.engine-pop-title {
+	flex: none;
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--text);
+}
+
+.engine-pop-note {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 11px;
+	color: var(--text-dim);
+}
+
+.engine-option {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+	width: 100%;
+	text-align: left;
+	padding: 8px 10px;
+	border: 1px solid transparent;
+	border-radius: 10px;
+	background: transparent;
+	color: var(--text);
+	font: inherit;
+	cursor: pointer;
+}
+
+.engine-option:hover:not(:disabled) {
+	background: var(--bg);
+	border-color: var(--border);
+}
+
+.engine-option-on {
+	background: color-mix(in srgb, var(--accent) 10%, transparent);
+	border-color: var(--accent-dim);
+	cursor: default;
+}
+
+.engine-option:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+
+.engine-option-top {
+	display: flex;
+	align-items: center;
+	gap: 7px;
+	min-width: 0;
+}
+
+/* 列表里的短标签：和顶栏那颗一样只留蓝字，不描边、不铺底色 */
+.engine-option-badge {
+	flex: none;
+	color: var(--accent);
+	font-size: 10px;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	line-height: 1.6;
+}
+
+/* 每一项前面那颗小机器人：与顶栏胶囊同一个图标，颜色跟着行走（淡灰），别抢标签的蓝 */
+.engine-option-icon {
+	flex: none;
+	display: inline-flex;
+	width: 13px;
+	height: 13px;
+	color: var(--text-dim);
+}
+
+.engine-option-label {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 14px;
+	font-weight: 600;
+}
+
+.engine-option-version {
+	flex: none;
+	font-size: 11px;
+	color: var(--text-dim);
+}
+
+.engine-option-tail {
+	flex: none;
+	margin-left: auto;
+	display: inline-flex;
+	align-items: center;
+	color: var(--accent);
+}
+
+.engine-picker-check {
+	width: 14px;
+	height: 14px;
+}
+
+.engine-option-desc {
+	font-size: 12px;
+	line-height: 1.45;
+	color: var(--text-dim);
+	/* 说明最多两行：三行以上会把浮层撑得比窗口高 */
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+
+.engine-option-caps {
+	font-size: 11px;
+	color: var(--text-dim);
+	opacity: 0.85;
+}
+
+.engine-pop-hint {
+	padding: 4px 4px 2px;
+	font-size: 11px;
+	color: var(--warn, #b8860b);
+}
+
+/* 手机顶栏：只剩一个引擎短名（PI / CODEX / DSH）。
+   机器人图标、下拉箭头、胶囊描边全部省掉 —— 顶栏本来就要塞下品牌、新会话、四个入口，
+   一个纯文字短名足够说明「现在用哪个引擎」，点开还是同一个浮层。 */
+.is-mobile-shell .engine-picker-btn {
+	gap: 0;
+	padding: 4px 6px;
+	border-color: transparent;
+}
+
+.is-mobile-shell .engine-picker-btn .side-foot-icon,
+.is-mobile-shell .engine-picker-chevron {
+	display: none;
+}
+
+.is-mobile-shell .engine-picker-badge {
+	font-size: 12px;
+	font-weight: 600;
+	letter-spacing: 0.02em;
+	line-height: 1;
+}
+
+/* 手机：浮层改成「顶栏下方的整宽面板」。
+   原来它绝对定位在按钮右边（right:0），按钮右边还有四个图标入口，
+   390 宽的屏上算出来 left = -70px —— 左边直接被切掉看不见（真实踩过）。 */
+.is-mobile-shell .engine-pop {
+	position: fixed;
+	top: calc(var(--appbar-h, 46px) + 4px);
+	left: 8px;
+	right: 8px;
+	width: auto;
+	/* 旧版 Edge/Chromium 不认 dvh：先给 vh，下面那行再覆盖（PR3） */
+	max-height: calc(100vh - var(--appbar-h, 46px) - 16px);
+	max-height: calc(100dvh - var(--appbar-h, 46px) - 16px);
+}
+
+/* ---- 状态栏里的引擎胶囊（顶栏改成竖栏时搬下来的，见 StatusBar）---- *
+ * 状态栏只有 24px 高、字号 12px，所以这里不能用顶栏那套 `--ab` 尺寸：
+ * 那套是「顶栏里所有东西一起缩」的比例，搬到底部只会算出一个更小的高。
+ * 直接按状态栏那排 `tool-chip` 的观感写死一档，跟旁边那颗「放行」看起来是一家的。 */
+.engine-picker-in-statusbar {
+	flex: 0 1 auto;
+	min-width: 0;
+	align-items: center;
+}
+
+.engine-picker-in-statusbar .engine-picker-btn {
+	flex: 0 1 auto;
+	min-width: 0;
+	gap: 4px;
+	padding: 1px 4px;
+	/* 跟旁边「放行」一样不画框、不铺底：状态栏是一条扁平的栏，
+	   再套一层椭圆描边就多出一个小盒子（见 statusbar.css 的 .tool-chip） */
+	border: none;
+	border-radius: 5px;
+	background: transparent;
+	font-size: 12px;
+	line-height: 1;
+	white-space: nowrap;
+}
+
+/* 悬浮 / 打开浮层时只给一点底色，边框始终不回来 */
+.engine-picker-in-statusbar .engine-picker-btn:hover,
+.engine-picker-in-statusbar .engine-picker-btn.side-foot-btn-on {
+	background: var(--bg-elev-2);
+	border-color: transparent;
+	color: var(--text);
+}
+
+.engine-picker-in-statusbar .engine-picker-btn .side-foot-icon {
+	width: 14px;
+	height: 14px;
+	font-size: 12px;
+}
+
+/* 状态栏窄了就整颗幅缩：里面只剩图标、短名与箭头，都由 flex 自己收 */
+.engine-picker-in-statusbar .engine-picker-badge {
+	font-size: 10px;
+}
+
+.engine-picker-in-statusbar .engine-picker-chevron {
+	width: 10px;
+	height: 10px;
+}
+
+/* 朝**下**的小尾巴：胶囊在状态栏（贴着窗口最底），浮层只能往上长，所以尾巴长在浮层底边上。
+   和上面那条同一套画法（旋转 45° 的方块 + 两条与描边同色的边），只是取掉上半圈换下半圈 ——
+   底边上那条 1px 边框在尾巴处「断开」，读起来就是「从下面那颗胶囊冒上来的」。
+   left 由 JS 给出（尾巴**中心**的坐标，见 EnginePicker 的 centeredPopoverAnchor）：
+   浮层比胶囊宽得多、还可能被视口夹到一边，尾巴照样指得准。 */
+.engine-picker-in-statusbar .engine-pop-arrow {
+	top: auto;
+	bottom: -5px;
+	border-top: none;
+	border-left: none;
+	border-right: 1px solid var(--border);
+	border-bottom: 1px solid var(--border);
+	border-top-left-radius: 0;
+	border-bottom-right-radius: 2px;
+}
+
+/* 往上弹时高度受限于「胶囊以上的空间」，不能再用顶栏那个 100vh 的公式 */
+.engine-picker-in-statusbar .engine-pop {
+	max-height: min(60vh, 420px);
+}

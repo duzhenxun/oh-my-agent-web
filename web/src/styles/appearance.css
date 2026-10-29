@@ -1,0 +1,328 @@
+/*
+ * 设置面板：内部分类 tab + 外观主题卡（ADR-0030）。
+ * 面板本体（.settings-panel / .settings-head …）在 chat.css 里，这里只补新增的两块。
+ */
+
+/* ---- 内部分类 tab：贴在设置内容顶上的一条分段控件 ---- */
+.settings-tabs {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 3px;
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	background: var(--bg-elev);
+	align-self: flex-start;
+}
+
+.settings-tab {
+	border: 1px solid transparent;
+	border-radius: 999px;
+	background: none;
+	color: var(--text-dim);
+	font: inherit;
+	font-size: 14px;
+	padding: 3px 14px;
+	cursor: pointer;
+	/* 能拖着排序（2026-10-29 用户：「这些可以手动调位置」）：
+	 * 横向拖 = 排序，竖向拖仍交给页面滚动；拖的时候不要顺手选中文字 */
+	touch-action: pan-y;
+	user-select: none;
+	-webkit-user-select: none;
+}
+
+/* 拖动中的三态（与弹窗顶部那排 Tab 用同一套观感，见 panel-tabs.css）：
+ * reordering = 正在拖（全场让位动画）、dragging = 跟手的那一个、settling = 松手后滑入槽位。 */
+.settings-tab-reordering,
+.settings-tab-settling {
+	will-change: transform;
+	transition:
+		transform 180ms cubic-bezier(0.2, 0, 0, 1),
+		background-color 180ms ease;
+}
+
+.settings-tab-dragging {
+	z-index: 4;
+	cursor: grabbing;
+	transition: none;
+	background: var(--bg-elev-2);
+	border-color: var(--accent-dim);
+	color: var(--text);
+	box-shadow: 0 3px 12px color-mix(in srgb, var(--text) 16%, transparent);
+}
+
+.settings-tab-settling {
+	z-index: 4;
+	cursor: grabbing;
+}
+
+html.is-tab-sort-dragging,
+html.is-tab-sort-dragging * {
+	cursor: grabbing !important;
+	user-select: none !important;
+	-webkit-user-select: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.settings-tab-reordering,
+	.settings-tab-settling {
+		transition: none;
+	}
+}
+
+.settings-tab:hover {
+	color: var(--text);
+}
+
+/* 选中：淡底 + 主色描边 —— 和整站的「选中」观感一致 */
+.settings-tab-on,
+.settings-tab-on:hover {
+	background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+	border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+	color: var(--text);
+}
+
+/* ---- 顶栏显隐：一排勾选框，两列排开（七项竖排太高，一列只会让面板空一半） ---- */
+.settings-checks {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 8px 12px;
+}
+
+/* 勾选框前那颗图标 = 顶栏按钮上同一颗（PanelIcon），尺寸跟弹窗 tab 的 16px 对齐；
+   不加颜色，让它跟着 label 的 --text-dim 走，不抢勾选框本身。
+   `font-size / line-height` 是给「临时会话」那颗 💬 用的（它不是 SVG，
+   不压字号就会按 label 的 14px 排，撑出 16px 的盒子、跟旁边一排图标不一齐）。 */
+.settings-check-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 16px;
+	height: 16px;
+	flex: none;
+	font-size: 13px;
+	line-height: 1;
+}
+
+.settings-check-icon svg {
+	display: block;
+	width: 100%;
+	height: 100%;
+}
+
+/* ---- 主题卡：3 列，一张卡 = 三色预览 + 名字 + 一句说明 ---- */
+.theme-grid {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 10px;
+}
+
+.theme-card {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	gap: 6px;
+	padding: 8px;
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	background: var(--bg);
+	color: var(--text-dim);
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+	transition:
+		border-color 0.12s ease,
+		background 0.12s ease;
+}
+
+.theme-card:hover {
+	border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+
+/* 选中：主色描边 + 淡底，和「分段 tab」用同一套语言 */
+.theme-card-on,
+.theme-card-on:hover {
+	border-color: var(--accent);
+	background: color-mix(in srgb, var(--accent) 10%, var(--bg));
+}
+
+/* 预览：一块「窗口」，里面两条灰色横条 + 一个主色圆点，比纯色块更能看出层级 */
+.theme-preview {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	gap: 4px;
+	height: 44px;
+	padding: 0 8px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	overflow: hidden;
+}
+
+.theme-preview-bar {
+	height: 5px;
+	border-radius: 3px;
+	width: 70%;
+}
+
+.theme-preview-bar-short {
+	width: 45%;
+}
+
+.theme-preview-dot {
+	position: absolute;
+	right: 8px;
+	top: 50%;
+	transform: translateY(-50%);
+	width: 14px;
+	height: 14px;
+	border-radius: 50%;
+}
+
+.theme-name {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--text);
+}
+
+.theme-check {
+	color: var(--accent);
+	font-size: 13px;
+}
+
+.theme-hint {
+	font-size: 13px;
+	line-height: 1.4;
+	color: var(--text-faint);
+}
+
+/* 窄屏（单栏手机）回落成两列：三列时每张卡只剩 90px，说明文字会折成三行 */
+@media (max-width: 560px) {
+	.theme-grid {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+/* ---- 语言：两张卡（中文 / English）----
+   只有两种语言，用两张大卡："现在选的是哪个" 比少占一行更重要。
+   勾选框本身留着（键盘 / 读屏照旧可用），只是不画出来 —— 选中态由整张卡的描边与底色表达。 */
+.settings-langs {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 10px;
+}
+
+/* 四选一（字号 / 宽度）：两列会占掉两行，四列一屏看得全，也不至于挤成一条 */
+.settings-langs-4 {
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+/* 三选一（顶栏位置）：一行三张，正好对应「顶部 / 靠左 / 靠右」 */
+.settings-langs-3 {
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* 五选一（对话里图片的最大宽度）：一行五张够用了，窄屏退回两列 */
+.settings-langs-5 {
+	grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+@media (max-width: 560px) {
+	.settings-langs-4,
+	.settings-langs-3,
+	.settings-langs-5 {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+.settings-lang {
+	display: flex;
+	flex-direction: column;
+	/* 卡片里的两行（名字 + 像素/说明）**居中**：它们是"选项卡"，不是一段左对齐的正文；
+	   卡片本身很宽，左对齐时右边空一大条，看着像整块内容偏到左边去了。 */
+	align-items: center;
+	text-align: center;
+	gap: 2px;
+	padding: 10px 12px;
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	background: var(--bg);
+	cursor: pointer;
+	transition:
+		border-color 0.12s ease,
+		background 0.12s ease;
+}
+
+.settings-lang:hover {
+	border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+}
+
+/* 选中：淡底 + 主色描边（和主题卡、设置 tab 的选中观感保持一致） */
+.settings-lang-on,
+.settings-lang-on:hover {
+	border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+	background: color-mix(in srgb, var(--accent) 10%, var(--bg));
+}
+
+/* 单选框不显示，但**占位为 0**：键盘 Tab 到它时浏览器会自己滚到可见处 */
+.settings-lang input[type="radio"] {
+	position: absolute;
+	opacity: 0;
+	pointer-events: none;
+	width: 0;
+	height: 0;
+}
+
+.settings-lang:focus-within {
+	outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+	outline-offset: 1px;
+}
+
+.settings-lang-name {
+	font-size: 15px;
+	font-weight: 600;
+	color: var(--text);
+}
+
+.settings-lang-hint {
+	font-size: 13px;
+	color: var(--text-faint);
+}
+
+@media (max-width: 720px) {
+	/* 窄屏：中文 / English 两列会挤成竖排两行字，直接一列 */
+	.settings-langs {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+
+/* ---- 顶栏 logo（设置 → 外观 → 顶栏名称）----
+ * 一行三件：预览图 / 「更换 logo」/ 「用回默认 logo」。
+ * 预览用**实际大小**（20px，跟顶栏那颗一致）：设置里看到的就该是顶栏上那个样子，
+ * 放大成一张大图反而看不出「缩到 20px 还认不认得出」。 */
+.brand-logo-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.brand-logo-preview {
+	width: 24px;
+	height: 24px;
+	border-radius: 6px;
+	flex: none;
+	/* 用户传的图不一定是方的（虽然会被裁成方形），`object-fit` 兜一层，永远不拉变形 */
+	object-fit: contain;
+	background: var(--bg-elev-2);
+}
+
+/* 真正的 <input type="file"> 藏起来：「更换 logo」那颗按钮代理它，
+ * 原生文件控件的样式各浏览器一套，跟这里的分区对不上 */
+.brand-logo-file {
+	display: none;
+}

@@ -1,0 +1,366 @@
+/* 底部状态栏（当前项目 / 审批 / 引擎 / 队列 / 上下文 / 顶部开关）*/
+/* 「顶部」开关：不要边框，当普通文字用（悬浮才给一点底色） */
+.status-toggle {
+	border: none;
+	border-radius: 5px;
+	background: none;
+	color: var(--text-faint);
+	font: inherit;
+	font-size: calc(var(--chat-ui-font-size, 12px) * 0.6897);
+	padding: 0 3px;
+	cursor: pointer;
+}
+
+/* 两个开关的箭头用同一套小三角字符，并给固定宽度 —— 否则 ◀ 比 ▴ 明显大一圈 */
+.status-toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+}
+
+.status-toggle-icon {
+	display: inline-block;
+	width: 10px;
+	text-align: center;
+	font-size: calc(var(--chat-ui-font-size, 12px) * 0.7586);
+	line-height: 1;
+}
+
+.status-toggle:hover {
+	color: var(--text);
+	background: var(--bg-elev-2);
+}
+
+/* 手机上状态栏会很宽：让它横向可滚动，别把布局撑破 */
+.is-mobile-shell .statusbar {
+	overflow-x: auto;
+	scrollbar-width: none;
+	white-space: nowrap;
+}
+
+.is-mobile-shell .statusbar::-webkit-scrollbar {
+	display: none;
+}
+
+/* 手机：只藏「对话数」（其余：项目 / 引擎 / 工作中 / 排队 / 上下文 都留着） */
+.is-mobile-shell .statusbar .status-conv {
+	display: none;
+}
+
+/* 上下文胶囊：点一下从**上方**弹出会话信息（浮层挂在它自己身上，手机也点得开） */
+.status-context-wrap {
+	position: relative;
+	display: inline-flex;
+}
+
+/* 弹窗用 fixed：状态栏在手机上是 overflow-x:auto（会连带裁掉纵向溢出），
+   绝对定位的浮层会被切成看不见 —— 表现就是「点了没反应」。
+   具体坐标由 JS 按触发按钮算（贴在它正上方），这里的 bottom/right 只是兜底。 */
+.status-usage-pop {
+	position: fixed;
+	bottom: 46px;
+	right: auto;
+	z-index: 60;
+	min-width: 200px;
+	/* 极窄屏也别顶出屏幕（坐标由 JS 夹过，这里兜宽度） */
+	max-width: calc(100vw - 16px);
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding: 8px 10px;
+	border: 1px solid var(--border-strong, var(--border));
+	border-radius: 10px;
+	background: var(--bg-elev);
+	box-shadow: 0 12px 32px rgb(0 0 0 / 35%);
+}
+
+/* 「连接感」：指着下方上下文胶囊的小尾巴（与模型选择器那枚同一套做法）。
+   旋转 45° 的方块 + 两条与浮层描边同色的边 —— 一半压在浮层底边上，于是那条 1px 边框
+   在尾巴处断开，读起来就是浮层从这个按钮长出来的。left 由 JS 给出（尾巴中心坐标），
+   浮层被夹到视口边缘时仍然指得准。 */
+.status-usage-arrow {
+	position: absolute;
+	bottom: -5px;
+	width: 10px;
+	height: 10px;
+	margin-left: -5px;
+	background: var(--bg-elev);
+	border-right: 1px solid var(--border-strong, var(--border));
+	border-bottom: 1px solid var(--border-strong, var(--border));
+	border-bottom-right-radius: 2px;
+	transform: rotate(45deg);
+	pointer-events: none;
+}
+
+.status-usage-title {
+	font-size: calc(var(--chat-ui-font-size, 12px) * 0.7586);
+	font-weight: 600;
+	color: var(--text-dim);
+	padding-bottom: 4px;
+	border-bottom: 1px solid var(--border);
+}
+
+.status-usage-row {
+	display: flex;
+	justify-content: space-between;
+	gap: 16px;
+	font-size: calc(var(--chat-ui-font-size, 12px) * 0.7931);
+	color: var(--text-faint);
+}
+
+/* 手机：整宽弹层（左右各 8px）。跟着胶囊右边缘锚定的话，左边顶到屏幕、右边空一大截，
+   十几行的数字看着就像「没对齐」。 */
+.is-mobile-shell .status-usage-pop-full {
+	left: 8px;
+	right: 8px;
+	width: auto;
+	max-width: none;
+	/* 状态栏 32px 高 + 8px 间距，贴着它上面 */
+	bottom: calc(32px + env(safe-area-inset-bottom, 0px) + 8px);
+	border-radius: 12px;
+}
+
+/* 整宽了就不用再限说明文字的宽度 */
+.is-mobile-shell .status-usage-note {
+	max-width: none;
+}
+
+.status-usage-row .mono {
+	color: var(--text);
+}
+
+/* 口径说明：把「整段会话累计」与「每条回复那一轮」区分开（两者数值差几十倍） */
+.status-usage-note {
+	margin-top: 2px;
+	padding-top: 6px;
+	border-top: 1px dashed var(--border);
+	/* 状态栏本身是 nowrap 的一条（见 .statusbar），说明文字要允许换行，否则被裁在半句 */
+	white-space: normal;
+	font-size: calc(var(--chat-ui-font-size, 12px) * 0.7241);
+	line-height: 1.5;
+	color: var(--text-faint);
+	max-width: 260px;
+}
+
+.status-usage-note b {
+	color: var(--text-dim);
+	font-weight: 600;
+}
+
+/* ---------------------------------------------------------------------------
+ * 手机底部状态栏：放行 / 上下文 / 项目名 / 顶部（排队 / 工作中跟随设置里的「底部」开关，默认显示）。
+ *
+ * 桌面那套 24px 高、12px 字在小屏上「又小又显示不全」，所以这里整条放大一档：
+ * 高度 32px、13px 字，控件也水涨船高。
+ * 另外**不能居中**：flex 居中 + overflow-x:auto 时左侧会被推出可滚动区，
+ * 表现就是「有的显示不全、往左也划不回来」——改成左对齐 + 溢出可滚。
+ * ------------------------------------------------------------------------- */
+.is-mobile-shell .statusbar {
+	height: 32px;
+	font-size: calc(var(--chat-ui-font-size, 12px) * 0.8966);
+	gap: 10px;
+	justify-content: flex-start;
+	/* 右侧不留内边距：「顶部」开关贴到屏幕右沿 */
+	padding: 0 0 0 10px;
+}
+
+/* 「顶部」不再绝对定位：留在流里靠右（内容超宽时它跟着一起滚，不会被盖住） */
+.is-mobile-shell .statusbar > .status-toggle {
+	position: static;
+	transform: none;
+	margin-left: auto;
+	font-size: calc(var(--chat-ui-font-size, 12px) * 0.8276);
+	padding: 0 4px;
+}
+
+/* 手机上的控件同样放大（桌面那版是为 24px 高的栏收过的） */
+.is-mobile-shell .statusbar .tool-chip {
+	font-size: calc(var(--chat-ui-font-size, 12px) * 0.8966);
+	height: 22px;
+	line-height: 22px;
+	padding: 0 5px;
+}
+
+.is-mobile-shell .statusbar .tool-chip .tool-icon {
+	font-size: calc(var(--chat-ui-font-size, 12px) * 0.8966);
+}
+
+.is-mobile-shell .statusbar .thinking-value {
+	font-size: calc(var(--chat-ui-font-size, 12px) * 0.8966);
+}
+
+.is-mobile-shell .statusbar .model-caret {
+	font-size: calc(var(--chat-ui-font-size, 12px) * 0.7586);
+}
+
+.is-mobile-shell .statusbar > .status-spacer {
+	display: none;
+}
+
+/* 手机上把这几项的 emoji 收起来，省出宽度给文字（图标在小屏上是纯占位） */
+.is-mobile-shell .statusbar .status-ico {
+	display: none;
+}
+
+/* 「排队 / 工作中」不再在手机上无条件隐藏：显隐交给设置 → 界面 → 底部
+   （默认显示，勾掉才不显示）；状态栏本身 overflow-x:auto，装不下就横向滑。 */
+
+/* 「工作中」左边的小环：有回合在跑就转，蓝圈；闲着就是个淡灰静止环 */
+.status-running {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+}
+
+.status-spinner {
+	flex: none;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	border: 1.4px solid var(--border-strong, var(--border));
+}
+
+.status-running.is-working .status-spinner {
+	border-color: color-mix(in srgb, var(--accent) 28%, transparent);
+	border-top-color: var(--accent);
+	animation: status-spin 0.8s linear infinite;
+}
+
+@keyframes status-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+/* 系统开了「减少动态效果」就不转，改成实心蓝点（避免不适） */
+@media (prefers-reduced-motion: reduce) {
+	.status-running.is-working .status-spinner {
+		animation: none;
+		border-color: var(--accent);
+	}
+}
+
+/* ---- 上下文用量胶囊：已用 / 窗口（11.8K / 1.05M）---- */
+/* 上下文胶囊：不描边、不铺底，跟着状态栏那排文字走（跟在「排队」后面） */
+.status-context {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	flex: none;
+	padding: 0 2px;
+	border: none;
+	background: none;
+	color: var(--text-dim);
+	font: inherit;
+	font-size: calc(var(--chat-ui-font-size, 12px) * 0.8276);
+	line-height: 1.1;
+	cursor: pointer;
+	border-radius: 0;
+}
+
+.status-context:hover {
+	color: var(--text);
+}
+
+.status-ring {
+	width: 12px;
+	height: 12px;
+	flex: none;
+	transform: rotate(-90deg);
+}
+
+.status-ring-bg {
+	fill: none;
+	stroke: var(--border);
+	stroke-width: 2.6;
+}
+
+.status-ring-fg {
+	fill: none;
+	stroke: var(--accent);
+	stroke-width: 2.6;
+	stroke-linecap: round;
+	transition: stroke-dasharray 200ms ease-out;
+}
+
+.status-context-used {
+	font-weight: 650;
+	color: var(--text);
+	font-variant-numeric: tabular-nums;
+}
+
+.status-context-total {
+	color: var(--text-faint);
+	font-variant-numeric: tabular-nums;
+}
+
+/* 手机：跟整条一起放大（圆环也大一号，手指好点） */
+.is-mobile-shell .status-context {
+	padding: 2px 7px 2px 5px;
+	font-size: calc(var(--chat-ui-font-size, 12px) * 0.8621);
+}
+
+.is-mobile-shell .status-ring {
+	width: 15px;
+	height: 15px;
+}
+
+/* 超窄屏（≤380px）：顶部开关只留箭头图标；上下文只留「已用」，把位置让出来 */
+@media (max-width: 380px) {
+	.statusbar .status-toggle-label {
+		display: none;
+	}
+
+	.statusbar .status-context-total {
+		display: none;
+	}
+}
+
+/* 本轮配置（模型 / 思考强度 / 审批）：状态栏只有 24px 高，chip 要收得更小 */
+.status-controls {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	flex: none;
+	min-width: 0;
+}
+
+/* 状态栏里是「一条扁平的栏」，不要给这些控件再套外框：字和图标就够 */
+.statusbar .tool-chip {
+	font-size: calc(var(--chat-ui-font-size, 12px) * 0.7931);
+	padding: 0 3px;
+	border: none;
+	border-radius: 5px;
+	line-height: 17px;
+	height: 17px;
+	color: var(--text-dim);
+	background: transparent;
+}
+
+/* 悬浮只给一点底色，让人知道能点（不加边框，避免又变成一堆小盒子） */
+.statusbar .tool-chip:hover:not(:disabled) {
+	background: var(--bg-elev-2);
+	color: var(--text);
+}
+
+/* 审批那颗「放行」保留警示色，但同样不画框（框只在输入区那版才有意义） */
+.statusbar .tool-chip-warn {
+	border: none;
+	color: var(--yellow, #d9a441);
+}
+
+.statusbar .tool-chip .tool-icon {
+	font-size: calc(var(--chat-ui-font-size, 12px) * 0.7586);
+}
+
+.statusbar .model-trigger {
+	max-width: 190px;
+}
+
+.statusbar .thinking-value {
+	font-size: calc(var(--chat-ui-font-size, 12px) * 0.7931);
+}
+
+.statusbar .model-caret {
+	font-size: calc(var(--chat-ui-font-size, 12px) * 0.6897);
+}

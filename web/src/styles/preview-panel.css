@@ -1,0 +1,450 @@
+/* ---- 右侧预览面板（第 2 步：多标签 / 收起 / 拖宽 / 全屏）---- */
+.preview-panel {
+	position: relative;
+	flex: none;
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	/* 这圈内边距（也是行间距）唯一需要被「吃掉」的地方是终端：它要黑到面板的四条边，
+	   所以下面 `.preview-panel-term` 拿这几个变量取负外边距，而不是各自写一遍 6px。
+	   手机上底边还要叠一条 home 条的避让（见 responsive.css）。 */
+	--preview-pad: 6px;
+	--preview-pad-bottom: var(--preview-pad);
+	/* 不要边框：和对话区之间由 workspace 的右边框分隔，避免出现双线 */
+	border: none;
+	border-radius: 0;
+	background: var(--bg-elev);
+	padding: var(--preview-pad);
+	padding-bottom: var(--preview-pad-bottom);
+	gap: var(--preview-pad);
+}
+
+/* 左边缘的拖拽条（面板在右侧，所以热区在左边） */
+.preview-resizer {
+	position: absolute;
+	top: 0;
+	left: -3px;
+	width: 7px;
+	height: 100%;
+	cursor: col-resize;
+	z-index: 5;
+}
+
+.preview-resizer:hover,
+.preview-resizer:active {
+	background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* 标签条那一行：标签装在内层（自己滚），「＋」和右边那排工具按钮固定不动 */
+.preview-tabs {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex: none;
+	min-width: 0;
+}
+
+/* 横向滚动层：标签**不压缩**（每个保持自己的宽度，否则挤成一排省略号就认不出了），
+   装不下时左右滑。
+   滚动条**不画**（用户要求）：那条 4px 的槽横在标签底下，跟标签的圆角挤在一起很难看。
+   滚动本身照旧 —— 滚轮（竖滚会被下面的逻辑转成横滑）、触控板双指、拖动标签都还能滑。 */
+.preview-tabs-strip {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow-x: auto;
+	overflow-y: hidden;
+	overscroll-behavior-x: contain;
+	scrollbar-width: none;
+}
+
+.preview-tabs-strip::-webkit-scrollbar {
+	display: none;
+}
+
+.preview-tab {
+	display: inline-flex;
+	align-items: center;
+	border: 1px solid var(--border);
+	border-radius: 7px;
+	background: var(--bg);
+	/* 宽度按内容走，但封顶 150px：短名字就是窄胶囊，长名字截断。
+	   flex: none 是关键 —— 标签一多不让它们互相挤，挤到最后只剩省略号就认不出是哪个了，
+	   装不下就让上面那个滚动层去滑。 */
+	flex: none;
+	max-width: 150px;
+	min-width: 0;
+}
+
+.preview-tab-on {
+	border-color: var(--accent-dim);
+	background: var(--bg-elev-2);
+}
+
+.preview-tab-name {
+	border: none;
+	background: none;
+	color: var(--text-dim);
+	font: inherit;
+	font-size: 14px;
+	/* 右边只留 2px：叉号要贴著文字（以前 6+5=11px，看着像叉号漂浮在标签里） */
+	padding: 2px 2px 2px 6px;
+	cursor: pointer;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	min-width: 0;
+}
+
+.preview-tab-on .preview-tab-name {
+	color: var(--text);
+}
+
+/* 叉号：左内边距缩到 3px（跟文字右边那 2px 合起来 5px），命中区留着 6px 不难点 */
+.preview-tab-x {
+	flex: none;
+	border: none;
+	background: none;
+	color: var(--text-faint);
+	font: inherit;
+	font-size: 14px;
+	line-height: 1;
+	padding: 0 6px 0 3px;
+	cursor: pointer;
+}
+
+.preview-tab-x:hover {
+	color: var(--red);
+}
+
+.preview-body {
+	flex: 1 1 auto;
+	min-height: 0;
+	display: flex;
+}
+
+.file-viewer {
+	flex: 1 1 auto;
+	min-height: 0;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	/* 文件头那排按钮要不要让位，交给容器查询判断（面板被「文件列表」吃掉一截时变窄） */
+	container-type: inline-size;
+}
+
+/* 窄到装不下时先让掉「字节数 · 类型」这块说明：文件名与源码 / 预览 / 文件列表开关都比它重要。
+   不这么做的话，最后那颗「文件列表」会自己折到第二行，看着像多出来一个孤零零的按钮。 */
+@container (max-width: 470px) {
+	.file-preview-head .file-preview-meta {
+		display: none;
+	}
+}
+
+/* 收起/展开：一个圆角浅底箭头（对齐你给的截图），展开在标签栏右侧、收起是独立的小块 */
+.preview-arrow {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 30px;
+	height: 30px;
+	border: none;
+	border-radius: 9px;
+	background: var(--bg-elev-2);
+	color: var(--text-dim);
+	font: inherit;
+	font-size: 18px;
+	line-height: 1;
+	cursor: pointer;
+}
+
+.preview-arrow:hover {
+	background: var(--bg-elev);
+	color: var(--text);
+}
+
+/* 收起态：贴着右侧边缘的一条，箭头朝右（点它展开） */
+.preview-collapsed {
+	align-self: flex-start;
+	margin-top: 6px;
+	width: 34px;
+	height: 34px;
+	border-radius: 0;
+}
+
+/* 每个标签一个槽位：非激活的只隐藏、不卸载（终端 PTY 靠这个活着） */
+.preview-slot {
+	flex: 1 1 auto;
+	min-height: 0;
+	min-width: 0;
+	display: flex;
+}
+
+.preview-slot-hidden {
+	display: none;
+}
+
+/* 终端在面板里要铺满（和文件预览一样自动宽度），不能再是固定 560px */
+.terminal-panel-embedded {
+	width: 100%;
+	flex: 1 1 auto;
+	min-width: 0;
+	min-height: 0;
+	border: none;
+	padding: 0;
+	background: none;
+}
+
+/**
+ * 终端当主角时：**整块全黑，四周不留白**。
+ *
+ * 面板自己带 6px 内边距 + 6px 行间距，终端嵌在里面就是「黑块泡在白框里」——
+ * 左边、右边、下边那圈白边，加上标签条底下那道白缝，一共四条。
+ * 这里不去动面板的 padding（标签条在分栏 / 铺开两档里靠它对齐顶栏，改了会整体偏 -6px），
+ * 而是让**内容槽自己用负外边距把这圈吃掉**：左右下贴到面板边缘，上面那条同时盖掉行间距。
+ * 终端底色本来就是 #0d1117（见 TerminalPanel.tsx 的 `theme.background`，不跟主题变），
+ * 于是从标签条下方一直到面板下沿都是同一块黑。
+ */
+.preview-panel-term .preview-body {
+	margin: calc(-1 * var(--preview-pad));
+	margin-bottom: calc(-1 * var(--preview-pad-bottom));
+}
+
+/* 标签前的类型标示（一眼看出是 md / 代码 / 图片 / 终端） */
+.preview-tab-icon {
+	display: inline-block;
+	min-width: 18px;
+	margin-right: 5px;
+	padding: 0 3px;
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	color: var(--text-faint);
+	font-family: ui-monospace, monospace;
+	font-size: 12px;
+	line-height: 1.4;
+	text-align: center;
+	vertical-align: 1px;
+}
+
+.preview-tab-on .preview-tab-icon {
+	color: var(--accent);
+	border-color: var(--accent-dim);
+}
+
+/* 图片预览：棋盘格底 + 自适应大小 */
+.file-image-wrap {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: auto;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 8px;
+	/* 图片区也不要描边（面板已经贴边，再多一圈就是多出来的竖线） */
+	border: none;
+	border-radius: 0;
+	background-color: #0d1117;
+	background-image:
+		linear-gradient(45deg, #161b22 25%, transparent 25%), linear-gradient(-45deg, #161b22 25%, transparent 25%),
+		linear-gradient(45deg, transparent 75%, #161b22 75%), linear-gradient(-45deg, transparent 75%, #161b22 75%);
+	background-size: 16px 16px;
+	background-position:
+		0 0,
+		0 8px,
+		8px -8px,
+		-8px 0;
+}
+
+.file-image {
+	max-width: 100%;
+	max-height: 100%;
+	object-fit: contain;
+	border-radius: 0;
+}
+
+/* 右侧竖列：收起箭头 + 对话大纲（对齐参考实现，两者在同一列） */
+.preview-rail {
+	flex: none;
+	width: 34px;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 8px;
+	padding-top: 6px;
+	min-height: 0;
+	/* 让大纲的竖条可以撑满剩余高度并自己滚动 */
+	align-self: stretch;
+}
+
+.preview-rail .outline {
+	position: static;
+	flex: 1 1 auto;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	pointer-events: auto;
+}
+
+/* 竖列里的大纲：只有方块，不要背景与内边距 */
+.preview-rail .outline-rail {
+	background: none;
+	padding: 0;
+	border-radius: 0;
+	gap: 8px;
+	overflow: auto;
+}
+
+/* 右侧面板（预览 / 终端）用纯白底，与对话区一致（!important：确保盖住 --bg-elev） */
+.preview-panel,
+.preview-rail {
+	background: var(--bg) !important;
+}
+
+/* 「铺开」：占满「对话 + 预览」两块区域（左侧栏保留、状态栏保留） */
+.preview-panel-wide {
+	flex: 1 1 auto;
+	width: auto !important;
+	min-width: 0;
+}
+
+/* ---- 面板铺到顶（分栏 / 铺开都算）----
+ * 面板不再从顶栏下面开始，而是升到窗口最顶：它的标签条就落在顶栏那一行。
+ *   - 分栏（.app-split）：标签条占顶栏的**右半段**，左半段仍是顶栏 ——
+ *     顶栏自己用 padding-right 让出了那段宽度（见 app-bar.css 的 `.app-split .appbar`）；
+ *   - 铺开（.app-wide-lift）：面板占满侧栏右边那一整块，于是顶栏的中间/右半段整个被它盖住，
+ *     标签条一直往左靠到侧栏边上。这一档**不给顶栏让位** —— 让位是为了给标签条腾地方，
+ *     这里标签条本来就占满整条。
+ * 上移的量就是顶栏高（`.app-main` 的 padding 是 0，中间没有缝）；因为 `align-items: stretch`，
+ * 负的 margin-top 会把它补成等高（底边仍与对话区对齐，不会被压短）。
+ */
+.app-split .preview-panel,
+.app-wide-lift .preview-panel {
+	margin-top: calc(-1 * var(--appbar-h, 46px));
+	/* 要盖在顶栏（z-index: 4）之上：否则顶栏的底色/阴影会压在标签条上 */
+	z-index: 6;
+	/*
+	 * 顶上那一条（= 顶栏那么高）必须**跟顶栏同色**：它本来就是同一条栏，
+	 * 左半段是顶栏、右半段让给了标签条。只铺纯白的话接缝处会露出一块色差。
+	 * 用两层渐变画（而不是新加一个元素）：
+	 *   1) 最底下一条 1px 的 --border：把顶栏的底边线接到面板这一侧（差 1px 也会断成两截）；
+	 *   2) 顶栏高的 --bg-elev 色块。
+	 * 顶栏收起（--appbar-h = 0）时两层都是 0 高，什么也不画。
+	 */
+	background:
+		linear-gradient(var(--border), var(--border)) 0 calc(var(--appbar-h, 46px) - 1px) / 100% 1px no-repeat,
+		linear-gradient(var(--bg-elev), var(--bg-elev)) 0 0 / 100% var(--appbar-h, 46px) no-repeat,
+		var(--bg) !important;
+}
+
+/* 标签条占住顶栏那一条：**跟顶栏同高同起点**
+ * （负 margin 抵掉面板自己的 6px 上内边距，高度直接取顶栏高），
+ * 这样最右那两颗按钮的纵向位置和顶栏里的图标**一模一样** —— 否则点开面板时它们会往下挪 4px，
+ * 看着像点一下就把按钮碰歪了。正文的起点仍由下面那层内边距对齐对话区。 */
+/* 对调 + 侧栏收起：面板标签条让开「品牌 / 新会话 / 侧栏开关」那一段（宽度由 App 量进 --top-lane），
+ * 那一组和它右边那道竖线才留在窗口左上角不动。 */
+.app-split.app-flip .preview-tabs {
+	padding-left: var(--top-lane, 0px);
+}
+
+.app-split .preview-tabs,
+.app-wide-lift .preview-tabs {
+	margin-top: -6px;
+	min-height: var(--appbar-h, 46px);
+	/* 顶栏底下有一条 1px 分隔线，它的内容盒比总量矮 1px，图标就比「纯居中」高半像素；
+	   这里补一条同样的下内边距，两边的图标纵向位置才真的一致（否则差 0.36px，放大看能看出歪） */
+	padding-bottom: 1px;
+	/* 右边也让出一道：顶栏是 10px × 顶栏缩放的内边距，面板是 6px，差的那点补上，
+	   最右那颗按钮才跟顶栏最右那颗落在同一条竖线上 */
+	padding-right: calc(10px * var(--appbar-scale, 1) - 6px);
+}
+
+/* ---- 文件列表侧栏（看文件时常驻在内容右边）----
+ * 面板本来就贴在窗口右边，所以文件树放最右、代码在它左边（跟你给的截图一致）。
+ * 宽度由**左边那条可拖的竖线**控制（默认 224px，范围 140~520，并保证内容区至少 260px）。
+ */
+.preview-files {
+	flex: none;
+	/* 没有外部宽度时（比如别处复用）的兵底值 */
+	width: clamp(168px, 33%, 224px);
+	min-width: 0;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding-left: 8px;
+}
+
+/* 内容与文件列表之间那条竖线：它**就是把手**（拖动改文件列表宽度，双击复位）。
+   7px 的命中区比 1px 的线宽得多，不然鼠标很难对准；hover / 拖拽时亮一下，
+   告诉人「这条线能动」（跟面板自身那条 resizer 一个口径）。 */
+.preview-files-resizer {
+	flex: none;
+	width: 7px;
+	margin-right: 1px;
+	border-left: 1px solid var(--border);
+	cursor: col-resize;
+	touch-action: none;
+}
+
+.preview-files-resizer:hover,
+.preview-files-resizer:active {
+	background: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.preview-files-head {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.preview-files-title {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	align-items: baseline;
+	gap: 2px;
+	font-size: 12px;
+	color: var(--text-faint);
+}
+
+.preview-files-label {
+	flex: none;
+}
+
+/* 项目名跟在「文件列表」后面：面板可能挂着好几个工作区，确认一下看的是哪个。
+   只让它自己省略（否则窄面板上「文件列表」几个字会先被截掉） */
+.preview-files-root {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--text-dim);
+}
+
+/* 内容区：树 / 搜索结果各自在里面滚（两者都已经自带 overflow） */
+.preview-files-body {
+	flex: 1 1 auto;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+/* 铺开按钮激活时的强调（和普通 btn-tiny 区分） */
+.btn-wide-on {
+	border-color: var(--accent-dim);
+	color: var(--accent);
+	background: var(--bg-elev-2);
+}
+
+.preview-wide-icon {
+	width: 13px;
+	height: 13px;
+	display: block;
+}

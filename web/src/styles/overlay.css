@@ -1,0 +1,143 @@
+/* ---- 浮层：唯一允许的弹窗是审批（ADR-0013）----
+ * 独立浮层必须 overscroll-behavior: contain（防止滚动穿透整页）；
+ * 反之，流内元素（工具卡输出、代码块）严禁声明它（ADR-0010 的滚轮黑洞条款）。
+ */
+.modal-backdrop {
+	position: fixed;
+	inset: 0;
+	/* 必须盖过 .side-resizer（z-index 5），否则侧栏右侧那 7px 会吃掉弹窗里的点击 */
+	z-index: 50;
+	background: rgb(0 0 0 / 55%);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	overscroll-behavior: contain;
+	padding: var(--gap);
+}
+
+/* 大面板的头部是「标题栏」：可以拖着移动面板（见 use-modal-move.ts） */
+.big-modal-head {
+	cursor: grab;
+}
+
+.big-modal-head:active {
+	cursor: grabbing;
+}
+
+/* 头部里的 tab 仍然是可点的按钮，别让它继承 grab 的"在拖东西"错觉 */
+.big-modal-head .big-tab {
+	cursor: pointer;
+}
+
+.modal {
+	width: min(560px, 100%);
+	background: var(--bg-elev);
+	border: 1px solid var(--border-strong);
+	border-radius: 12px;
+	padding: 16px;
+	overscroll-behavior: contain;
+	max-height: 80vh;
+	overflow: auto;
+}
+
+.modal-title {
+	margin: 0 0 8px;
+	font-size: 18px;
+}
+
+.modal-risk {
+	margin: 0 0 12px;
+	color: var(--amber);
+}
+
+.modal-facts {
+	display: grid;
+	grid-template-columns: auto 1fr;
+	gap: 4px 12px;
+	margin: 0 0 16px;
+	min-width: 0;
+}
+
+.modal-facts dt {
+	color: var(--text-faint);
+	font-size: 15px;
+}
+
+.modal-facts dd {
+	margin: 0;
+	overflow-wrap: anywhere;
+	min-width: 0;
+}
+
+.modal-actions {
+	display: flex;
+	gap: 8px;
+	justify-content: flex-end;
+}
+
+/* 粘底滚动：不粘底时出现的「回到底部」（见 web/src/stick-to-bottom.ts；样式放在此处（浮层控件分区））
+ *
+ * 位置上它就是**输入框顶上的一行**（挂在 `.composer-wrap` 那条容器里，见 App.tsx）：
+ * 以前它是滚动区内部的 sticky，只能悬在正文右下角 —— 最后一屏的字被它压住一块，而且每滚到一个新位置
+ * 都得重新找它一次。挂在输入框上方后位置固定、不盖任何字，代价只是它露面/消失时输入区高矮变一行
+ * （滚动区的滚动位置不变，正文不会跳）。
+ *
+ * 容器借了 `.composer-wrap` 类，于是左右留白（限宽居中 / 满宽 / 手机三档）跟输入框自动一致；
+ * 这里只管把它**水平摆到中间**、把这一行的高度收紧。 */
+.jump-bottom-host {
+	/* **居中**（用户：「放在中间吧」）：以前是 `flex-end`（贴着输入框右头），
+	 * 跟右下角那排工具 / 发送按钮挂得像一伙的，其实它是一个「下面还有新内容」的提示，
+	 * 属于正在滚的那一块正文，而不是输入去侧的控件 —— 摆中间才像「往下看」的指示。 */
+	align-items: center;
+	justify-content: center;
+	/* 左右 padding 由 chat.css 里那条 `.jump-bottom-host` 清零（要同时盖住限宽 / 满宽 / 手机三档，
+	 * 所以写在那边；不清零的话箭头会往左偏 7px —— 那套左右留白是不对称的）。 */
+	/* 上面那块（提示条 / 待发条）已经给过间距，这里只留和输入框之间的那条缝 */
+	gap: 0;
+}
+
+.jump-bottom {
+	/* 图标 + 文案（用户：「这个还是加上文案吧」）：
+	 * 早先它只剩一枚箭头（当时的要求是「不要文案，只要向下的箭头」），
+	 * 但光一枚 16px 的箭头在宽屏、低对比度下很难看出是个能点的东西；
+	 * 现在把字加回来，仍然**透明底、无描边、无投影**（那几条要求还成立），
+	 * 只是文字与图标一起淡，悬停时一起变深 —— 它依旧不抢输入框的注意力。 */
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	/* 高度不变（24px，跟输入框上方那一行齐）；宽度改成跟内容走（图标 + 字） */
+	min-width: 24px;
+	height: 24px;
+	gap: 4px;
+	/* 跟输入框上沿贴得再紧一点（用户：「再往下放放」）：那一行的高度就是这颗方块的高度，
+	 * 不再给下边留白 —— 间距都交给输入区自己的间距。 */
+	margin: 0;
+	/* 左右给一点内边距：悬停浅底时文字不会顶到胶囊边缘 */
+	padding: 0 8px;
+	border: none;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--text-faint);
+	font: inherit;
+	font-size: 12px;
+	line-height: 1;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.jump-bottom-label {
+	/* 跟右上角那颗箭头的图标视觉重量保持一致，不显得「字比图标重」 */
+	font-weight: 500;
+}
+
+.jump-bottom svg {
+	display: block;
+	width: 16px;
+	height: 16px;
+}
+
+.jump-bottom:hover {
+	/* 悬停才给一点底色（不再是完全没反应，但也不是一真胶囊） */
+	background: var(--bg-elev-2);
+	color: var(--text-dim);
+}

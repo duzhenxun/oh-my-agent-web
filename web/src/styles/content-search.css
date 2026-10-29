@@ -1,0 +1,229 @@
+/* ---- 全文搜索（内容搜索）浮层 ----
+ * 顶栏那面放大镜 / ⌘⇧F 打开。位置照编辑器那套：贴着上方、整块居中、底下压一层灰，
+ * 一打开就能看见「我在搜什么」和「结果有多少条」。 */
+.content-search-backdrop {
+	position: fixed;
+	inset: 0;
+	z-index: 60;
+	display: flex;
+	justify-content: center;
+	align-items: flex-start;
+	padding: min(12vh, 96px) 16px 16px;
+	background: color-mix(in srgb, #000 22%, transparent);
+}
+
+.content-search {
+	position: relative; /* 右下角抓手的定位基准 */
+	display: flex;
+	flex-direction: column;
+	/* 默认宽一截（720 → 920）：以前路径那一列只占 45%、又顶得窄，十几条全是
+	   `…14-58-46-214Z.yml:64` —— 等于没写路径。拖过抓手后这里被行内尺寸盖掉。 */
+	width: min(920px, 100%);
+	max-height: min(70vh, 620px);
+	border: 1px solid var(--border-strong);
+	border-radius: 12px;
+	background: var(--bg-elev);
+	box-shadow: 0 18px 48px color-mix(in srgb, #000 28%, transparent);
+	overflow: hidden;
+}
+
+/* 拖动期间：跟侧栏拖宽同一套纪律 —— 别顺手把结果文字拖成蓝底选中 */
+.content-search-resizing,
+.content-search-resizing * {
+	user-select: none !important;
+	-webkit-user-select: none !important;
+}
+
+/* 右下角的抓手：命中区 18px（好抓），画出来的只是两道 1px 斜角
+ * （两块半透明色块看着像一个污点，跟这个弹层不是一个语汇）。 */
+.content-search-grip {
+	position: absolute;
+	right: 0;
+	bottom: 0;
+	width: 18px;
+	height: 18px;
+	cursor: nwse-resize;
+	touch-action: none; /* 触屏上拖它不要被当成滚动/缩放 */
+}
+
+.content-search-grip::after {
+	content: "";
+	position: absolute;
+	/* 往里让一点：贴着 right/bottom 的 0 会被 12px 的圆角（overflow: hidden）切掉一半 */
+	right: 6px;
+	bottom: 6px;
+	width: 7px;
+	height: 7px;
+	border-right: 1.5px solid var(--text-faint);
+	border-bottom: 1.5px solid var(--text-faint);
+	border-bottom-right-radius: 2px;
+	opacity: 0.75;
+	transition:
+		border-color 0.12s ease,
+		opacity 0.12s ease,
+		width 0.12s ease,
+		height 0.12s ease;
+}
+
+.content-search-grip:hover::after {
+	width: 9px;
+	height: 9px;
+	opacity: 1;
+	border-color: var(--accent);
+}
+
+.content-search-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 10px 12px;
+	border-bottom: 1px solid var(--border);
+}
+
+.content-search-input {
+	flex: 1 1 auto;
+	min-width: 0;
+	border: none;
+	outline: none;
+	background: none;
+	color: var(--text);
+	font: inherit;
+	font-size: 15px;
+}
+
+.content-search-input::placeholder {
+	color: var(--text-faint);
+}
+
+/* 文件掩码：像输入框又不像主输入（它是筛选器，不是主角） */
+.content-search-glob {
+	flex: none;
+	width: 148px;
+	border: 1px solid var(--border);
+	border-radius: 7px;
+	background: var(--bg);
+	color: var(--text-dim);
+	font-size: 13px;
+	padding: 3px 7px;
+	outline: none;
+}
+
+.content-search-glob:focus {
+	border-color: var(--accent-dim);
+	color: var(--text);
+}
+
+.content-search-esc,
+.content-search-keys kbd {
+	flex: none;
+	border: 1px solid var(--border);
+	border-radius: 5px;
+	background: var(--bg);
+	color: var(--text-faint);
+	font: inherit;
+	font-size: 12px;
+	line-height: 1;
+	padding: 3px 5px;
+}
+
+.content-search-list {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	padding: 4px;
+}
+
+.content-search-row {
+	display: flex;
+	align-items: baseline;
+	gap: 12px;
+	width: 100%;
+	border: none;
+	border-radius: 7px;
+	background: none;
+	color: var(--text-dim);
+	font: inherit;
+	text-align: left;
+	padding: 5px 8px;
+	cursor: pointer;
+}
+
+.content-search-row-on {
+	background: color-mix(in srgb, var(--accent) 14%, transparent);
+	color: var(--text);
+}
+
+/* 一行结果 = 左边原文（可截断）+ 右边「路径:行号」（**整条显示**）。
+ * 原文那一列 `flex-basis: 0`：挤的时候先让它走省略号，把宽度让给路径。 */
+.content-search-line {
+	flex: 1 1 0;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: pre;
+	font-size: 13px;
+}
+
+/* 路径列：**不截断**（用户要求「以当前项目为根目录，往后展示全」）。
+ *  - 宽度按内容撑（`flex-basis: auto`），不再限 `max-width: 45%`、也不加 `ellipsis`；
+ *  - 至少占一行的一半（`min-width: 45%`）：长路径宁可折行，也不把尾部文件名掱掉；
+ *  - `overflow-wrap: anywhere`：路径没有空格，只有它能真折行（否则会横向溢出弹层）；
+ *  - 右对齐：短路径仍然贴着右边成列（跟以前一样），不因宽度撑开而飘在中间。 */
+.content-search-where {
+	flex: 0 1 auto;
+	min-width: 45%;
+	max-width: none;
+	text-align: right;
+	white-space: normal;
+	overflow-wrap: anywhere;
+	color: var(--text-faint);
+	font-size: 12px;
+}
+
+.content-search-mark {
+	background: color-mix(in srgb, var(--accent) 30%, transparent);
+	color: var(--text);
+	border-radius: 3px;
+	padding: 0 1px;
+}
+
+.content-search-foot {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	/* 右边多留一点：右下角那颗抓手盖在脚注的角上，别让它压着「⏎ 打开」 */
+	padding: 6px 20px 6px 12px;
+	border-top: 1px solid var(--border);
+	color: var(--text-faint);
+	font-size: 12px;
+}
+
+.content-search-keys {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	flex: none;
+}
+
+.content-search-error {
+	padding: 8px 12px;
+	border-bottom: 1px solid var(--border);
+	color: var(--red);
+	font-size: 13px;
+}
+
+/* 跳到命中的那一行：短暂亮一下，告诉人「到了，就是这行」 */
+.file-preview-line-focus {
+	animation: file-preview-line-flash 1.4s ease-out 1;
+}
+
+@keyframes file-preview-line-flash {
+	0%,
+	35% {
+		background: color-mix(in srgb, var(--accent) 22%, transparent);
+	}
+	100% {
+		background: transparent;
+	}
+}

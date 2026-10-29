@@ -1,0 +1,34 @@
+/* 终端面板（ADR-0027） */
+.terminal-panel {
+	flex: none;
+	width: min(560px, 42vw);
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	min-height: 0;
+	border: 1px solid var(--border);
+	border-radius: 0;
+	background: var(--bg-elev);
+	padding: 8px;
+}
+
+.terminal-head {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex: none;
+	font-size: 15px;
+}
+
+.terminal-host {
+	flex: 1 1 auto;
+	min-height: 0;
+	border-radius: 0;
+	overflow: hidden;
+	background: #0d1117;
+}
+
+.terminal-host .xterm {
+	height: 100%;
+	padding: 4px;
+}

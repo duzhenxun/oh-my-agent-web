@@ -1,0 +1,52 @@
+/* ---- 在对话里选中文字后的那颗小工具栏 ----
+ * 组件：components/SelectionToolbar.tsx（只认消息区里的选区）。
+ * 位置由 JS 按选区算（`position: fixed`），这里只管长相：
+ * 一颗白胶囊、两个动作、中间一道细分割线 —— 跟对话区那套留白比，浮层要“轻”。 */
+.sel-toolbar {
+	position: fixed;
+	z-index: 70; /* 比正文高、比全文搜索浮层（60）高一点点，两者不会同时出现 */
+	display: inline-flex;
+	align-items: stretch;
+	border: 1px solid var(--border-strong);
+	border-radius: 10px;
+	background: var(--bg-elev);
+	box-shadow: 0 8px 24px color-mix(in srgb, #000 18%, transparent);
+	overflow: hidden;
+	/* 不要在浮层上触发选区（按住按钮拖一下会连带选中底下的正文） */
+	user-select: none;
+}
+
+.sel-toolbar-btn {
+	display: inline-flex;
+	align-items: center;
+	border: none;
+	background: none;
+	color: var(--text-dim);
+	font: inherit;
+	font-size: 13px;
+	line-height: 1.6;
+	white-space: nowrap;
+	padding: 6px 12px;
+	cursor: pointer;
+}
+
+/* 两个动作之间一道细线（一颗胶囊装两个按钮，不是两颗各自带边框的按钮） */
+.sel-toolbar-btn + .sel-toolbar-btn {
+	border-left: 1px solid var(--border);
+}
+
+.sel-toolbar-btn:hover {
+	background: var(--bg-elev-2);
+	color: var(--text);
+}
+
+.sel-toolbar-btn:active {
+	background: color-mix(in srgb, var(--accent) 12%, transparent);
+	color: var(--accent);
+}
+
+/* 手机：浮层要能盖住正文，字号给回 16px 以上不用（按钮不是输入框，12px 也点得中） */
+.is-mobile-shell .sel-toolbar-btn {
+	font-size: 13px;
+	padding: 6px 10px;
+}

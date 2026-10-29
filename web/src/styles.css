@@ -1,0 +1,63 @@
+/*
+ * 样式入口（ADR-0008 / ADR-0014）。
+ *
+ * 仍然只有一个入口、一套 CSS 变量、不引任何框架；只是按职责拆成几个分区文件，
+ * 免得单文件越过 ADR-0010 的 400 行护栏。新增样式请放进对应分区，别往这里堆。
+ *   分区顺序有意义：base（变量/布局）→ sidebar（会话列表）→ chat（对话）→ overlay（浮层）→ highlight（代码）
+ */
+@import "./styles/base.css";
+@import "./styles/theme.css"; /* 5 套额外色板 + 深色补丁（base.css 的 :root 是默认「清亮白」） */
+@import "./styles/sidebar.css";
+@import "./styles/project-icon.css";
+@import "./styles/project-menu.css";
+@import "./styles/session-row.css";
+@import "./styles/archived.css";
+@import "./styles/outline.css";
+@import "./styles/side-panels.css";
+@import "./styles/panel-tabs.css";
+@import "./styles/providers.css";
+@import "./styles/provider-feedback.css";
+@import "./styles/provider-checklist.css";
+@import "./styles/provider-switch.css";
+@import "./styles/app-bar.css";
+@import "./styles/engine-picker.css";
+@import "./styles/app-bar-mobile.css";
+@import "./styles/terminal.css";
+@import "./styles/skills.css";
+@import "./styles/skills-market.css";
+@import "./styles/chat.css";
+@import "./styles/ephemeral.css";
+@import "./styles/action-suggestions.css";
+@import "./styles/newchat.css";
+@import "./styles/new-session.css";
+@import "./styles/composer-actions.css";
+@import "./styles/statusbar.css";
+@import "./styles/push.css";
+@import "./styles/sent-queue.css";
+@import "./styles/messages.css";
+@import "./styles/selection-toolbar.css"; /* 选中对话文字后那颗“添加到会话 / 在临时聊天中提问” */
+@import "./styles/annotations.css"; /* 选中文字的「添加」：正文编号 + 输入框**里面**那颗「N 条注释」 */
+@import "./styles/changed-files.css";
+@import "./styles/files.css";
+@import "./styles/files-toolbar.css";
+@import "./styles/content-search.css"; /* 全文搜索浮层（文件管理标题栏那面放大镜 / ⌘⇧F） */
+@import "./styles/preview-panel.css";
+@import "./styles/file-preview.css"; /* html 报告：直接内嵌渲染的 iframe 外壳 */
+@import "./styles/work-panel.css"; /* 分栏工作区：工具落地页 / 网页 / 临时聊天 / 文件树 */
+@import "./styles/overlay.css";
+@import "./styles/templates.css";
+@import "./styles/model-picker.css";
+@import "./styles/highlight.css";
+@import "./styles/markdown.css";
+@import "./styles/appearance.css";
+@import "./styles/shortcuts.css"; /* 设置 → 快捷键：动作行 + 组合键胶囊 + 录制态 */
+@import "./styles/shortcut-sheet.css"; /* 快捷键速查表浮层（⌘/ 打开） */
+@import "./styles/plugins.css";
+@import "./styles/mcp.css";
+@import "./styles/voice.css";
+@import "./styles/agents.css";
+@import "./styles/toast.css";
+@import "./styles/image-viewer.css"; /* 点图片原地弹大图（不再开新标签页） */
+@import "./styles/mcp-panes.css";
+@import "./styles/engine-panel.css";
+@import "./styles/responsive.css";

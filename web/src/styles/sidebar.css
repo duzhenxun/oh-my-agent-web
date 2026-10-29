@@ -1,0 +1,624 @@
+/* ---- 侧栏：会话列表（M2）---- */
+.sidebar {
+	flex: none;
+	width: 232px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	min-width: 0;
+	min-height: 0;
+	border: 1px solid var(--border);
+	/* 右边那道就是「侧栏｜对话」的分栏线：跟对话区右边那道（`.workspace` 的 border-right）
+	   统一成 `--border-strong`，两条线才看着是同一根 */
+	border-right-color: var(--border-strong);
+	border-radius: var(--radius);
+	background: var(--bg-elev);
+	/* 内边距抽成变量：底部分隔线要「顶满整条侧栏」，得靠负 margin 抵消它 */
+	--side-pad: 10px;
+	padding: var(--side-pad);
+}
+
+.sidebar-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+	flex: none;
+	/* 这一行自己就是**尺寸容器**：下面那条容器查询量的就是「抬头还剩多宽」。
+	   为什么不用窗口宽度：侧栏是可拖宽的，同一个窗口下抬头可能是 180px 也可能是 600px，
+	   而「新会话 + ⇕ + ＋ 新建项目」挤不挤只跟自己这一行有关。 */
+	container-type: inline-size;
+	container-name: sidebar-head;
+}
+
+/* ---- 抬头里的「新会话」（`NewChatButton variant="sidebar"`）----
+ * **只是备胎**：平时「新会话」在顶栏（App.tsx），侧栏展开 / 收起都是那一颗；
+ * 只有顶栏被藏起来（`appbarHidden`，状态栏那颗 ▴/▾）时，侧栏抬头才补这一颗 ——
+ * 位置就在「项目」这一行、紧跟标题（`▾ 项目 ⇕ 〔新会话〕 〔＋〕`），跟原来一样。
+ * 观感跟顶栏那颗同一套（实心主色胶囊 + `--ab` 缩放），但更紧凑 ——
+ * 这一行还要装下「＋ 新建项目」、「⇕ 全部收起」，所以不画 💬 气泡，只留文字。
+ *
+ * **为什么是实心主色**（用户：「这个不太明显」）：以前是「主色 12% 底 + 主色字」，
+ * 浅色主题下那块底几乎与侧栏同色，只剩一行蓝字，和上面「项目」标题、旁边一排灰图标混在一起，
+ * 一眼看不出「这是这一栏最该点的东西」。现在是**实心 `--accent` + `--on-accent` 文字**
+ * （跟主题里那颗主按钮同一套配色），再加一层很轻的同色投影把它从侧栏背景上抬起来 ——
+ * 整条栏里只允许它有这么大一块实色，位置就自己突出来了。
+ * 悬停不走 `--accent-dim`（theme.css：它只配描边），而是把主色朝 `--text` 掺一点：
+ * 浅色主题会暗下去、深色主题会亮起来，两边都是「碰一下有反馈」而不是变糊。 */
+.sidebar-head .newchat-pill {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	/* 再往标题那边靠一点（抬头 gap 是 8px）：它是标题那一伙的，不是右侧操作组的一员 */
+	margin-left: -2px;
+	border-radius: 999px;
+	border: 1px solid transparent;
+	/* 实心主色：整条侧栏里唯一的实色块 = 唯一的主动作（理由见上面那段注释） */
+	background: var(--accent);
+	color: var(--on-accent);
+	font: inherit;
+	font-size: calc(12px * var(--ab));
+	font-weight: 600;
+	line-height: 1.45;
+	white-space: nowrap;
+	padding: calc(2px * var(--ab)) calc(9px * var(--ab));
+	/* 很轻的一层同色投影：浅色主题下把胶囊从侧栏底色上「抬」起来，深色主题不明显但也不脏 */
+	box-shadow: 0 calc(1px * var(--ab)) calc(2px * var(--ab)) color-mix(in srgb, var(--accent) 35%, transparent);
+	cursor: pointer;
+}
+
+.sidebar-head .newchat-pill:hover {
+	background: color-mix(in srgb, var(--accent) 88%, var(--text));
+	box-shadow: 0 calc(2px * var(--ab)) calc(6px * var(--ab)) color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+/* 气泡：跟顶栏那颗**同一枚 💬**（用户要求「前面也加一个会话的小图标」）。
+ * 以前这里整颗藏掉，理由是窄侧栏放不下；现在改成「够宽就显示、挤了自动收」——
+ * 用这条抬头自己的容器查询（`.sidebar-head` 是 `container-type: inline-size`，
+ * 量的是侧栏可拖宽后的真实宽度，不是窗口宽），见下面那条 @container。
+ * 字号比顶栏那颗再小半档：侧栏抬头这一行还要装下 ⇕ / ＋ / 标题，气泡只是「这是聊天」的提示。 */
+.sidebar-head .newchat-pill-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	font-size: calc(10.5px * var(--ab));
+	line-height: 1;
+}
+
+.sidebar-head .newchat-pill {
+	/* 气泡与文字之间留一点气（没有 gap 时 emoji 会贴着「新」） */
+	gap: calc(4px * var(--ab));
+}
+
+/* 抬头窄到 230px 以下：气泡先走（文字「新会话」本身就够说明），
+ * 保证胶囊不会被挤成「新…」或者把「⇕ / ＋」顶出去。 */
+@container sidebar-head (max-width: 230px) {
+	.sidebar-head .newchat-pill-icon {
+		display: none;
+	}
+}
+
+/* 标题本身是开关（点一下收起/展开下面所有项目）：长得像文字，但可点。
+   尺寸/亮度与「文件管理」标题保持一致（见 project-menu.css 的 .side-files-title）：
+   两处都是 14.5px / 600 / --text-dim —— 改一边记得改另一边。 */
+.sidebar-title {
+	flex: 0 1 auto;
+	font: inherit;
+	font-size: 15px;
+	font-weight: 600;
+	min-width: 0;
+	/* 侧栏被拖窄时**先让这一行文字走省略号**（「新会话」和两枚图标都不缩）：
+	   否则那颗主操作会被挤成一条空胶囊，反而看不出能点 */
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	border: none;
+	background: none;
+	color: var(--text-dim);
+	text-align: left;
+	padding: 0;
+	cursor: pointer;
+}
+
+.sidebar-title:hover {
+	color: var(--accent);
+}
+
+/* ---- 抬头右侧的空白热区（点空白 = 同一个开关）----
+ * 用户 2026-10-29：「这叠起来的三大项，我想点旁边的空白处，它就可以展开或收起」。
+ * 「项目管理」「文件管理」这两行是「标题 + 一串图标」，空白在图标右边，
+ * 所以补一颗**透明的按钮**把剩下的宽度占满（JSX 里 `tabIndex={-1}` + `aria-hidden`：
+ * 只是鼠标热区，键盘 / 读屏还是走标题那颗，不多出第二个 Tab 停靠点）。
+ * `cursor: pointer` 是唯一的提示 —— 一整条空白亮底色反而像多长了一块面板出来。
+ * 「置顶」那一行没有图标，直接把标题按钮铺满整行（见 `.pin-group-head`），不用这颗。 */
+.sidebar-row-fill {
+	flex: 1 1 auto;
+	align-self: stretch;
+	min-width: 0;
+	margin: 0;
+	padding: 0;
+	border: none;
+	background: none;
+	font: inherit;
+	color: inherit;
+	cursor: pointer;
+}
+
+/* 鼠标压在**那片空白**上时，标题文字也亮一下（跟直接悬停标题同一个观感）。
+ * 用 `:has` 只认这颗 fill：压在右边那几个图标上不会连带把标题染色。 */
+.sidebar-head:has(.sidebar-row-fill:hover) .sidebar-title,
+.side-files-head:has(.sidebar-row-fill:hover) .sidebar-title {
+	color: var(--accent);
+}
+
+/* ---- 标题右边的图标按钮（＋ 新建项目、⇕ 全部收起）----
+ * 两颗**都跟在「项目」文字后面**（顺序：项目 ▾ → ＋ → ⇕ → 新会话），用同一套几何：
+ * 22×20 的方框、6px 圆角、16px 图标、1.7 描边、同一个 hover 底色。
+ * 以前「＋」是 17px 的文本字符、旁边是细描边 SVG，一粗一细挨在一起就很突兀；
+ * 更早以前它还单独被 `margin-left: auto` 顶在最右边，跟这组隔着一整条空白（看着像两回事）。
+ * 现在这一行只有左边一伙：项目标题 + 三个动作，右边不再挂东西。 */
+.sidebar-icon {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 20px;
+	padding: 0;
+	border: none;
+	border-radius: 6px;
+	background: none;
+	color: var(--text-faint);
+	line-height: 0;
+	cursor: pointer;
+	transition:
+		color 0.12s ease,
+		background 0.12s ease;
+}
+
+.sidebar-icon:hover:not(:disabled),
+.sidebar-icon:focus-visible {
+	color: var(--text);
+	background: var(--bg-elev-2);
+}
+
+.sidebar-icon svg {
+	width: 16px;
+	height: 16px;
+	stroke: currentColor;
+	stroke-width: 1.7;
+	fill: none;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+/* 「全部收起/展开」紧贴「项目」这两个字（抬头的 flex gap 是 8px，这里吃掉一点）：
+ * 它跟标题是一件事，不该被推成右边那组「操作」里的一员。 */
+.sidebar-icon-inline {
+	margin-left: -4px;
+}
+
+/* 「全部收起/展开」按下时给个小提示：蓝色底表示「现在是全展开状态」 */
+.sidebar-icon[aria-pressed="true"]:hover {
+	color: var(--accent);
+}
+
+.sidebar-list {
+	flex: 1 1 auto;
+	overflow-y: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	min-height: 0;
+	min-width: 0;
+	/* 滚动条**不画**（用户要求）：那条灰条夹在会话行和分割线之间太抢眼。
+	 * 滚动本身照旧 —— 滚轮、触控板、键盘都能滚。
+	 * （之前为了把它往右拉，用过 `margin-right: -7px` + `padding-right: 7px` 的补偿；
+	 * 现在滚动条不占位了，那套补偿也一起撤了，行宽回到侧栏内宽。） */
+	scrollbar-width: none;
+}
+
+.sidebar-list::-webkit-scrollbar {
+	display: none;
+}
+
+.sidebar-empty {
+	color: var(--text-faint);
+	font-size: 15px;
+	padding: 4px 2px;
+}
+
+.sidebar-item {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	align-items: stretch;
+	text-align: left;
+	background: transparent;
+	color: var(--text);
+	border: 1px solid transparent;
+	border-radius: 8px;
+	padding: 6px 8px;
+	cursor: pointer;
+	font: inherit;
+	min-width: 0;
+}
+
+.sidebar-item:hover {
+	border-color: var(--border-strong);
+}
+
+.sidebar-item-active {
+	background: var(--bg-elev-2);
+	border-color: var(--accent-dim);
+}
+
+.sidebar-item-title {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	min-width: 0;
+}
+
+.sidebar-item-meta {
+	color: var(--text-faint);
+	font-size: 14px;
+}
+
+@media (max-width: 720px) {
+	/* 窄屏：侧栏收到上面、工作区在下面（不能还保持左右排）*/
+	.app {
+		flex-direction: column;
+	}
+
+	.sidebar {
+		width: 100%;
+		/* 不设 max-height：手机上是整屏抽屉，让内容自然撑开、由容器滚动 */
+		max-height: none;
+	}
+}
+
+/* ---- 分组标题与 pi 项目（ADR-0021 §1：pi 已有会话，只读）---- */
+.sidebar-section {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin: 10px 0 2px;
+	color: var(--text-faint);
+	font-size: 14px;
+	letter-spacing: 0.04em;
+	min-width: 0;
+}
+
+.sidebar-section-tag {
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	padding: 0 6px;
+	font-size: 13px;
+}
+
+.proj {
+	min-width: 0;
+}
+
+/* 拖到项目上（把会话搬进这个项目）：整块描个边框，一眼看出落在哪儿 */
+.proj.proj-drag-over {
+	outline: 2px dashed var(--accent, #4f8cff);
+	outline-offset: -2px;
+	border-radius: 8px;
+}
+
+/* 拖动项目改顺序（用户 2026-10-29 要的）：
+ *  - 被拖的那一行淡下去（「它正在被搬走」）；
+ *  - 落点那一行在**上半 / 下半**画一条强调色插入线 —— 落在上半 = 插到它前面，
+ *    下半 = 插到它后面（跟文件管理器同一个手势，不用再猜「是替换还是插入」）。
+ * 用 inset box-shadow 而不是 ::before/::after：`.proj-head` 是 `<summary>`，
+ * 里面的伪元素在 Safari 上会被折叠三角占位打架；阴影不参与布局，行高不会因此跳一格。 */
+.proj.proj-dragging > .proj-head {
+	opacity: 0.45;
+}
+
+.proj.proj-drop-before > .proj-head {
+	box-shadow: inset 0 2px 0 var(--accent, #4f8cff);
+	border-radius: 4px;
+}
+
+.proj.proj-drop-after > .proj-head {
+	box-shadow: inset 0 -2px 0 var(--accent, #4f8cff);
+	border-radius: 4px;
+}
+
+/* 项目行：`padding` 的上下只留 2px（原为 4px）——
+ * 侧栏里项目是一串扁平的文件夹行，行高由字号决定就够；上下各 4px 再叠上列表的 4px gap，
+ * 相邻两行之间就空了 8px，一屏装得下的项目少了好几个（用户：「上下间距有点大」）。
+ * 左右仍是 6px：文字 / 图标与侧栏边缘的缩进不能跟着缩，否则整列会撞边。 */
+.proj-head {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	cursor: pointer;
+	padding: 2px 6px;
+	border-radius: 6px;
+	color: var(--text-dim);
+	/* 项目名字号来自「设置 → 外观」（--side-project-font-size，默认 14px = 「标准」那一档） */
+	font-size: var(--side-project-font-size, 14px);
+	min-width: 0;
+}
+
+.proj-head:hover {
+	background: var(--bg-elev-2);
+}
+
+/* 项目名**不用省略号**（用户：「项目名不要用省略号了，大不了被压住就行了」）：
+ * 以前是 `text-overflow: ellipsis` —— 名字一长就变成「oh-my-agent-…」，
+ * 省下来的是几个像素，丢掉的是「到底叫啥」。现在改成硬截断（`clip`）：
+ * 放不下的部分直接被行右边裁掉 / 压到「⋯」「📌」底下，不再用省略号改写文本本身。
+ * `overflow: hidden` 保留：否则长名字会把整行撑宽，侧栏出现横向滚动条。 */
+.proj-name {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: clip;
+	white-space: nowrap;
+	/* 就是**硬切**（用户：「去掉那 14px 淡出，就要硬切」）：
+	 * 之前试过给末尾加一道 `mask-image` 淡出，看着柔和但多一层不必要的效果 ——
+	 * 现在放不下的部分直接裁断，不做任何渐变、也不写省略号。 */
+}
+
+/* 项目名就地改名：边框只留一条下划线，看着仍像文字，但能看出“在编辑” */
+.proj-name-input {
+	height: 20px;
+	border: none;
+	border-bottom: 1px solid var(--accent-dim);
+	background: var(--bg-elev);
+	color: var(--text);
+	font: inherit;
+	font-weight: 600;
+	padding: 0 2px;
+	outline: none;
+	cursor: text;
+}
+
+.proj-count {
+	flex: none;
+	color: var(--text-faint);
+	/* 次要信息：跟着项目名字号按比例缩（默认 14 × 0.86 ≈ 12px，正好是双数） */
+	font-size: 0.86em;
+}
+
+.proj-body {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: 2px 0 4px 10px;
+	min-width: 0;
+}
+
+.pi-row {
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
+	padding: 3px 6px;
+	border-radius: 6px;
+	min-width: 0;
+}
+
+.pi-row-title {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	/* 会话标题**不用省略号**（用户：「会话也可以这样，大不了被盖住，不用打省略号」）：
+	 * 名字的价值比那几个像素大。但**末端的硬切太硬**（用户：「感觉被压住了，做成那边模糊样子」），
+	 * 所以尾巴加一道 `mask-image` 淡出：字自己化进侧栏底色，看上去是「淡出」不是「被切掉」。
+	 * 顺便它也把两件事一起遮住了 ——
+	 *   ① 悬停才冒出的「🗄 ⋯」压在标题尾巴上（因为不给标题补 padding，见 session-row.css）；
+	 *   ② 「运行中」角标贴过来时字尾的硬边。
+	 * 宽度取 22px：约 1.5 个字，够化开又不会让有用的字凭空消失。
+	 * `overflow: hidden` 必须留着：不然长标题会把整行撑宽、侧栏冒出横向滚动条。 */
+	text-overflow: clip;
+	white-space: nowrap;
+	mask-image: linear-gradient(to right, #000 calc(100% - var(--pi-row-fade, 22px)), transparent 100%);
+	-webkit-mask-image: linear-gradient(to right, #000 calc(100% - var(--pi-row-fade, 22px)), transparent 100%);
+	color: var(--text-dim);
+	/* 字号继承 .pi-row 的 --side-session-font-size，不在这里再写一份 */
+}
+
+/* 文字层（悬停时平移的就是它，外层继续负责裁剪 + 末尾淡出）。
+ *
+ * 用户 2026-10-29：“左侧标题显示不全时，鼠标放上去，可以自己往后慢慢滚动一下”。
+ * 用 `inline-block` 是因为 `transform` 对行内非替换元素无效；宽度按文字自然宽算
+ * （`white-space: nowrap` 让它不折行，父层 `overflow: hidden` 把它截断）。
+ * 静止时的 `transition` 是「鼠标移开就快速归位」，悬停那份带延迟的长动画写在 session-row.css。 */
+.pi-row-title-text {
+	display: inline-block;
+	transition: transform 160ms ease-out;
+}
+
+/* 置顶的会话：标题比普通行亮一档（置顶已经单独成组，不再加图钉图标） */
+.pi-row-pinned .pi-row-title {
+	color: color-mix(in srgb, var(--text-dim) 35%, var(--text));
+}
+
+/* 置顶 + 当前选中：仍是当前会话最亮 */
+.pi-row-pinned.pi-row-active .pi-row-title {
+	color: var(--text);
+}
+
+.pi-row-more {
+	color: var(--text-faint);
+	font-size: 0.93em;
+}
+
+/* pi 会话行现在可点（ADR-0021 §2）：样式按按钮处理，但保持列表的紧凑感 */
+.pi-row {
+	border: 1px solid transparent;
+	background: transparent;
+	text-align: left;
+	cursor: pointer;
+	font: inherit;
+	/* 会话名字号来自「设置 → 外观」（--side-session-font-size，默认 14px）。
+	   必须写在 `font: inherit` **之后**：那个 shorthand 会把 font-size 一起重置回继承值。
+	   标题继承这个字号，时间 / 项目名 / 「运行中」等次要文字用 em 按比例缩。 */
+	font-size: var(--side-session-font-size, 14px);
+	width: 100%;
+}
+
+/* 悬停：底色走 `--pi-row-fill`（普通行 = `--bg-elev-2`，选中行 = 那层淡蓝，
+ * 变量定义在 session-row.css 的 `.pi-row-wrap` / `.pi-row-wrap-active`）。
+ * 写死灰底的话，点中的那一行只要鼠标还停在上边就会退回「没选中」的观感。
+ * 打开这条只把三条边写开（形状跟以前一样，左也是灰的）：选中行那条会由
+ * session-row.css 里更高优先级的 `border-color` 整圈换成淡蓝。 */
+.pi-row:hover {
+	background: var(--pi-row-fill, var(--bg-elev-2));
+	border-top-color: var(--border);
+	border-right-color: var(--border);
+	border-bottom-color: var(--border);
+	border-left-color: var(--border);
+}
+
+/* 选中态（`.pi-row-active`）的底色 / 描边 / 左侧竖条统一在 `session-row.css` ——
+ * 那里才有比「悬停 / 聚焦」更高优先级的选择器（见那边的注释）。 */
+
+/* 项目行上的「⋯」：弹项目菜单（新建会话 / 重命名 / 定位…） */
+.proj-more {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 20px;
+	height: 20px;
+	background: transparent;
+	/* 不画描边（用户 2026-10-29：这个蓝框不要了）。以前是 `1px solid var(--border)`，
+	 * 那颜色是淡蓝灰，在手机上按钮放大到 36px 后整颗看着就是个蓝方框，比「⋯」本身还显眼。
+	 * 注意留 `border: 0` 而不是直接删掉这行：下面的宽高是内容盒尺寸，
+	 * 保底写成 0 免得哪天 box-sizing 变了尺寸跟着跳。 */
+	border: 0;
+	color: var(--text-dim);
+	border-radius: 6px;
+	cursor: pointer;
+	font: inherit;
+	font-size: 14px;
+	line-height: 1;
+	padding: 0;
+}
+
+/* 悬停：原来靠描边变蓝表示「能点」，现在没有描边了，改成垫一层淡淡底色 + 字变蓝 */
+.proj-more:hover {
+	background: var(--bg-elev-2);
+	color: var(--accent);
+}
+
+/* ---- 项目分组（对齐参考实现的观感）---- */
+
+/* 标题里的三角：点标题 = 这一整块收起/展开（跟下面「文件管理」同一个交互）。
+ * 位置在**文字右边**（用户要求，原来在左边）；收起时指右、展开时指下 ——
+ * 跟项目行里的文件夹三角同一个语汇。 */
+.sidebar-title {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+
+/* 标题文字：侧栏被拖窄时**只让这一段走省略号**（三角 `flex: none`，不许被挤出去），
+ * 于是读起来就是「▾ 项目」一句话（三角在文字左边，跟「文件」那一行一致）。 */
+.sidebar-title-label {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.sidebar-title-caret {
+	flex: none;
+	width: 0;
+	height: 0;
+	border-left: 5px solid currentColor;
+	border-top: 4.5px solid transparent;
+	border-bottom: 4.5px solid transparent;
+	transform: rotate(0deg); /* 收起：指右（默认，跟项目行里的文件夹三角一致） */
+	transition: transform 0.12s ease;
+}
+
+.sidebar-title-caret-open {
+	transform: rotate(90deg); /* 展开：指下 */
+}
+
+/* ---- 「置顶」子组：**「项目」抬头上面独立的一段**（2026-10-29 用户两次确认「不能在里面」）----
+ * 跨项目汇总的置顶会话：标题 + 一组行；行尾是**项目名**（不是相对时间）。
+ *
+ * 位置挪过好几次，记在这儿免得又绕回去：
+ *   1. 原来在「项目」列表里当第一个子组（跟各项目平级）；
+ *   2. 2026-10-29 早上：提到「项目」抬头**上面**，独立成一段（置顶的先看到）；
+ *   3. 同日又试过放回列表里 —— 已撤回，用户明确「置顶不能在里面」。
+ * 既然不在列表里，下面两件事就得自己管：
+ *  - **不跟项目列表一起滚**：置顶的几条永远在最上面；
+ *  - 会话一多会顶掉下面列表的高度，所以给 `max-height` + 自己滚。
+ */
+.pin-group {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	flex: none; /* 不跟下面的项目列表抢高度 */
+	min-width: 0;
+	max-height: 34vh;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	scrollbar-width: none;
+	/* 跟下面的「项目」之间那条线：**和「项目｜文件」那条一样**（1px 实线 + 顶满整条侧栏）。
+	 * 顶满的做法跟 `.side-files` 一致：负 margin 拉出去、等量 padding 把内容挪回来。 */
+	border-bottom: 1px solid var(--border);
+	margin-left: calc(var(--side-pad, 10px) * -1);
+	margin-right: calc(var(--side-pad, 10px) * -1);
+	padding-left: var(--side-pad, 10px);
+	padding-right: var(--side-pad, 10px);
+	padding-bottom: 6px;
+}
+
+.pin-group::-webkit-scrollbar {
+	display: none;
+}
+
+/* 标题：跟「项目」「文件」两个抬头**同一套**（用户 2026-10-29：“风格统一一些”）。
+ * 字号 / 字重 / 亮度 / 三角全部来自 `.sidebar-title`（那个类也挂在这颗按钮上），
+ * 这里只保留它自己的排版（不被拉成整行，靠左）+ **颜色**。 */
+.pin-group-head {
+	/* **铺满整行**（不是 `flex-start` 只包住文字）：用户 2026-10-29：「点旁边的空白处，
+	 * 它就可以展开或收起」。这一行没有图标跟着，标题按钮自己拉宽就是那片热区，
+	 * 顺带 hover 时整行都会把文字点亮（`.sidebar-title:hover`），看得出这一条都能点。 */
+	align-self: stretch;
+	/* **黑色**（用户 2026-10-29 晚：“改回黑色”）：
+	 * 金色那版（`--steer` + hover 提亮）已经撤掉 —— 三行抬头本来就是一个模子，
+	 * 「置顶」不该靠换色区分。用 `--text`（正文字色，浅色主题就是黑、深色主题自动转白），
+	 * 比隔壁「项目」「文件」的 `--text-dim` 更实：置顶那几条最常用，抬头跟着实一点。
+	 * hover / 键盘聚焦不再单独盖：交给 `.sidebar-title:hover`（强调色），跟另外两行一致。 */
+	color: var(--text);
+}
+
+.pin-group-body {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	min-width: 0;
+	/* 缩进跟项目里的会话行一致（proj-body 是 2px 0 4px 10px）：
+	   置顶行与「某项目下的会话行」看起来在同一层 */
+	padding: 2px 0 4px 10px;
+	/* 置顶多了也不许把下面的项目挤走：这一块自己滚 */
+	max-height: min(38vh, 320px);
+	overflow: auto;
+	overscroll-behavior: contain;
+}
+
+/* 置顶行右侧要给「⋯」留位（置顶行没有归档按钮，鼠标移上去只有一枚 ⋯）：
+ * 不留的话行尾的时间会跟它叠在一起。 */
+.pin-group .pi-row {
+	padding-right: 22px;
+}
+
+/* ---- 侧栏底部：**不再有「收起这一栏」那颗小方块**（2026-10-28 用户：「这里这个不要呀」）----
+ * 它曾在这里待过一阵（更早还在顶栏那段最右端）。现在「收起 / 展开」只有分割线上那颗舌形
+ * 箭头（`.side-collapse` / `.side-expand`，见 project-icon.css）—— 两处两个样子、
+ * 位置还差一整个栏高，反而让人犹豫点哪颗。
+ * `.sidebar-foot-row` / `.sidebar-collapse` 的样式随之删掉；想放回来就照 App.tsx 里
+ * `.side-collapse` 那颗拼一个（16 格线性 SVG、类 `files-tool` 那套尺寸）。 */

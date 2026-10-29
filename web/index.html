@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<!-- 图标：现代浏览器用 SVG，老浏览器/快捷方式回退到 .ico，iOS 用 180px PNG。
+		     桌面图标放在 /icons/ 下（新路径）：iOS/Android 会按 **URL** 永久缓存主屏图标，
+		     所以换图必须换 URL —— 统一用 `?v=` 版本号，图案真改了就把版本号加一。
+		     图案本身在 web/public/favicon.svg，PNG 由 `node scripts/make-icons.mjs` 生成。 -->
+		<link rel="icon" href="/favicon.ico?v=4" sizes="16x16 32x32 48x48" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=4" />
+		<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png?v=4" />
+		<link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon-180.png?v=4" />
+		<!-- iOS 还会主动去探这两个惯例路径，一起放上（与上面同一张图） -->
+		<link rel="apple-touch-icon-precomposed" sizes="180x180" href="/apple-touch-icon-precomposed.png?v=4" />
+		<link rel="manifest" href="/manifest.webmanifest" />
+		<meta name="theme-color" content="#3b82f6" />
+		<!-- iOS 添加到主屏后的表现（16 以下不认 manifest 的 display / name） -->
+		<meta name="apple-mobile-web-app-capable" content="yes" />
+		<meta name="apple-mobile-web-app-title" content="agent-web" />
+		<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+		<title>oh-my-agent-web</title>
+		<!-- 主题内联在 CSS 之前：深色主题下先白一下再变深很难看，所以首帧前就把
+		     <html data-theme> 挂好（逻辑和 src/theme.ts 一致：mode 由 id 前缀推出来）。 -->
+		<script>
+			try {
+				var themeId = localStorage.getItem("agent-web.theme") || "";
+				if (/^(light|dark)(-|$)/.test(themeId)) {
+					document.documentElement.setAttribute("data-theme", themeId);
+					document.documentElement.setAttribute("data-theme-mode", themeId.indexOf("dark") === 0 ? "dark" : "light");
+				}
+			} catch (error) {
+				/* 隐私模式禁用 localStorage：用默认浅色，不抛错 */
+			}
+		</script>
+	</head>
+	<body>
+		<div id="root"></div>
+		<script type="module" src="/src/main.tsx"></script>
+	</body>
+</html>

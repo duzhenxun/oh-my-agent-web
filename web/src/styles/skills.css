@@ -1,0 +1,389 @@
+/*
+ * 技能面板（一级面板）：左「已安装」（带搜索）+ 右「详情 / 安装」。
+ *
+ * 骨架跟 MCP 面板同一套（可拖分栏、master/detail），配色与控件也复用那边的类
+ * （`.mcp-badge` / `.skill-slug` / `.btn-primary-add`），这样两个面板看起来是同一家人。
+ * 技能库与安装页那两块整页表单在 skills-market.css。
+ */
+
+.skills {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	flex: 1 1 auto;
+	min-height: 0;
+}
+
+.skills-shell {
+	display: grid;
+	/* 列宽由组件写入 --skills-list-width（可拖）；窄屏断点会盖成上下两段 */
+	grid-template-columns: minmax(180px, var(--skills-list-width, 260px)) 7px minmax(0, 1fr);
+	flex: 1 1 auto;
+	min-height: 0;
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	overflow: hidden;
+	background: var(--bg);
+}
+
+/* ---- 左栏 ---- */
+.skills-list-col {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	min-height: 0;
+	padding: 8px;
+	background: var(--bg-soft);
+}
+
+.skills-input {
+	background: var(--bg);
+	color: var(--text);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	padding: 4px 8px;
+	font: inherit;
+	font-size: 13px;
+	min-width: 0;
+}
+
+.skills-input:focus {
+	outline: none;
+	border-color: var(--accent-dim);
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.skills-search {
+	flex: none;
+}
+
+.skills-list-head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 6px;
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--text-dim);
+	padding: 0 2px;
+}
+
+.skills-list-scroll {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	overflow: auto;
+	min-height: 0;
+	flex: 1 1 auto;
+}
+
+.skill-item {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	width: 100%;
+	text-align: left;
+	padding: 5px 8px;
+	border: 1px solid transparent;
+	border-radius: 8px;
+	background: none;
+	color: inherit;
+	font: inherit;
+	font-size: 14px;
+	cursor: pointer;
+}
+
+.skill-item:hover {
+	background: var(--bg);
+}
+
+.skill-item-on {
+	background: var(--bg);
+	border-color: var(--accent);
+}
+
+.skill-item-off .skill-item-name {
+	color: var(--text-faint);
+}
+
+.skill-item-name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	min-width: 0;
+}
+
+.skills-left-actions {
+	display: flex;
+	gap: 6px;
+	flex: none;
+	margin-top: auto;
+}
+
+.skills-left-actions > .btn {
+	flex: 1 1 0;
+	min-width: 0;
+}
+
+/* 左右可拖的分割线（跟 MCP 面板同款：线自己画，悬浮变强调色） */
+.skills-list-resizer {
+	display: flex;
+	align-items: stretch;
+	justify-content: center;
+	cursor: col-resize;
+	touch-action: none;
+	background: var(--bg-soft);
+}
+
+.skills-list-resizer::before {
+	content: "";
+	width: 1px;
+	background: var(--border);
+}
+
+.skills-list-resizer:hover::before,
+.skills-list-resizer:active::before {
+	width: 2px;
+	background: var(--accent);
+}
+
+/* ---- 右栏 ---- */
+.skills-detail {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	min-width: 0;
+	min-height: 0;
+	overflow: auto;
+	padding: 10px 18px 16px 14px;
+	scrollbar-gutter: stable;
+}
+
+/* 安装页自己管滚动（里面还有一个会变长的列表） */
+.skills-detail-pane {
+	padding: 10px 18px 16px 16px;
+}
+
+.skills-detail-head {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-wrap: wrap;
+	flex: none;
+}
+
+.skills-detail-meta {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	flex-wrap: wrap;
+	font-size: 13px;
+}
+
+.skills-label {
+	font-size: 14px;
+	color: var(--text-dim);
+	font-weight: 600;
+}
+
+.skill-slug {
+	font-size: 12px;
+	color: var(--text-faint);
+	overflow-wrap: anywhere;
+}
+
+.skills-desc {
+	margin: 0;
+	font-size: 14px;
+	line-height: 1.7;
+	color: var(--text-dim);
+	overflow-wrap: anywhere;
+}
+
+/* 文件列表：一堆小胶囊，点一下预览 */
+.skills-file-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	max-height: 92px;
+	overflow: auto;
+	flex: none;
+}
+
+.skills-file {
+	font-family: var(--mono);
+	font-size: 12px;
+	padding: 1px 6px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--bg-soft);
+	color: var(--text-dim);
+	cursor: pointer;
+}
+
+.skills-file:hover {
+	color: var(--text);
+	border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+}
+
+.skills-file-on {
+	background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+	border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+	color: var(--text);
+}
+
+.skills-preview {
+	margin: 0;
+	flex: 1 1 auto;
+	min-height: 120px;
+	overflow: auto;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	font-family: var(--mono);
+	font-size: 13px;
+	line-height: 1.65;
+	background: var(--bg-soft);
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	padding: 8px 10px;
+	color: var(--text-dim);
+}
+
+.skills-bar {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex: none;
+	flex-wrap: wrap;
+}
+
+/* 启用态的小标签（跟 MCP 的「官方」那类标签同一套观感） */
+.skill-badge-on {
+	border-color: color-mix(in srgb, var(--green) 45%, var(--border));
+	color: var(--green);
+}
+
+/* 窄屏：上下两段，分割线隐藏 */
+@media (max-width: 640px) {
+	.skills-shell {
+		display: flex;
+		flex-direction: column;
+		overflow: auto;
+	}
+
+	.skills-list-col {
+		flex: none;
+		border-bottom: 1px solid var(--border);
+	}
+
+	.skills-list-scroll {
+		flex: none;
+		overflow: visible;
+		max-height: 42vh;
+	}
+
+	.skills-list-resizer {
+		display: none;
+	}
+
+	.skills-detail {
+		flex: none;
+		overflow: visible;
+	}
+}
+
+/* ---- 左栏的页签（全部 / 启用 / 禁用） ----
+   比安装页那三个页签更紧凑：这里只是筛列表，不是换整页内容 */
+.skills-tabbar {
+	display: flex;
+	gap: 4px;
+	flex: none;
+}
+
+.skills-tabbar > .skills-tab {
+	flex: 1 1 0;
+	min-width: 0;
+	/* 字号 / 内边距跟安装页页签（.skills-tab 基础样式）一致，别在这里瘦身：
+	   12.5px + 2px 内边距时，半粗中文（「全部 46」是 font-weight 600）横竖笔画
+	   会粘连，看着像被压扁、也比同屏其它页签矮一截 */
+	font-size: 14px;
+	line-height: 1.45;
+	padding: 3px 10px;
+	text-align: center;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.skills-tab-count {
+	margin-left: 4px;
+	font-size: 12px;
+	color: var(--text-faint);
+	font-variant-numeric: tabular-nums;
+}
+
+.skills-tabbar > .skills-tab-on .skills-tab-count {
+	color: var(--text-dim);
+}
+
+/* ---- 多选 ---- */
+.skills-select-toggle {
+	flex: none;
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	background: none;
+	color: var(--text-faint);
+	font: inherit;
+	font-size: 12px;
+	padding: 0 8px;
+	cursor: pointer;
+}
+
+.skills-select-toggle:hover {
+	color: var(--text);
+}
+
+.skills-select-toggle-on {
+	background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+	border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+	color: var(--text);
+}
+
+/* 多选态整行可点：复选框本身不接收 pointer（点击事件交给整行按钮） */
+.skill-item-pick > input[type="checkbox"] {
+	flex: none;
+	margin: 0;
+	width: 13px;
+	height: 13px;
+	pointer-events: none;
+	accent-color: var(--accent);
+}
+
+.skill-item-picked {
+	background: color-mix(in srgb, var(--accent) 10%, var(--bg));
+	border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+}
+
+/* ---- 批量操作区（多选时替掉「安装技能 / 全启用」那一行） ---- */
+.skills-batch {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	flex: none;
+	margin-top: auto;
+	border-top: 1px dashed var(--border);
+	padding-top: 6px;
+}
+
+.skills-batch-row {
+	display: flex;
+	gap: 4px;
+	flex-wrap: wrap;
+}
+
+.skills-batch-row > .btn {
+	flex: 1 1 0;
+	min-width: 0;
+	font-size: 12px;
+	padding: 2px 6px;
+}

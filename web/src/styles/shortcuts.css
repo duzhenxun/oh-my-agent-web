@@ -1,0 +1,170 @@
+/*
+ * 设置 → 快捷键（`ShortcutsPane`）。
+ *
+ * 一行一个动作：左边名字 + 说明，右边「组合键胶囊」+ 清除。骨架沿用设置里那套
+ * （`.settings-panel` / `.settings-head` / `.settings-hint` / `.btn-tiny`），
+ * 这里只补三样设置面板里没有的东西：行、组合键胶囊、录制态。
+ */
+
+.shortcuts-list {
+	display: flex;
+	flex-direction: column;
+	/* 行之间不画分隔线：设置里其它块都是「一堆行、靠间距分组」，加线反而像表格 */
+	gap: 2px;
+}
+
+.shortcut-row {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 6px 2px;
+	border-radius: 8px;
+}
+
+/* 正在录制的那一行给一层浅底：一眼看出「按键会落到哪里」 */
+.shortcut-row-rec {
+	background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+
+.shortcut-info {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+	/* 吃掉剩余宽度：右列（胶囊 + ✕）宽度固定，长说明就在左边换行 */
+	flex: 1 1 auto;
+}
+
+.shortcut-name {
+	font-size: 15px;
+	color: var(--text);
+}
+
+.shortcut-hint {
+	font-size: 13px;
+	line-height: 1.4;
+	color: var(--text-faint);
+}
+
+.shortcut-keys {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex: none;
+}
+
+/*
+ * 组合键胶囊：等宽字体 + 定宽最小值，让一列胶囊左边缘对齐（⌘ 和 Ctrl+Shift+ 差得很远，
+ * 不设最小宽度就会参差不齐）。视觉上跟全文搜索浮层里的 <kbd> 同一套（边框 + 浅底）。
+ */
+.shortcut-combo {
+	flex: none;
+	min-width: 96px;
+	padding: 5px 10px;
+	border: 1px solid var(--border);
+	border-radius: 7px;
+	background: var(--bg);
+	color: var(--text);
+	font: inherit;
+	font-family: var(--mono);
+	font-size: 13px;
+	line-height: 1.2;
+	text-align: center;
+	cursor: pointer;
+}
+
+.shortcut-combo:hover {
+	border-color: var(--border-strong);
+	background: var(--bg-elev-2);
+}
+
+/* 未设置：虚线 + 灰字，跟「有绑定」的实线胶囊区分开 */
+.shortcut-combo-empty {
+	border-style: dashed;
+	color: var(--text-faint);
+}
+
+/* 录制中：描边走强调色，文案换成「按下组合键…」（定宽保证换文案时不跳动太多） */
+.shortcut-combo-rec,
+.shortcut-combo-rec:hover {
+	border-style: solid;
+	border-color: var(--accent);
+	color: var(--accent);
+	background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.shortcut-clear {
+	flex: none;
+	width: 22px;
+	height: 22px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0;
+	border: none;
+	border-radius: 5px;
+	background: none;
+	color: var(--text-faint);
+	font: inherit;
+	font-size: 13px;
+	line-height: 1;
+	cursor: pointer;
+}
+
+.shortcut-clear:hover:not(:disabled) {
+	background: var(--bg-elev-2);
+	color: var(--text);
+}
+
+.shortcut-clear:disabled {
+	opacity: 0.35;
+	cursor: default;
+}
+
+/* 拒绝理由（浏览器占用 / 撞车）：红色一行，跟面板里其它失败说明一个口径 */
+.shortcut-notice {
+	color: var(--red);
+	font-size: 13px;
+	line-height: 1.45;
+	overflow-wrap: anywhere;
+}
+
+/* 底部：说明占满左边，恢复默认靠右 */
+.shortcut-foot {
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+	margin-top: 2px;
+}
+
+.shortcut-foot .settings-hint {
+	flex: 1 1 auto;
+	min-width: 0;
+	/* settings-hint 自己带 margin-top，这里由 flex 对齐管 */
+	margin-top: 0;
+}
+
+.shortcut-foot .btn {
+	flex: none;
+}
+
+/* 窄屏（手机抽屉里的设置面板）：说明与胶囊换行，胶囊不再定宽 */
+@media (max-width: 560px) {
+	.shortcut-row {
+		flex-wrap: wrap;
+		gap: 6px 10px;
+	}
+
+	.shortcut-keys {
+		width: 100%;
+		justify-content: flex-end;
+	}
+
+	.shortcut-combo {
+		min-width: 84px;
+	}
+
+	.shortcut-foot {
+		flex-wrap: wrap;
+	}
+}

@@ -1,0 +1,218 @@
+/* ---- 新会话界面：「项目 · 分支」（components/NewSessionScope.tsx）----
+ * 只在「点了新会话、还没真的建」的时候出现（`store.ts` 的 `newSession`），
+ * 发第一条消息、会话建出来之后它跟着消失。
+ *
+ * 位置（用户要求）：**工具行里、模型左边**，跟「模型 / 模板 / 想想」并排 ——
+ * 不再单占一整行。所以这里没有自己的边框和底色，就是几个 `.tool-chip` 样子的胶囊，
+ * 外面那颗容器只负责横向排一行。不是 git 仓库时分支那颗不画（只剩项目一颗）。
+ */
+.new-session-scope {
+	display: flex;
+	align-items: center;
+	flex-wrap: nowrap;
+	gap: 6px;
+	min-width: 0;
+	max-width: 100%;
+}
+
+/* 一颗胶囊：项目 / 分支共用，**尺寸与 `.tool-chip` 保持一致**
+ * （同字号、同内边距、同圆角、同底色），这样看着就是这一排按钮之一，不像另贴的标签。 */
+.new-scope-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	flex: 0 1 auto;
+	min-width: 0;
+	max-width: 200px;
+	padding: 1px 7px;
+	border: 1px solid var(--border);
+	border-radius: 7px;
+	background: var(--bg-elev);
+	color: var(--text-dim);
+	font: inherit;
+	font-size: calc(var(--chat-ui-font-size, 12px) * 0.8621);
+	/* 不写 line-height：跟 `.tool-chip` 一样继承外层，两颗胶囊高度才会真的一样（21px） */
+	cursor: pointer;
+	transition:
+		background 0.12s ease,
+		border-color 0.12s ease,
+		color 0.12s ease;
+}
+
+.new-scope-chip:hover {
+	border-color: var(--accent-dim);
+	color: var(--text);
+}
+
+.new-scope-chip[aria-expanded="true"] {
+	border-color: var(--accent-dim);
+	background: var(--bg);
+	color: var(--text);
+}
+
+/* 还没选项目（「不在项目中工作」）：淡一点，说明它是「空着的」而不是选好了某个项目 */
+.new-scope-chip-muted {
+	color: var(--text-dim);
+}
+
+/* 「临时（不保存）」开着时那颗胶囊：用重音色描个边，表示「这条会话的归属除了项目还多了一件事：
+ * 它不会落盘」。不填底色 —— 它是个状态提示 / 取消按钮，不是主操作（主操作是输入框）。 */
+.new-scope-chip-ephemeral {
+	border-color: var(--accent-dim);
+	/* 虚线跟顶栏那颗「临时会话」一个语感：**临时 / 不落盘**的东西都画虚线，实线的是正式那条 */
+	border-style: dashed;
+	color: var(--accent);
+}
+
+/* 「当前项目」那颗是**只读标签**（会话归属已定，改不了）：不给 pointer、不给 hover 反馈 ——
+ * 鼠标移过去变成手型、点下去还有回弹，人会以为它是个下拉框（`ProjectBranchChips`）。 */
+.new-scope-chip-static {
+	cursor: default;
+}
+
+.new-scope-chip-static:hover {
+	border-color: var(--border);
+	color: var(--text-dim);
+}
+
+.new-scope-chip-ephemeral:hover {
+	border-color: var(--accent);
+	background: var(--bg);
+	color: var(--accent);
+}
+
+.new-scope-icon {
+	display: inline-flex;
+	flex: none;
+	width: 13px;
+	height: 13px;
+	/* 跟 `.tool-chip` 里的 emoji 图标同一档淡化（那边是 opacity .85），不抢字 */
+	opacity: 0.85;
+}
+
+.new-scope-icon svg {
+	width: 100%;
+	height: 100%;
+}
+
+/* 分支图标跟文件区那枚标签同一套线条：只描边、不填色；颜色跟胶囊文字走
+   （`stroke: currentColor` 已经够用，不要再单独给颜色，否则跟其它按钮不同色调） */
+.new-scope-branch-icon {
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.3;
+	stroke-linecap: round;
+}
+
+.new-scope-label {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.new-scope-caret {
+	flex: none;
+	width: 11px;
+	height: 11px;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.6;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	color: var(--text-faint);
+}
+
+/* ---- 项目下拉框（复用 `.proj-menu` 浮层，这里只补搜索框、清单与底部动作区）---- */
+/* 三段式：搜索框 / 清单 / 「新建项目·临时会话」。**只有中间那份清单滚动** ——
+   以前整块是一个 overflow: auto 的盒子，滚几下搜索框就滚出去了，「新建项目」又排在清单最后，
+   项目一多就得先滚到底才能看见（用户反馈的「往下滑很麻烦」就是这个）。 */
+.new-scope-menu {
+	max-height: min(52vh, 420px);
+	overflow: hidden;
+}
+
+/* 中间的项目清单：唯一会滚的那一段 */
+.new-scope-list {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	/* 滚到头部之后不要把这个页面一起带着滚 */
+	overscroll-behavior: contain;
+}
+
+/* 键盘上下键 / 鼠标悬停选中的那一条 */
+.new-scope-item-active {
+	background: var(--bg-elev);
+	color: var(--text);
+}
+
+/* 底部动作区：不跟清单一起滚，项目再多也一眼看得见「新建项目」 */
+.new-scope-foot {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	flex: none;
+	margin-top: 2px;
+	padding-top: 3px;
+	border-top: 1px solid var(--border);
+}
+
+.new-scope-search {
+	flex: none;
+	width: 100%;
+	padding: 5px 8px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--bg);
+	color: var(--text);
+	font: inherit;
+	font-size: 13px;
+}
+
+.new-scope-search::placeholder {
+	color: var(--text-faint);
+}
+
+.new-scope-search:focus {
+	outline: none;
+	border-color: var(--accent-dim);
+}
+
+.new-scope-menu-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	width: 14px;
+	height: 14px;
+	color: var(--text-faint);
+}
+
+/* 💬 是个字、不是 svg：给 13px 字号，光学大小才跟隔壁那枚 14px 的 folder-plus 描边图标一样 */
+.new-scope-menu-icon-emoji {
+	font-size: 13px;
+	line-height: 1;
+}
+
+/* 这个菜单里每一行都是「勾 / 图标 / 文字」三段：统一**居中**对齐（`align-items`）。
+ * 侧栏那套 `.files-root-option` 是 baseline 对齐（那边图标曾经是 emoji），照搬过来会让
+ * 描边图标压在文字基线上、比文字抬高半格，跟下一行的 💬 也对不齐 ——
+ * 两行图标要落在同一列、文字从同一个 x 起排（用户提的「对齐一下」）。 */
+.new-scope-menu .files-root-option {
+	align-items: center;
+}
+
+.new-scope-menu-icon svg {
+	width: 100%;
+	height: 100%;
+}
+
+.new-scope-empty {
+	padding: 6px 8px;
+	color: var(--text-faint);
+	font-size: 13px;
+}

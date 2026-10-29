@@ -1,0 +1,389 @@
+/* ---- 提示词模板库与模板编辑（P5）---- */
+
+.tpl-modal {
+	width: min(1080px, 94vw);
+	max-height: 88vh;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.tpl-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+}
+
+.tpl-title {
+	font-size: 17px;
+}
+
+.tpl-icon {
+	flex: none;
+	font-size: 19px;
+	line-height: 1;
+}
+
+.tpl-badge {
+	flex: none;
+	padding: 1px 8px;
+	border: 1px solid var(--accent-dim);
+	border-radius: 999px;
+	color: var(--accent);
+	font-size: 13px;
+}
+
+.tpl-hint {
+	color: var(--text-faint);
+	font-size: 14px;
+}
+
+.tpl-grid {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: auto;
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+	gap: 10px;
+	padding: 2px;
+}
+
+.tpl-card {
+	position: relative;
+	display: flex;
+	align-items: stretch;
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	background: var(--bg-elev);
+	min-height: 92px;
+}
+
+.tpl-card:hover {
+	border-color: var(--accent-dim);
+}
+
+.tpl-card-main {
+	flex: 1 1 auto;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	align-items: flex-start;
+	background: none;
+	border: none;
+	color: var(--text);
+	font: inherit;
+	text-align: left;
+	padding: 10px 12px;
+	cursor: pointer;
+	min-width: 0;
+}
+
+.tpl-name {
+	font-weight: 600;
+	font-size: 15px;
+}
+
+.tpl-desc {
+	color: var(--text-faint);
+	font-size: 14px;
+	line-height: 1.5;
+	overflow-wrap: anywhere;
+}
+
+.tpl-edit {
+	position: absolute;
+	top: 4px;
+	right: 4px;
+	display: none;
+	background: var(--bg-elev-2);
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	padding: 1px 5px;
+	cursor: pointer;
+	font-size: 13px;
+}
+
+.tpl-card:hover .tpl-edit {
+	display: block;
+}
+
+.tpl-card-new {
+	border-style: dashed;
+	background: none;
+	color: var(--text-dim);
+	cursor: pointer;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 4px;
+	padding: 10px 12px;
+	font: inherit;
+	text-align: left;
+}
+
+.tpl-foot {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding-top: 6px;
+	border-top: 1px solid var(--border);
+}
+
+.tpl-editor {
+	width: min(760px, 94vw);
+	max-height: 88vh;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.tpl-field {
+	display: flex;
+	flex-direction: column;
+	gap: 5px;
+	flex: none;
+	min-height: 0;
+}
+
+.tpl-field-grow {
+	flex: 1 1 auto;
+	min-height: 160px;
+}
+
+.tpl-label {
+	color: var(--text-faint);
+	font-size: 14px;
+}
+
+.tpl-input,
+.tpl-textarea {
+	width: 100%;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--bg);
+	color: var(--text);
+	font: inherit;
+	font-size: 15px;
+	padding: 8px 10px;
+}
+
+.tpl-textarea {
+	flex: 1 1 auto;
+	min-height: 160px;
+	resize: vertical;
+	line-height: 1.65;
+}
+
+.tpl-error {
+	color: var(--red);
+	font-size: 14px;
+}
+
+.tpl-foot-editor {
+	padding-top: 8px;
+}
+
+.btn-danger {
+	border-color: color-mix(in srgb, var(--red) 55%, transparent);
+	color: var(--red);
+}
+
+.btn-primary {
+	/* 浅色底 + 主色字：之前是蓝底近黑字，对比脏、也跟其它按钮不是一套 */
+	border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+	background: color-mix(in srgb, var(--accent) 15%, transparent);
+	color: var(--accent);
+	font-weight: 600;
+}
+
+.btn-primary:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+/* 输入框下面一行：模板 + 模型（原本在顶栏，按需求下移） */
+.composer-tools {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+.tool-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	border: 1px solid var(--border);
+	border-radius: 7px;
+	background: var(--bg-elev);
+	color: var(--text-dim);
+	font: inherit;
+	font-size: calc(var(--chat-ui-font-size, 12px) * 0.8621);
+	padding: 1px 7px;
+	cursor: pointer;
+}
+
+.tool-chip:hover {
+	border-color: var(--accent-dim);
+	color: var(--text);
+}
+
+.tool-select {
+	max-width: 240px;
+	cursor: pointer;
+}
+
+/* 工具行：模板 → 模型（右侧留思考强度/工具范围的位置） */
+.tool-sep {
+	width: 1px;
+	height: 14px;
+	background: var(--border);
+	flex: none;
+}
+
+.tool-group {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	min-width: 0;
+}
+
+.tool-icon {
+	flex: none;
+	font-size: 13px;
+	opacity: 0.85;
+}
+
+.tool-static {
+	color: var(--text-faint);
+	cursor: default;
+}
+
+/* ---- 模型选择器（按厂家分组 + 可筛选）---- */
+.model-picker {
+	position: relative;
+	min-width: 0;
+}
+
+.model-current {
+	max-width: 200px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.model-caret {
+	flex: none;
+	color: var(--text-faint);
+	font-size: 12px;
+}
+
+.model-pop {
+	position: absolute;
+	bottom: calc(100% + 6px);
+	left: 0;
+	z-index: 40;
+	width: min(380px, 82vw);
+	max-height: 52vh;
+	display: flex;
+	flex-direction: column;
+	border: 1px solid var(--border-strong);
+	border-radius: 10px;
+	background: var(--bg-elev);
+	box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+	overflow: hidden;
+}
+
+.model-filter {
+	margin: 8px;
+	padding: 6px 8px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--bg);
+	color: var(--text);
+	font: inherit;
+	font-size: 15px;
+}
+
+.model-list {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: auto;
+	padding-bottom: 4px;
+}
+
+.model-provider {
+	padding: 8px 10px 4px;
+	color: var(--text-faint);
+	font-size: 13px;
+	letter-spacing: 0.06em;
+}
+
+.model-item {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	width: 100%;
+	padding: 6px 12px;
+	background: none;
+	border: none;
+	color: var(--text-dim);
+	font: inherit;
+	font-size: 15px;
+	text-align: left;
+	cursor: pointer;
+	min-width: 0;
+}
+
+.model-item:hover {
+	background: var(--bg-elev-2);
+	color: var(--text);
+}
+
+.model-item-on {
+	color: var(--text);
+	font-weight: 600;
+}
+
+.model-check {
+	flex: none;
+	width: 12px;
+	color: var(--accent);
+}
+
+.model-label {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.model-empty,
+.model-foot {
+	padding: 6px 12px;
+	color: var(--text-faint);
+	font-size: 13px;
+}
+
+.model-foot {
+	border-top: 1px solid var(--border);
+}
+
+/* 审批模式放到输入区后：放行态（芯片上写「放行」）用暖色提醒（别让人忘了自己关掉了审批） */
+.tool-chip-warn {
+	border-color: color-mix(in srgb, var(--yellow, #d9a441) 60%, transparent);
+	color: var(--yellow, #d9a441);
+}
+
+/* 输入框上方一行：工具（模板/模型/强度/审批）+ 快捷短语并排 */
+.composer-topbar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+	min-width: 0;
+}
+
+.composer-topbar .quick-row {
+	flex-wrap: wrap;
+}

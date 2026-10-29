@@ -1,0 +1,629 @@
+/*
+ * 单栏（手机）适配（最后加载，专门覆盖前面的固定尺寸）。
+ *
+ * 开关是 `<html class="is-mobile-shell">`，由 `web/src/mobile-shell.ts` 判定：
+ *   **手机 UA**（iPhone / Android Mobile…，横屏 900px 也算）或 **宽度 ≤400px**。
+ * 不用媒体查询的原因：媒体查询只能看宽度，判断不了「这是手机」。
+ * 这段负责单栏时的形态：
+ *   - 左栏（项目/文件树）变成覆盖式抽屉，**只占 2/3**（右侧 1/3 留着看对话，也用来点一下关掉）；
+ *   - 右侧预览/终端变成整屏（它是"第二个页面"的性质）；
+ *   - 顶栏允许换行、底部状态栏隐藏次要信息；
+ *   - 输入区与消息的左右内边距收窄。
+ */
+
+/* 手机抽屉宽度：**只在这里定一次**。
+ * 那两枚「收起 / 展开」的舌形按钮要用同一个数算位置（它们要贴到抽屉的右边缘，
+ * 见 project-icon.css 的手机那两条）—— 分两处写就会出现「手柄和边缘差几像素」的缝。 */
+.is-mobile-shell {
+	--drawer-w: clamp(260px, 76vw, 340px);
+}
+
+/* 顶栏：允许换行，缩小间距 */
+.is-mobile-shell .appbar {
+	flex-wrap: wrap;
+	gap: 6px;
+	/* 上下用 app-bar.css 里那个同一个变量（`--appbar-pad-y`）：两条竖线靠它顶到栏的两头，
+	 * 两边不一致就会出现「线比栏短一截」。以前这里写死 6px，手机顶栏因此比桌面胖一圈。 */
+	padding: var(--appbar-pad-y, 2px) 8px;
+}
+
+.is-mobile-shell .appbar .brand {
+	font-size: 16px;
+}
+
+/* 左栏：变成覆盖抽屉（不再占据文档流宽度）；宽度只在下面「手机抽屉」那块定一次 */
+.is-mobile-shell .side-host {
+	position: fixed;
+	top: 0;
+	left: 0;
+	bottom: 0;
+	z-index: 40;
+	border-radius: 0;
+}
+
+/* 收起态的竖条仍然留在文档流里，方便点开 */
+.is-mobile-shell .activity-bar {
+	width: 40px;
+}
+
+/* 右侧预览 / 终端：整屏（相当于第二个页面）—— 但**从顶栏下面开始**。
+ *
+ * 手机上顶栏是 `position: relative; z-index: 45`（它要压住抽屉，见下面那几条），
+ * 面板只有 30。原来写 `inset: 0`：面板顶到窗口最顶上，它自己那一排**标签条**
+ * （含「＋」和每个标签的叉号）正好落在顶栏背后 —— 看着就是「预览的头部被顶栏压住了」，
+ * 而且那排按钮根本点不到。这里把顶栏那一条让出来（`--appbar-h` 是实量的，
+ * 顶栏换行变高时也跟着对），面板的正文从顶栏底边开始。
+ * `bottom: auto` 不能省：top / bottom 同时给会互相拉扯（两处都设时 bottom 被忽略，
+ * 写成 auto 是为了让意图明确、不依赖这条覆盖规则）。
+ *
+ * 高度用 `100dvh`（不认 dvh 的旧浏览器退回 100vh，同一套写法见 side-host 与下面几个弹窗）：
+ * 手机上的 `100vh` 是「浏览器工具栏收起来」时的最大高度，面板底边会伸到底部工具栏背后，
+ * 最后几行代码就被那条工具栏切掉了 —— 用 dvh 才是「现在真正看得见的那一屏」。
+ */
+.is-mobile-shell .preview-panel {
+	position: fixed;
+	top: var(--appbar-h, 46px);
+	bottom: auto;
+	left: 0;
+	right: 0;
+	width: 100% !important;
+	height: calc(100vh - var(--appbar-h, 46px));
+	height: calc(100dvh - var(--appbar-h, 46px));
+	z-index: 30;
+	border-radius: 0;
+	border: none;
+	/* 分栏 / 铺开时面板带着一条负的 margin-top（见 preview-panel.css 的 `.app-split`）；
+	   手机上这两种都不存在，清掉 —— 否则面板又被往上顶一个顶栏的高度 */
+	margin-top: 0;
+	/* iPhone 的 home 条：最后一行别压在那条小横杠上 */
+	--preview-pad-bottom: calc(var(--preview-pad, 6px) + env(safe-area-inset-bottom, 0px));
+}
+
+.is-mobile-shell .preview-resizer,
+.is-mobile-shell .preview-rail {
+	display: none;
+}
+
+/* 对话区：收窄内边距，去掉左侧 20px 的"留白" */
+.is-mobile-shell .workspace {
+	padding: 0 8px 8px;
+}
+
+.is-mobile-shell .workspace .main {
+	padding: 0 4px;
+}
+
+/* 手机上两侧只留 4px：滚动条只在桌面占地方，8px + 14px 的让位全是白掉的宽度 */
+.is-mobile-shell .workspace {
+	padding: 0 4px 6px;
+}
+
+.is-mobile-shell .workspace .main {
+	padding: 0 2px;
+}
+
+/* 手机上不需要给滚动条让位（那条竖条根本不显示）—— 桌面那 14px 在这里就是纯浪费的右边白 */
+.is-mobile-shell .workspace .messages,
+.is-mobile-shell .workspace .composer-wrap,
+.is-mobile-shell .workspace .sent-queue,
+.is-mobile-shell .workspace .notices,
+.is-mobile-shell .workspace .agents-strip {
+	margin-right: 0;
+}
+
+/* 输入区上方：手机上工具行（模型 / 模板 / 想想）只留一行、横向滑（折一行就多 30px 高）；
+   快捷短语仍单独一行、保持直接可点 —— 把它也挤进横向滑动区等于藏起来了，不划算。 */
+.is-mobile-shell .composer-topbar {
+	flex-wrap: wrap;
+	gap: 4px 6px;
+}
+
+.is-mobile-shell .composer-tools {
+	width: 100%;
+	flex-wrap: nowrap;
+	overflow-x: auto;
+	overflow-y: hidden;
+	/* 这一行本来就是「滑一下还有」，滚动条只会再占 6px */
+	scrollbar-width: none;
+}
+
+.is-mobile-shell .composer-tools::-webkit-scrollbar {
+	display: none;
+}
+
+.is-mobile-shell .composer-tools > * {
+	flex: none;
+}
+
+/* 工具行与快捷短语之间的那条竖线：手机上一换行它就孤零零地留在行首，没意义 */
+.is-mobile-shell .composer-topbar > .tool-sep {
+	display: none;
+}
+
+.is-mobile-shell .composer-topbar .quick-row {
+	flex-wrap: wrap;
+	gap: 4px;
+}
+
+/* 状态栏的尺寸统一在 statusbar.css 里定（手机那一版要放大到 32px，这里不再覆盖） */
+
+/* 手机上用户消息同样靠右，只把宽度上限放宽一点：屏幕窄，82% 会挤得厉害 */
+.is-mobile-shell .msg-user {
+	max-width: 88%;
+}
+
+/* 提示词模板 / 技能等大弹窗：整屏 */
+.is-mobile-shell .modal.big-modal,
+.is-mobile-shell .modal.tpl-modal,
+.is-mobile-shell .modal.new-project,
+.is-mobile-shell .modal.file-preview {
+	width: 100vw;
+	height: 100vh;
+	max-height: none;
+	border-radius: 0;
+}
+
+/* 大纲窄条在手机上没必要（点不动、还挡内容） */
+.is-mobile-shell .outline {
+	display: none;
+}
+
+/* 窄窗（401~1000）：还是双栏（侧栏 + 对话并排），但侧栏**先让位**。
+ *
+ * 上限不是「窗口的百分之多少」，而是「窗口宽 - 430px」：右边要留给会话标题 + 那排面板入口
+ * （430 = 入口排只留图标约 230 + 标题约 180 + 间距）。侧栏先让 —— 窗口窄的时候标题不能消失
+ * （那是「现在在跟谁聊」），而侧栏里的会话名截短一点仍然认得出。
+ *
+ * 只管 `.side-host`：顶栏左段（`.appbar-side-fixed`）现在按自己的内容定宽
+ * （见 app-bar.css），不再跟侧栏同宽，也就不需要跟着这个上限收。
+ * 以前两个选择器必须同值 —— 那时顶栏左段的宽度就是侧栏宽度，不一起夹就会在窄窗里
+ * 把整条顶栏吃满（"标题不见了"）；解耦之后这条约束自然消失。
+ * 用 `100vw` 而不是 `%`：`.app-main` 有 8px 内边距，百分比基数不同。
+ * JS 侧同一个数见 `web/src/sidebar-layout.ts` 的 `sidebarMaxWidth()`（拖动时也按它夹）。
+ */
+@media (min-width: 401px) and (max-width: 1000px) {
+	.side-host {
+		/* 240px 是侧栏的**最小宽度**（跟 sidebar-layout.ts 的 SIDEBAR_MIN_WIDTH 同一个数）：
+		 * 再窄项目行就排不下「图标 + 名字 + 运行中/圆点 + ⋯」，角标会压在标题上 */
+		max-width: max(240px, calc(100vw - 430px));
+	}
+}
+
+/* 超窄屏（老机型 / 分屏）：再收一档 */
+/* 手机上的「过程 N 步」折叠条：必须能塞进一行。
+ * 以前是 14.5px + 8px 间距 + 一长串「（点击展开）」，窄屏上按 span 折成两行，
+ * 于是「4 段思考」被拆成「4 段思 / 考」—— 看着就像排版坏了。
+ * 处理：收紧字号/间距，并收掉「（点击展开）」那句（三角箭头本身已经表示可展开）。 */
+.is-mobile-shell .msg-tools-toggle {
+	gap: 6px;
+	font-size: 14px;
+	padding: 5px 10px;
+}
+
+/* 手机上「（点击展开）」那句换成一个小箭头：
+ * 左侧那个三角是桌面版的展开指示，手机上和右侧箭头同时出现就是两个箭头，所以只留右边这个
+ * （末尾位置更像手风琴的惯例，也让一行文字从左边读起）。 */
+.is-mobile-shell .msg-process-hint {
+	display: none;
+}
+
+.is-mobile-shell .msg-tools-caret {
+	display: none;
+}
+
+.is-mobile-shell .msg-process-chevron {
+	display: inline-block;
+}
+
+@media (max-width: 480px) {
+	/* 「项目 · 分支」也归这一排（手机上同样显示，见 ProjectBranchChips）：
+	   字号/内边距跟隔壁的模型、模板一模一样，否则两种芯片高低不一。 */
+	.composer-tools .tool-chip,
+	.composer-tools .new-scope-chip,
+	.quick-chip {
+		font-size: 14px;
+		padding: 3px 8px;
+	}
+
+	/* 项目名再长也别把一屏占满：这条是横向可滑的，留半屏给后面的模型/模板 */
+	.composer-tools .new-scope-chip {
+		max-width: 52vw;
+	}
+
+	.statusbar {
+		font-size: 12px;
+	}
+}
+
+/* ---------------------------------------------------------------------------
+ * 单栏时的细节（`.is-mobile-shell`）：抽屉 / 弹窗 / 输入区
+ * 上面那段解决「三栏放不下」，这段解决「换上 HTTP 与模型面板之后」的具体挤压。
+ * ------------------------------------------------------------------------- */
+
+.side-backdrop {
+	display: none;
+}
+
+/* 手机抽屉：自己滚动；**不再给侧栏设 max-height**
+	   （旧规则里 `max-height: 30vh` 会让项目列表只露三行，剩下全是空白）
+	   高度 100%：抽屉是一整屏，内部两块（项目 / 文件管理）把它用完，
+	   而不是内容到哪儿就多高、下面留一条白。 */
+.is-mobile-shell .side-host > .sidebar {
+	max-height: none;
+	height: 100%;
+	min-height: 0;
+}
+
+/* 项目列表：自然高度，内容多了就在 46vh 处自己滚 ——
+	给下面的文件管理留出下半屏（手机上没拖拽分隔条，高度只能这样分） */
+.is-mobile-shell .side-host .sidebar-list {
+	flex: 0 1 auto;
+	max-height: 46vh;
+}
+
+.is-mobile-shell .side-host {
+	top: 0;
+	/* 旧版 Edge/Chromium 不认 dvh：先给 vh，下面那行再覆盖（PR3） */
+	height: 100vh;
+	height: 100dvh;
+	/* 顶栏压在抽屉之上：按它的**真实高度**让位（写死 52px 会多出一条空隙） */
+	padding-top: var(--appbar-h, 46px);
+	/* 手机上抽屉占「大半个屏」：右侧留一窄条露出来，既能一眼看出「这是盖在页面上的抽屉」，
+	   也能继续读到中间对话的背景/排版，不至于「一打开侧栏就什么都看不见了」。
+	   右边那一截落在遮罩上，点它就收起。
+	   宽度用 clamp：76vw 是理想值（原来 66vw，用户反馈「手机版默认左边项目那块再宽一点」），
+	   260px 是底线（再窄会话行的时间与「⋯」就挤没了），340px 是上限
+	   （横屏 / 平板手机上不跟着无限变宽，右侧总还留着能点的那一条）。 */
+	width: var(--drawer-w, clamp(260px, 76vw, 340px)) !important;
+	max-width: none;
+	left: 0;
+	right: auto;
+	/* 直角（用户 2026-10-30：「右上角跟右下角有弧度吗？给我做成直角那种」）：
+	 * 抽屉是**贴着屏幕左边的一整块面板**，不是浮在页面上的卡片 —— 右侧带圆角会开一道
+	 * 透出后面对话的月牙缝，看起来就像“飘着的一块板”。现在四条边都贴齐屏幕。 */
+	border-radius: 0;
+	/* 只竖着滚。**这一条不能省**：`overflow-y: auto` 会把 `overflow-x` 一并算成 auto，
+	 * 而那枚「收起」手柄（`.side-collapse`）是 `right: -12px` 骑在抽屉边缘上的 ——
+	 * 于是抽屉比自己的内容宽出 12px，手机上在抽屉里左右一拖，整块内容就跟着滑、
+	 * 边上露出白条（用户 2026-10-30：「好像是超过宽度了，都出来左右的滚动条了」）。
+	 * 手柄的位置另见 project-icon.css 的手机那一条（改成收在边内，不再凸出去）。 */
+	overflow-x: hidden;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	/* 只往右投影：抽屉与后面那 1/3 的分界靠它，而不是靠更黑的遮罩把背景压死 */
+	box-shadow: 0 0 22px rgb(0 0 0 / 16%);
+	/* 抽屉自己要有底色：否则下半截透出消息内容，看着像两块叠在一起 */
+	background: var(--bg);
+}
+
+/*
+ * 手机抽屉里**不许选文字**（用户 2026-10-30：「在侧边栏这么一滑就老容易选中文案，这个功能禁掉」）。
+ *
+ * 抽屉里全是可以点、可以滑的行（项目 / 会话 / 文件树）：手指稍一停留再横向蹭一下，
+ * iOS 就会起一个蓝色选区，还会顺手弹「拷贝 / 查询」气泡 —— 看起来像点错了。
+ * 这里整块关掉，包括长按预览（`-webkit-touch-callout`）。
+ *
+ * 两个例外必须放回来，否则改不了名、也没法在搜索框里选字：
+ *   - `input` / `textarea`（项目名、会话名的就地改名，文件搜索）；
+ *   - `.proj-name` 之类不需要——它们是纯文本，本来就该点不带选。
+ */
+.is-mobile-shell .side-host {
+	-webkit-user-select: none;
+	user-select: none;
+	-webkit-touch-callout: none;
+}
+
+.is-mobile-shell .side-host input,
+.is-mobile-shell .side-host textarea {
+	-webkit-user-select: text;
+	user-select: text;
+	-webkit-touch-callout: default;
+}
+
+/* 顶栏要压在抽屉之上：否则抽屉盖住 ☰ 与「新会话」，手机上无法收起 */
+.is-mobile-shell .appbar {
+	position: relative;
+	z-index: 45;
+}
+
+/* 遮罩：点一下收起抽屉（之前只能点侧栏里的「‹」，手机上很难找）。
+   抽屉只占 2/3，右侧那 1/3 是**故意让人看见**的，所以遮罩压淡一点（26%），
+   压到 40% 以上那段对话就只剩一团深灰了。 */
+.is-mobile-shell .side-backdrop {
+	display: block;
+	position: fixed;
+	inset: 0;
+	z-index: 39;
+	background: rgb(0 0 0 / 26%);
+}
+
+/* 侧栏里的拖宽手柄在手机上没意义，还会误触 */
+.is-mobile-shell .side-resizer {
+	display: none;
+}
+
+/* 弹窗（模型 / 技能 / 推送 / 子代理 / 设置）在手机上**居中**、左右各留一条 16px 灰条：
+   点灰条就是落在遮罩上（关掉）。
+   早先是贴左边的抽屉式（只右边留 36px），但设置面板里两列勾选框会整体看起来偏左，
+   所以改成两边对称 —— 灰条两侧都能点，手感也更像手机原生的居中小 sheet。
+   留白写死 16px（不用 --gap）：`--gap` 现在是 0（整体栏间距归零的试验），拿来当留白会直接贴满屏。 */
+.is-mobile-shell .modal.big-modal {
+	width: calc(100vw - 32px);
+	max-width: calc(100vw - 32px);
+	height: auto;
+	max-height: calc(100vh - var(--appbar-h, 46px) - 16px);
+	max-height: calc(100dvh - var(--appbar-h, 46px) - 16px);
+	border-radius: 14px;
+	/* 遮罩是 flex 居中：auto 外边距让它稳稳落在正中，两边留白一样宽 */
+	margin: 0 auto;
+	box-shadow: 0 12px 40px rgb(0 0 0 / 34%);
+}
+
+/* 手机上不拖大小（整屏铺满就是最好的尺寸），也不显示手柄 */
+.is-mobile-shell .modal-resize {
+	display: none;
+}
+
+.is-mobile-shell .big-modal-body {
+	padding: 8px;
+}
+
+/* 输入区：快捷短语太占地，手机上先收起来；发送按钮不再挤成两行 */
+.is-mobile-shell .quick-row {
+	flex-wrap: nowrap;
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+
+.is-mobile-shell .quick-row::-webkit-scrollbar {
+	display: none;
+}
+
+.is-mobile-shell .quick-chip {
+	flex: none;
+}
+
+/* 模型面板：左栏收窄，模型行把「耗时」列缩一点，避免挤掉状态开关 */
+.is-mobile-shell .prov-detail {
+	padding: 8px 8px 16px;
+}
+
+.is-mobile-shell .prov-model-row {
+	grid-template-columns: minmax(0, 1fr) 66px auto auto;
+	gap: 6px;
+}
+
+.is-mobile-shell .prov-global-bar {
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+/* 输入框与消息的左右内边距再收一档（单栏时才收） */
+.is-mobile-shell .composer-wrap {
+	padding: 2px 4px 4px;
+	gap: 4px;
+}
+
+/* 文件管理区在手机上默认折叠（它太占地，需要时再点开）；展开后一撑到底，见下面那段 */
+
+/* 输入框：单栏时「发送」按钮不要在框内压住文字，
+	   改成输入框 + 下方操作条（参考聊天类 App 的习惯） */
+.is-mobile-shell .composer {
+	flex-direction: column;
+	align-items: stretch;
+	gap: 6px;
+}
+
+.is-mobile-shell .composer-input {
+	/* 右侧同样按按钮组实测宽度让位（变量由 Composer 的 ResizeObserver 写进 .composer）：
+	   手机上一个「发送」约 56px，而「排队 + 插队 + 停止」三个并排要 180px 左右，
+	   写死一个数就会出现文字被按钮压住 —— 和桌面那次修的是同一个坑。 */
+	padding: 10px calc(var(--composer-actions-w, 104px) + 12px) 10px 12px;
+	min-height: 52px;
+	/* iOS 上小于 16px 会触发「聚焦自动放大」 */
+	font-size: 18px;
+	line-height: 1.45;
+}
+
+/* 按钮组：手机上不再单独覆盖定位 —— 与桌面一致，绝对定位压在输入框内部右下角
+   （这里原来是 position: static，把「发送 / 排队 / 插队 / 停止」挤到了输入框下面单独一行）。
+   但**排列方向改成竖着**：三个按钮（排队 + 插队 + 停止）横排要 180px 左右，
+   390px 的屏上文字只剩一百来像素；竖排后只占一颗按钮的宽度（约 56px）。 */
+.is-mobile-shell .composer-actions {
+	flex-direction: column;
+}
+
+/* 竖排后让位从「右边一条」变成「右边一条 + 下方一块」：
+   --composer-actions-h 由 Composer 实测写入（1 颗按钮 ≈ 34px，三颗一列 ≈ 114px）。
+   输入框至少长到装得下整列，尾行才不会压在按钮下面。 */
+.is-mobile-shell .composer-input {
+	min-height: calc(var(--composer-actions-h, 34px) + 14px);
+}
+
+/* 手机按钮收小一档：三个按钮并排时，否则光按钮就是近 230px，
+   390px 的屏上留给文字只剩一百来像素。 */
+.is-mobile-shell .btn.btn-send,
+.is-mobile-shell .btn.btn-queue,
+.is-mobile-shell .btn.btn-stop {
+	padding: 6px 10px;
+	font-size: 15px;
+	min-width: 56px;
+	min-height: 34px;
+}
+
+/* 建议按钮：手机上竖着一列（一行一个，手指粗挤两列容易点错），
+   排列方向的覆盖在 action-suggestions.css，这里只管间距 */
+.is-mobile-shell .action-row {
+	gap: 6px;
+}
+
+/* 手机顶栏只留「品牌 + 新会话 + 面板开关」：
+	   token 统计与「模型 / 技能 / 设置」这一排都收起来 ——
+	   它们在窄屏上占掉两行高度，而同样功能左侧活动栏里都有。 */
+/* 注意：**不要再给 `.appbar-slot` 写 flex** —— 它归 app-bar-mobile.css 管
+   （下限 96px，剩余宽度全给它）。这里原来一起写着 `flex: 1 1 auto`，三个类，权重比那边高，
+   把「下限 + 撑开」整条吃掉：短标题的会话（「新对话」）会被图标排压成 33px。 */
+/* ---------------------------------------------------------------------------
+ * 手机端：抽屉里保留「项目列表 + 文件管理」两块。
+ * （早先文件管理在手机上整块隐藏，用户反馈「想看看文件找不到入口」——现在放出来，
+ *  收起/展开还是点标题那一行。）
+ *
+ * 高度怎么分：**抽屉撑满一屏，两块把这一屏用完** ——
+ *   ・项目列表 = 自然高度，顶到 46vh 就自己在里面滚；
+ *   ・文件管理     = 吃掉剩下的全部高度（文件树自己滚），**下面不留空白**。
+ * 早先手机上是给文件区一个 `max-height: 34vh` 死上限：文件少、抽屉高的时候，
+ * 列表底下就空出一大块；文件多的时候树又被“挡住”在 34vh 处 —— 两头不讨好。
+ * ------------------------------------------------------------------------- */
+/* 活动栏已整体移除（桌面同款），这里只是兜底 */
+.is-mobile-shell .activity-bar {
+	display: none;
+}
+
+/* 「已归档」入口：手机上藏起来（要精确认选，抽屉里空间也不够） */
+.is-mobile-shell .side-host .archived-entry {
+	display: none;
+}
+
+/* 文件管理：**手机上照常显示**，展开后一撑到底。
+ * ・`height: auto !important` → 盖掉桌面上拖拽出来的内联高度（手机上没拖拽分隔条）；
+ * ・`flex: 1 1 auto` → 把抽屉剩下的高度全吃掉；
+ * ・文件多怎么办？不用管 —— `.filetree` 本来就是 `overflow: auto`，自己在里面滚。 */
+.is-mobile-shell .side-host .side-files {
+	display: flex;
+	flex: 1 1 auto;
+	height: auto !important;
+	max-height: none;
+}
+
+/* 收起态只占标题那一行（这一条必须写在上面那条后面：同类名靠顺序胜出） */
+.is-mobile-shell .side-host .side-files-closed {
+	flex: none;
+}
+
+/* 文件管理收起时，空出来的高度给项目列表（否则底部又是一块空白） */
+.is-mobile-shell .side-host > .sidebar:has(> .side-files-closed) .sidebar-list {
+	flex: 1 1 auto;
+	max-height: none;
+}
+
+/* 分隔条在手机上不显示：高度上限已经写死，没有可拖的空间 */
+.is-mobile-shell .side-host .side-split {
+	display: none;
+}
+
+/* 抽屉顶部留一点安全区，别贴着刘海 */
+.is-mobile-shell .side-host .sidebar {
+	padding-top: env(safe-area-inset-top, 0);
+	width: 100%;
+}
+
+/* 「项目 (N)」标题行固定在抽屉顶部：手机上列表很长，
+	   滚下去之后没有大标题会失去「我在哪」的定位，也不方便点「＋ / ‹」。 */
+.is-mobile-shell .side-host .sidebar-head {
+	position: sticky;
+	top: 0;
+	z-index: 2;
+	background: var(--bg-elev);
+	/* 贴住时别露出下面滚过去的内容 */
+	margin: -10px -10px 0;
+	padding: 10px;
+	border-bottom: 1px solid var(--border);
+}
+
+/* 会话行：左右各留一点内边距，行内按钮不再贴边被裁 */
+.is-mobile-shell .side-host .pi-row,
+.is-mobile-shell .side-host .session-row {
+	padding-right: 10px;
+	padding-left: 10px;
+}
+
+/* 顶栏左段那颗小方按钮（全屏）：样式在 `app-bar.css` 的 `.appbar-side-btn`，
+   这里只补手机那一档的尺寸 —— 手机上顶栏更矮，框再紧一点点；手指也要按得住。 */
+.is-mobile-shell .appbar-side-btn {
+	/* 手机上稍微放大一圈（≈28px）：┌字形在 14px 以下会糊成一块，手指也难按 */
+	padding: calc(7px * var(--ab));
+}
+
+/* 单栏时输入区留「模型 + 思考强度 + 模板 + 想想 + 快捷短语」：
+ * 只把**审批模式**藏起来（它有底部状态栏那个入口，重复了）；
+ * 模板/想想都是产生内容用的，手机上一并保留（这一行本来就会换行，不会把输入框挤没）。 */
+.is-mobile-shell .composer-approval-btn {
+	display: none;
+}
+
+/* 隐藏后「间隔符」也别留，否则行首/行尾多出两道竖线 */
+.is-mobile-shell .composer-tools .tool-sep {
+	display: none;
+}
+
+.is-mobile-shell .composer-tools {
+	gap: 6px;
+}
+
+/* 手机上**工具行里**不显示思考强度（⚡ 高）：那一行一行放不下它。
+   注意只管工具行：⚡ 那颗现在跟模型一起在**底部状态栏**（引擎右边，桌面手机都一样），
+   那条是横向可滚的，放得下 —— 所以状态栏里照常显示，别拿一条全局规则把它一起藏了。
+   这里只是视觉上隐藏，档位本身仍按当前值生效。 */
+.is-mobile-shell .composer-tools .thinking-picker {
+	display: none;
+}
+
+/* 新建项目对话框：单栏时不要撑满整屏高度（撑满后顶部会被裁掉，
+	   路径栏与「关闭」按钮看不见） */
+.is-mobile-shell .modal.new-project {
+	height: auto;
+	max-height: calc(100vh - var(--appbar-h, 46px) - 24px);
+	max-height: calc(100dvh - var(--appbar-h, 46px) - 24px);
+}
+
+/* 弹窗必须盖在顶栏之上（顶栏在手机上是 z-index:45，否则弹窗标题被压住）；
+	   顶部还要**按顶栏真实高度让位**，否则标题会缩到顶栏底下看不见（新建项目就踩过） */
+.is-mobile-shell .modal-backdrop {
+	z-index: 60;
+	padding-top: calc(var(--appbar-h, 46px) + 8px);
+	padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+	align-items: flex-start;
+}
+
+/* 目录列表在手机上至少给 40vh，否则只剩两行可点 */
+.is-mobile-shell .new-project-list {
+	min-height: 40vh;
+}
+
+/* 实时 token / 速度：窄屏上与模型名同一行会挤，缩一号（两个数字都留着，
+   它们是「还在跑」的证据；藏掉反而看不出进没进展） */
+.is-mobile-shell .msg-live {
+	gap: 4px;
+	font-size: 12px;
+}
+
+.is-mobile-shell .msg-live-rate {
+	font-size: 11px;
+	padding: 0 5px;
+}
+
+/* 尾注上的「子代理」那一块：手机上装不下两组完整数字
+   （主对话 in/out/cache/$ + 子代理 in/out/$ 会把时间挤出去）。
+   只留「🤖 个数」与花费 —— 那两样才是「还多花了多少钱」的答案，token 明细在 title 里。 */
+.is-mobile-shell .msg-usage-sub .msg-usage-item {
+	display: none;
+}
+
+/* 窄屏桌面（还没进手机壳，但顶栏已经排不下）：
+   入口从「模型 / 技能 / 推送 / 插件 / MCP / 设置」六个带文案会顶出视口
+   （实测 700px：设置按钮 x=745，整排溢出到屏幕外），这里统一改回只留图标。
+   手机壳那套（app-bar-mobile.css）本来就只留图标，两边不冲突。 */
+@media (max-width: 900px) {
+	.appbar .appbar-menu .side-foot-label {
+		display: none;
+	}
+
+	.appbar .appbar-menu .side-foot-btn {
+		padding: calc(4px * var(--ab)) calc(5px * var(--ab));
+	}
+
+	/* 分栏 / 全屏本来就只画图标，这里只把内边距也收一档 */
+	.appbar .appbar-panel-btn {
+		padding: calc(4px * var(--ab)) calc(5px * var(--ab));
+	}
+}

@@ -1,0 +1,141 @@
+/* 推送面板（独立 Tab）：本机注册 + 设备清单。从 statusbar.css 拆出来（ADR-0014 分区 / 400 行护栏） */
+/* 推送面板（独立 Tab）：设备清单 */
+.push-panel {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	min-height: 0;
+}
+
+.push-head,
+.push-foot {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+.push-list {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	overflow: auto;
+	min-height: 0;
+}
+
+.push-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 10px 12px;
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	background: var(--bg);
+}
+
+.push-row-on {
+	border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+
+.push-row-main {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.push-row-name {
+	font-size: 15px;
+	font-weight: 600;
+}
+
+.push-row-meta {
+	font-size: 13px;
+	color: var(--text-faint);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* 推送 endpoint：完整一行（随机长串），换行而不截断 —— 要能看全 / 能选中复制。
+   **手机上不显示**：这串有一百多字符，一行能折成六七行，把整块设备清单顶得只剩半屏；
+   手机上看它也没用（复制不了去对照日志，真正的排查都在桌面上做）。
+   设备本身、别名、注册时间、重命名 / 仅推它 / 删除 都还在。 */
+.push-row-endpoint {
+	font-size: 13px;
+	color: var(--text-faint);
+	line-height: 1.35;
+	word-break: break-all;
+	user-select: text;
+}
+
+.is-mobile-shell .push-row-endpoint {
+	display: none;
+}
+
+/* ---- 推送面板：本机注册（注册 / 取消订阅）---- */
+.push-env,
+.push-devices {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 10px 12px;
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	background: var(--bg-elev);
+}
+
+/* 设备清单这张卡片：标题行与底部按钮行贴边，中间列表自己滚 */
+.push-devices .push-list {
+	max-height: 46vh;
+}
+
+.push-env-title {
+	font-size: 15px;
+	font-weight: 650;
+	color: var(--text);
+}
+
+.push-env-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.push-env-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 3px 8px;
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	background: var(--bg);
+	color: var(--text-dim);
+	font-size: 14px;
+	white-space: nowrap;
+}
+
+.push-env-chip em {
+	font-style: normal;
+	font-weight: 600;
+}
+
+.push-tag-ok {
+	color: var(--green, #1a9f5b);
+}
+
+.push-tag-off {
+	color: var(--text-faint);
+}
+
+.push-env-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+/* 「注册推送」是这一段的主操作，给它一点重量 */
+.push-env-actions .btn-primary-tiny {
+	border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+	background: color-mix(in srgb, var(--accent) 14%, transparent);
+	color: var(--accent);
+	font-weight: 600;
+}

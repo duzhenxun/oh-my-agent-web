@@ -1,0 +1,237 @@
+/*
+ * 外观色板（ADR-0030）：3 浅 + 3 深。
+ *
+ * 约定：
+ *   - 每套色板必须把 base.css `:root` 里那组变量**填满**（少填一个就会漏到上一套的颜色，
+ *     因为 CSS 变量是继承的 —— 切深色时漏填的变量会留着上一步的值）；
+ *   - `--bg` / `--bg-elev` / `--bg-elev-2` 是三级「面」（页面 / 卡片 / 再抬一层），
+ *     深色主题里靠**亮度递增**表达层级，浅色主题里靠**亮度递减**，别混着来；
+ *   - `--accent-dim` 是主色的「暗版」，只用于描边、焦点环、hover 边框，不要用来填块；
+ *   - `--on-accent` 是放在主色块上的文字色（浅色主题给白字，深色主题给深底字）；
+ *   - 「清亮白」就是 base.css `:root` 里的默认值，这里不重复写，只写另外 5 套。
+ */
+
+/* ---- 浅色：暖纸（米白底 + 赭石主色）---- */
+:root[data-theme="light-warm"] {
+	--bg: #fbf7f0;
+	--bg-elev: #f6efe3;
+	--bg-elev-2: #eee4d4;
+	--bg-soft: #f6efe3;
+	--border: #e4d9c7;
+	--border-strong: #d3c4ac;
+	--text: #2b2418;
+	--text-dim: #5c5140;
+	--text-faint: #8a7c66;
+	--accent: #b4530a;
+	--accent-dim: #e0a878;
+	--on-accent: #fffdf9;
+	--green: #3f6e2a;
+	--amber: #96650a;
+	--steer: #b28200;
+	--red: #a8321f;
+	--yellow: #c68a1f;
+	--speed-bg: #f6ead9;
+	--speed-fg: #9a5311;
+}
+
+/* ---- 浅色：雾青（冷灰底 + 墨绿主色）---- */
+:root[data-theme="light-cool"] {
+	--bg: #f6f9f9;
+	--bg-elev: #eef3f3;
+	--bg-elev-2: #e3ecec;
+	--bg-soft: #eef3f3;
+	--border: #d5e0e0;
+	--border-strong: #bfcfcf;
+	--text: #16262a;
+	--text-dim: #455c60;
+	--text-faint: #6d878b;
+	--accent: #0f766e;
+	--accent-dim: #7cc3ba;
+	--on-accent: #f7fffe;
+	--green: #157347;
+	--amber: #8f6108;
+	--steer: #b28200;
+	--red: #b3261e;
+	--yellow: #b8842a;
+	--speed-bg: #e2f1f4;
+	--speed-fg: #0f6c7a;
+}
+
+/* ---- 深色：东京夜（蓝紫夜色，取自 Tokyo Night）----
+ * 底是带一点紫的深蓝灰（不是纯黑），主色是柔和的蓝；整屏偏夜色，长时间看不累。 */
+:root[data-theme="dark"] {
+	/* 顶栏投影：深色主题下黑底上的黑影几乎看不见，得加浓才分得出「顶栏 / 内容」 */
+	--appbar-shadow-line: rgb(0 0 0 / 22%);
+	--appbar-shadow: rgb(0 0 0 / 45%);
+	--bg: #1a1b26;
+	--bg-elev: #1f2335;
+	--bg-elev-2: #292e42;
+	--bg-soft: #1f2335;
+	--border: #2f334d;
+	--border-strong: #3b4261;
+	--text: #c0caf5;
+	--text-dim: #a9b1d6;
+	--text-faint: #7f8ab3;
+	--accent: #7aa2f7;
+	--accent-dim: #3d59a1;
+	--on-accent: #16161e;
+	--green: #9ece6a;
+	--amber: #e0af68;
+	--steer: #f4bf47;
+	--red: #f7768e;
+	--yellow: #e0af68;
+	--speed-bg: #1e2b4d;
+	--speed-fg: #7dcfff;
+}
+
+/* ---- 深色：摩卡（低饱和紫灰，取自 Catppuccin Mocha）----
+ * 比东京夜更“奶”一点：底带紫、彩色全是低饱和 pastel，白字偏暖紫。 */
+:root[data-theme="dark-night"] {
+	/* 顶栏投影：深色主题下黑底上的黑影几乎看不见，得加浓才分得出「顶栏 / 内容」 */
+	--appbar-shadow-line: rgb(0 0 0 / 22%);
+	--appbar-shadow: rgb(0 0 0 / 45%);
+	--bg: #1e1e2e;
+	--bg-elev: #25253a;
+	--bg-elev-2: #313244;
+	--bg-soft: #25253a;
+	--border: #383a52;
+	--border-strong: #4b4d68;
+	--text: #cdd6f4;
+	--text-dim: #b4bbd8;
+	--text-faint: #8b91ad;
+	--accent: #cba6f7;
+	--accent-dim: #6f5a99;
+	--on-accent: #1e1e2e;
+	--green: #a6e3a1;
+	--amber: #fab387;
+	--steer: #f8c65c;
+	--red: #f38ba8;
+	--yellow: #f9e2af;
+	--speed-bg: #2c2542;
+	--speed-fg: #89b4fa;
+}
+
+/* ---- 深色：北境（冷灰青，取自 Nord）----
+ * 最“冷静”的一档：灰蓝底 + 霜青主色，饱和度最低，白天/投影上也稳。 */
+:root[data-theme="dark-warm"] {
+	/* 顶栏投影：深色主题下黑底上的黑影几乎看不见，得加浓才分得出「顶栏 / 内容」 */
+	--appbar-shadow-line: rgb(0 0 0 / 22%);
+	--appbar-shadow: rgb(0 0 0 / 45%);
+	--bg: #2e3440;
+	--bg-elev: #343b49;
+	--bg-elev-2: #3b4252;
+	--bg-soft: #343b49;
+	--border: #434c5e;
+	--border-strong: #4c566a;
+	--text: #eceff4;
+	--text-dim: #d2d8e3;
+	--text-faint: #a3adbf;
+	--accent: #88c0d0;
+	--accent-dim: #50748a;
+	--on-accent: #2e3440;
+	--green: #a3be8c;
+	--amber: #ebcb8b;
+	--steer: #f2c250;
+	/* Nord 原色 #bf616a 在 #2e3440 上只有 3.05:1（低于 AA），错误文字看不清；
+	 * 提亮到 #d98b91 → 4.79:1，色相还留在 Nord 的玫瑰红那一档。 */
+	--red: #d98b91;
+	--yellow: #ebcb8b;
+	--speed-bg: #2a3b4d;
+	--speed-fg: #8fbcbb;
+}
+
+/*
+ * 深色主题里的「补丁色」：这些颜色原本是写死在各个分区里的浅色值
+ * （代码高亮的 VS Code Light+ 配色、测试结果的绿/红胶囊），
+ * 在深底上要么糊、要么刺眼。按 `data-theme-mode` 统一覆盖一遍，
+ * 不再给 6 套色板各写一份。
+ */
+:root[data-theme-mode="dark"] {
+	color-scheme: dark;
+}
+
+/* 排队条目的淡蓝染色：深底上 4% 几乎看不见，加一档到 6%（浅底 4% 刚好，别一起改）。
+   为什么不直接跟插队一样 7%：排队必须比插队**更淡**，层级不能反 —— 主要靠虚/实线和标签深浅区分。 */
+:root[data-theme-mode="dark"] .msg.msg-user.pending-queue {
+	background: color-mix(in srgb, var(--accent) 6%, var(--bg-elev));
+}
+
+/* 代码高亮：切到 GitHub Dark 那一套（键/字符串/数字的色相和浅色版对齐，只是提亮） */
+:root[data-theme-mode="dark"] .hljs-comment,
+:root[data-theme-mode="dark"] .hljs-quote,
+:root[data-theme-mode="dark"] .hljs-meta {
+	color: #8b949e;
+}
+
+:root[data-theme-mode="dark"] .hljs-keyword,
+:root[data-theme-mode="dark"] .hljs-selector-tag,
+:root[data-theme-mode="dark"] .hljs-literal,
+:root[data-theme-mode="dark"] .hljs-doctag {
+	color: #ff7b72;
+}
+
+:root[data-theme-mode="dark"] .hljs-string,
+:root[data-theme-mode="dark"] .hljs-regexp {
+	color: #a5d6ff;
+}
+
+:root[data-theme-mode="dark"] .hljs-attr,
+:root[data-theme-mode="dark"] .hljs-attribute,
+:root[data-theme-mode="dark"] .hljs-property,
+:root[data-theme-mode="dark"] .hljs-selector-attr {
+	color: #79c0ff;
+}
+
+:root[data-theme-mode="dark"] .hljs-number,
+:root[data-theme-mode="dark"] .hljs-built_in,
+:root[data-theme-mode="dark"] .hljs-type,
+:root[data-theme-mode="dark"] .hljs-symbol {
+	color: #79c0ff;
+}
+
+:root[data-theme-mode="dark"] .hljs-title,
+:root[data-theme-mode="dark"] .hljs-title.function_,
+:root[data-theme-mode="dark"] .hljs-section {
+	color: #d2a8ff;
+}
+
+:root[data-theme-mode="dark"] .hljs-title.class_,
+:root[data-theme-mode="dark"] .hljs-class .hljs-title,
+:root[data-theme-mode="dark"] .hljs-selector-id,
+:root[data-theme-mode="dark"] .hljs-selector-class,
+:root[data-theme-mode="dark"] .hljs-bullet,
+:root[data-theme-mode="dark"] .hljs-link {
+	color: #ffa657;
+}
+
+:root[data-theme-mode="dark"] .hljs-variable,
+:root[data-theme-mode="dark"] .hljs-template-variable,
+:root[data-theme-mode="dark"] .hljs-params {
+	color: #ffa657;
+}
+
+:root[data-theme-mode="dark"] .hljs-tag,
+:root[data-theme-mode="dark"] .hljs-name {
+	color: #7ee787;
+}
+
+:root[data-theme-mode="dark"] .hljs-deletion {
+	color: #ffdcd7;
+	background: rgb(255, 129, 130, 0.15);
+}
+
+:root[data-theme-mode="dark"] .hljs-addition {
+	color: #aff5b4;
+	background: rgb(46, 160, 67, 0.15);
+}
+
+/* 模型测试的绿/红胶囊：浅色版是深绿深红字，深底上得反过来提亮 */
+:root[data-theme-mode="dark"] .prov-test-ok,
+:root[data-theme-mode="dark"] .prov-latency-ok {
+	color: #56d364;
+}
+
+:root[data-theme-mode="dark"] .prov-test-fail,
+:root[data-theme-mode="dark"] .prov-latency-fail {
+	color: #ff7b72;
+}

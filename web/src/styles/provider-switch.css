@@ -1,0 +1,72 @@
+/* 启用开关（provider 级 / 模型级） */
+/* provider 启用开关（照参考样式：滑轨 + 圆点） */
+.prov-switch {
+	display: inline-flex;
+	align-items: center;
+	cursor: pointer;
+}
+
+.prov-switch input {
+	position: absolute;
+	opacity: 0;
+	pointer-events: none;
+}
+
+.prov-switch-track {
+	width: 34px;
+	height: 19px;
+	border-radius: 999px;
+	background: var(--border-strong);
+	position: relative;
+	transition: background 140ms ease;
+}
+
+.prov-switch-track::after {
+	content: "";
+	position: absolute;
+	top: 2px;
+	left: 2px;
+	width: 15px;
+	height: 15px;
+	border-radius: 50%;
+	/* 滑块用 --on-accent：浅色主题里是白点，深色主题里反成深点（白点压在亮蓝轨道上看不清） */
+	background: var(--on-accent);
+	transition: transform 140ms ease;
+}
+
+.prov-switch input:checked + .prov-switch-track {
+	background: var(--accent);
+}
+
+.prov-switch input:checked + .prov-switch-track::after {
+	transform: translateX(15px);
+}
+
+/* 顶部全局条：配置文件路径 + 已启用计数 + 「启用全部模型」 */
+.prov-global-bar {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 0 2px 8px;
+	flex: 0 0 auto;
+}
+
+.prov-global-path {
+	font-size: 13px;
+	color: var(--text-faint);
+}
+
+/* 模型行用的小号开关 */
+.prov-switch-sm .prov-switch-track {
+	width: 28px;
+	height: 16px;
+}
+
+.prov-switch-sm .prov-switch-track::after {
+	width: 12px;
+	height: 12px;
+}
+
+.prov-switch-sm input:checked + .prov-switch-track::after {
+	transform: translateX(12px);
+}

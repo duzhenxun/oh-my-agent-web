@@ -1,0 +1,131 @@
+/* 「声音与语音」面板（VoicePanel）：一块一块的开关行，左边标题 + 灰色小字说明，
+ * 右边「试听」+ 勾选框；滑块行右边跟一个数值。整体沿用设置面板的字号与配色。
+ *
+ * 两块内容（声音提示 / 语音播报）上下排列：不再左右分栏，避免窄列把「朗读回复」、
+ * 「语速」「语音」挤成竖排，也给滑块和音色下拉框留出足够宽度。 */
+.voice-panel {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	gap: 18px;
+	align-items: start;
+	min-height: 0;
+	/* 只让外层 .big-modal-body 滚：两处都 overflow 会出现两条滚动条、还会互相抢滚轮 */
+	padding: 2px 16px 10px 2px;
+}
+
+.voice-section {
+	/* 不加 min-width:0 的话，滑块/下拉的 min-width 会把栅格列顶宽、冲出弹窗 */
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.voice-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	min-width: 0;
+	padding: 7px 2px;
+	border-radius: 8px;
+	cursor: pointer;
+}
+
+.voice-row:hover {
+	background: color-mix(in srgb, var(--text) 3%, transparent);
+}
+
+/* 总开关那两行（「启用声音」/「启用语音播报」）不再单独加粗、也不画分隔虚线：
+ * 以前靠 font-weight:600 + dashed 边框把它“括”出来，用户看着像另一种控件。
+ * 现在和下面细项完全同一套行样式，只靠 emoji 和“没有小字说明”区分。 */
+
+.voice-row-label {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	flex: 1 1 auto;
+	min-width: 0;
+	color: var(--text-dim);
+	font-size: 15px;
+}
+
+/* 说明小字：跟在标题右边，窄屏会换行（不截断 —— 说不清还不如不显示） */
+.voice-row-hint {
+	color: var(--text-faint);
+	font-size: 13px;
+	font-weight: 400;
+	line-height: 1.4;
+}
+
+.voice-row input[type="checkbox"] {
+	flex: none;
+	width: 17px;
+	height: 17px;
+	margin: 0;
+	accent-color: var(--accent);
+	cursor: pointer;
+}
+
+/* 试听失败 / 没出声的原因：一行红字，比弹提示轻，但必须看得见（合成失败是静默的） */
+.voice-issue {
+	margin-top: 2px;
+	color: var(--red);
+	font-size: 13px;
+	line-height: 1.45;
+	/* 文案后面可能跟着「唤醒并重试」：文字占满一行、按钮跟在末尾；窄了就先换行，不挤成两三个字一列 */
+	display: flex;
+	align-items: flex-start;
+	flex-wrap: wrap;
+	gap: 4px 10px;
+}
+
+.voice-issue-text {
+	flex: 1 1 220px;
+	min-width: 0;
+}
+
+/* 中性状态行（正在播放…）：同一块位置，但不是报错，不能用红色吓人 */
+.voice-status {
+	color: var(--text-dim);
+}
+
+/* 「试听」：不抢勾选框的位置，靠右侧但排在勾选框前面 */
+.voice-try {
+	flex: none;
+}
+
+.voice-row-slider input[type="range"] {
+	flex: 0 1 260px;
+	min-width: 120px;
+	accent-color: var(--accent);
+	cursor: pointer;
+}
+
+.voice-value {
+	flex: none;
+	min-width: 3.4em;
+	text-align: right;
+	color: var(--text-faint);
+	font-size: 14px;
+}
+
+.voice-select {
+	flex: 0 1 320px;
+	min-width: 140px;
+	height: 30px;
+	padding: 0 8px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--bg);
+	color: var(--text);
+	font: inherit;
+	font-size: 14px;
+	cursor: pointer;
+}
+
+.voice-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+	margin-top: 8px;
+}

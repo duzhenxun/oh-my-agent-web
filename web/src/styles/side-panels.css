@@ -1,0 +1,500 @@
+/* ---- 侧栏底部入口：模型 / 技能 / 设置（P7）---- */
+.side-foot {
+	flex: none;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	border-top: 1px solid var(--border);
+	padding-top: 8px;
+	min-height: 0;
+}
+
+.side-foot-row {
+	display: flex;
+	gap: 6px;
+}
+
+/* 入口图标（顶栏那排 / 弹窗 Tab 共用一套线性 SVG） */
+.side-foot-icon,
+.big-tab-icon {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	width: 15px;
+	height: 15px;
+	color: inherit;
+}
+
+.side-foot-icon svg,
+.big-tab-icon svg {
+	display: block;
+	width: 100%;
+	height: 100%;
+}
+
+.side-foot-label {
+	line-height: 1;
+}
+
+.side-foot-btn {
+	flex: 1 1 0;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 5px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--bg-elev);
+	color: var(--text-dim);
+	font: inherit;
+	font-size: 14px;
+	padding: 5px 4px;
+	cursor: pointer;
+	min-width: 0;
+}
+
+.side-foot-btn:hover {
+	color: var(--text);
+	border-color: var(--accent-dim);
+}
+
+.side-foot-btn-on {
+	color: var(--accent);
+	border-color: var(--accent-dim);
+	background: var(--bg-elev-2);
+}
+
+.side-panel {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	max-height: 46vh;
+	min-height: 0;
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	background: var(--bg-elev);
+	padding: 8px;
+}
+
+.side-panel-head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 6px;
+	flex: none;
+	font-size: 15px;
+}
+
+.side-panel-count {
+	color: var(--text-faint);
+	font-size: 13px;
+}
+
+.side-panel-scroll {
+	overflow: auto;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.side-panel-hint {
+	color: var(--text-faint);
+	font-size: 14px;
+	line-height: 1.6;
+}
+
+.side-model-provider {
+	position: sticky;
+	top: 0;
+	background: var(--bg-elev);
+	color: var(--text-faint);
+	font-size: 12px;
+	letter-spacing: 0.06em;
+	padding: 4px 2px 2px;
+}
+
+.side-model-row {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	font-size: 14px;
+	color: var(--text-dim);
+	padding: 2px 2px 2px 6px;
+	min-width: 0;
+}
+
+.side-model-row-on {
+	color: var(--text);
+	font-weight: 600;
+}
+
+.side-model-check {
+	flex: none;
+	width: 10px;
+	color: var(--accent);
+}
+
+.side-model-label {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	min-width: 0;
+}
+
+/* 添加模型表单（ADR-0025 A 期） */
+.side-field {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+	font-size: 13px;
+	color: var(--text-faint);
+}
+
+.side-field input,
+.side-field select,
+.side-field textarea {
+	border: 1px solid var(--border);
+	border-radius: 7px;
+	background: var(--bg);
+	color: var(--text);
+	font: inherit;
+	font-size: 14px;
+	padding: 5px 7px;
+	min-width: 0;
+}
+
+.side-error {
+	color: var(--red);
+}
+
+.side-ok {
+	color: var(--accent);
+	font-size: 14px;
+}
+
+/* provider 列表（B 期） */
+.side-provider-list {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	overflow: auto;
+	min-height: 0;
+}
+
+.side-provider {
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	padding: 6px 7px;
+	background: var(--bg);
+}
+
+.side-provider-head {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	min-width: 0;
+}
+
+.side-provider-name {
+	font-size: 15px;
+	font-weight: 600;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.side-provider-meta {
+	color: var(--text-faint);
+	font-size: 13px;
+}
+
+.side-provider-actions {
+	display: flex;
+	gap: 4px;
+	margin-top: 5px;
+}
+
+/* 三个入口改成「大弹窗」页面（模型 / 技能 / 设置） */
+.modal.big-modal {
+	/* 默认开满屏（四周只留 --gap）：与 use-modal-size 的 defaultModalSize 同口径。
+	   这里管的是「没有内联尺寸」的场合（手机壳 / 首帧），桌面态真正的尺寸由内联写入。 */
+	width: calc(100vw - 2 * var(--gap, 16px));
+	height: calc(100vh - 2 * var(--gap, 16px));
+	/* 内联尺寸（拖拽后）要能突破 .modal 的 80vh，所以这里重新给上限 */
+	max-width: calc(100vw - 2 * var(--gap, 16px));
+	max-height: calc(100vh - 2 * var(--gap, 16px));
+	/* 右下角有自绘的拖拽手柄（.modal-resize）：位置要落到弹窗角上，不能随内容滚走 */
+	position: relative;
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+/* 内容超高时让 body 自己滚：标题栏和右下角手柄始终看得见 */
+.big-modal-body {
+	overflow: auto;
+	overscroll-behavior: contain;
+	/* 滚动条一出现就把内容挤窄 10–15px，右侧的勾选框/数值会「跳」一下；
+	 * 常驻这条沟槽，滚动条出现与否右侧都稳定（老板键面板尤其明显）。 */
+	scrollbar-gutter: stable;
+	/* **覆盖式**滚动条（macOS 默认、触控板）不占布局，gutter 对它无效 —— 内容会被压在滚动条底下
+	 * （「模型」面板右侧的输入框、Fetch from API / Add 按钮就被压过半截）。
+	 * 这里统一让出 12px：经典滚动条时 gutter 已经把位置留好了，多这 12px 只是多点白，
+	 * 比"控件被盖住"好。 */
+	padding-right: 12px;
+}
+
+/* 弹窗里的反馈：成功 / 失败都镜像一条（提示条在工作区顶上，会被全屏弹窗遮住） */
+.modal-notices {
+	flex: none;
+	display: flex;
+	flex-direction: column;
+}
+
+.modal-notices .notice {
+	background: var(--bg-elev-2);
+	font-size: 14px;
+}
+
+/* 拖拽手柄（use-modal-size.ts）：两条斜线，颜色跟主题走 */
+.modal-resize {
+	position: absolute;
+	right: 0;
+	bottom: 0;
+	width: 18px;
+	height: 18px;
+	cursor: nwse-resize;
+	touch-action: none;
+	opacity: 0.55;
+	background:
+		linear-gradient(135deg, transparent 46%, var(--border-strong) 46%, var(--border-strong) 55%, transparent 55%),
+		linear-gradient(135deg, transparent 66%, var(--border-strong) 66%, var(--border-strong) 75%, transparent 75%);
+}
+
+.modal-resize:hover {
+	opacity: 1;
+}
+
+.big-modal-head {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex: none;
+	border-bottom: 1px solid var(--border);
+	padding-bottom: 8px;
+	/* 右边给固定在上角的 ✕ 让位：这一行会横向滚动，别让最后一个 tab 被按钮压住 */
+	padding-right: 38px;
+}
+
+/* 弹窗的 ✕：钉在右上角，**永远可见** —— 不再跟着 tab 那行一起横向滚（手机上会滚出屏幕） */
+.big-modal-close {
+	position: absolute;
+	top: 10px;
+	right: 10px;
+	z-index: 3;
+}
+
+.big-tab {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	border: 1px solid transparent;
+	border-radius: 8px;
+	background: none;
+	color: var(--text-dim);
+	font: inherit;
+	font-size: 15px;
+	padding: 5px 12px;
+	cursor: pointer;
+}
+
+.big-tab-icon {
+	width: 16px;
+	height: 16px;
+}
+
+.big-tab:hover {
+	color: var(--text);
+	background: var(--bg-elev-2);
+}
+
+.big-tab-on {
+	color: var(--accent);
+	border-color: var(--accent-dim);
+	background: var(--bg-elev-2);
+	font-weight: 600;
+}
+
+/* 窄屏下 tab 文字会被挤成「模
+型」：禁止换行，放不下就横向滚动 */
+.big-tab {
+	white-space: nowrap;
+}
+
+.big-modal-head {
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+
+.big-modal-head::-webkit-scrollbar {
+	display: none;
+}
+
+.big-modal-body {
+	flex: 1 1 auto;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+/* 大弹窗里的面板不要再套一层边框与高度限制 */
+.big-modal-body .side-panel {
+	border: none;
+	background: none;
+	padding: 0;
+	max-height: none;
+	flex: 1 1 auto;
+	gap: 10px;
+	/* 内容比弹窗高时自己滚：不然分时价格、保存按钮会被裁在弹窗外面（点不到 = 「保存不进去」） */
+	min-height: 0;
+	overflow: auto;
+	overscroll-behavior: contain;
+}
+
+.big-modal-body .side-panel-scroll,
+.big-modal-body .side-provider-list {
+	flex: 1 1 auto;
+}
+
+.side-provider-badge {
+	margin-left: 6px;
+	padding: 0 6px;
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	color: var(--text-faint);
+	font-size: 12px;
+	font-weight: 400;
+}
+
+/* 模型编辑（ADR-0026 A 期） */
+.side-field-row {
+	display: flex;
+	gap: 6px;
+	min-width: 0;
+}
+
+.side-field-row > .side-field {
+	flex: 1 1 0;
+	min-width: 0;
+}
+
+.side-check {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	font-size: 14px;
+	color: var(--text);
+	margin-right: 12px;
+}
+
+.side-model-edit {
+	margin-left: auto;
+	flex: none;
+	padding: 0 6px;
+	font-size: 13px;
+}
+
+.model-editor {
+	gap: 10px;
+}
+
+/* 分时价格（ADR-0026 D 期）：一段一张小卡片，行内放两个时间 + 四个价格 */
+.price-seg {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 6px 7px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--bg-elev-1);
+}
+
+.price-seg .side-field > span {
+	font-size: 12px;
+}
+
+.price-seg .side-field-row > .btn {
+	align-self: flex-end;
+	margin-bottom: 1px;
+}
+
+.side-provider-models {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	margin-top: 4px;
+	max-height: 132px;
+	overflow: auto;
+}
+
+.side-provider-model {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 14px;
+	color: var(--text-dim);
+	min-width: 0;
+	padding: 1px 0;
+}
+
+/* 导入模型（ADR-0026 B 期） */
+.import-models {
+	gap: 8px;
+}
+
+.import-list {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	overflow: auto;
+	min-height: 0;
+	flex: 1 1 auto;
+	max-height: 46vh;
+}
+
+.import-row {
+	display: flex;
+	align-items: center;
+	gap: 7px;
+	font-size: 14px;
+	color: var(--text-dim);
+	padding: 2px 4px;
+	border-radius: 6px;
+	cursor: pointer;
+}
+
+.import-row:hover {
+	background: var(--bg-elev-2);
+}
+
+.import-row-done {
+	opacity: 0.5;
+	cursor: default;
+}
+
+.import-id {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.import-foot {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex: none;
+}

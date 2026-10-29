@@ -1,0 +1,61 @@
+/* 「下一步建议」行：只放模型给的建议（触发再给一批的「想想」在输入区工具行最左边） */
+
+/* 「想想」：生成动作，比真正的建议弱一档，但不虚线（它一直在工具行里常态出现） */
+.action-think {
+	font-style: normal;
+}
+
+.action-think:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+
+/* 点下去之后、结果回来之前（ThinkButton 的 busy 态）：
+   置灰 + 图标轻轻呼吸。手机上这一下跑的是隐藏回合（默认最多 20 秒才回包），
+   只置灰不给一点动静，看着还是「点了没反应」；不能点是因为**正在算**，
+   所以光标给 progress 而不是 not-allowed。 */
+.action-think-busy:disabled {
+	opacity: 0.55;
+	cursor: progress;
+}
+
+.action-think-busy .tool-icon {
+	animation: action-think-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes action-think-pulse {
+	0%,
+	100% {
+		opacity: 1;
+	}
+
+	50% {
+		opacity: 0.2;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.action-think-busy .tool-icon {
+		animation: none;
+	}
+}
+
+/* 放在对话流里（最后一条消息的用量尾注下方）：和消息一起滚，不再钉在输入区上方。
+   `.messages` 是 flex 列，它自然铺满消息栏宽度 —— 与上面那些消息左右对齐，看起来是同一列。 */
+.messages > .action-row {
+	flex: none;
+	/* 与上一条消息之间用 .messages 的 gap 隔开；--gap 归零时这两块会直接贴住，
+	   所以自己再补一点上边距，读起来才是「上一轮结束 → 下一步建议」。 */
+	margin: 4px 0 4px;
+}
+
+/* 手机上建议按钮一行一个更好点（手指粗，挤两列容易点错） */
+.is-mobile-shell .messages > .action-row {
+	align-items: stretch;
+	flex-direction: column;
+}
+
+.is-mobile-shell .messages > .action-row .action-btn {
+	white-space: normal;
+	text-align: left;
+}
