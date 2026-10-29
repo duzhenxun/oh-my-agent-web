@@ -472,10 +472,10 @@ async function main(): Promise<void> {
 	await new Promise<void>((resolve) => httpServer.listen(config.port, config.host, resolve));
 
 	if (foreground) {
-		// 正常日志已经不在终端刷了，这里给一行「真的跑起来了」的确认（地址 + 怎么退 + 日志在哪）
+		// 正常日志已经不在终端刷了，这里只给一行「真的跑起来了」的确认（地址 + 怎么退）
 		const shownHost =
 			config.host === "0.0.0.0" || config.host === "::" || config.host === "" ? "127.0.0.1" : config.host;
-		console.log(`已启动：http://${shownHost}:${config.port}   （Ctrl-C 退出；日志在 ${logFileName(config.dataDir)}）`);
+		console.log(`已启动：http://${shownHost}:${config.port}   （Ctrl-C 退出）`);
 	}
 
 	logger.info("agent-web 已启动", {
