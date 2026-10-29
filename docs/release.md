@@ -33,47 +33,37 @@
 
 ## 三、以后怎么发版
 
-### 默认：合并 / 推送到 `main` 就发（patch +1）
+**合并/推送到 `main` 不发版。** 发版只有两步，都在本地：
 
 ```bash
-git push          # 或合并 PR 到 main
+npm version patch          # 或 1.0.8 / minor / major —— 改 package.json + lock，提交，打附注标签
+git push --follow-tags     # 把 main 和标签一起推上去 → release.yml 自动跑
 ```
 
-工作流自己会：`npm version patch` → 提交 `chore(release): X.Y.Z` → 打附注标签 → 回推 main 与 `vX.Y.Z` → 构建 → 发布。
-你不用再碰版本号，也不用输 OTP。
+推上去之后 CI 依次做：校验「标签版本 == package.json 版本」→ `npm ci` → typecheck → lint → build
+→ 确认产物进包 → `npm publish`（OIDC，无需 OTP）。
 
-三个要知道的副作用：
+关于版本号参数：
 
-- **每次推送都 +1**，包括只改文档的提交——版本号涨得快，但每个版本都能追到一个具体提交。
-- **回推的版本提交不会再触发一轮**：`GITHUB_TOKEN` 推的提交本来就不触发工作流，工作流里另有一层
-  `!startsWith(head_commit.message, 'chore(release)')` 兜底（以后换 PAT 也不会死循环）。
-- **provenance 记的是触发本次 run 的提交**（即你的改动提交），而 `chore(release)` 版本提交在它之后
-  一个位置——只有版本号字段不同。想严格对齐就用下面的「手工控版本」路径。
+| 命令 | 结果 |
+|---|---|
+| `npm version patch` | `1.0.7` → `1.0.8` |
+| `npm version minor` | `1.0.7` → `1.1.0` |
+| `npm version major` | `1.0.7` → `2.0.0` |
+| `npm version 1.2.3` | 直接指定 |
 
-### 手工控版本：`minor` / `major` 或想自己写版本号
-
-```bash
-npm version minor          # 或 major；会改 package.json + lock，并提交 + 打 vX.Y.Z 标签
-git push --follow-tags     # 推标签：这条走「按标签发布」，不再自动 +1
-```
-
-注意 `npm version` 打的是**附注标签**（`--follow-tags` 只认附注的；手敲 `git tag v1.2.3` 是轻量标签，
-推不上去，得 `git push origin v1.2.3`）。标签发布时工作流会校验「标签版本 == package.json 版本」，不对就拒发。
+`npm version` 打的是**附注标签**。`--follow-tags` 只推附注标签 —— 手敲 `git tag v1.2.3` 是轻量标签，
+推不上去（`git push --follow-tags` 会静默跳过），得显式 `git push origin v1.2.3`。
 
 ### 重试 / 补发
 
-GitHub → Actions → `release` → **Run workflow**：直接发布默认分支上 `package.json` 里的那个版本，
-**不会**再 +1，也不做标签校验。发布失败后就用这个补。
+GitHub → Actions → `release` → **Run workflow**：发布默认分支 `package.json` 里的那个版本，
+不做标签校验、也不会 +1。发布挂了就用这个补，别重复 `npm version`（那会白跳一个号）。
 
-发布成功后 npm 页面会带 **Provenance** 徽标（构建来源可溯）。查证方式：
+### 为什么不让 main 自动 +1
 
-```bash
-curl -s https://registry.npmjs.org/oh-my-agent-web/<版本> | grep -o '"provenance":{[^}]*}'
-```
-
-> 刚发完那几分钟 `npm view` 可能还显示旧版本 —— 那是**本地 npm 缓存**。加 `--prefer-online`，或直接问 registry：
-> `curl -s https://registry.npmjs.org/oh-my-agent-web | grep -o '"latest":"[^"]*"'`。
-
+试过：每次推送都 `patch` +1，包括只改文档的提交；版本号涨得飞快，还会出现「合并了但发布失败」
+留下一个空号。标签驱动下版本号由你决定、失败可以原地重试，历史也干净。
 ## 四、踩坑对照表
 
 | 现象 | 原因 |
@@ -85,8 +75,8 @@ curl -s https://registry.npmjs.org/oh-my-agent-web/<版本> | grep -o '"provenan
 | `tag v1.2.3 与 package.json 的 1.2.2 对不上` | 工作流主动拦的：先 `npm version` 再打标签，别手工错位 |
 | 发布出来的包是空壳 | 忘了 `npm run build`：`dist/`、`web/dist/` 都在 `files` 里但都不入库，必须现构建 |
 | `npm ci` 报 `EUSAGE ... package.json and package-lock.json are in sync` | 锁文件过期（本地 `node_modules` 是新的所以看不出来）。本地跑 `npm install --package-lock-only`，提交 `package-lock.json` 后再触发 |
-| 合并到 main 但没发版 | 看是不是被 `if:` 挡了（提交信息以 `chore(release)` 开头，或这本来就是回推的版本提交）；也可能是并发排队（`concurrency: release`，`cancel-in-progress: false`）|
-| 版本号跑得比预期快 | 分支推送**每次都 +1**（含文档改动）。要按提交类型算版本就得上 release-please，别在这里叠逻辑 |
+| 合并到 main 但没发版 | 本来就不会发：发版认的是 **`v*` 标签**，不是分支推送 |
+| 标签推上去了但没触发 | 标签是**轻量**的（`git tag v1.2.3`）。用 `npm version` 生成附注标签，或 `git push origin v1.2.3` 显式推 |
 
 ## 五、已知的 CI 边界
 

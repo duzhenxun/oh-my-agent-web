@@ -1,9 +1,8 @@
-# 发布流水线（Trusted Publishing / OIDC）
+# 发布流水线（Trusted Publishing / OIDC）—— **标签驱动**
 #
-# 三种入口，都是「编译 → 校验 → npm publish」，仓库里不存任何 token：
-#   1. **合并/推送到 main** → 自动 `patch` +1，打 `vX.Y.Z` 附注标签并回推，然后发布（默认路径）
-#   2. 推 `v*` 标签        → 按标签版本发布（手工控版本时用：`npm version minor` 再推标签）
-#   3. 手动 Run workflow   → 直接发布 `package.json` 里当前的版本（重试/补发用）
+# 合并/推送到 main **不发版**；发版只认两件事：
+#   1. 推 `v*` 标签（正常路径：`npm version patch && git push --follow-tags`）
+#   2. 手动 Run workflow（重试/补发：发布 `package.json` 里当前版本，不再 +1）
 #
 # 为什么不用 NPM_TOKEN：
 #   token 是长期凭证，泄一次就要全轮换；这里用 GitHub 的短期 OIDC 令牌换 npm 的一次性发布凭证，
@@ -22,15 +21,14 @@ name: release
 
 on:
   push:
-    branches:
-      - main
     tags:
       - "v*"
   workflow_dispatch:
 
+# 只读仓库 + OIDC：发布不需要写 git（版本号由本地的 npm version 决定）
 permissions:
-  contents: write # 分支发布会回推版本提交 + 标签
-  id-token: write # OIDC：Trusted Publishing 的唯一凭证来源
+  contents: read
+  id-token: write
 
 concurrency:
   group: release
@@ -40,16 +38,8 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # 回推的版本提交不能再发一轮。GITHUB_TOKEN 推的提交本来就不会触发工作流（防递归），
-    # 这层是兜底：万一以后换成 PAT/App token，这里能挡住死循环。
-    if: >-
-      github.event_name != 'push' ||
-      github.ref_type != 'branch' ||
-      !startsWith(github.event.head_commit.message || '', 'chore(release)')
     steps:
       - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
 
       - uses: actions/setup-node@v5
         with:
@@ -61,20 +51,8 @@ jobs:
           npm install -g npm@latest
           npm --version
 
-      # 先落版本号再发布：万一发布失败，git 里已经有 tag 可以 `gh workflow run --ref vX.Y.Z` 重试；
-      # 反过来（先发布后推标签）失败会留下「registry 有、git 没有」的版本，下次直接 E403。
-      - name: 合并到 main → 自动 +patch 并回推标签
-        id: bump
-        if: github.event_name == 'push' && github.ref_type == 'branch'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          npm version patch -m "chore(release): %s"
-          git push --follow-tags
-          node -p "'version=' + require('./package.json').version" >> "$GITHUB_OUTPUT"
-
       - name: 校验 tag 与 package.json 版本一致
-        if: github.ref_type == 'tag'
+        if: startsWith(github.ref, 'refs/tags/v')
         run: |
           tag="${GITHUB_REF_NAME#v}"
           pkg="$(node -p "require('./package.json').version")"
