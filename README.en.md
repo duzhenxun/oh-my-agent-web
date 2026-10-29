@@ -91,6 +91,7 @@ Two behavioural rules:
 
 - **Starting twice is detected first**: if an instance is already running it only prints the URL (and opens the page) instead of starting a second one — identical for `aw` / `agent-web` / `oh-my-agent-web`.
 - **The foreground run stays quiet**: the terminal only gets one `已启动：…` line plus warn / error; normal logs (session index loading, SSE connections) still go in full to `logs/agent-web.log`. Watch them with `AGENT_WEB_LOG=info aw`; in the background (`-d`) they land in `daemon.log`.
+- **It checks for a newer release**: on start (and on `aw status`) it asks npm once per 24 hours (cached in `update-check.json`) and prints `有新版本 vX（当前 vY）→ 升级：aw upgrade` when one exists. It never upgrades by itself, stays silent when the network is down, and `AGENT_WEB_UPDATE_CHECK=off` turns it off.
 
 ### Flags
 
@@ -108,6 +109,7 @@ Two behavioural rules:
 | — | `AGENT_WEB_APPROVAL_MODE` | `allow` | Default approval mode for new sessions; `ask` confirms every tool call |
 | — | `AGENT_WEB_TURN_TIMEOUT_MS` | 20 minutes | Per-turn watchdog timeout |
 | — | `AGENT_WEB_LOG` | `info` (foreground terminal: warn / error only) | `debug` / `info` / `warn` / `error`; setting it explicitly also prints that level to the terminal |
+| — | `AGENT_WEB_UPDATE_CHECK` | `on` | `off` disables the startup release check (offline / intranet / CI) |
 
 ### Common examples
 

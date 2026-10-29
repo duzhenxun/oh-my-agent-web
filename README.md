@@ -90,6 +90,7 @@ powershell -c "irm https://raw.githubusercontent.com/duzhenxun/oh-my-agent-web/m
 
 - **重复启动会先检测**：已经在跑就只把地址打给你（并打开页面），不会再起第二个 —— `aw` / `agent-web` / `oh-my-agent-web` 三个名字完全一致。
 - **前台不刷日志**：终端只有一行「已启动：…」和 warn / error；装载会话索引、SSE 连接这类正常日志仍然全量写进 `logs/agent-web.log`。想盯着看就 `AGENT_WEB_LOG=info aw`，后台（`-d`）的输出在 `daemon.log`。
+- **会顺手查新版**：启动时（以及 `aw status`）看一眼 npm 上有没有新版本，24 小时内只问一次（缓存 `update-check.json`）；有新版就打一行 `有新版本 vX（当前 vY）→ 升级：aw upgrade`。不自动升级、网络不通就静默跳过，`AGENT_WEB_UPDATE_CHECK=off` 可彻底关掉。
 
 ### 参数
 
@@ -107,6 +108,7 @@ powershell -c "irm https://raw.githubusercontent.com/duzhenxun/oh-my-agent-web/m
 | — | `AGENT_WEB_APPROVAL_MODE` | `allow` | 新会话默认审批模式；`ask` 则逐次确认 |
 | — | `AGENT_WEB_TURN_TIMEOUT_MS` | 20 分钟 | 单回合看门狗超时 |
 | — | `AGENT_WEB_LOG` | `info`（前台终端只打 warn / error） | `debug` / `info` / `warn` / `error`；显式设了就按这个级别打到终端 |
+| — | `AGENT_WEB_UPDATE_CHECK` | `on` | `off` 关掉启动时的升级检查（离线 / 内网 / CI 用） |
 
 ### 常用例子
 

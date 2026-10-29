@@ -36,6 +36,7 @@ import { applyStoredOptions } from "./cli-config.js";
 import { migrateLegacyDataDir } from "./util/data-dir.js";
 import { DEFAULT_DATA_DIR_NAME } from "./util/env.js";
 import { fetchHealth, showStatus, showVersion, upgrade } from "./cli-info.js";
+import { checkForUpdate, describeUpdate } from "./update-check.js";
 import { defaultIsAlive, describeHolder, readLock } from "./session/lock.js";
 
 const USAGE = `用法: agent-web [命令] [选项]        （agent-web / aw / oh-my-agent-web 三个命令完全等价）
@@ -431,6 +432,8 @@ async function main(): Promise<void> {
 
 	if (parsed.command === "status") {
 		await showStatus({ dataDir: dataDir(), probeHost: probeHostOf() });
+		const line = describeUpdate(await checkForUpdate({ dataDir: dataDir() }).catch(() => null));
+		if (line) console.log(`  ${line}`);
 		return;
 	}
 	if (parsed.command === "version") {
@@ -453,9 +456,15 @@ async function main(): Promise<void> {
 
 	// start / restart：先确认不是「已经在跑了」（三个命令名共用这一处检测）
 	if (await detectRunning(parsed.open)) return;
+
+	// 顺手查一下有没有新版：启动时就并发问，别让它拖启动（缓存 24h，首次最多 1.5s 超时）
+	const update = checkForUpdate({ dataDir: dataDir() }).catch(() => null);
+
 	// start / restart：默认**前台**跑（日志直接打在终端，Ctrl-C 退出），`-d` 才丢到后台
 	if (!parsed.foreground) {
 		await startDetached(process.argv.slice(2), parsed.open);
+		const line = describeUpdate(await update);
+		if (line) console.log(line);
 		return;
 	}
 	if (parsed.open) openWhenReady();
@@ -463,6 +472,8 @@ async function main(): Promise<void> {
 	// 必须看 isTTY：后台子进程也走这个分支，但它的 stdout 是 daemon.log —— 那里要保留全部日志。
 	if (process.stdout.isTTY) process.env.AGENT_WEB_FOREGROUND = "1";
 	await import("./index.js");
+	const line = describeUpdate(await update);
+	if (line) console.log(line);
 }
 
 // 被当脚本执行时才 main（被 import 时什么都不做）
