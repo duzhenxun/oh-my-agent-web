@@ -14,6 +14,9 @@
  * 约束：
  *   - 最小 620×340：再小就放不下「左列表 + 右详情」两栏了；
  *   - 最大不超过视口减一圈间距（拖出去就再也抓不回来）；
+ *   - **整块得在视口里**：光夹宽高不够 —— 拖右下角时左边是不动的，面板就会一路长到窗口外面去
+ *     （用户 2026-10-30 的截图：设置面板一半在屏幕外）。所以算完尺寸还要按当前位置把整块夹回来
+ *     （`clampModalPos`，严格那一档）；
  *   - 手机壳（单栏）下**不写内联尺寸**：整屏铺满由 CSS 决定，内联会把它顶掉。
  *
  * 默认尺寸 = **满宽满高**（视口减去四周 --gap）：这几块面板都是两栏详情，
@@ -22,6 +25,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { currentMobileShell } from "./mobile-shell-dom.ts";
+import { clampModalPos } from "./use-modal-move.ts";
 
 /**
  * 尺寸的存储键。**带版本号**：默认尺寸一改，老用户 localStorage 里那份旧值会把新默认盖掉，
@@ -50,11 +54,12 @@ export type ModalCorner = "nw" | "ne" | "sw" | "se";
 /**
  * 调尺寸时推动位置，让「对面的角」不动（`use-modal-move.ts` 实现）。
  *
- * `begin`：手势开始时记下当前位置；`shift`：相对那个位置该平移多少（从手势开始累计）；
+ * `begin`：手势开始时确认位置，并**把手势开始时的位移交回去**（算视野要用）；
+ * `shift`：相对那个位置该平移多少（从手势开始累计）；
  * `commit`：松手时把新位置落盘（和拖动头部同一份存储）。
  */
 export type ResizeAnchor = {
-	begin: () => void;
+	begin: () => { x: number; y: number };
 	shift: (delta: { x: number; y: number }) => void;
 	commit: () => void;
 };
@@ -105,10 +110,16 @@ function clampModalSize(size: ModalSize, view: Viewport): ModalSize {
  * 位移的符号按「对面那个角钉住」推出来：
  *   - 拖东侧的角（se / ne）锚左边的角 → 宽的变化由位置让一半（dx > 0，即变小 → 位置往右）；
  *   - 拖西侧的角（sw / nw）锚右边的角 → 反过来；上下同理。
- * 先夹取再算位移：拖到最小/最大边界时，位置不该继续跑。
+ * 两步夹取，顺序不能换：
+ *   1. 先夹**尺寸**（最小尺寸 / 视口减两圈间距）；
+ *   2. 再夹**整块的位置**（严格那一档）—— 这一步才是「不许长到窗口外面去」。
+ *      没有它：面板在右半边时拖右下角，左边钉住不动 → 右边一路长到屏幕外，
+ *      存进 localStorage 之后，下次打开就是这个「半个弹窗」的样子。
  */
 export function resizeFromCorner(input: {
 	start: ModalSize;
+	/** 当前位移（`useModalMove` 那份；居中布局下 0 就是正中间） */
+	pos: { x: number; y: number };
 	dx: number;
 	dy: number;
 	corner: ModalCorner;
@@ -123,9 +134,14 @@ export function resizeFromCorner(input: {
 		},
 		input.view,
 	);
+	const anchored = {
+		x: input.pos.x + (horizontal * (size.width - input.start.width)) / 2,
+		y: input.pos.y + (vertical * (size.height - input.start.height)) / 2,
+	};
+	const next = clampModalPos(anchored, size, input.view);
 	// `0` 而不是 `-0`：夹取时差值是 0，乘上方向会变成负零（无害，但单测里很难看）
-	const shiftX = (horizontal * (size.width - input.start.width)) / 2;
-	const shiftY = (vertical * (size.height - input.start.height)) / 2;
+	const shiftX = Math.round(next.x - input.pos.x);
+	const shiftY = Math.round(next.y - input.pos.y);
 	return {
 		size,
 		shift: { x: shiftX === 0 ? 0 : shiftX, y: shiftY === 0 ? 0 : shiftY },
@@ -191,13 +207,14 @@ export function useModalSize(options?: { anchor?: { current: ResizeAnchor | null
 			event.preventDefault();
 			setPinned(true); // 从这一刻起尺寸归用户管（右键："我拖过了，记住它"）
 			const anchor = anchorRef?.current ?? null;
-			anchor?.begin();
+			const startPos = anchor?.begin() ?? { x: 0, y: 0 };
 			const startX = event.clientX;
 			const startY = event.clientY;
 			const startSize = size;
 			const onMove = (moveEvent: PointerEvent) => {
 				const { size: next, shift } = resizeFromCorner({
 					start: startSize,
+					pos: startPos,
 					dx: moveEvent.clientX - startX,
 					dy: moveEvent.clientY - startY,
 					corner,

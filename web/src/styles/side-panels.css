@@ -258,15 +258,18 @@
 	font-size: 14px;
 }
 
-/* 拖拽手柄（use-modal-size.ts）：四个角各一只；两条斜线，颜色跟主题走 */
+/* 拖拽手柄（use-modal-size.ts）：四个角各一只；两条斜线，颜色跟主题走。
+   尺寸 20px：上一版 18px 太小，位于弹窗最外沿、跟 tab / ✕ 抢地方（用户 2026-10-30：
+   「4 个角外面可改大小」）—— 角上这一块归缩放，往里一点才是拖头部移动。
+   z-index 4 高于右上角的 ✕（3）：最外那个角必须是手柄，否则 ne 角永远拖不到。 */
 .modal-resize {
 	position: absolute;
-	z-index: 2;
-	width: 18px;
-	height: 18px;
+	z-index: 4;
+	width: 20px;
+	height: 20px;
 	cursor: nwse-resize;
 	touch-action: none;
-	opacity: 0.45;
+	opacity: 0.5;
 	background:
 		linear-gradient(135deg, transparent 46%, var(--border-strong) 46%, var(--border-strong) 55%, transparent 55%),
 		linear-gradient(135deg, transparent 66%, var(--border-strong) 66%, var(--border-strong) 75%, transparent 75%);

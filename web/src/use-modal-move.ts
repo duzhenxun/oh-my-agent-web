@@ -7,8 +7,12 @@
  * 实现方式：弹窗在 `.modal-backdrop`（flex 居中）里，所以只要给它
  * `transform: translate(x, y)` 就能移动 —— 不去算 left/top，那套在窗口 resize 后全会乱。
  *
- * 边界：不要求整个面板都在视口内（铺满时那等于不能动），而是
- * **每个方向至少留 MIN_VISIBLE 那一块在视口里** —— 推得开，也一定抓得回来。
+ * 边界：分两档（这是「不要弹到浏览器外面去」那条要求的分水岭）：
+ *   - **开面板 / 窗口缩放 / 拖角调尺寸**：严格 —— 整块面板必须在视口内。
+ *     存下来的位置可能来自更大的窗口、上一次窗口被拉小、或是旧版本宽松规则留下的，
+ *     一打开就跑到屏幕外半边，看着就像坏了；这里自己识别并拉回来。
+ *   - **手指正拖着**：宽松 —— 每个方向至少留 MIN_VISIBLE，「推开来对照着看被挡住的对话」
+ *     才成立（面板本来铺满，严格夹等于不能动）。松手后存的就是那一刻的值，下次打开按严格夹。
  *
  * 收起/再打开：位置存 localStorage（与尺寸同一套纪律：纯界面偏好，不进快照）；
  * 窗口变小后自动夹回合法范围，免得上一次的位置把面板留在屏幕外。
@@ -29,20 +33,45 @@ const viewport = (): Box => ({ width: window.innerWidth, height: window.innerHei
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
 /**
- * 纯函数：把位移夹到「每个方向至少 MIN_VISIBLE 在视口内」。
+ * 纯函数：把一个轴上的位移夹到合法范围。
  *
- * 面板是居中的，未位移时它的左边缘在 `(视口宽 - 面板宽) / 2`；
- * 位移 x 之后左边缘是那个值 + x。要求「右边缘 ≥ MIN_VISIBLE」且「左边缘 ≤ 视口宽 - MIN_VISIBLE」，
- * 解出 x 的上下界。上下同理。
+ * `strict` = 整块放得下就整块留在视口内（左边缘 0 ~ 视口 - 面板）；
+ * 否则（面板比视口还大，只有视口窄到极致时才可能）退化成一至少留 MIN_VISIBLE。
+ */
+function clampAxis(value: number, sizeLen: number, viewLen: number, strict: boolean): number {
+	const centered = (viewLen - sizeLen) / 2;
+	const next =
+		strict && sizeLen <= viewLen
+			? clamp(value, -centered, viewLen - sizeLen - centered)
+			: clamp(value, MIN_VISIBLE - sizeLen - centered, viewLen - MIN_VISIBLE - centered);
+	// `+ 0` 把 `-0` 拉回 `0`：夹到 0 时 Math.min 会留下负零，写进 transform 看不出区别，但单测里很丑
+	return next + 0;
+}
+
+/**
+ * 纯函数（严格）：整块面板留在视口内。
+ *
+ * 用在「不是用户此刻拖出来的」那些时机：首次打开、窗口尺寸变了、拖角改大小。
+ * 那条「上次关掉时推到右边」的位置一打开就在屏外 —— 自己拉回来，不用人去追。
  */
 export function clampModalPos(pos: ModalPos, size: Box, view: Box): ModalPos {
-	const left = (view.width - size.width) / 2;
-	const top = (view.height - size.height) / 2;
-	const minX = Math.min(0, MIN_VISIBLE - size.width - left);
-	const maxX = Math.max(0, view.width - MIN_VISIBLE - left);
-	const minY = Math.min(0, MIN_VISIBLE - size.height - top);
-	const maxY = Math.max(0, view.height - MIN_VISIBLE - top);
-	return { x: clamp(pos.x, minX, maxX), y: clamp(pos.y, minY, maxY) };
+	return {
+		x: clampAxis(pos.x, size.width, view.width, true),
+		y: clampAxis(pos.y, size.height, view.height, true),
+	};
+}
+
+/**
+ * 纯函数（宽松）：拖动时每个方向至少留 MIN_VISIBLE 在视口内。
+ *
+ * 只给「手指正按在头部拖」用：要的就是把铺满的面板推开一条缝看后面的对话，
+ * 所以这里允许它越出视口；推得再远也还能抓到它。
+ */
+export function clampModalPosWhileDragging(pos: ModalPos, size: Box, view: Box): ModalPos {
+	return {
+		x: clampAxis(pos.x, size.width, view.width, false),
+		y: clampAxis(pos.y, size.height, view.height, false),
+	};
 }
 
 /** 纯函数：读存下来的位移（坏值 → 归零，不抛） */
@@ -68,11 +97,18 @@ export function useModalMove(options: { size: Box | null }): {
 	/** 双击头部复位 */
 	reset: () => void;
 	/**
-	 * 调尺寸时鎢住「对面的角」（交给 `useModalSize`）：
-	 * `beginResize` 在按下手柄时调，`shiftBy` 在每次 pointermove 里传累计位移，
-	 * `commit` 在松手时把新位置落盘（与拖头部同一份存储）。
+	 * 重新按严格规则夹一次。**开面板时调**：两个钩子挂在侧栏上（不随弹窗卸载），
+	 * 所以「关掉再打开」不会重跑初始化 —— 上次拖到越界的那份位置会一直在，
+	 * 用户看到的就是「有时一打开就半个在屏幕外」（用户 2026-10-30 的截图）。
 	 */
-	beginResize: () => void;
+	reclamp: () => void;
+	/**
+	 * 调尺寸时鎢住「对面的角」（交给 `useModalSize`）：
+	 * `beginResize` 在按下手柄时调，**并把手势开始时的位置交回去** —— 拖角要按「这一块现在
+	 * 在哪」算视野，不然从右下角往外拖会把面板推出窗口外；`shiftBy` 在每次 pointermove 里
+	 * 传累计位移，`commit` 在松手时把新位置落盘（与拖头部同一份存储）。
+	 */
+	beginResize: () => ModalPos;
 	shiftBy: (delta: { x: number; y: number }) => void;
 	commitResize: () => void;
 } {
@@ -117,7 +153,7 @@ export function useModalMove(options: { size: Box | null }): {
 					document.body.style.userSelect = "none";
 				}
 				moveEvent.preventDefault();
-				setPos(clampModalPos({ x: from.x + dx, y: from.y + dy }, size, viewport()));
+				setPos(clampModalPosWhileDragging({ x: from.x + dx, y: from.y + dy }, size, viewport()));
 			};
 			const onUp = () => {
 				document.removeEventListener("pointermove", onMove);
@@ -153,6 +189,15 @@ export function useModalMove(options: { size: Box | null }): {
 		setPos({ x: 0, y: 0 });
 	}, []);
 
+	const reclamp = useCallback(() => {
+		const size = options.size;
+		if (!size) return;
+		const next = clampModalPos(latest.current, size, viewport());
+		// 同步 latest：否则下一次拖动会从那个越界的位置起算
+		latest.current = next;
+		setPos(next);
+	}, [options.size]);
+
 	/**
 	 * 调尺寸时的位置锚点（见 use-modal-size.ts 的 `ResizeAnchor`）。
 	 *
@@ -162,6 +207,7 @@ export function useModalMove(options: { size: Box | null }): {
 	const anchorBase = useRef(pos);
 	const beginResize = useCallback(() => {
 		anchorBase.current = latest.current;
+		return anchorBase.current;
 	}, []);
 	const shiftBy = useCallback((delta: { x: number; y: number }) => {
 		const next = { x: anchorBase.current.x + delta.x, y: anchorBase.current.y + delta.y };
@@ -181,6 +227,7 @@ export function useModalMove(options: { size: Box | null }): {
 		style: mobile ? undefined : { transform: `translate(${Math.round(pos.x)}px, ${Math.round(pos.y)}px)` },
 		start,
 		reset,
+		reclamp,
 		beginResize,
 		shiftBy,
 		commitResize,

@@ -5,6 +5,10 @@
  * 四角里最容易写错的是**锚点**：面板在 `.modal-backdrop` 里是 flex 居中的，
  * 宽高一变，两边各让一半 —— 不把一半的变化量补给位置，拖左上角时整个面板会以中心为轴
  * 两边一起长，手感像「拖了一半」。这里用「对面的边/角保持不动」把方向钉死。
+ *
+ * 第二个坑（用户 2026-10-30 的截图：设置面板一半在屏幕外）：只夹宽高不够。
+ * 从右下角往外拖时左边钉住不动，右边界一路长到窗口外面；存进 localStorage 以后，
+ * 下次打开就是这个「半个弹窗」。所以算完尺寸还要**把整块夹回视口**。
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
@@ -19,8 +23,8 @@ function edges(size: ModalSize, shift: { x: number; y: number }) {
 	return { left, top, right: left + size.width, bottom: top + size.height };
 }
 
-function resize(start: ModalSize, dx: number, dy: number, corner: ModalCorner) {
-	return resizeFromCorner({ start, dx, dy, corner, view });
+function resize(start: ModalSize, dx: number, dy: number, corner: ModalCorner, pos = { x: 0, y: 0 }) {
+	return resizeFromCorner({ start, pos, dx, dy, corner, view });
 }
 
 describe("resizeFromCorner：四个角的方向", () => {
@@ -90,5 +94,48 @@ describe("resizeFromCorner：夹取之后再算位移", () => {
 		const { size, shift } = resize(atMin, 200, 120, "se");
 		assert.deepEqual(size, { width: 820, height: 460 });
 		assert.deepEqual(shift, { x: 100, y: 60 });
+	});
+});
+
+describe("resizeFromCorner：拖角不许把面板推出视口", () => {
+	it("面板在右半边时拖 se：右边停在视口右沿，不再长到屏幕外", () => {
+		const start: ModalSize = { width: 800, height: 600 };
+		// 先把面板推到靠右（左边缘 = (1440-800)/2 + 1080 = 1400 → 右边缘已经在屏外）
+		const pos = { x: 1080, y: 0 };
+		const { size, shift } = resize(start, 200, 0, "se", pos);
+		const after = edges(size, { x: pos.x + shift.x, y: pos.y + shift.y });
+		assert.ok(after.right <= view.width, `右边缘 ${after.right} 不该超出视口 ${view.width}`);
+		assert.ok(after.left >= 0);
+		// 尺寸还是按拖动量长的（不是被压回原值），只是位置被拉回采了
+		assert.deepEqual(size, { width: 1000, height: 600 });
+	});
+
+	it("面板在左半边时拖 nw：左边停在视口左沿", () => {
+		const start: ModalSize = { width: 800, height: 600 };
+		const pos = { x: -600, y: 0 };
+		const { size, shift } = resize(start, -300, 0, "nw", pos);
+		const after = edges(size, { x: pos.x + shift.x, y: pos.y + shift.y });
+		assert.ok(after.left >= 0, `左边缘 ${after.left} 不该超出视口左边`);
+		assert.ok(after.right <= view.width);
+	});
+
+	it("旧数据里那条越界的位置：拖一下就被拉回视口内", () => {
+		const start: ModalSize = { width: 900, height: 700 };
+		const pos = { x: 1200, y: 600 };
+		const { size, shift } = resize(start, 1, 1, "se", pos);
+		const after = edges(size, { x: pos.x + shift.x, y: pos.y + shift.y });
+		// 容差 1px：居中最是奇数宽时会出 .5，而尺寸与位移都是整数（肉眼无差）
+		assert.ok(after.left >= -1 && after.right <= view.width + 1, "水平方向整块在视口内");
+		assert.ok(after.top >= -1 && after.bottom <= view.height + 1, "垂直方向整块在视口内");
+	});
+
+	it("拖角时「对面的角不动」在没碰到边界之前仍然成立", () => {
+		const start: ModalSize = { width: 800, height: 600 };
+		const pos = { x: 0, y: 0 };
+		const { size, shift } = resize(start, 100, 50, "se", pos);
+		const before = edges(start, pos);
+		const after = edges(size, { x: pos.x + shift.x, y: pos.y + shift.y });
+		assert.equal(after.left, before.left);
+		assert.equal(after.top, before.top);
 	});
 });

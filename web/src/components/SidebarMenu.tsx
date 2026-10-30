@@ -126,6 +126,16 @@ export function SidebarMenu({
 		commit: modalMove.commitResize,
 	};
 	/**
+	 * 每次打开面板都把位置按严格规则**重新夹一次**。
+	 *
+	 * 不能只靠钩子初始化：尺寸 / 位置两个钩子挂在侧栏上（不随弹窗卸载），关掉再打开不会重跑初始化，
+	 * 上次拖到越界的那份位置就会一直在 —— 用户看到的就是「设置弹窗有时半个在屏幕外」（用户 2026-10-30）。
+	 */
+	const reclampModal = modalMove.reclamp;
+	useEffect(() => {
+		if (panel) reclampModal();
+	}, [panel, reclampModal]);
+	/**
 	 * 弹窗里的反馈：服务端的提示条（`.error-bar` / `NoticeBar`）都在工作区顶上，
 	 * 而弹窗是全屏遮罩 —— 用户在弹窗里操作时**什么都看不到**（保存成功/失败郿如此）。
 	 * 这里把「打开弹窗之后新出现的提示 + 请求错误」镜像到弹窗顶部。
