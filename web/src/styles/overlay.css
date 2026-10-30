@@ -29,6 +29,30 @@
 	cursor: pointer;
 }
 
+/*
+ * 弹窗**四周那圈内边距**（`.modal` 的 16px，加上头部与正文之间那条 gap）也算拖动面：
+ * 鼠标放在上面就是 «可以拖» 的小手，按下去真的会移动面板（用户 2026-10-30：
+ * 「鼠标放在这些区域都可以变成一个可以移动这个弹窗的小手」）。
+ *
+ * 光标是继承的：根上给 grab，正文 / 提示区显式要回 auto，否则里面每一处都会变成小手。
+ * 读文字的地方（正文）必须保持浏览器的默认行为（文本光标 + 能选中）。
+ */
+.modal.big-modal {
+	cursor: grab;
+}
+
+.big-modal-body,
+.modal-notices {
+	cursor: auto;
+}
+
+/* 正在拖：整块都咬住，别一会儿箭头一会儿手，也别顺手选中字符 */
+html.is-modal-moving,
+html.is-modal-moving * {
+	cursor: grabbing !important;
+	user-select: none !important;
+}
+
 .modal {
 	width: min(560px, 100%);
 	background: var(--bg-elev);

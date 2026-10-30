@@ -149,8 +149,9 @@ export function useModalMove(options: { size: Box | null }): {
 				if (!dragging && Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
 				if (!dragging) {
 					dragging = true;
-					// 拖的时候别顺手选中正文
+					// 拖的时候别顺手选中正文；整块换成 grabbing（否则拖到别处又变回箭头）
 					document.body.style.userSelect = "none";
+					document.documentElement.classList.add("is-modal-moving");
 				}
 				moveEvent.preventDefault();
 				setPos(clampModalPosWhileDragging({ x: from.x + dx, y: from.y + dy }, size, viewport()));
@@ -159,6 +160,7 @@ export function useModalMove(options: { size: Box | null }): {
 				document.removeEventListener("pointermove", onMove);
 				document.removeEventListener("pointerup", onUp);
 				document.body.style.userSelect = "";
+				document.documentElement.classList.remove("is-modal-moving");
 				if (!dragging) return;
 				// 拖完松手常会跟一个 click（点在 tab 上就会切面板）：吃掉这一个
 				const stopClick = (clickEvent: MouseEvent) => {

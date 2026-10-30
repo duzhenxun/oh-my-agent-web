@@ -259,7 +259,18 @@ export function SidebarMenu({
 							aria-label={t("工作台面板")}
 							{...closeOnBackdrop}
 						>
-							<div className="modal big-modal" style={{ ...modalSize.style, ...modalMove.style }}>
+							<div
+								className="modal big-modal"
+								style={{ ...modalSize.style, ...modalMove.style }}
+								// 拖**框架空白处**也能移动：四周那圈 16px 内边距与头部下方那条 gap 都算。
+								// 只认「接下去的就是弹窗自己」（target === currentTarget）—— 正文 / 按钮 / 卡片上的
+								// 按下不能变成拖窗口，否则选择文字、点输入框都会把面板拖走。
+								// 头部自己已有 onPointerDown（在 SortablePanelTabs 里），不会冒泡到这里被当成二次拖动：
+								// 那个事件的目标是头部内部，不等于这个根元素。
+								onPointerDown={(event) => {
+									if (event.target === event.currentTarget) modalMove.start(event);
+								}}
+							>
 								{/* 关闭按钮固定在弹窗右上角，不跟 tab 同一行：
 								    那一行会横向滚动（手机上尤其），✕ 跟着滚就找不到了 */}
 								<button
