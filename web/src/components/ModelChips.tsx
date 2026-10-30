@@ -1,4 +1,4 @@
-import { useAppState } from "../store.ts";
+import { useAppSelector } from "../store.ts";
 import type { ChatSurface } from "../chat-surface.ts";
 import { setModel, setSettings } from "../ws.ts";
 import { ModelPicker } from "./ModelPicker.tsx";
@@ -23,8 +23,9 @@ import { useT } from "../use-language.ts";
  */
 export function ModelChips({ surface }: { surface?: ChatSurface }) {
 	const t = useT();
-	const app = useAppState();
-	const snapshot = surface ? surface.snapshot : app.snapshot;
+	// hook 不能条件调用：这一面自己带快照时也照样订阅（代价只是这一片的订阅，不是全量 state）
+	const appSnapshot = useAppSelector((state) => state.snapshot);
+	const snapshot = surface ? surface.snapshot : appSnapshot;
 	// 当前项目 = 当前会话的工作区（新会话还没落盘时退回文件树根）；「项目默认模型」按它存
 	const activeWorkspace =
 		snapshot?.conversations.find((item) => item.id === snapshot.active.conversationId)?.workspace ??

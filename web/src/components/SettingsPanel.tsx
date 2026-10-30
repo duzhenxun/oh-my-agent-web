@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useAppState } from "../store.ts";
+import { useAppSelector } from "../store.ts";
 import { setSettings } from "../ws.ts";
 import { THEMES, modeOf, type ThemeDef } from "../theme.ts";
 import { useTheme } from "../use-theme.ts";
@@ -16,6 +16,7 @@ import {
 import { useAppbarScale } from "../use-appbar-scale.ts";
 import { useSidebarFonts } from "../use-sidebar-font.ts";
 import {
+	PROCESS_AUTO_COLLAPSE_KEY,
 	THINKING_OPEN_KEY,
 	TOOL_OPEN_KEY,
 	SELECTION_TOOLBAR_KEY,
@@ -23,6 +24,7 @@ import {
 	APPBAR_PART_KEY,
 	APPBAR_PART_LABEL,
 	APPBAR_PARTS,
+	APPBAR_TEMPCHAT_DEFAULT,
 	APPBAR_TEMPCHAT_KEY,
 	APPBAR_TOGGLES,
 	COMPOSER_ITEM_KEY,
@@ -388,7 +390,7 @@ function LanguageSettings() {
  */
 function GeneralSettings() {
 	const t = useT();
-	const { snapshot } = useAppState();
+	const snapshot = useAppSelector((state) => state.snapshot);
 	const [text, setText] = useState("");
 	const [dirty, setDirty] = useState(false);
 
@@ -567,6 +569,7 @@ function ProcessSettings() {
 	const t = useT();
 	const [thinkingOpen, setThinkingOpen] = useStoredBool(THINKING_OPEN_KEY, false);
 	const [toolOpen, setToolOpen] = useStoredBool(TOOL_OPEN_KEY, false);
+	const [autoCollapse, setAutoCollapse] = useStoredBool(PROCESS_AUTO_COLLAPSE_KEY, true);
 	return (
 		<>
 			<div className="settings-panel">
@@ -574,6 +577,10 @@ function ProcessSettings() {
 					<span>{t("过程", "Process")}</span>
 					<span className="settings-sub">{t("思考块 + 工具卡", "Thinking blocks + tool cards")}</span>
 				</div>
+				<label className="settings-toggle">
+					<input type="checkbox" checked={autoCollapse} onChange={(event) => setAutoCollapse(event.target.checked)} />
+					{t("跑完自动折叠思考与工具调用", "Collapse thinking and tool calls when a turn ends")}
+				</label>
 				<label className="settings-toggle">
 					<input type="checkbox" checked={thinkingOpen} onChange={(event) => setThinkingOpen(event.target.checked)} />
 					{t("默认展开思考块", "Expand thinking blocks by default")}
@@ -584,8 +591,8 @@ function ProcessSettings() {
 				</label>
 				<div className="settings-hint">
 					{t(
-						"打开后新出现的内容直接铺开：思考块给全文，工具卡给参数 / 命令和输出。 单独点过的那一块以你点的那次为准。",
-						"When on, new blocks arrive already expanded: full thinking text, and tool cards with arguments/command and output. Blocks you toggled yourself keep your choice.",
+						"思考与正文按发生的顺序排（说一句 → 调工具 → 再说一句）。第一条只管思考与工具卡：跑完把它们收成一行“过程 N 步 · 耗时 X”，点那行展开；**正文永远不折叠**，包括中间那几段说明（“A 不行，改用 B”这种理由不藏起来）。下面两个开关决定单独某一块默认是不是展开的；关掉第一条时它们同时决定整条消息跑完后展不展开。",
+						'Thinking and answer text are shown in the order they happened (say → call a tool → say again). The first option only covers thinking and tool cards: when the turn ends they fold into one "Process N steps · Xs" row — click to expand. The answer text is never collapsed, including the narration in between ("A did not work, switching to B"). The two switches below decide whether an individual block is expanded; with the first option off they also decide whether a finished message is expanded.',
 					)}
 				</div>
 			</div>
@@ -722,8 +729,8 @@ function SidebarSettings() {
 function AppbarSettings() {
 	const t = useT();
 	const [visible, setVisible] = useAppbarItems();
-	// 「临时会话」不是面板（它是个动作：在右侧新开一条聊天），单独一个 key
-	const [tempChat, setTempChat] = useStoredBool(APPBAR_TEMPCHAT_KEY, true);
+	// 「临时会话」不是面板（它是个动作：在右侧新开一条聊天），单独一个 key；默认不勾
+	const [tempChat, setTempChat] = useStoredBool(APPBAR_TEMPCHAT_KEY, APPBAR_TEMPCHAT_DEFAULT);
 	return (
 		<div className="settings-panel">
 			<div className="settings-head">

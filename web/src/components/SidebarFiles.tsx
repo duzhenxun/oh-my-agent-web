@@ -4,7 +4,7 @@ import { FilesSearchInput, FilesSearchResults, FilesToolbar, GitBranchTag } from
 import { FilesRootSelect } from "./FilesRootSelect.tsx";
 import { useFileSearch } from "../use-file-search.ts";
 import { useGitBranch } from "../use-git-branch.ts";
-import { useAppState } from "../store.ts";
+import { useAppSelector } from "../store.ts";
 import { useT } from "../use-language.ts";
 
 /**
@@ -70,7 +70,7 @@ export function SidebarFiles({
 	 * 当前会话在跑没有：跑完（true → false）时让文件树重拉一次 git 状态 ——
 	 * 智能体刚改过的文件，右侧的 M 得自动冒出来，不用手动点刷新。
 	 */
-	const { snapshot } = useAppState();
+	const snapshot = useAppSelector((state) => state.snapshot);
 	const running =
 		snapshot !== null &&
 		snapshot.running.status !== "idle" &&

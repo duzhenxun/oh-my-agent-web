@@ -170,7 +170,7 @@ const sender = createSender({
 	},
 });
 
-const piSessions = createPiSessionsProvider({ agentDir: piAgentDir(), dataDir: config.dataDir, logger });
+const piSessions = createPiSessionsProvider({ agentDir: piAgentDir(), dataDir: config.dataDir });
 
 /** 引擎接线：注册表 + codex 客户端 + 每个引擎的会话来源（engine/wiring.ts） */
 const engineWiring = createEngineWiring({

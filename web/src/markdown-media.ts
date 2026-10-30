@@ -12,6 +12,26 @@
  * 规则与「不动」的反例都写在它上面。
  */
 
+/**
+ * 回退一层 URL 编码（纯函数）。
+ *
+ * markdown 解析器会把目的地里的非 ASCII 字符百分号编码（`映客活动数据` → `%E6%98%A0%E5%AE%A2…`），
+ * 于是「作者写的路径」和「组件拿到的 src」长得不一样，不处理会连锁出错：
+ *   1. `imageSrcOf` 再编码一次 → `/api/files/raw?path=%25E6…`，服务端解一次得到的仍是编码串，
+ *      直接报「路径不存在或无法解析」；
+ *   2. 图加载失败回退成路径按钮时，用户看到的是 `%E6%98%A0…` 而不是中文。
+ * 所以统一「先解码一次再当真值用」；不是合法编码串就原样返回。
+ */
+export function decodePathOnce(value: string): string {
+	if (!value.includes("%")) return value;
+	try {
+		const decoded = decodeURIComponent(value);
+		return decoded === value ? value : decoded;
+	} catch {
+		return value;
+	}
+}
+
 /** 纯函数：把 markdown 的 img src 变成可用的地址（返回 null = 不显示） */
 export function imageSrcOf(src: string): string | null {
 	const value = src.trim();
@@ -25,7 +45,8 @@ export function imageSrcOf(src: string): string | null {
 		: value;
 	if (/^(javascript|data|vbscript):/i.test(local)) return null;
 	// 绝对路径或相对路径 → 交给服务端在工作区内解析
-	return `/api/files/raw?path=${encodeURIComponent(local.replace(/^\.\//, ""))}`;
+	// 先解一层：解析器已经把非 ASCII 编码过了，不再解就会变成双重编码（见 decodePathOnce）
+	return `/api/files/raw?path=${encodeURIComponent(decodePathOnce(local).replace(/^\.\//, ""))}`;
 }
 
 /**
@@ -129,8 +150,66 @@ export function promoteImagePaths(text: string): string {
 			fence = fenceMark[1]!;
 			return line;
 		}
+		// 表格行（GFM）不提升：把单元格里的行内代码变成图片会把表格结构拆坏，
+		// 而且表格里的路径多半是「给人看的简称」（如 `a/.../x.png`），本来就不是真实路径
+		if (/^\s*\|/.test(line)) return line;
 		return promoteLine(line);
 	});
+	return out.join("\n");
+}
+
+/** `![alt](<path>)` 这类图片 markdown 的整行匹配（一段里可以连着好几个） */
+const IMAGE_ONLY_BLOCK = /^\s*(?:!\[[^\]]*\]\(\s*<?[^)\s>]+>?\s*\)\s*)+$/;
+
+/**
+ * 纯函数：把「连续若千个只有图片的段落」并成一段。
+ *
+ * 为什么需要：模型出图时习惯每张图占一行、段落之间空一行，于是 markdown 会渲染成多个 `<p>`；
+ * 而 `<p>` 是块级容器，图就必然一张一行。合并成一段后，渲染层（`Markdown.tsx` 的 `p`）
+ * 能把它换成 flex 容器，小图就能自动多列并排（样式见 `styles/markdown.css` 的 `.md-img-grid`）。
+ *
+ * 边界：代码块（fence）内的内容一律不动；列表项/引用里的图不合并（它们的缩进/前缀不匹配）。
+ */
+export function groupImageBlocks(text: string): string {
+	if (!new RegExp(IMAGE_SUFFIX, "i").test(text)) return text;
+	const out: string[] = [];
+	let fence: string | null = null;
+	let run: string[] = [];
+	/** 收尾一段图片：补一个空行，保证不会和后面的正文粘成同一段（文末那次不补） */
+	const flush = (atEnd = false) => {
+		if (run.length === 0) return;
+		out.push(run.join("\n"));
+		if (!atEnd) out.push("");
+		run = [];
+	};
+	for (const line of text.split("\n")) {
+		const fenceMark = /^\s*(```|~~~)/.exec(line);
+		if (fence !== null) {
+			flush();
+			if (fenceMark) fence = null;
+			out.push(line);
+			continue;
+		}
+		if (fenceMark) {
+			flush();
+			fence = fenceMark[1]!;
+			out.push(line);
+			continue;
+		}
+		// 空行：正在收集图片时直接吞掉（它就是我们要合并掉的那个段落分隔）
+		if (line.trim() === "") {
+			if (run.length > 0) continue;
+			out.push(line);
+			continue;
+		}
+		if (IMAGE_ONLY_BLOCK.test(line)) {
+			run.push(line.trim());
+			continue;
+		}
+		flush();
+		out.push(line);
+	}
+	flush(true);
 	return out.join("\n");
 }
 

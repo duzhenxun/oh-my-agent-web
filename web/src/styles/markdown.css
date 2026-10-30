@@ -58,6 +58,27 @@
 	font-size: 14px;
 }
 
+/* 纯图片段落：小图并排换行（段落由 Markdown.tsx 的 `p` 换成的 flex 容器）
+   宽度仍由每张图自己的上限决定（JS 写入的内联 max-width），这里只负责「能排在一行就排」 */
+.md-img-grid {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-start;
+	gap: 8px;
+	margin: 8px 0;
+}
+
+.md-img-grid .md-img-btn {
+	margin: 0;
+	flex: 0 0 auto;
+}
+
+/* 两张以上才压低高度：单图段落不能因为进了 grid 就变小（长图/海报会比原来矮一大截） */
+.md-img-grid:has(.md-img-btn + .md-img-btn) .md-img {
+	max-height: 220px;
+	width: auto;
+}
+
 /* mermaid 图（ADR-0029）：右上有 SVG / 源代码 切换，失败时显示报错而不是空白 */
 .mermaid-block {
 	margin: 10px 0;

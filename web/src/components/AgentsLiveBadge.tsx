@@ -10,7 +10,7 @@
  * （`subagent-view.ts` 的同一套函数），不会出现「顶栏说 2 分钟、面板说 1 分钟」。
  */
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { useAppState } from "../store.ts";
+import { useAppSelector } from "../store.ts";
 import { interruptSubagent } from "../ws.ts";
 import { currentMobileShell } from "../mobile-shell-dom.ts";
 import { belowPopoverAnchor } from "../popover-anchor.ts";
@@ -39,7 +39,7 @@ export function AgentsLiveBadge({
 	turnStartedAt: number | null;
 }) {
 	const t = useT();
-	const { snapshot } = useAppState();
+	const snapshot = useAppSelector((state) => state.snapshot);
 	/** 金额显不显示跟着本机偏好（手机默认不显示，见 use-show-cost.ts） */
 	const showCost = useShowCost();
 	const [open, setOpen] = useState(false);

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { basename, normalizeCwd } from "../path-utils.ts";
 import type { ProjectPrefs } from "../types.ts";
 import { sortProjects } from "../project-sort.ts";
-import { useAppState } from "../store.ts";
+import { useAppSelector } from "../store.ts";
 import { useGitBranch } from "../use-git-branch.ts";
 import { BranchIcon } from "./BranchIcon.tsx";
 import { FolderIcon, FolderPlusIcon } from "./FolderIcon.tsx";
@@ -62,7 +62,7 @@ export function NewSessionScope({
 	onEphemeralChange: (ephemeral: boolean) => void;
 }) {
 	const t = useT();
-	const { snapshot } = useAppState();
+	const snapshot = useAppSelector((state) => state.snapshot);
 	const projectPrefs: ProjectPrefs = snapshot?.settings.projectPrefs ?? { order: [], pinned: [], aliases: {} };
 	// 跟侧栏同一份排序 + 别名：下拉框里看到的顺序和名字，跟左边那一栏一字不差
 	const projects = sortProjects(snapshot?.piProjects ?? [], projectPrefs).map((project) => ({

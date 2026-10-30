@@ -8,7 +8,7 @@
  * 模板的读写走 RPC（与「模型 / 队列」同一套纪律：会话状态进快照，按需的配置操作走上行请求）。
  */
 import { useEffect, useRef, useState } from "react";
-import { useAppState } from "../store.ts";
+import { useAppSelector } from "../store.ts";
 import { deleteSubagentProfile, saveSubagentProfile, setSubagentSettings } from "../ws.ts";
 import type { SubagentProfileView } from "../types.ts";
 import { AgentsProfileForm } from "./AgentsProfileForm.tsx";
@@ -26,7 +26,7 @@ function clampListWidth(width: number): number {
 
 export function AgentsPanel() {
 	const t = useT();
-	const { snapshot } = useAppState();
+	const snapshot = useAppSelector((state) => state.snapshot);
 	const [editing, setEditing] = useState<SubagentProfileView | null>(null);
 	/** 两栏之间的分隔线可以左右拖：模板名长短差别很大，固定宽度要么挤要么浪费 */
 	const [listWidth, setListWidth] = useState(() => {

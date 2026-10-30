@@ -10,7 +10,7 @@
  */
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { belowPopoverAnchor, centeredPopoverAnchor } from "../popover-anchor.ts";
-import { useAppState } from "../store.ts";
+import { useAppSelector } from "../store.ts";
 import { setEngine } from "../ws.ts";
 import type { EngineOption } from "../types.ts";
 import { useT } from "../use-language.ts";
@@ -98,8 +98,7 @@ function versionLabelOf(engine: EngineOption, isActive: boolean, live: string | 
  */
 export function EnginePicker({ placement = "appbar" }: { placement?: "appbar" | "statusbar" } = {}) {
 	const t = useT();
-	const state = useAppState();
-	const snapshot = state.snapshot;
+	const snapshot = useAppSelector((state) => state.snapshot);
 	const [open, setOpen] = useState(false);
 	const box = useRef<HTMLDivElement | null>(null);
 	const triggerRef = useRef<HTMLButtonElement | null>(null);

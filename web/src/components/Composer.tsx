@@ -288,7 +288,20 @@ export function Composer({
 	const [slashActive, setSlashActive] = useState(0);
 	/** 面板要列几行：命令模式下是命令，技能模式下是技能 */
 	const slashCount = slashSkills === null ? slashCommands.length : slashSkills.length;
-	const slashOpen = slashInput !== null && (slashCount > 0 || slashSkills !== null);
+	/**
+	 * 这一段斜杠输入**已经被关掉**（Esc / 点外面）。
+	 *
+	 * 为什么不是「清空草稿」：Esc 现在挂在 document 上（用户点走之后再按 Esc 一样得关，见下面的
+	 * 关闭 effect），在 document 上按 Esc 就把用户打的字清掉太粗暴；而且 `@` 面板一直是靠
+	 * `mentionOff` 记账关的（文本不动），两面板行为该一致。
+	 * 记账在「草稿不再是斜杠输入」时作废：删掉那个 `/`、或补全成 `/name ` 之后，下次打 `/` 照常弹。
+	 */
+	const [slashDismissed, setSlashDismissed] = useState(false);
+	const slashIdle = slashInput === null;
+	useEffect(() => {
+		if (slashIdle) setSlashDismissed(false);
+	}, [slashIdle]);
+	const slashOpen = !slashDismissed && slashInput !== null && (slashCount > 0 || slashSkills !== null);
 	useEffect(() => setSlashActive(0), [slashInput?.mode, slashInput?.term]);
 
 	/** 补全一条命令：把 `/name ` 填进输入框，光标停在参数位置 */
@@ -350,6 +363,47 @@ export function Composer({
 	/** 高亮那条（结果变少时夹一下，别让 ↑↓ 停在已经不存在的那一行） */
 	const mentionIndex = Math.min(mentionActive, Math.max(0, mentionRows.length - 1));
 	useEffect(() => setMentionActive(0), [mention?.term, mention?.start]);
+	const mentionStart = mention === null ? null : mention.start;
+
+	/**
+	 * 两个候选面板（`/` 命令、`@` 提及）的「点外面 / Esc 关闭」，都挂在 document 上。
+	 *
+	 * 为什么必须挂 document：面板开不开**只由草稿推导**（`slashOpen` / `mention` 都是算出来的），
+	 * 用户一点到输入框外面，textarea 就失焦 —— 原来只写在 textarea `onKeyDown` 里的 Esc
+	 * 从此再也不会触发，面板赖在屏幕上关不掉（只能点回输入框再按 Esc，或者手动删掉那个 `/`）。
+	 * 这和本仓库其它弹层的做法一致：`EnginePicker` / `ModelPicker` / `StatusBar` 都是 document 级。
+	 *
+	 * 只接管 Escape，不接管 ↑↓ / Tab / Enter —— 焦点在别处时那些键是页面自己的。
+	 */
+	useEffect(() => {
+		if (!slashOpen && mentionStart === null) return;
+		const close = () => {
+			if (mentionStart !== null) setMentionOff(mentionStart);
+			if (!slashIdle) setSlashDismissed(true);
+		};
+		const isOutside = (target: EventTarget | null) => {
+			if (!(target instanceof Element)) return false;
+			// 面板自己（提及面板的根节点也带 `slash-panel`）：先让它自己的 onMouseDown 把选中处理掉
+			if (target.closest(".slash-panel")) return false;
+			// 输入框 / 发送按钮：点回输入框不算「关掉」，否则刚打完 `/` 点一下框面板就没了
+			return !composerRef.current?.contains(target);
+		};
+		const onPointerDown = (event: PointerEvent) => {
+			if (isOutside(event.target)) close();
+		};
+		const onKeyDown = (event: globalThis.KeyboardEvent) => {
+			// 输入法组字中的 Esc 是在取消候选词，不是关面板
+			if (event.key !== "Escape" || event.isComposing) return;
+			event.preventDefault();
+			close();
+		};
+		document.addEventListener("pointerdown", onPointerDown);
+		document.addEventListener("keydown", onKeyDown);
+		return () => {
+			document.removeEventListener("pointerdown", onPointerDown);
+			document.removeEventListener("keydown", onKeyDown);
+		};
+	}, [slashOpen, slashIdle, mentionStart]);
 
 	/**
 	 * 把一条路径填进草稿。
@@ -852,8 +906,9 @@ export function Composer({
 								return;
 							}
 							if (event.key === "Escape") {
+								// 只关面板、不动已经打的字（和 `@` 面板一致，见 slashDismissed 的注释）
 								event.preventDefault();
-								setDraft("");
+								setSlashDismissed(true);
 								return;
 							}
 						}

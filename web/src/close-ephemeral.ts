@@ -6,6 +6,7 @@
  * 所以提示里直接写明「想留下请先保存为正式对话」，别让人点错了才发现找不回来。
  */
 import { forgetCachedMessages } from "./session-cache.ts";
+import { forgetDraft } from "./store.ts";
 import { closeEphemeral } from "./ws.ts";
 
 export function closeEphemeralChat(conversationId: string, title: string): void {
@@ -16,5 +17,7 @@ export function closeEphemeralChat(conversationId: string, title: string): void 
 	);
 	if (!ok) return;
 	void forgetCachedMessages(conversationId); // 本地缓存的正文也一并删掉
+	// 这条会话彻底没了，它那一格草稿也丢掉（不丢的话也再没有人能把它写回输入框）
+	forgetDraft(conversationId);
 	closeEphemeral(conversationId);
 }

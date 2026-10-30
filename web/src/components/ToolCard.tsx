@@ -7,6 +7,7 @@ import { TOOL_OPEN_KEY } from "../ui-prefs.ts";
 import { useStoredBool } from "../use-stored-bool.ts";
 import { CopyButton } from "./CopyButton.tsx";
 import { tNow, useT } from "../use-language.ts";
+import { describeTool, ToolKindIcon } from "./tool-activity.tsx";
 
 const STATUS_LABEL: Record<ToolBlock["status"], string> = { running: "运行中…", ok: "完成", failed: "失败" };
 
@@ -48,21 +49,33 @@ function fullTextOf(block: ToolBlock): string | null {
 export function argsPreview(raw: string): string | null {
 	const trimmed = raw.trim();
 	if (trimmed === "") return null;
+	/**
+	 * 一律压成**一行**：
+	 *   - 多行命令（`python3 - <<'PY'` 那种 heredoc）只取第一行，后头的脚本体对「它在跑什么」没有帮助，
+	 *     摊在一行里还会被 CSS 省略号从中间切断，看着像乱码（用户 2026-10-30 的截图就是这个）；
+	 *   - 多余空白合并：换行/缩进在单行里只会变成一串突兀的空格。
+	 * 硬截 120 字：剩下的交给 CSS 省略号，但 DOM 里不必扛一整段脚本。
+	 */
+	const oneLine = (text: string): string => {
+		const first = text.split(/\r?\n/, 1)[0] ?? "";
+		const flat = first.replace(/\s+/g, " ").trim();
+		return flat.length > 120 ? `${flat.slice(0, 120)}…` : flat;
+	};
 	try {
 		const parsed: unknown = JSON.parse(trimmed);
-		if (typeof parsed === "string") return parsed;
+		if (typeof parsed === "string") return oneLine(parsed);
 		if (parsed && typeof parsed === "object") {
 			const record = parsed as Record<string, unknown>;
 			for (const key of ["command", "path", "pattern", "query"]) {
 				const value = record[key];
-				if (typeof value === "string" && value.trim() !== "") return value;
+				if (typeof value === "string" && value.trim() !== "") return oneLine(value);
 			}
-			return JSON.stringify(parsed);
+			return oneLine(JSON.stringify(parsed));
 		}
 	} catch {
 		// 不是 JSON（或已被摘要截断）→ 原样显示
 	}
-	return trimmed;
+	return oneLine(trimmed);
 }
 
 /**
@@ -136,18 +149,28 @@ function ToolImage({ block }: { block: ToolBlock }) {
  */
 export function ToolCard({ block }: { block: ToolBlock }) {
 	/**
-	 * 默认展开的优先级：**本卡手动点过** → 跑着的卡 → 「设置 → 界面 → 过程 → 默认展开工具卡」。
-	 * 跑着的卡始终默认展开（能看实时输出），这点不受偏好影响；跑完就回到偏好决定的状态。
+	 * 默认展开的优先级：**本卡手动点过** → 「设置 → 界面 → 过程 → 默认展开工具卡」。
+	 *
+	 * 跑着的卡**也**默认收起（用户 2026-10-30：「工具调用收起来的就一行，需要时再点开看」）：
+	 * 以前跑着就强制展开，一轮里连着调几个工具，对话区就被刷成一片输出框，回答反而找不到。
+	 * 现在收起态只有一行「名字 + 参数摘要 + 状态」，想看实时输出点一下——
+	 * 「这一轮在跑什么」由末尾那行实时动作提示（LiveActivity）兜底，不用靠铺开输出。
 	 */
 	const [manualOpen, setManualOpen] = useState<boolean | null>(null);
 	const [defaultOpen] = useStoredBool(TOOL_OPEN_KEY, false);
-	const open = manualOpen ?? (block.status === "running" || defaultOpen);
+	const open = manualOpen ?? defaultOpen;
 	/**
 	 * 输出框自己跟着进度往下走：跑着的卡里字一直在长，滚动条却停在原处 —— 看到的永远是开头那几行，
 	 * 得手动拖才能看到当下在干什么。这里复用摘要区的粘底逻辑（同样不会抢用户的滚动）。
 	 * 跑完就关掉（active=false）：展开一条旧记录是想从头读，不该直接跳到尾巴。
 	 */
 	const outputScroll = useStickToBottom(String(block.outputExcerpt.length), null, block.status === "running");
+	/**
+	 * 收起的那一行说人话：「已读取 weather.py」「已运行 python3 - <<'PY' …」—— 和实时那行同一套说法
+	 * （tool-activity.tsx）、同一枚图标。以前这里摆的是引擎的工具名（`read` / `bash`）+ JSON 参数，
+	 * 回看旧记录时得先懂那套黑话才读得懂。
+	 */
+	const info = describeTool(block.name, block.argsSummary);
 	return (
 		<div className={`tool tool-${block.status}`}>
 			<details
@@ -158,9 +181,13 @@ export function ToolCard({ block }: { block: ToolBlock }) {
 					if (next !== open) setManualOpen(next);
 				}}
 			>
-				<summary className="tool-head">
-					<span className="tool-name">{block.name}</span>
-					<span className="tool-args">{block.argsSummary}</span>
+				{/* 原始工具名留作 title：想确认到底调的是哪个工具时悬停就能看到，但不再占一行位置 */}
+				<summary className="tool-head" title={block.name}>
+					<ToolKindIcon kind={info.kind} className="tool-icon" />
+					<span className="tool-name">{info.done}</span>
+					{/* 行尾那截参数（命令 / 查询词）单行省略。读文件这类 detail 为 null ——
+					     文件名已经在上面那句里了，再摆一遍全路径只是噪声；完整参数在点开后的「命令」块里 */}
+					{info.detail ? <span className="tool-args">{info.detail}</span> : null}
 					<span className={`tool-status tool-status-${block.status}`}>
 						{/* 转圈放在文字前面：一眼看到「还在动」，而不只是读到一个灰字 */}
 						{block.status === "running" ? <span className="tool-spinner" aria-hidden="true" /> : null}

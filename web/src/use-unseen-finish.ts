@@ -9,7 +9,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { Snapshot } from "./types.ts";
 import { getMarks, observeFrame, subscribeMarks, type UnseenMarks } from "./session-unseen.ts";
-import { useAppState } from "./store.ts";
+import { useAppSelector } from "./store.ts";
 
 /** 标记表（订阅式）：侧栏据此在会话行 / 项目行上画圆点 */
 export function useUnseenMarks(): UnseenMarks {
@@ -37,7 +37,7 @@ function runningIds(snapshot: Snapshot): string[] {
 
 /** 在 App 里调一次即可 */
 export function useUnseenFinishWatch(): void {
-	const { snapshot } = useAppState();
+	const snapshot = useAppSelector((state) => state.snapshot);
 	const [visible, setVisible] = useState(documentVisible);
 	const prevRunning = useRef<string[]>([]);
 

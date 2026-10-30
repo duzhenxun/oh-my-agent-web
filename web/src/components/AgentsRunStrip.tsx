@@ -17,7 +17,7 @@
  * 先开的那几张跑完就“不见了”，用户会以为记录被删了。要看整轮的账，就得一条不落。
  */
 import { useEffect, useState } from "react";
-import { useAppState } from "../store.ts";
+import { useAppSelector } from "../store.ts";
 import { compact, costText, countsLabel, durationMs, isActive, totalsOf } from "../subagent-view.tsx";
 import type { SubagentRunView } from "../types.ts";
 import { AgentsRunCard } from "./AgentsRunCard.tsx";
@@ -29,7 +29,7 @@ const OPEN_KEY = "agent-web:agents-strip-open";
 
 export function AgentsRunStrip({ runs }: { runs: readonly SubagentRunView[] }) {
 	const t = useT();
-	const { snapshot } = useAppState();
+	const snapshot = useAppSelector((state) => state.snapshot);
 	const [now, setNow] = useState(() => Date.now());
 	/** 金额显不显示跟着本机偏好（手机默认不显示，见 use-show-cost.ts） */
 	const showCost = useShowCost();

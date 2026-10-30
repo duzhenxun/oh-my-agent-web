@@ -35,6 +35,7 @@ import { codexMultiAgentConfig, codexSubagentGuidance, createCodexSubagents } fr
 import { registerCodexApprovals } from "./codex-approvals.js";
 import { sanitizeHistoricalActions } from "../markers/actions.js";
 import { suggestionGuidance } from "./suggestion-guidance.js";
+import { NARRATE_GUIDANCE } from "./narrate-guidance.js";
 import { ensureCodexProject } from "./codex-sessions.js";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -402,7 +403,9 @@ export function createCodexEngine(options: CodexEngineOptions = {}): CodexEngine
 				// 「下一步建议」的写法一直带（ADR-0022，否则 codex 永远出不了建议按钮）；
 				// 开了子代理就把委派说明接在后面。两者都是 **thread 级**覆盖，
 				// 只对这条新会话生效 —— 不写用户的 `~/.codex/config.toml`，Codex Desktop 不受影响。
+				// 「动手前先说话」放在最前面：codex 自己的提示词也会讲，但会随版本漂移，这里兜一层。
 				developerInstructions: [
+					NARRATE_GUIDANCE,
 					suggestionGuidance(options.thinkCount?.() ?? null),
 					codexSubagentGuidance({ enabled: plan.enabled, profiles: plan.profiles }),
 				]

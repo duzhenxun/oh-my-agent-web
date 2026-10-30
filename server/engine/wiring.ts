@@ -24,6 +24,7 @@ import { createCodexClient } from "./codex-transport.js";
 import { createDshClient } from "./dsh-transport.js";
 import { writeDshSuggestionPatch } from "./dsh-prompt-patch.js";
 import { suggestionGuidance } from "./suggestion-guidance.js";
+import { NARRATE_GUIDANCE } from "./narrate-guidance.js";
 import { createDshSessionsProvider } from "./dsh-sessions.js";
 import { createOpencodeSessionsProvider } from "./opencode-sessions.js";
 import { readOpencodeSessionDirs } from "./opencode-projects.js";
@@ -123,13 +124,13 @@ export function createEngineWiring(options: {
 	 */
 	const patchDir = options.dshPatchDir;
 	/**
-	 * 「下一步建议」的写法：dsh 只能靠 patch 叠加层带进去（ACP 的 session/new 没有系统提示字段）。
-	 * 写在工作台自己的临时目录，**不**混进用户的 `dsh-patches`；排在最前面，
-	 * 用户自己写的 patch 仍有最终决定权。
+	 * 「下一步建议」+「动手前先说话」：dsh 只能靠 patch 叠加层带进去
+	 * （ACP 的 session/new 没有系统提示字段）。写在工作台自己的临时目录，
+	 * **不**混进用户的 `dsh-patches`；排在最前面，用户自己写的 patch 仍有最终决定权。
 	 */
 	const suggestionPatchFile = writeDshSuggestionPatch(
 		join(tmpdir(), "oh-my-agent-web"),
-		suggestionGuidance(options.thinkCount?.() ?? null),
+		[suggestionGuidance(options.thinkCount?.() ?? null), NARRATE_GUIDANCE].join("\n\n"),
 	);
 	const patchFiles = [
 		suggestionPatchFile,

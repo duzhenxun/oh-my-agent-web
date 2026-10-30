@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useAppState } from "../store.ts";
+import { useAppSelector } from "../store.ts";
 import { isModelEnabled } from "../model-enabled.ts";
 import { deleteProvider, requestProviders, setProviderEnabled } from "../ws.ts";
 import type { ProviderView } from "../types.ts";
@@ -22,7 +22,7 @@ import { useT } from "../use-language.ts";
  */
 export function ProvidersPanel() {
 	const t = useT();
-	const { snapshot } = useAppState();
+	const snapshot = useAppSelector((state) => state.snapshot);
 	// provider 表是 pi 独有的（models-store.json / auth.json）：别的引擎自己管模型，
 	// 这里不能拿 pi 的配置去冒充「当前引擎的模型」。
 	const piOwned = (snapshot?.engine ?? "pi") === "pi";

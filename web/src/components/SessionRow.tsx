@@ -161,10 +161,19 @@ export function SessionRow({
 		if (next !== "" && next !== title) onRename(next);
 	};
 
+	/**
+	 * 这一行要不要画成「亮着」：多选中的一条，或者**菜单正弹在它身上**。
+	 *
+	 * 右键不再把 id 塞进选区（那会把顶部「已选 N 条 · 彻底删除」那条横幅叫出来，
+	 * 见 `Sidebar` 的 `onOpenMenu`），但打开菜单时总得看出指的是哪一行 —— 于是原来靠
+	 * `selected` 画的高亮，这里补上 `menuPoint !== null`，右键和「⋯」两条入口都覆盖到。
+	 */
+	const highlighted = selected || menuPoint !== null;
+
 	return (
 		<div
 			ref={rowRef}
-			className={`pi-row-wrap${active ? " pi-row-wrap-active" : ""}${selected ? " pi-row-wrap-selected" : ""}${running ? " pi-row-wrap-running" : ""}${dragOver ? " pi-row-drag-over" : ""}`}
+			className={`pi-row-wrap${active ? " pi-row-wrap-active" : ""}${highlighted ? " pi-row-wrap-selected" : ""}${running ? " pi-row-wrap-running" : ""}${dragOver ? " pi-row-drag-over" : ""}`}
 			draggable={draggable}
 			onDragStart={(event) => {
 				// 设一个 dataTransfer 类型：否则部分浏览器拖拽起不来，drop 也收不到内容
@@ -213,7 +222,7 @@ export function SessionRow({
 		>
 			<button
 				type="button"
-				className={`pi-row${active ? " pi-row-active" : ""}${selected ? " pi-row-selected" : ""}${pinned ? " pi-row-pinned" : ""}`}
+				className={`pi-row${active ? " pi-row-active" : ""}${highlighted ? " pi-row-selected" : ""}${pinned ? " pi-row-pinned" : ""}`}
 				onClick={(event) => onSwitch({ shift: event.shiftKey, toggle: event.metaKey || event.ctrlKey })}
 				// 时间不进布局，只在这个悬停提示里（鼠标停一下照样能看到「3小时」）
 				title={`${session.cwd}\n${session.id}\n最后活动：${relativeTime(session.updatedAt)}`}

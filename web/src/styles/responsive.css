@@ -194,17 +194,12 @@
  * 以前是 14.5px + 8px 间距 + 一长串「（点击展开）」，窄屏上按 span 折成两行，
  * 于是「4 段思考」被拆成「4 段思 / 考」—— 看着就像排版坏了。
  * 处理：收紧字号/间距，并收掉「（点击展开）」那句（三角箭头本身已经表示可展开）。 */
+/* 手机上只收紧字号/间距；水平内边距必须跟桌面一致（6px），否则不会跟基类的
+ * margin-left: -6px 抵消，整行会比正文往右缩出去。 */
 .is-mobile-shell .msg-tools-toggle {
 	gap: 6px;
 	font-size: 14px;
-	padding: 5px 10px;
-}
-
-/* 手机上「（点击展开）」那句换成一个小箭头：
- * 左侧那个三角是桌面版的展开指示，手机上和右侧箭头同时出现就是两个箭头，所以只留右边这个
- * （末尾位置更像手风琴的惯例，也让一行文字从左边读起）。 */
-.is-mobile-shell .msg-process-hint {
-	display: none;
+	padding: 2px 6px;
 }
 
 .is-mobile-shell .msg-tools-caret {
@@ -648,11 +643,10 @@
 }
 
 /* 尾注上的「子代理」那一块：手机上装不下两组完整数字
-   （主对话 in/out/cache/$ + 子代理 in/out/$ 会把时间挤出去）。
-   只留「🤖 个数」与花费 —— 那两样才是「还多花了多少钱」的答案，token 明细在 title 里。 */
-.is-mobile-shell .msg-usage-sub .msg-usage-item {
-	display: none;
-}
+   （主对话的金额 + 子代理 in/out/$ 会把时间挤出去）。
+   **不再用 CSS 藏**：in/out 现在本来就跟着「token 用量」开关走（默认关，见 MessageList 的
+   usageItemsOf），默认只剩「🤖 个数 + 金额」——这两个就是要留的。
+   原先这里的 `.msg-usage-item { display: none }` 会连金额一起藏掉，属于又一层叠在一起的旧规则。 */
 
 /* 窄屏桌面（还没进手机壳，但顶栏已经排不下）：
    入口从「模型 / 技能 / 推送 / 插件 / MCP / 设置」六个带文案会顶出视口

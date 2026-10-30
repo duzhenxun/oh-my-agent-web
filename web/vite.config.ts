@@ -118,6 +118,82 @@ function devAuthGate(): Plugin {
 	};
 }
 
+/**
+ * 第三方依赖的分包表（`build.rolldownOptions.output.codeSplitting.groups`）。
+ *
+ * 为什么拆：这三坨（React 运行时 / markdown 渲染栈 / 代码高亮）加起来占了入口 chunk 的
+ * 四分之三，而它们只在 `npm update` 时变；应用代码（`web/src`，本仓库天天改）才是真正
+ * 每次发布都变的。拆开之后改了业务代码，用户只需要重下小的那份，vendor 走 304 / 强缓存。
+ *
+ * 为什么不写一条 `/node_modules/` 兜底组：那会把**只该懒加载**的东西并进首屏 ——
+ * mermaid 的 ELK 布局（1.4MB）、cytoscape、pi 侧的 languageserver 都是 `import()` 进来的，
+ * rolldown 的 group 不区分静态 / 动态引用，一旦被 `/node_modules/` 捕获就直接提前拉取。
+ * 所以这里只按白名单点四个包（家族），其余保持自动分包。
+ *
+ * `priority` 必须显式给，而且**不能只跟大组相等** —— 实测（vite 8.3.5 / rolldown 1.2.14）：
+ * `highlight` 写成和 `markdown` 一样的 20，highlight.js 会被 markdown 组吞进去（因为
+ * rehype-highlight 静态 import 了它），最终只剩一个 322KB 的 markdown chunk；
+ * 抬到 25 才分出 markdown 160KB + highlight 162KB。`react` 同理要压在 markdown 之上。
+ * 排查手法：`ls -S web/dist/assets/*.js` 看 chunk 大小没变化，就是分组没生效。
+ */
+
+/** markdown 渲染栈的包名家族（写死 80 多个包名会随依赖升级漂移，按前缀 + 单例匹配） */
+const MARKDOWN_FAMILY = [
+	"react-markdown",
+	"remark-[a-z-]+",
+	"rehype-[a-z-]+",
+	"mdast-[a-z-]+",
+	"hast-[a-z-]+",
+	"micromark[a-z-]*",
+	"unist-[a-z-]+",
+	"vfile[a-z-]*",
+	"unified",
+	"bail",
+	"ccount",
+	"character-entities[a-z0-9-]*",
+	"character-reference-invalid",
+	"comma-separated-tokens",
+	"space-separated-tokens",
+	"decode-named-character-reference",
+	"dequal",
+	"devlop",
+	"escape-string-regexp",
+	"estree-util-is-identifier-name",
+	"html-url-attributes",
+	"inline-style-parser",
+	"is-alphabetical",
+	"is-alphanumerical",
+	"is-decimal",
+	"is-hexadecimal",
+	"is-plain-obj",
+	"longest-streak",
+	"markdown-table",
+	"parse-entities",
+	"property-information",
+	"stringify-entities",
+	"style-to-js",
+	"style-to-object",
+	"trim-lines",
+	"trough",
+	"zwitch",
+];
+
+/** 拼成 `node_modules/(?:a|b|c)/` —— 包名前缀，注意别漏掉结尾的分隔符，否则 `react` 会吃掉 `react-markdown` */
+function groupTest(names: string[]): RegExp {
+	return new RegExp(`node_modules[\\\\/](?:${names.join("|")})[\\\\/]`);
+}
+
+const VENDOR_GROUPS = [
+	{ name: "react", test: groupTest(["react", "react-dom", "scheduler"]), priority: 30 },
+	{ name: "markdown", test: groupTest(MARKDOWN_FAMILY), priority: 20 },
+	// lowlight / fault 是 rehype-highlight 的壳，真正的语言实现在 highlight.js 里。
+	// priority 25 > markdown 的 20：否则会被 markdown 组连人带包一起吞掉（见上方注）
+	{ name: "highlight", test: groupTest(["highlight\\.js", "lowlight", "fault"]), priority: 25 },
+	// 终端（编辑器/日志面板）：`node_modules/@xterm/` 自身就是 scope 目录，匹配到它即覆盖 @xterm/*。
+	// 注意它并不小（332KB / gz 83KB 且会被 index.html 预加载）—— 这里拆它只为“改业务代码不用重下”
+	{ name: "xterm", test: groupTest(["@xterm"]), priority: 20 },
+];
+
 export default defineConfig({
 	root: "web",
 	// mermaidSlim 只在 build 生效：把用不到的图型和 elkjs/cytoscape/katex 换成空壳（ADR-0040）
@@ -126,6 +202,21 @@ export default defineConfig({
 	build: {
 		outDir: "dist",
 		emptyOutDir: true,
+		/**
+		 * rolldown 默认在 chunk > 500 kB 时打一条警告。本项目「超线」的三个文件都已查过来源：
+		 *   - `elk-*.js`（1.4MB / gz 438KB）：mermaid 12 的默认布局，**动态 import**，
+		 *     只有渲染 flowchart/class/state/er 才拉，且 ADR-0040 写明了不能裁；
+		 *   - `chunk-*.js`（614KB / gz 122KB）：pi 侧 `vscode-languageserver-protocol`，独立 chunk；
+		 *   - 入口（拆包前 1.4MB / gz 417KB）：现在由下面的 vendor 分组拆走，剩应用代码。
+		 * 即「本来就该这么大」，不是重复打包（代码高亮早就只注册了 14 种语言，见 FilePreview.tsx）。
+		 * 阈值抬到 1.6MB：将来真有东西误入（比如把 mermaid 全量塞进入口）依然会叫。
+		 */
+		chunkSizeWarningLimit: 1600,
+		rolldownOptions: {
+			output: {
+				codeSplitting: { groups: VENDOR_GROUPS },
+			},
+		},
 	},
 	server: {
 		port: 25257,

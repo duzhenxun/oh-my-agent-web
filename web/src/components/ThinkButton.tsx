@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { currentMobileShell } from "../mobile-shell-dom.ts";
-import { useAppState } from "../store.ts";
+import { useAppSelector } from "../store.ts";
 import { refreshActions } from "../ws.ts";
 import { useT } from "../use-language.ts";
 
@@ -21,7 +21,7 @@ const GUARD_SLACK_SEC = 5;
  */
 export function ThinkButton({ conversationId, running }: { conversationId: string | null; running: boolean }) {
 	const t = useT();
-	const { snapshot } = useAppState();
+	const snapshot = useAppSelector((state) => state.snapshot);
 	// 条数来自设置面板（1–5）；手机上再压到 3 条 —— 一排按钮放不下更多
 	const configured = snapshot?.settings.thinkCount ?? 5;
 	const count = currentMobileShell() ? Math.min(3, configured) : configured;

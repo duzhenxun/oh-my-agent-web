@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { normalizeCwd } from "../path-utils.ts";
 import { buildProjectGroups } from "../project-groups.ts";
 import { useSplitHeight } from "../use-split-height.ts";
-import { useAppState } from "../store.ts";
+import { useAppSelector } from "../store.ts";
 import type { ConversationMeta, PiProject, PiSessionSummary, ProjectPrefs } from "../types.ts";
 import { reorderProjects, sortProjects } from "../project-sort.ts";
 import { moveSession, renameSession, setSettings, switchConversation } from "../ws.ts";
@@ -47,7 +47,7 @@ import { pruneSelection, rangeSelection, toggleSelection } from "../session-sele
  * 「本地刚建、还没被扫描到」的会话按 `workspace` 归到对应项目下（`pending`），
  * 所以新建会话会立刻出现在它所属的项目里。
  */
-export function Sidebar({
+function SidebarInner({
 	conversations,
 	activeId,
 	piProjects,
@@ -109,7 +109,14 @@ export function Sidebar({
 	appbarHidden?: boolean;
 }) {
 	const t = useT();
-	const { snapshot } = useAppState();
+	/**
+	 * 只订阅侧栏自己用到的那几片。整份 snapshot 每帧都是新对象（流式时约 60ms 一次），
+	 * 全量订阅会让这 200 多行会话行跟着一起重渲染 —— 输入框的手感就是这么丢的。
+	 * 结构共享（snapshot-share.ts）保证「内容没变」的分片引用也不变，这里才真的省得下来。
+	 */
+	const projectPrefsFromStore = useAppSelector((state) => state.snapshot?.settings.projectPrefs ?? null);
+	const sessionPrefsFromStore = useAppSelector((state) => state.snapshot?.settings.sessionPrefs ?? null);
+	const filesRoot = useAppSelector((state) => state.snapshot?.files?.root ?? null);
 	// 每个项目默认展示几条会话：设置 → 界面 → 侧栏能改（默认 10），改完立刻生效
 	const [sessionsPerProject] = useStoredNumber(
 		SESSIONS_PER_PROJECT_KEY,
@@ -120,7 +127,7 @@ export function Sidebar({
 	// 跑完了、还没点开看过的会话（会话行 / 项目行上的小蓝点）
 	const unseen = useUnseenMarks();
 	// 项目偏好来自 settings.json（ADR-0028）：置顶 / 顺序 / 别名都是服务端事实源
-	const rawPrefs: ProjectPrefs = snapshot?.settings.projectPrefs ?? { order: [], pinned: [], aliases: {} };
+	const rawPrefs: ProjectPrefs = projectPrefsFromStore ?? { order: [], pinned: [], aliases: {} };
 	/**
 	 * 旧数据里的项目 key 可能带着尾斜杠（`/a/b/`，见 `normalizeCwd` 的注释），
 	 * 而分组后的 cwd 是干净的 `/a/b` —— 不归一化的话「置顶 / 顺序 / 别名」会全部对不上号
@@ -187,7 +194,7 @@ export function Sidebar({
 		if (fileOpen) setArchivedView(false);
 	}, [fileOpen]);
 	// 文件树根默认跟随当前会话工作区（下拉框里选了项目时由 App 那边的 `root` 接管）
-	const sessionPrefs = snapshot?.settings.sessionPrefs ?? { pinned: [], archived: [], order: [] };
+	const sessionPrefs = sessionPrefsFromStore ?? { pinned: [], archived: [], order: [] };
 	/** 「置顶」那个分组是否展开（默认展开：置顶本来就是最常用的几条） */
 	const [pinnedOpen, setPinnedOpen] = useState(true);
 	/** 会话右键菜单：同上，记录会话 id + 鼠标位置 */
@@ -263,7 +270,7 @@ export function Sidebar({
 	const archivedGroups = groupArchived(piProjects, sessionPrefs);
 	/** 归档总数（标题栏那个 🗄 入口的显示条件与提示） */
 	const archivedTotal = archivedGroups.reduce((sum, group) => sum + group.items.length, 0);
-	const currentRoot = snapshot?.files?.root ?? null;
+	const currentRoot = filesRoot;
 	// 「还有 N 个…」点开后就显示全部（每个项目各自记）
 	const [showAll, setShowAll] = useState<Record<string, boolean>>({});
 	// 项目显示名（别名）：只改展示，不动 pi 的会话目录（ADR-0028：身份是 cwd）
@@ -588,9 +595,20 @@ export function Sidebar({
 					setBatchMenu({ point });
 					return;
 				}
-				// 否则按「右键了这一条」处理：先把选区收成这一条（跟 Finder / VS Code 一致），再弹单条菜单
+				/*
+				 * 否则按「右键了这一条」处理：只弹单条菜单，**不往选区里塞 id**（用户 2026-10-30：
+				 * 「点右键时不需要触发上面的显示彻底删除功能」）。
+				 *
+				 * 以前这里是先把选区收成这一条（Finder 式高亮），但那会让「已选 1 条 · 归档 · 彻底删除」
+				 * 那条横幅冒出来 —— 右键只想看看这一条的菜单，头上却多出一颗红色的「彻底删除」，
+				 * 看着像「右键 = 选中了要删」。行的高亮改由 `SessionRow` 按「菜单开着」自己画（见其中
+				 * `highlighted`），选区仍然是**只有点击 / Shift / Ctrl** 才会碰的东西。
+				 *
+				 * 头上还挂着上一次的多选就顺手收掉：鼠标指的已经是这一条，留一批旧选区容易看错对象。
+				 * 锚点补成这一条，接着按住 Shift 点还能从这里连选（跟以前的手感一致）。
+				 */
 				setBatchMenu(null);
-				setSelectedIds([session.id]);
+				if (selectedIds.length > 0) clearSelection();
 				selectAnchor.current = session.id;
 				setSessionMenu({ id: session.id, point });
 			}}
@@ -1192,3 +1210,9 @@ export function Sidebar({
 		</aside>
 	);
 }
+
+/**
+ * memo 是这一层的**边界**：侧栏只关心项目/会话清单、选中态和几个 prefs，
+ * 跟流式正文无关。App 侧把这些 props 都稳定成同一引用后，正文每帧变化时这里整块跳过。
+ */
+export const Sidebar = memo(SidebarInner);

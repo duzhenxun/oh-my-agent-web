@@ -16,7 +16,7 @@ import { PanelOrderRow } from "./PanelOrderRow.tsx";
 import { usePanelOrder } from "../panel-order.ts";
 import { useModalSize, type ResizeAnchor } from "../use-modal-size.ts";
 import { useModalMove } from "../use-modal-move.ts";
-import { useAppState } from "../store.ts";
+import { useAppSelector } from "../store.ts";
 import { useT } from "../use-language.ts";
 import { usePrefFlags } from "../use-pref-flags.ts";
 import { APPBAR_PARTS, APPBAR_PART_KEY } from "../ui-prefs.ts";
@@ -145,7 +145,8 @@ export function SidebarMenu({
 	 *   - 到点**自己消失**（提示 / 警告 5s、错误 12s）：服务端的 notices 会挂很久，不能跟着它；
 	 *   - 打开 / 切面板时把当时的提示全吸收掉，不把旧消息当成这次操作的结果。
 	 */
-	const { snapshot, lastError } = useAppState();
+	const snapshot = useAppSelector((state) => state.snapshot);
+	const lastError = useAppSelector((state) => state.lastError);
 	const seenNotices = useRef<Set<string>>(new Set());
 	/** 基线记「文本」：lastError 现在是 `{ text, conversationId }`，比对文本就够了 */
 	const errorBaseline = useRef<string | null>(lastError?.text ?? null);

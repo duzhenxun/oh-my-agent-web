@@ -17,6 +17,10 @@
 .msg-head {
 	display: flex;
 	gap: 8px;
+	/* 抬头现在装四样东西：模型 / 流式计数 / 用量 / 时间（用户 2026-10-30）。
+	   窄屏放不下就整块换行，别把「时间」挤成两行或压到用量上面去。 */
+	flex-wrap: wrap;
+	row-gap: 4px;
 	align-items: baseline;
 	color: var(--text-faint);
 	font-size: calc(var(--chat-ui-font-size, 12px) * 0.9655);
@@ -140,23 +144,20 @@
 	min-width: 0;
 }
 
+/* 「从此处编辑 / 复制」**常显**（用户 2026-10-30：「你给它显示出来吧」）。
+   以前是悬浮才出现 —— 好在这两个动作只在自己发的消息上，常显也不会吵：
+   它们本来就淡（--text-faint / 极淡底），跟时间排在一条线上。
+   hover 只提一档颜色，不再做「出现/消失」的动画（跳来跳去反而更抢眼）。 */
 .msg-user-foot > .msg-action,
 .msg-user-foot > .msg-foot-copy {
-	opacity: 0;
-	transition: opacity 0.12s ease;
+	transition: color 0.12s ease;
 }
 
 .msg:hover .msg-user-foot > .msg-action,
 .msg:hover .msg-user-foot > .msg-foot-copy,
 .msg-user-foot:focus-within > .msg-action,
 .msg-user-foot:focus-within > .msg-foot-copy {
-	opacity: 1;
-}
-
-/* 手机没有 hover：按钮常显（不然永远点不到） */
-.is-mobile-shell .msg-user-foot > .msg-action,
-.is-mobile-shell .msg-user-foot > .msg-foot-copy {
-	opacity: 1;
+	color: var(--text-dim);
 }
 
 /* 标题行里的操作按钮更小一点，不抢消息正文的注意力 */
@@ -256,80 +257,70 @@
 	color: var(--text);
 }
 
-/* 「过程 N 步」开关：胶囊（描边 + 淡底，宽度跟着文字走）。
- * 试过跟下面那些行一样的满宽无边框，但它是「一整个过程的目录」，不是过程里的一行 ——
- * 小胶囊反而更容易和展开后的内容区分开。
- * 尺寸/颜色按「大方一点」调过一档：原来 13.5px + --text-faint + 3px 内边距，
- * 在 15px 正文里像一句注脚，一眼扫不到「这轮花了多久」。现在跟正文同字号、用 --text-dim。 */
+/* 「过程 N 步」开关：纯文字行（无描边、无底色，宽度跟着文字走）。
+ *
+ * 为什么要「去彩」：这一层是**辅助信息**的目录，不是正文。之前给它掺了 16% 主色底 +
+ * 45% 主色边框，展开后思考行、工具卡再各带一层框和主色，整屏都在冒蓝，用户
+ * （2026-XX：「思考与调用工具太过于明显」）一眼先看到过程、看不到回答。
+ * 第一步先去彩（中性描边 + 透明底），用户又跟了一句「连描边都去掉」——于是边框也撤了。
+ * 现在靠左侧三角 + 文字本身表示「能点」，悬停时才浮出一层 4% 底色（唯一的存在感）。
+ * 字号仍与正文同档（退回 --text-faint + 13.5px 的注脚感也被嫌弃过，不走回头路）。
+ * 可发现性在这里不算损失：反正跑完自动收起，只剩这一行，想看过程总要有个入口。 */
 .msg-tools-toggle {
 	display: inline-flex;
 	align-items: center;
 	gap: 8px;
 	align-self: flex-start;
-	/* 边框/底色都往「看得见」那边挪，最后定在第 4 档：底色掺 16% 主色、边框掺 45% 主色。
-	 * 更淡的两档（8%/12%）在 15px 正文旁边还是像注脚，一眼看不出「这是一个可点的块」；
-	 * 46% 往上就快赶上选中态 chip 了，所以停在这。 */
-	border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
-	border-radius: 8px;
-	background: color-mix(in srgb, var(--accent) 16%, var(--bg));
+	border: 0;
+	border-radius: 6px;
+	background: none;
 	color: var(--text-dim);
 	font: inherit;
 	font-size: calc(var(--chat-ui-font-size, 12px) * 1);
-	padding: 6px 12px;
+	padding: 2px 6px;
+	/* 负左边距：去掉了内边距里的字边，把它拉回和正文同一条左边线 */
+	margin-left: -6px;
 	/* 窄屏放不下时**整段**折到下一行，而不是把「4 段思考」拆成「4 段思 / 考」 */
 	flex-wrap: wrap;
 	max-width: 100%;
 	cursor: pointer;
 	transition:
 		color 0.12s ease,
-		border-color 0.12s ease,
 		background 0.12s ease;
 }
 
 .msg-tools-toggle:hover {
 	color: var(--text);
-	border-color: var(--accent);
-	background: color-mix(in srgb, var(--accent) 20%, var(--bg));
+	background: color-mix(in srgb, var(--text) 5%, transparent);
 }
 
-/* 「过程」容器：思考 + 工具调用按发生顺序装在同一块里，默认折叠成一行。
-   展开后每块仍然各管各的（思考单独展开、工具卡单独展开），不再分成两块。 */
+/* 「过程」容器：这一轮的所有渲染单元（过程段与正文按发生顺序交错）。
+   折叠**只收思考与工具卡**（收成一行“过程 N 步”，按钮长在第一次动手的位置）；
+   正文与中间那几段说明永远留在原位 —— 它们不是“过程噪音”，是推理的理由。 */
 .msg-process,
-.msg-process-body {
+.process-segment {
 	display: flex;
 	flex-direction: column;
-	gap: 8px;
+	gap: 4px;
 	min-width: 0;
 }
 
-/* 一小块 = 一段思考 + 它后面跟着的工具调用。
- * 用左侧一道竖线 + 很淡的底色「括」住，而不是再套一层边框：里面的思考块和工具卡
- * 本身已经有框了，再套一层会出现框里框、层次反而乱。 */
+/* 一小块 = 一段思考 + 它后面跟着的工具调用（同一次「想完就试」）。
+ * 现在**不再挂竖线和缩进**（用户 2026-10-30：照 codex 压平）：
+ * 一轮十几个工具时，左侧那道线 + 层层缩进会把过程变成一张“表”，行与行之间反而难扫；
+ * 分组靠上下留的那一点间距和行首图标就够了（同一块的思考与工具本来就连在一起）。 */
 .process-group {
 	display: flex;
 	flex-direction: column;
-	gap: 6px;
+	gap: 2px;
 	min-width: 0;
-	padding: 6px 8px 6px 10px;
-	border-left: 2px solid var(--accent-dim);
-	border-radius: 6px;
-	background: color-mix(in srgb, var(--accent) 4%, transparent);
 }
 
-/* 组内不再画边框：外层已经有竖线 + 淡底，里面每条再框一圈就是框里框（一屏下来好几层线）。
- * 靠间距分组，悬停时给一条淡底色表示「这一条是独立可点的」。 */
-.process-group .thinking-block,
-.process-group .tool {
-	border: 0;
-	background: transparent;
-	transition: background 0.12s ease;
-}
-
-/* 悬停底色：2% 就够了 —— 边框去掉之后这一层只是「这条能点」的提示，
- * 再深就跟分组那层 4% 的淡底撞到一起，看起来像另一块面板 */
+/* 悬停底色：这一条是可点的（行内没有按钮，不给反馈就不知道能展开）。
+ * 2% 就够 —— 只是“这条能点”的提示，不能变成一行行斑马纹 */
 .process-group .thinking-block:hover,
 .process-group .tool:hover {
-	background: color-mix(in srgb, var(--text) 2%, transparent);
+	background: color-mix(in srgb, var(--text) 3%, transparent);
 }
 
 /* 手机端顶替「（点击展开）」的箭头：桌面不显示（桌面有文字提示 + 左侧三角） */
@@ -360,6 +351,22 @@
 	font-variant-numeric: tabular-nums;
 }
 
+/* 技能名：比“N 次工具”还要再显一点 —— 用户问的第一句话往往是「你用了哪个 skill」。
+ * 不挂主色（一屏多个折叠行会变成一排蓝点），只把字重提到 500 */
+.msg-process-skills {
+	font-weight: 500;
+}
+
+/* 手机窄屏：技能名过长时省略，不把这一行挤成两行（完整名字点开过程就看得到） */
+@media (max-width: 640px) {
+	.msg-process-skills {
+		max-width: 45%;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+}
+
 /* 耗时排在最后，并且刻意压淡一档：它是个「结果」，不是入口。
  * 字号不动（跟开关同级），只降对比度 —— 视线先落在「多少段思考 / 多少次工具 / 多少步」上，
  * 想知道花了多久再往右看。再小一号就退回「注脚感」了，那正是之前被嫌弃的样子。 */
@@ -384,98 +391,162 @@
 	transform: rotate(90deg);
 }
 
-/* ---- 实时动作：「正在运行 bash…」/「正在等待模型…」（见 MessageList 的 LiveActivity）----
- * 贴在消息末尾、**过程折叠体外面**：折扇时只剩一行「1 段思考 1 次工具」，
- * 中间到底在干什么就靠这一行。只占一行，参数摘要超出就省略（悬停看全文）。 */
+/* ---- 实时动作：「正在读取 Weather Forecast 技能」/「正在运行 curl …」（见 MessageList 的 LiveActivity）----
+ * 跑着的时候整条回复就这一行状态位（codex 那样）：图标说明「现在是调 skill 还是跑命令」，
+ * 文字说人话，换动作就地替换。只占一行，参数摘要超出就省略（悬停看全文）。 */
+/* 实时行 + 它下面那个「完整命令」弹层：弹层用绝对定位，得有个定位上下文 */
+.msg-activity-wrap {
+	position: relative;
+}
+
 .msg-activity {
 	display: flex;
 	align-items: center;
 	gap: 8px;
 	min-width: 0;
+	/* 现在这一行是 <button>（点开看完整命令）：把浏览器那套默认样式抹平 */
+	width: 100%;
 	margin-top: 10px;
+	padding: 0;
+	border: 0;
+	background: none;
+	font: inherit;
+	text-align: left;
+	cursor: default;
 	color: var(--text-dim);
 	font-size: calc(var(--chat-ui-font-size, 12px) * 0.9655);
 }
 
-/* 「正在想 / 正在跑」三颗依次呼吸的点。
- * 为什么不用转圈：这一行同时在讲「在干什么」、工具名、参数、耗时 ——
- * 一个持续旋转的圆圈会一直抢视线；三点只用明暗表达「在动」，安静但看得出活着。
- * 尺寸取 5px + 3px 间隔（总宽 21px）：与原来 11px 的圈相比只宽一点，换行位置不变。 */
-.msg-activity-dots {
-	flex: none;
-	display: inline-flex;
+/* 有全文可看时才是能点的：悬停给一点反馈，不然没人知道点得动 */
+.msg-activity[aria-expanded] {
+	cursor: pointer;
+}
+
+.msg-activity[aria-expanded]:hover,
+.msg-activity[aria-expanded="true"] {
+	color: var(--text);
+}
+
+/* 「完整命令」弹层：行尾只塞得下 64 字，全文摆这里（等宽、保留换行、可滚动）。
+ * 往上弹（实时行总在消息末尾，下方就是输入框），宽度压住不撑破气泡。 */
+.msg-activity-pop {
+	position: absolute;
+	left: 0;
+	bottom: calc(100% + 6px);
+	z-index: 30;
+	width: min(560px, 100%);
+	padding: 9px 11px;
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	background: var(--bg-elev);
+	box-shadow: 0 10px 28px rgb(0 0 0 / 12%);
+}
+
+.msg-activity-pop-head {
+	display: flex;
 	align-items: center;
-	gap: 3px;
-	height: 12px;
-}
-
-.msg-activity-dot {
-	width: 5px;
-	height: 5px;
-	border-radius: 50%;
-	background: var(--accent);
-	opacity: 0.28;
-	animation: msg-activity-pulse 1.1s ease-in-out infinite;
-}
-
-/* 三颗错开一点点（0 / 0.16 / 0.32s）：看起来像从左到右「依次亮起」，而不是三颗一起闪 */
-.msg-activity-dot:nth-child(2) {
-	animation-delay: 0.16s;
-}
-
-.msg-activity-dot:nth-child(3) {
-	animation-delay: 0.32s;
-}
-
-@keyframes msg-activity-pulse {
-	0%,
-	100% {
-		opacity: 0.28;
-		transform: translateY(0);
-	}
-
-	45% {
-		opacity: 1;
-		transform: translateY(-1.5px);
-	}
-}
-
-@media (prefers-reduced-motion: reduce) {
-	/* 不等动：只保留明暗呼吸（降速），不做位移 —— 大动作前庭友好一点 */
-	.msg-activity-dot {
-		animation-duration: 2.4s;
-	}
-
-	@keyframes msg-activity-pulse {
-		0%,
-		100% {
-			opacity: 0.3;
-		}
-
-		45% {
-			opacity: 1;
-		}
-	}
-}
-
-.msg-activity-label {
-	flex: none;
-	white-space: nowrap;
-}
-
-/* 工具名用等宽 + 主色：一眼分出「在跑什么」和「跑的是什么东西」 */
-.msg-activity-tool {
-	color: var(--accent);
+	gap: 7px;
+	min-width: 0;
 	font-size: calc(var(--chat-ui-font-size, 12px) * 0.9655);
+	color: var(--text-dim);
 }
 
-/* 参数摘要：单行省略。`min-width: 0` 是必需的 —— 缺了它 flex 子项不会缩，长命令会把行撑破 */
-.msg-activity-args {
+.msg-activity-pop-icon {
+	flex: none;
+	width: 14px;
+	height: 14px;
+	color: var(--accent);
+	opacity: 0.8;
+}
+
+.msg-activity-pop-title {
 	flex: 1 1 auto;
 	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+.msg-activity-pop-meta {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: calc(var(--chat-ui-font-size, 12px) * 0.9);
+	color: var(--text-faint);
+}
+
+.msg-activity-pop-tool {
+	padding: 1px 5px;
+	border: 1px solid var(--border);
+	border-radius: 4px;
+}
+
+.msg-activity-pop-body {
+	margin: 7px 0 0;
+	max-height: 220px;
+	overflow: auto;
+	white-space: pre-wrap;
+	word-break: break-word;
+	font-size: calc(var(--chat-ui-font-size, 12px) * 0.931);
+	line-height: 1.5;
+	color: var(--text);
+}
+
+/* 动作图标（书 / 文件 / 文件夹 / 终端 / 地球 / 放大镜 / 铅笔 / 机器人 / 星）。
+ * 它替掉了原来那三颗呼吸的点：**图标本身就是信息**（用户 2026-10-30：换小图标告知在调工具还是调 skill），
+ * 一个灰点说不清这事。用主色描边一档透明度，比正文暗、比纯灰字有指向性；
+ * 只做很轻的呼吸（透明度），不做旋转 —— 这一行还有命令和秒数要读。 */
+.msg-activity-icon {
+	flex: none;
+	width: 14px;
+	height: 14px;
+	color: var(--accent);
+	opacity: 0.75;
+	animation: msg-activity-breathe 1.8s ease-in-out infinite;
+}
+
+@keyframes msg-activity-breathe {
+	0%,
+	100% {
+		opacity: 0.45;
+	}
+
+	50% {
+		opacity: 0.9;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	/* 不等动：留一个静态图标就行（它表达的是「在跑」，动效只是辅助） */
+	.msg-activity-icon {
+		animation: none;
+		opacity: 0.8;
+	}
+}
+
+/* 「正在读取 X 技能」这句：不换行；万一是认不出的长工具名（MCP），宁可省略也不撑破这一行 */
+.msg-activity-label {
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* 参数详情（命令 / 地址 / 脚本正文）：**单行省略**，不折行。
+ *
+ * 曾经改成两行（为了把 `cd /tmp && python3 - <<'PY' …` 后半截露出来），但实跑下来的效果是：
+ * “正在跑 Python 脚本”一个人占两行，把下面的答案又往下顶一格（用户 2026-10-30：「上面显示折行了」）。
+ * 状态行是「一眼扫过」的东西，不应该长出第二行 —— 完整命令 / 脚本正文放 title 里，悬停看全文。
+ * `min-width: 0` 是必需的：缺了它 flex 子项不会缩，长命令会把行撑破。 */
+.msg-activity-args {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	line-height: 1.35;
 	color: var(--text-faint);
 	font-size: calc(var(--chat-ui-font-size, 12px) * 0.931);
 }
@@ -489,28 +560,20 @@
 	font-variant-numeric: tabular-nums;
 }
 
-/* 思考过程（reasoning）：一行预览 + 展开看全文 */
+/* 思考过程（reasoning）：一行预览 + 展开看全文。
+ * 和工具行同一套行高、同一套边距（3px 6px）—— 展开后的过程就是一列齐整的行，
+ * 不再有“卡片”和“行”两种高度混着。 */
 .thinking-block {
-	border: 1px solid var(--border);
-	border-radius: 8px;
+	border-radius: 6px;
 	background: var(--bg-elev);
 	overflow: hidden;
+	transition: background 0.12s ease;
 }
 
-/* 思考编号：小圆片，等宽数字 —— 跟后面的「思考」标签分开，读起来是「① 思考…」 */
-.thinking-index {
-	flex: none;
-	min-width: 18px;
-	padding: 0 4px;
-	border-radius: 4px;
-	background: color-mix(in srgb, var(--accent) 12%, transparent);
-	color: var(--accent);
-	font-size: calc(var(--chat-ui-font-size, 12px) * 0.8621);
-	line-height: 1.5;
-	font-variant-numeric: tabular-nums;
-	text-align: center;
-}
-
+/* 思考编号（①②…）已撤掉（用户 2026-10-30：「这种数字不要了」）。
+ * 它只在「想指代第几段」时有用，而一轮动辄十几段，读起来就是每行前面多一个蓝点；
+ * 先后顺序本来就由上下位置表达，不需要再数一遍。若要恢复，.thinking-label 前面插一个
+ * 带 aria-label 的 span 即可，布局无需改动。 */
 .thinking-head {
 	display: flex;
 	align-items: center;
@@ -522,7 +585,7 @@
 	font: inherit;
 	font-size: calc(var(--chat-ui-font-size, 12px) * 0.9655);
 	text-align: left;
-	padding: 4px 8px;
+	padding: 3px 6px;
 	cursor: pointer;
 	min-width: 0;
 }
@@ -546,11 +609,13 @@
 	font-size: calc(var(--chat-ui-font-size, 12px) * 0.8276);
 }
 
-/* 「思考 9 段」这个标签：固定在最前，后面的预览可省略 */
+/* 「思考 9 段」这个标签：固定在最前，后面的预览可省略。
+ * 原来是 600 字重 + --text-dim，在一串灰行里反而最亮的那一个；降到 500 + --text-faint，
+ * 和预览同为「过程的一部分」，不跟正文抢注意力。 */
 .thinking-label {
 	flex: none;
-	font-weight: 600;
-	color: var(--text-dim);
+	font-weight: 500;
+	color: var(--text-faint);
 }
 
 /* 「· 耗时 2s」：放在预览后面、三角之前，淡色小字 */
@@ -569,6 +634,12 @@
 	line-height: 1.6;
 	white-space: pre-wrap;
 	overflow-wrap: anywhere;
+}
+
+/* 尾注就是这条消息的最后一行：气泡底部不该再留一整段内边距，
+   否则虚线下的用量行和下一个区块之间会空出一大块（悬浮在对话流尾部时尤其明显）。 */
+.msg-assistant {
+	padding-bottom: 4px;
 }
 
 /* ---- 助手消息尾注：token 用量 · 复制 · 绝对时间 ----
@@ -590,14 +661,10 @@
 	min-width: 0;
 }
 
-/* 尾注就是这条消息的最后一行：气泡底部不该再留一整段内边距，
-   否则虚线下的用量行和下一个区块之间会空出一大块（悬浮在对话流尾部时尤其明显）。 */
-.msg-assistant {
-	padding-bottom: 4px;
-}
-
-/* 尾注的用量行：`[in]18K [out]404 [cache]35K $0.04` —— 每项 = 一颗小词标 + 缩写数字。
-   词标代替中文标签（写四个词会把尾注拉长到换行），认不出来悬浮一下就有全称。 */
+/* 用量行：`[in]18K [out]404 [cache]35K $0.04` —— 每项 = 一颗小词标 + 缩写数字。
+ * 位置在**消息尾注**（试过搬到抬头，用户 2026-10-30 又说「还放到下面好看」，所以就在底部）。
+ * 词标代替中文标签（写四个词会拉长到换行），认不出来悬浮一下就有全称。
+ * `nowrap` 是刻意的：窄屏放不下就整组换行，不能把 `out` 和它的数字拆开。 */
 .msg-usage {
 	flex: none;
 	display: inline-flex;
@@ -632,7 +699,6 @@
 	letter-spacing: 0.1px;
 }
 
-/* 「用量统计中…」：只在第一次模型调用还没结束时占位（之后就被真实数字替换） */
 /* 子代理那一块：与主对话的 in/out/cache 用一条细竖线隔开 ——
    两块数字是**两本账**（引擎只报主会话，子代理独立计费），隔一下才不会读成「同一组的第四项」。 */
 .msg-usage-sub {
@@ -646,18 +712,13 @@
 	color: var(--text);
 }
 
-.msg-usage-waiting {
-	color: var(--text-faint);
-	font-size: calc(var(--chat-ui-font-size, 12px) * 0.8966);
-}
-
 .msg-foot-copy {
 	flex: none;
 	border: none;
 	background: none;
 	color: var(--text-faint);
 	font: inherit;
-	/* 与右边的时间同一个字号：尾注整行都是「参考信息」，不该有谁更抢眼 */
+	/* 与时间同一个字号：抬头这一行都是「参考信息」，不该有谁更抢眼 */
 	font-size: calc(var(--chat-ui-font-size, 12px) * 0.7931);
 	line-height: 1.4;
 	padding: 0 2px;
@@ -695,7 +756,6 @@
 		/* 极窄屏（≤360）实在装不下时仍优雅换行，不会把时间挤出屏幕 */
 		flex-wrap: wrap;
 	}
-
 	.msg-usage {
 		flex: 1 1 auto;
 		min-width: 0;

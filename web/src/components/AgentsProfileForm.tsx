@@ -5,7 +5,7 @@
  * 保存走上行请求，落 `~/.pi/agent/agents/<id>.md`（见 server/subagents/profile-store.ts）。
  */
 import { useMemo, useState } from "react";
-import { useAppState } from "../store.ts";
+import { useAppSelector } from "../store.ts";
 import { saveSubagentProfile } from "../ws.ts";
 import { filterEnabledModels } from "../model-groups.ts";
 import type { SubagentProfileView } from "../types.ts";
@@ -17,7 +17,7 @@ const TOOL_CHOICES = ["read", "bash", "edit", "write", "grep", "find", "ls"];
 export function AgentsProfileForm({ profile, onClose }: { profile: SubagentProfileView; onClose: () => void }) {
 	const t = useT();
 	const [draft, setDraft] = useState<SubagentProfileView>(profile);
-	const snapshot = useAppState().snapshot;
+	const snapshot = useAppSelector((state) => state.snapshot);
 	// 停用的模型同样不给选：子代理跑起来会因为「模型不在白名单」而直接失败
 	const models = useMemo(
 		() => filterEnabledModels(snapshot?.models ?? [], snapshot?.enabledModels ?? []),

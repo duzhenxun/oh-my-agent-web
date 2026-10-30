@@ -18,6 +18,7 @@
  *    现在把服务端给的原因原样塞进一条轻提示。
  */
 import { forgetCachedMessages } from "./session-cache.ts";
+import { forgetDraft } from "./store.ts";
 import { showToast } from "./toast.ts";
 import { requestState } from "./ws.ts";
 
@@ -68,6 +69,8 @@ export function deleteSession(id: string, label: string): void {
 			showToast({ text: `彻底删除「${label}」失败：${result.message}`, ttl: 12_000 });
 			return;
 		}
+		// 会话没了，它那一格输入框草稿也别留着（否则 id 再被生成时会凭空顶出一句旧话，见 `forgetDraft`）
+		forgetDraft(id);
 		if (result.mode === "file") showToast({ text: `「${label}」${STALE_SERVER}`, ttl: 12_000 });
 		requestState();
 	})();
@@ -87,6 +90,7 @@ export function deleteSessions(ids: string[], label = "选中的会话"): void {
 			const result = await removeOne(id);
 			if (result.ok) {
 				done += 1;
+				forgetDraft(id);
 				if (result.mode === "file") staleServer = true;
 			} else failures.push(result.message);
 		}

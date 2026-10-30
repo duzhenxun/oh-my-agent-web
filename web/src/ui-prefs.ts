@@ -23,6 +23,16 @@ export const SPLIT_CHAT_SIDE_KEY = "agent-web.split.chatSide";
 export const TOOL_OPEN_KEY = "agent-web.chat.toolOpen";
 
 /**
+ * 「跑完自动折叠过程」：这一轮结束（`endedAt` 写完）后，把**最后一段答案之前**的一切
+ * —— 思考块、工具卡、以及中间那几段说明文字 —— 收成一行「过程 N 步 · 耗时 X」，
+ * 屏幕上只留最终结果；点那一行还原完整时间线。
+ *
+ * 默认 **开**（用户 2026-10-30：照 codex 那样，跑的时候铺开、跑完折叠）；
+ * 关掉就退回原来的行为（展开与否只看「思考 / 工具卡默认展开」那两个开关）。
+ */
+export const PROCESS_AUTO_COLLAPSE_KEY = "agent-web.chat.processAutoCollapse";
+
+/**
  * 「标注」：在对话里选中一段文字后浮出来的那颗小工具栏（添加到会话 / 标注 / 在临时会话中提问）。
  *
  * 默认开（这是这套 UI 的一个招牌动作）；关掉之后正文里选字就只是选字，不再弹东西 ——
@@ -62,7 +72,7 @@ export const TERMINAL_FONT_MIN = 8;
 export const TERMINAL_FONT_MAX = 24;
 
 /**
- * 顶栏那一排入口的显隐：**勾上才显示，默认全勾**（见设置里的「顶栏」tab）。
+ * 顶栏那一排入口的显隐：**勾上才显示**（见设置里的「顶栏」tab）。
  * 覆盖七个面板入口：模型 / 技能 / 推送 / 语音 / 插件 / MCP / 子代理。
  *
  * 「设置」故意不在这张表里：它是唯一能把这些入口重新勾回来的地方，
@@ -75,6 +85,21 @@ export type AppbarToggle = AppbarItem;
 
 /** 设置里那排勾选框的顺序：就是这七个面板入口 */
 export const APPBAR_TOGGLES: AppbarToggle[] = [...APPBAR_ITEMS];
+
+/**
+ * 顶栏入口的**默认值**：只有模型 / 技能 / 语音 / MCP 默认勾上，其余默认不勾。
+ *
+ * 为什么不「全勾」：新装完的系统顶栏一下子铺满七个面板 + 临时会话，视觉上就是一片按钮墙 ——
+ * 用户 2026-10-30 明确要求「只勾这几个，不要全都勾上」。推送 / 插件 / 子代理都是**按需**才用的入口，
+ * 想用的人在 设置 → 界面 → 顶栏 里勾一下就好（读的是同一个 key）。
+ *
+ * 只是**默认值**，不是「强制」：`readStoredBool` 一律先看本地存过的值，
+ * 所以老用户（或已经把某个入口关掉的人）升级上来不会被这条默认改回原样。
+ */
+export const APPBAR_ITEM_DEFAULT_ON: readonly AppbarToggle[] = ["models", "skills", "voice", "mcp"];
+
+/** 单个顶栏入口的默认显隐（给 `usePrefFlags` 用：一次渲染整排勾选框时需要逐项取默认） */
+export const appbarItemDefault = (item: AppbarToggle): boolean => APPBAR_ITEM_DEFAULT_ON.includes(item);
 
 /** 一个入口一个 key：勾选框各自独立，改一个不会连带别人 */
 const APPBAR_KEY_PREFIX = "agent-web.appbar.";
@@ -118,6 +143,9 @@ export const APPBAR_ITEM_LABEL: Record<AppbarToggle, string> = {
  * 所以它单独一个 key，用 `useStoredBool` 读写（跟 `THINKING_OPEN_KEY` 这些单开关同一套）。
  */
 export const APPBAR_TEMPCHAT_KEY = "agent-web.appbar.tempchat";
+
+/** 「临时会话」的默认显隐：**默认不显示**（跟 `APPBAR_ITEM_DEFAULT_ON` 同一套理由，它不是面板入口） */
+export const APPBAR_TEMPCHAT_DEFAULT = false;
 
 /**
  * 「对话窗口」输入框上方那一排三块：模板库按钮、想想按钮、快捷指令。

@@ -134,28 +134,43 @@
 }
 
 /* ---- 工具卡（流内元素：**不要**加 overscroll-behavior: contain，否则滚轮会被黑洞锁死）---- */
+/* 过程里的一条（「已读取 weather.py」）：**只有一行**（codex 那样）——
+ * 没有边框、底色、内边距。以前是一张卡片（border + padding + 「完成」小标），
+ * 十次工具就是十张卡片，屏幕上一半面积是框线和小标，真正的步骤反而看不清。
+ * 展开后的命令块 / 输出块自己带底，不需要外层再套一层。 */
 .tool {
-	border: 1px solid var(--border-strong);
-	border-radius: 8px;
-	background: var(--bg-elev);
-	padding: 6px 10px;
 	min-width: 0;
+	border-radius: 6px;
+	transition: background 0.12s ease;
 }
 
 .tool-head {
 	display: flex;
-	gap: 8px;
-	align-items: baseline;
+	gap: 6px;
+	padding: 3px 6px;
+	border-radius: 6px;
+	/* 原来是 baseline（图标还不存在）：现在行首有一枚 SVG，基线对齐会把它顶到底部去 */
+	align-items: center;
 	cursor: pointer;
 	min-width: 0;
 	flex-wrap: nowrap;
 	overflow: hidden;
 }
 
+/* 「已读取 weather.py」那枚动作图标（见 tool-activity.tsx）：和实时那行同一个图标集，
+ * 一眼能分出这一行是读技能、读文件、列目录还是跑命令 */
+.tool-icon {
+	flex: none;
+	width: 13px;
+	height: 13px;
+	color: var(--text-faint);
+}
+
+/* 抬头是一句人话（「已运行 python3 …」），不再是引擎的工具名：
+ * 所以不用等宽、不用主色 —— 主色留给正文里的链接和强调，这里只是个过程提示 */
 .tool-name {
 	flex: none;
-	color: var(--accent);
-	font-family: var(--mono);
+	color: var(--text-dim);
 	font-size: calc(var(--chat-ui-font-size, 12px) * 1);
 }
 
@@ -181,14 +196,15 @@
 	color: var(--green);
 }
 
-/* 运行中：蓝色加粗 + 转圈 —— 原来的淡灰跟「完成/失败」那些静态说明长得一样，
- * 扫一眼根本看不出「它还在跑」。蓝色是重要提醒色，不抢眼但能区分状态 */
+/* 运行中：转圈 + 略深一档的灰。
+ * 以前是「主色 + 600 字重」，配上强制展开的输出框，一轮工具下来整屏都在抢眼；
+ * 现在卡片默认只占一行，主色只留在转圈那一小圈上——看得出在跑，但不像警报。 */
 .tool-status-running {
 	display: inline-flex;
 	align-items: center;
 	gap: 6px;
-	color: var(--accent);
-	font-weight: 600;
+	color: var(--text-dim);
+	font-weight: 500;
 }
 
 /* 转圈：纯 CSS（边框三面半透 + 顶面实色），不用额外图片/SVG */
@@ -220,7 +236,7 @@
 }
 
 .tool-output {
-	margin: 8px 0 0;
+	margin: 4px 6px 6px;
 	padding: 8px 10px;
 	background: var(--bg);
 	border-radius: 6px;
@@ -236,7 +252,7 @@
  * 为什么单独一块而不是把抬头那行撑开：抬头只有一行高，长命令会撑坏卡片高度；
  * 而这里限高 220px 内部滚动，命令再长也不把对话推走。 */
 .tool-command {
-	margin-top: 8px;
+	margin: 4px 6px 6px;
 	border: 1px solid var(--border);
 	border-radius: 6px;
 	background: var(--bg);
@@ -274,7 +290,7 @@
 }
 
 .tool-truncated {
-	margin-top: 6px;
+	margin: 6px 6px 6px;
 	color: var(--amber);
 	font-size: calc(var(--chat-ui-font-size, 12px) * 0.9655);
 }
@@ -723,4 +739,13 @@
 /* 图片卡：内容一行就够，不再给折叠行额外留白 */
 .tool:has(.tool-image-wrap) > details {
 	margin-bottom: 2px;
+}
+
+/* 「回答区」占位：锚定期间撑在消息末尾，让「消息顶到上方」真的滚得到。
+   高度由 useStickToBottom 算，回答长够了自己收缩到 0（见 App 里那段说明）。
+   `flex: none` 是必需的：消息列是 flex 布局，不加会被压扁成 0。 */
+.scroll-anchor-tail {
+	flex: none;
+	width: 100%;
+	pointer-events: none;
 }

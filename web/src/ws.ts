@@ -11,8 +11,9 @@
  *
  * 断线重连：SSE 自带重连，这里再叠一层指数退避（0.5s → 8s 封顶）。
  */
-import { getAppState, setAppState, setDraft } from "./store.ts";
+import { getAppState, handoffDraft, setAppState, setDraft } from "./store.ts";
 import { readCachedMessages, writeCachedMessages } from "./session-cache.ts";
+import { shareSnapshot } from "./snapshot-share.ts";
 import type {
 	ApprovalMode,
 	AttachmentRef,
@@ -250,6 +251,14 @@ let newChatEphemeral = false;
 /** 派生会话（`fork_session`）的请求 id：派生出来的也是一条新会话，同样要顶到第一 */
 let forkRequestId: string | null = null;
 /**
+ * 已经发出 `new_chat`、但服务端还没把本客户端的视图切过去的那一段。
+ *
+ * `from` = 发请求时正在看的那条会话：判断「切过去了没有」只能用它（新 id 事先不知道）。
+ * 这一段里屏幕既不能退回 `from` 那条会话的正文，也不能把「新会话界面」当成已经结束
+ * （见 `store.ts` 的 `pendingNewChat` 与 App.tsx 的 `messages`）。
+ */
+let newChatInFlight: { from: string | null } | null = null;
+/**
  * 临时会话转正（`persist_conversation`）的请求：那一刻它才**第一次出现在侧栏**，
  * 所以也要顶到第一位（reply 里不带会话 id，只能自己记着当时要保存的是哪条）。
  */
@@ -282,11 +291,30 @@ export function newChat(workspace?: string, options?: { ephemeral?: boolean }): 
 	// 光标先抢进输入框：必须在点击的**同一个任务**里做，iOS 才会弹键盘
 	// （等快照回来再 focus，光标进去了但键盘不出来 —— 手机上像没反应）
 	focusComposer();
-	// 会话真建出来了，那一屏「新会话」也就结束了（自己点 / 斜杠命令 / 项目行「+」都走这里）。
+	// 输入框那一格不用在这里交接：新会话的 id 要等 reply 才知道，
+	// 等快照把视图切过去时由 `handle()` 统一交接（见 `handoffDraft` 上方那段注释）。
+	//
+	// 「新会话界面」（`newSession`）**要留到快照真切过去**才关：
+	// 以前这里就 `newSession: null`，于是发出第一条消息的那一刻，渲染层立刻认为
+	// 「这是在看好会话了」，而 `snapshot.active` 还是**上一条会话** —— 屏幕先闪一段别人的
+	// 对话（用户 2026-10-30：「新会话第一次发文字，屏幕上会闪现一些别的文字，好像串台」），
+	// 等 `new_chat` 的快照到了才换成新的。留着它，这一屏在整个往返期间都还是「空对话」。
 	// 新会话的 id 由服务端生成，客户端没法先高亮 —— 先给一条「正在新建」的反馈，
 	// 快照一到就自动跳到那个会话（服务端会把发起者自己的视图指过去）
-	setAppState({ creating: true, newSession: null });
-	setTimeout(() => setAppState({ creating: false }), 8000); // 兜底：建失败也别一直转
+	newChatInFlight = { from: getAppState().snapshot?.active.conversationId ?? null };
+	const inFlight = newChatInFlight;
+	setAppState({ creating: true, pendingNewChat: true });
+	// 兜底：建失败 / 服务端一直没推快照，也不能一直转 —— 更不能一直当成「空对话」、
+	// 让那块屏幕再也显示不出消息。到点就把这一屏撒了（宁可退回上一条会话，也别锁死）。
+	setTimeout(() => {
+		setAppState({ creating: false });
+		if (newChatInFlight !== inFlight || inFlight === null) return;
+		newChatInFlight = null;
+		setAppState({
+			pendingNewChat: false,
+			...(getAppState().newSession ? { newSession: null } : {}),
+		});
+	}, 8000);
 	const payload = {
 		...(workspace ? { workspace } : {}),
 		...(options?.ephemeral ? { ephemeral: true } : {}),
@@ -414,6 +442,15 @@ export function moveSession(conversationId: string, workspace: string): void {
 }
 
 export function switchConversation(conversationId: string): void {
+	/**
+	 * 输入框草稿先交接（用户 2026-10-30：「切会话时原来的输入内容带过来了」）。
+	 *
+	 * 放在**改 `pendingActive` 之前**：那一刻 `draft` 还是上一条会话在编辑的那份，
+	 * 正好能原样存回它自己那一格，再把目标会话的草稿取出来。
+	 * 为什么不只靠快照到手后再交接（`handle()` 里还有一道兜底）：服务端一来一回几百毫秒，
+	 * 等它回来才换草稿的话，用户点完会先看到「B 的标题 + A 的半句话」—— 那半句话正是要治的 bug。
+	 */
+	handoffDraft(conversationId);
 	// 先乐观高亮：外网往返几百毫秒，点下去没有反馈会以为没点上
 	// （顺手关掉「新会话」那一屏：人已经明确要看另一条会话了，没填的东西不再算数）
 	setAppState({ pendingActive: conversationId, preview: null, newSession: null });
@@ -666,6 +703,10 @@ function handle(message: ServerMessage): void {
 				// 建失败：正文退回输入框，别让人辛苦打的一行字跟着错误一起没了
 				setDraft(queued.text);
 			}
+			// 建失败不会有「切过去了」那一帧（见下面 snapshot 里的 `newChatLanded`）：
+			// 在这里自己把待建状态撤了。不撤的话 `pendingNewChat` 会一直是 true，
+			// 消息区（App.tsx 的 `messages`）就一直当成「空对话」，怎么都不会再显示了。
+			if (!message.ok) newChatInFlight = null;
 		}
 		// 派生（fork）出来的也是一条新会话：同样顶到第一位
 		if (forkRequestId !== null && message.id === forkRequestId) {
@@ -682,6 +723,9 @@ function handle(message: ServerMessage): void {
 			// 请求被拒：乐观高亮要退回去，否则那个会话会一直亮着、看着像「点了没反应」。
 			// 本地缓存铺出来的 preview 也要撤掉：切换失败时服务端不会再来一帧「active=目标」的
 			// 快照把它顶掉，留着它就会出现「屏幕/URL 是 B，消息实际发给了 A」。
+			// 切换失败 = 界面退回原来那条会话（`pendingActive` 下面就撤）：草稿也跟着退回去，
+			// 否则输入框里留的是**目标会话**那一格（刚被换成它的草稿），然后你在原会话里接着写
+			if (getAppState().pendingActive !== null) handoffDraft(getAppState().snapshot?.active.conversationId ?? null);
 			setAppState({
 				// 归到「当时正在看的那个会话」：换会话就不该再显示别人的错
 				lastError: {
@@ -690,6 +734,8 @@ function handle(message: ServerMessage): void {
 				},
 				...(getAppState().pendingActive ? { pendingActive: null } : {}),
 				...(getAppState().preview ? { preview: null } : {}),
+				// 建会话失败：那一屏「新会话」和草稿都留在原地，人可以再按一次发送
+				...(getAppState().pendingNewChat ? { pendingNewChat: false } : {}),
 			});
 		}
 		return;
@@ -701,10 +747,50 @@ function handle(message: ServerMessage): void {
 		const previous = getAppState().snapshot;
 		// 服务端可以省掉 pi 会话清单（只有变了才带）：缺了就沿用上一份，不能把侧栏清空。
 		const piProjects = message.snapshot.piProjects ?? previous?.piProjects ?? [];
+		/**
+		 * 这里必须过一道结构共享：服务端每帧都是一整棵新对象，直接盖下去会让
+		 * `memo(MessageView)` 与侧栏的 props 比较全部失效 —— 一帧快照 = 所有消息重新渲染 +
+		 * 所有 Markdown 重新解析（临时会话的长对话里就是肉眼可见的卡）。
+		 */
+		const nextSnapshot = shareSnapshot(previous, { ...message.snapshot, piProjects });
+		/**
+		 * 「刚建的那条会话来了没有」——判据只有一条：**快照里的 active 换了**。
+		 *
+		 * 不能拿 `creating` 或「快照到了」当判据：上一轮还在流式的话，`new_chat` 回来之前
+		 * 就会先来好几帧**旧会话**的快照，那些帧一清掉门，屏幕上就又是别人的对话了（用户 2026-10-30
+		 * 报的就是这个「闪一下别的文字」）。
+		 */
+		const newChatLanded = newChatInFlight !== null && message.snapshot.active.conversationId !== newChatInFlight.from;
+		/**
+		 * 这段往返期间在「新会话界面」那一屏上发出去的话，屏幕到这里才算走完 —— 关掉它，
+		 * 交给刚建好的那条会话。`!== null` 而不是比对象身份：中途换项目 / 换临时会话
+		 * 都会换一个 `newSession` 对象（`setNewSessionWorkspace`），比身份会永远比不上，
+		 * 那一屏就再也关不掉（比「早关一帧」糟得多）。
+		 */
+		const closesNewSessionScreen = newChatLanded && getAppState().newSession !== null;
+		if (newChatLanded) newChatInFlight = null;
+		/**
+		 * 草稿跟着「界面真正在看的那条会话」交接 —— 这是除 `switchConversation` 之外的**全部**来源：
+		 * 新会话建好（项目行「+」/ 斜杠命令 / 新会话界面发出第一条）、派生出来的分支、
+		 * 服务端自己把视图切走（终端 `aw resume` 之类）。那几条路客户端事先不知道新 id，只能等快照。
+		 *
+		 * 两道门：
+		 *   · 有乐观高亮、而快照还不是那条 → 这帧是**旧的**，交给后面那帧，现在切会把草稿来回抖；
+		 *   · 屏幕上还是「待建会话」那一格 → 草稿属于那一格，别被旧会话的流式快照拽走（`screenAfter` 见下）。
+		 */
+		if (!pending || pending === message.snapshot.active.conversationId) {
+			// 这一帧之后屏幕上是哪一屏：刚建好的会话（`closesNewSessionScreen`）或原本就没有新会话屏，
+			// 才把草稿交给 active 那条；否则人还在「待建会话」那一格，草稿得留在那儿。
+			const screenAfter = closesNewSessionScreen ? null : getAppState().newSession;
+			if (!screenAfter) handoffDraft(message.snapshot.active.conversationId ?? null);
+		}
 		setAppState({
-			snapshot: { ...message.snapshot, piProjects },
+			snapshot: nextSnapshot,
 			lastError: null,
 			creating: false,
+			// 新会话真切过来了：那一屏「新会话」到这里才结束（见 `newChat`）
+			...(newChatLanded ? { pendingNewChat: false } : {}),
+			...(closesNewSessionScreen ? { newSession: null } : {}),
 			// 服务端已经切过去了 → 乐观值可以退休
 			...(pending && message.snapshot.active.conversationId === pending ? { pendingActive: null } : {}),
 			// 权威快照到了 → 缓存副本不用再顶着了

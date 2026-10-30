@@ -3,7 +3,14 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
-import { imageSrcOf, isImagePath, languageLabelOf, promoteImagePaths } from "../markdown-media.ts";
+import {
+	decodePathOnce,
+	groupImageBlocks,
+	imageSrcOf,
+	isImagePath,
+	languageLabelOf,
+	promoteImagePaths,
+} from "../markdown-media.ts";
 import { openImageViewer } from "../image-viewer.ts";
 import { logicalWidthOf } from "../image-display.ts";
 import { useStoredNumber } from "../use-stored-number.ts";
@@ -47,6 +54,9 @@ function MessageImage({ src, path, alt }: { src: string; path: string; alt: stri
 	// src 一变就得重试加载，否则后半辈就一直停在“没加载出来”的路径按钮上
 	const [brokenSrc, setBrokenSrc] = useState<string | null>(null);
 	const broken = brokenSrc === src;
+	// 显示与「点开」都用解码后的路径：解析器给的 src 是百分号编码的（见 decodePathOnce），
+	// 直接展示会变成 `%E6%98%A0…`，直接去打开则会变成双重编码 → 「路径不存在」
+	const readable = decodePathOnce(path);
 	const ref = useRef<HTMLImageElement | null>(null);
 	const apply = useCallback(() => {
 		const image = ref.current;
@@ -66,9 +76,9 @@ function MessageImage({ src, path, alt }: { src: string; path: string; alt: stri
 					"这张图没能加载，点这里在右侧打开这个文件",
 					"Could not load this image — open the file on the right",
 				)}
-				onClick={() => openPathFromMessage(path)}
+				onClick={() => openPathFromMessage(readable)}
 			>
-				{path || alt}
+				{readable || alt}
 			</button>
 		);
 	// 点图不跳新标签页：原地弹预览浮层（Esc / 点空白关闭）
@@ -90,6 +100,48 @@ function MessageImage({ src, path, alt }: { src: string; path: string; alt: stri
 			/>
 		</button>
 	);
+}
+
+/** hast 里我们只关心这几个字段：用来判断「这个段落是不是只有图片」 */
+type HastChild = {
+	type: string;
+	tagName?: string;
+	value?: string;
+	children?: HastChild[];
+	properties?: Record<string, unknown>;
+};
+
+/** 段落里可以忽略的节点：空白文本、换行 */
+function isIgnorableNode(child: HastChild): boolean {
+	if (child.type === "text") return (child.value ?? "").trim() === "";
+	return child.type === "element" && child.tagName === "br";
+}
+
+/** 段落里的图：`<img>`，或指向本地图片的 `<a>`（`a` 分支会把这种链接直接渲染成图） */
+function isImageNode(child: HastChild): boolean {
+	if (child.type !== "element") return false;
+	if (child.tagName === "img") return true;
+	if (child.tagName !== "a") return false;
+	const href = child.properties?.href;
+	return typeof href === "string" && !/^https?:\/\//i.test(href) && isImagePath(href);
+}
+
+/**
+ * 纯图片段落：子节点全是图（或可忽略的空白/换行），且至少有一张图。
+ * 只有这种段落会换成 flex 容器；文字与图混排的段落保持普通 `<p>`（文字不能被挤进图格里）。
+ */
+function isImageOnlyParagraph(node: unknown): boolean {
+	const kids = (node as HastChild | undefined)?.children;
+	if (!Array.isArray(kids) || kids.length === 0) return false;
+	let images = 0;
+	for (const child of kids) {
+		if (isImageNode(child)) {
+			images += 1;
+			continue;
+		}
+		if (!isIgnorableNode(child)) return false;
+	}
+	return images > 0;
 }
 
 const components: Components = {
@@ -116,6 +168,12 @@ const components: Components = {
 			);
 		// 点图不跳新标签页，原地弹预览浮层（Esc / 点空白关闭）；图挂了则在这层回落成路径
 		return <MessageImage src={resolved} path={typeof src === "string" ? src : ""} alt={alt ?? ""} />;
+	},
+	p: ({ node, children, ...rest }) => {
+		// 相邻的「只有图片」段落已被 groupImageBlocks 并成一段：换成 flex 容器，小图就能并排
+		// （宽度仍由每张图自己的上限决定，容器只负责换行；样式见 .md-img-grid）
+		if (isImageOnlyParagraph(node)) return <div className="md-img-grid">{children}</div>;
+		return <p {...rest}>{children}</p>;
 	},
 	pre: ({ children, ...rest }) => {
 		// 代码块顶部加一行语言标签（React 的 pre 上拿不到子节点的 className，交给 code 处理）
@@ -193,14 +251,72 @@ const components: Components = {
 	},
 };
 
-export const Markdown = memo(function Markdown({ text }: { text: string }) {
-	// 图片路径 → 图片：渲染前做一次（`memo` 已经挡住了「文本没变」那条路）
-	const source = useMemo(() => promoteImagePaths(text), [text]);
+/**
+ * 流式渲染的节流与降级（markdown 是前端最贵的一件事）。
+ *
+ * 实测（25KB 正文 + 3 个代码块，`react-markdown` + remark-gfm + rehype-highlight）：
+ * 一次「解析 + 高亮」≈ 26ms（其中高亮占 ~40%）。流式时每来一个 delta 正文就变一次、
+ * 几十毫秒一次，等于把主线程一直按在解析里 —— **正文越长越贵，所以越到回复末尾越卡**，
+ * 这就是「最后输出时页面卡一下」的来源。
+ *
+ * 所以流式中：① 文本按 150ms 节流上屏（约 7 次/秒，肉眼几乎无差别）；
+ * ② 暂不上语法高亮（`rehype-highlight` 最贵，而流式中的代码块本来就还不完整）。
+ * 收尾（`live` 变 false）立刻用最终文本完整渲染一次 —— 高亮就在这时补上。
+ */
+const STREAM_PARSE_INTERVAL_MS = 150;
+
+function useStreamingText(text: string, live: boolean): string {
+	const [shown, setShown] = useState(text);
+	const latest = useRef(text);
+	latest.current = text;
+	const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	useEffect(() => {
+		if (!live) {
+			// 收尾：丢掉还没执行的那一拍，立刻上最终文本
+			if (timer.current !== null) {
+				clearTimeout(timer.current);
+				timer.current = null;
+			}
+			setShown(text);
+			return;
+		}
+		if (timer.current !== null) return; // 这一拍还没到：等它
+		timer.current = setTimeout(() => {
+			timer.current = null;
+			setShown(latest.current);
+		}, STREAM_PARSE_INTERVAL_MS);
+	}, [live, text]);
+
+	useEffect(
+		() => () => {
+			if (timer.current !== null) clearTimeout(timer.current);
+		},
+		[],
+	);
+
+	return live ? shown : text;
+}
+
+type MarkdownPlugins = NonNullable<React.ComponentProps<typeof ReactMarkdown>["remarkPlugins"]>;
+type RehypePlugins = NonNullable<React.ComponentProps<typeof ReactMarkdown>["rehypePlugins"]>;
+
+/** 插件表提到模块级：内联数组每次渲染都是新引用，没必要让 react-markdown 重算一遍处理器 */
+const REMARK_PLUGINS: MarkdownPlugins = [remarkGfm];
+const HIGHLIGHT_PLUGINS: RehypePlugins = [[rehypeHighlight, { detect: true, ignoreMissing: true }]];
+/** 流式中先不上色：这一条就能省掉约 40% 的单帧解析成本 */
+const NO_HIGHLIGHT: RehypePlugins = [];
+
+export const Markdown = memo(function Markdown({ text, live = false }: { text: string; live?: boolean }) {
+	// 流式期间只在节拍上换文本：每换一次就是一次完整重解析（见上面 useStreamingText）
+	const shownText = useStreamingText(text, live);
+	// 图片路径 → 图片，再把相邻的纯图片段落并成一组（多张时才能多列并排）
+	const source = useMemo(() => groupImageBlocks(promoteImagePaths(shownText)), [shownText]);
 	return (
 		<div className="md">
 			<ReactMarkdown
-				remarkPlugins={[remarkGfm]}
-				rehypePlugins={[[rehypeHighlight, { detect: true, ignoreMissing: true }]]}
+				remarkPlugins={REMARK_PLUGINS}
+				rehypePlugins={live ? NO_HIGHLIGHT : HIGHLIGHT_PLUGINS}
 				skipHtml
 				components={components}
 			>

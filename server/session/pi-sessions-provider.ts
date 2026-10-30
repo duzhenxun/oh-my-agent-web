@@ -21,13 +21,7 @@ export function piAgentDir(): string {
 }
 import type { PiProject } from "../protocol.js";
 
-export type Logger = { info: (message: string, ctx?: Record<string, unknown>) => void };
-
-export function createPiSessionsProvider(options: {
-	agentDir: string;
-	dataDir: string;
-	logger: Logger;
-}): () => Promise<PiProject[]> {
+export function createPiSessionsProvider(options: { agentDir: string; dataDir: string }): () => Promise<PiProject[]> {
 	let cache: PiSessionsCache = { v: CACHE_VERSION, entries: {} };
 	const cacheFile = join(options.dataDir, "pi-sessions-cache.json");
 	let loaded = false;
@@ -40,11 +34,6 @@ export function createPiSessionsProvider(options: {
 		const result = await scanPiSessions({ sessionsRoot: join(options.agentDir, "sessions"), cache });
 		cache = result.cache;
 		if (result.read > 0) await writeCacheFile(cacheFile, cache).catch(() => {});
-		options.logger.info("已读取 pi 已有会话", {
-			projects: result.groups.length,
-			sessions: result.total,
-			read: result.read,
-		});
 		return result.groups.map((group) => ({
 			cwd: group.cwd,
 			name: group.name,

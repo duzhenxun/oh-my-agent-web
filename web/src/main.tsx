@@ -6,7 +6,9 @@ import { initTheme } from "./theme.ts";
 import { initChatDisplay } from "./chat-display.ts";
 import { initSidebarFonts } from "./sidebar-font.ts";
 import { initAppbarScale } from "./appbar-scale.ts";
+import { readLanguage } from "./language.ts";
 import { watchMobileShell } from "./mobile-shell-dom.ts";
+import { loadEnTable } from "./use-language.ts";
 import "./styles.css";
 
 // 主题也挂在 <html> 上（data-theme / data-theme-mode）：**首帧前**必须生效，
@@ -32,10 +34,19 @@ watchMobileShell();
 const container = document.getElementById("root");
 if (!container) throw new Error("缺少 #root 容器");
 
-createRoot(container).render(
-	<StrictMode>
-		<App />
-	</StrictMode>,
-);
+const root = createRoot(container);
+const boot = () =>
+	root.render(
+		<StrictMode>
+			<App />
+		</StrictMode>,
+	);
+
+// 英文词条表（`i18n-en.ts`，400+ 条 / 约 13KB）已经拆成按需 chunk：中文用户（默认）完全不下载。
+// 代价是要在**首帧前**把它拿下来，否则英文用户会先看到一屏中文、再整页跳一遍 ——
+// 这 13KB 的下载只让英文用户付，而且只有一次（后续走 chunk 缓存）。
+// 加载失败不阻塞：loadEnTable 内部已经 catch，回落中文（见 use-language.ts）。
+if (readLanguage() === "en") void loadEnTable().finally(boot);
+else boot();
 
 connect();

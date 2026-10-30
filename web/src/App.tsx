@@ -1,13 +1,14 @@
 import { UPGRADE_COMMAND } from "./brand.ts";
 import { basename } from "./path-utils.ts";
 import { useStickToBottom } from "./stick-to-bottom.ts";
+import { nextAnchorTarget, type AnchorSeen } from "./anchor-target.ts";
 import { useVoiceCues } from "./use-voice-cues.ts";
 // 「跑完了、你还没看」的小圆点：喂帧在这里，画圆点在侧栏（session-unseen.ts）
 import { useUnseenFinishWatch } from "./use-unseen-finish.ts";
 import { ToastHost } from "./components/ToastHost.tsx";
 import { useDocumentFullscreen } from "./use-fullscreen.ts";
 import { ImageViewer } from "./components/ImageViewer.tsx";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
 	clampSidebarWidth,
 	defaultCollapsed,
@@ -23,7 +24,7 @@ import {
 	setNewSessionEphemeral,
 	setNewSessionWorkspace,
 	startNewSession,
-	useAppState,
+	useAppSelector,
 } from "./store.ts";
 import { shortcutFor, type ShortcutId } from "./shortcuts.ts";
 import { toggleShortcutSheet } from "./shortcut-sheet.ts";
@@ -71,7 +72,7 @@ import { MessageList } from "./components/MessageList.tsx";
 import { NewChatMeta } from "./components/NewChatMeta.tsx";
 import { ConversationOutline } from "./components/ConversationOutline.tsx";
 import { SidebarMenu, type Panel as MenuPanel } from "./components/SidebarMenu.tsx";
-import { APPBAR_ITEMS, APPBAR_TEMPCHAT_KEY } from "./ui-prefs.ts";
+import { APPBAR_ITEMS, APPBAR_TEMPCHAT_DEFAULT, APPBAR_TEMPCHAT_KEY } from "./ui-prefs.ts";
 import { useAppbarItems } from "./use-appbar-items.ts";
 import { useStoredBool } from "./use-stored-bool.ts";
 import { AgentsLiveBadge } from "./components/AgentsLiveBadge.tsx";
@@ -478,15 +479,28 @@ export function App() {
 	/** 顶栏菜单当前打开哪个面板（受控：子代理徽标也要能把它顶到「子代理」那一格） */
 	const [menuPanel, setMenuPanel] = useState<MenuPanel>(null);
 	/**
-	 * 顶栏到底显示哪些入口：设置里「顶栏」那组勾选框说了算（存 localStorage，默认全显示）。
+	 * 顶栏到底显示哪些入口：设置里「顶栏」那组勾选框说了算（存 localStorage）。
+	 * 默认只显示模型 / 技能 / 语音 / MCP（见 `APPBAR_ITEM_DEFAULT_ON`）。
 	 * 「设置」永远留着 —— 它就是把这些入口重新勾回来的地方。
 	 */
 	const [appbarItems] = useAppbarItems();
-	/** 顶栏那颗「临时会话」要不要画：设置 → 界面 → 顶栏里勾（默认显示，见 ui-prefs） */
-	const [showTempChat] = useStoredBool(APPBAR_TEMPCHAT_KEY, true);
+	/** 顶栏那颗「临时会话」要不要画：设置 → 界面 → 顶栏里勾（默认不显示，见 ui-prefs） */
+	const [showTempChat] = useStoredBool(APPBAR_TEMPCHAT_KEY, APPBAR_TEMPCHAT_DEFAULT);
 	const menuItems: MenuPanel[] = [...APPBAR_ITEMS.filter((item) => appbarItems[item]), "settings"];
-	const state = useAppState();
-	const snapshot = state.snapshot;
+	/**
+	 * 这里不能再走全量订阅（store 的默认钩子）：draft 每敲一个字符都会 setAppState，
+	 * 全量订阅会把侧栏（几百行项目 / 会话）和整屏消息一起重渲染 —— 打字先卡住输入框自己。
+	 */
+	const snapshot = useAppSelector((state) => state.snapshot);
+	const creating = useAppSelector((state) => state.creating);
+	const newSession = useAppSelector((state) => state.newSession);
+	const pendingActive = useAppSelector((state) => state.pendingActive);
+	/** 刚发出 `new_chat`、服务端还没把视图切过来：这一小段不能让屏幕退回上一条会话的正文（见下面 `messages`） */
+	const pendingNewChat = useAppSelector((state) => state.pendingNewChat);
+	const lastError = useAppSelector((state) => state.lastError);
+	const connection = useAppSelector((state) => state.connection);
+	/** 本地缓存先铺上的会话正文（切会话首屏用）：服务端快照一到就退休 */
+	const previewCache = useAppSelector((state) => state.preview);
 	/**
 	 * 消息正文里常只写文件名（`query-workflows.md`），**真实地址在工具参数里**。
 	 * 这里只镜一份「最新的消息数组」：索引在**点击时**才算（流式期间每帧都会重渲染，
@@ -522,6 +536,42 @@ export function App() {
 		const item = panelItems.find((entry) => entry.id === (activeItem ?? panelItems[0]?.id ?? ""));
 		return item !== undefined && item.kind === "file" ? item : null;
 	})();
+
+	/**
+	 * 传给侧栏的东西必须**引用稳定**：Sidebar 是 memo 的，而正文每帧都在变 ——
+	 * 这里要是用内联数组 / 内联箭头，每帧都是新引用，memo 立刻被击穿（等于没加）。
+	 * 快照的结构共享（ws.ts → snapshot-share.ts）保证「内容没变」的分片引用也不变。
+	 */
+	const sidebarConversations = useMemo(
+		() => (snapshot?.conversations ?? []).filter((item) => !isSideConversation(item.id)),
+		[snapshot?.conversations],
+	);
+	const sidebarProjects = useMemo(() => snapshot?.piProjects ?? [], [snapshot?.piProjects]);
+	const sidebarRunningIds = useMemo(
+		() => Object.keys(snapshot?.runningByConversation ?? {}),
+		[snapshot?.runningByConversation],
+	);
+	/**
+	 * 终端标签 id 里的自增序号放 ref 里：回调才能保持零依赖。
+	 * 依赖 state 的话，每开一次终端回调就换一次引用，侧栏跟着重渲染一轮。
+	 */
+	const termSeqRef = useRef(termSeq);
+	const openTerminal = useCallback((cwd: string) => {
+		const id = `term:${termSeqRef.current}:${cwd}`;
+		termSeqRef.current += 1;
+		setTermSeq(termSeqRef.current);
+		setPanelItems((current) => [...current, { id, kind: "terminal", cwd }]);
+		setActiveItem(id);
+		// 侧栏点「终端」就是要看到它：分栏没开 / 正在落地页都要拉回标签上
+		setPreviewVisible(true);
+		setPanelLanding(false);
+	}, []);
+	const openContentSearch = useCallback(() => setContentSearchOpen(true), []);
+	const openNewProjectDialog = useCallback(() => setNewProjectOpen(true), []);
+	const revealPathInTree = useCallback((path: string) => {
+		// 文件名搜索点了目录：不开文件，只让左树展开到那儿（见 SidebarFiles 的 onPick）
+		setFileReveal((current) => ({ path, seq: current.seq + 1 }));
+	}, []);
 	/**
 	 * 落地页上点一个工具：文件 / 终端 / 临时聊天 / 网页。
 	 *
@@ -685,7 +735,7 @@ export function App() {
 		},
 		[workspaceRoot],
 	);
-	const preview = state.preview && state.preview.conversationId !== activeId ? state.preview : null;
+	const preview = previewCache && previewCache.conversationId !== activeId ? previewCache : null;
 	/**
 	 * 「新会话界面」（`store.ts` 的 `newSession`）：点了「新会话」，服务端**什么都还没建**。
 	 *
@@ -693,9 +743,14 @@ export function App() {
 	 * 工具行里（模型左边）多出「项目 · 分支」（`NewSessionScope`）。整屏**不碰服务端**，
 	 * 直到用户发出第一条消息才 `new_chat`（见 `ws.ts` 的 `createSessionAndSend`）——
 	 * 用户明确要求：别每点一次「新会话」，项目列表里就多一条空会话。
+	 *
+	 * `pendingNewChat`（`ws.ts` 的 `newChat`）是同一屏的尾巴：`new_chat` 已经发出、服务端
+	 * 还没把视图切过去的那一个往返。这段时间里 `snapshot.active` 仍是**上一条会话** ——
+	 * 要是还按它渲染，屏幕上就先闪一段别人的对话，然后才换成新会话（用户 2026-10-30：
+	 * 「新会话第一次发文字的时候，屏幕上会闪现出来一些别的文字，好像串台」）。
+	 * 没 新会话屏 的建会话入口（斜杠 `/new`、新建项目对话框）也走这一位，效果一样：空对话。
 	 */
-	const newSession = state.newSession;
-	const messages = newSession ? [] : (preview?.messages ?? snapshot?.active.messages ?? []);
+	const messages = newSession || pendingNewChat ? [] : (preview?.messages ?? snapshot?.active.messages ?? []);
 	// 给「点消息里的文件链接」用（声明在它上面的那个 callback 通过 ref 取最新一份）
 	messagesRef.current = messages;
 	/**
@@ -703,7 +758,7 @@ export function App() {
 	 * 是的话顶部挂一条提示条：用户必须能随时看出来「这些东西关掉就没了」。
 	 */
 	const activeConversation = snapshot?.conversations.find((item) => item.id === snapshot.active.conversationId) ?? null;
-	const ephemeralActive = newSession ? false : activeConversation?.ephemeral === true;
+	const ephemeralActive = newSession || pendingNewChat ? false : activeConversation?.ephemeral === true;
 	/**
 	 * 当前这条会话的「项目名 + 会话名」——**顶栏中间那颗标题与浏览器标签页标题共用同一份**。
 	 *
@@ -713,9 +768,12 @@ export function App() {
 	 */
 	const activeHeading = (() => {
 		// 新会话界面：标题写「新对话」，项目名跟着这条新会话的项目走（选下拉框时立刻跟着变）
-		if (newSession) {
+		// 建会话在飞的那段（`pendingNewChat`，如 `/new`）也归这一档：那一刻 active 还是上一条，
+		// 照画就是别人的标题挂在这块空屏上。
+		if (newSession || pendingNewChat) {
+			const workspace = newSession ? newSession.workspace : (snapshot?.files?.root ?? null);
 			return {
-				project: newSession.workspace ? basename(newSession.workspace) : "",
+				project: workspace ? basename(workspace) : "",
 				title: t("新对话", "New chat"),
 			};
 		}
@@ -766,8 +824,9 @@ export function App() {
 	 * （地址栏要等第一条消息发出去才换），照旧用它会把这旧会话的「N 条注释」画到
 	 * 空白的欢迎页上；Composer 还会把它们当成待发内容 —— 回车就把别人的标注
 	 * 混进了这条新会话。
+	 * `pendingNewChat`（`new_chat` 在飞）同理：那一段 active 也还是上一条会话。
 	 */
-	const shownAnnotations: readonly Annotation[] = newSession ? [] : annotations;
+	const shownAnnotations: readonly Annotation[] = newSession || pendingNewChat ? [] : annotations;
 
 	/**
 	 * 「添加到会话」（在对话里选中一段文字后那颗）：**一次做完两件事**。
@@ -929,10 +988,9 @@ export function App() {
 	const turnStartedAt = turnStartedAtOf(messages);
 	/** 归本会话（或与会话无关）的错误才显示 */
 	const visibleError =
-		state.lastError &&
-		(state.lastError.conversationId === null ||
-			state.lastError.conversationId === (snapshot?.active.conversationId ?? null))
-			? state.lastError.text
+		lastError &&
+		(lastError.conversationId === null || lastError.conversationId === (snapshot?.active.conversationId ?? null))
+			? lastError.text
 			: null;
 	// 刚点下、服务端还没把这一份快照推回来（乐观高亮已生效）。
 	//
@@ -941,7 +999,7 @@ export function App() {
 	//     只会让人觉得慢（用户 2026-10-30：「内容不是瞬间就出来了吗？为什么老显示这个」）。
 	//     这一下服务端实测只有 0~10ms，剩下的时间全是本机渲染，泡泡没有任何信息量；
 	//   · 没有缓存（第一次开这条会话）→ 屏幕是空的，这时候它真的在报「还没好，等一下」。
-	const switching = state.pendingActive !== null && state.pendingActive !== activeId && preview === null;
+	const switching = pendingActive !== null && pendingActive !== activeId && preview === null;
 	// 地址栏 ↔ 当前会话（?session=xxx）
 	const urlSession = useRef<string | null>(sessionIdFromUrl(window.location.search));
 	const appliedUrlSession = useRef(false);
@@ -952,7 +1010,7 @@ export function App() {
 		if (id) believedSession.current = id;
 	}, [snapshot?.active.conversationId]);
 	useEffect(() => {
-		if (state.connection !== "open") return;
+		if (connection !== "open") return;
 		// 首次连上：把地址栏里的会话打开
 		if (!appliedUrlSession.current) {
 			appliedUrlSession.current = true;
@@ -970,7 +1028,7 @@ export function App() {
 		if (getAppState().newSession) return; // 在「新会话界面」：别把人拽回上一条
 		const target = believedSession.current;
 		if (target) void switchConversation(target);
-	}, [state.connection]);
+	}, [connection]);
 	useEffect(() => {
 		if (!snapshot) return;
 		// 新会话界面（还没真建会话）：地址栏先别动。它现在指向上一条会话，
@@ -1021,20 +1079,76 @@ export function App() {
 		`${messages.length}:${lastTextLength}:${snapshot?.running.streamingText?.length ?? 0}:${snapshot?.active.conversationId ?? ""}`,
 		snapshot?.active.conversationId ?? null,
 	);
-	/**
-	 * 自己刚发出消息 → 直接回到底部。
-	 *
-	 * 往上翻过旧记录之后 stuck 是 false（新内容不抢滚动），这时再发一句，回复会悄悄长在视野外，
-	 * 非得点一下「回到底部」—— 用户不想点那个按钮。发出消息就等于说「接下来看回复」。
-	 * 只在末尾变成**用户消息**那一刻生效：继续往上翻（末尾还是助手那条）时不会被拽回来。
-	 */
 	const lastMessage = messages.at(-1);
+	/** 「最后一条消息」的 id：顶栏那颗标题的右键菜单拿它做「从这儿分叉」（任何角色都行） */
 	const lastMessageId = lastMessage?.id ?? null;
-	const lastMessageRole = lastMessage?.role ?? null;
-	useEffect(() => {
-		if (lastMessageId === null || lastMessageRole !== "user") return;
-		scroll.toBottom();
-	}, [lastMessageId, lastMessageRole, scroll.toBottom]);
+	/**
+	 * 最后一条**用户消息**（插队的不算）。
+	 *
+	 * 为什么不是 `messages.at(-1)`：发出的瞬间服务端就会插一条 assistant 占位消息，
+	 * 于是「末尾」立刻变成 assistant —— 早先按「末尾是 user」判断，锚点就永远不会触发
+	 * （用户 2026-10-30：「还是没顶上去」）。盯最后一条用户消息才稳。
+	 */
+	const lastUserId = (() => {
+		for (let index = messages.length - 1; index >= 0; index -= 1) {
+			const item = messages[index];
+			if (item && item.role === "user" && !item.steer) return item.id;
+		}
+		return null;
+	})();
+	/**
+	 * 最新一条**排队 / 插队**消息的 id。
+	 *
+	 * 点建议按钮 / 快捷短语发出时，如果这一轮还在跑，消息先落进 `queued`（排队），
+	 * 而不是 `messages`。以前锚点只盯 `messages` 里的用户消息 —— 于是这种「点出来的」消息
+	 * 完全没人顶，就贴在输入框上方那一格（用户 2026-10-30：「不像我手动回车那样发到上面去」）。
+	 */
+	const lastQueuedId = (() => {
+		const conversation = snapshot?.active.conversationId ?? null;
+		const queued = (snapshot?.queued ?? []).filter((item) => item.conversationId === conversation);
+		return queued.at(-1)?.id ?? null;
+	})();
+	/**
+	 * 自己刚发出消息 → **把这条顶到视口上方**（用户 2026-10-30，照 codex）。
+	 *
+	 * 以前是「回到底部」：于是发出后画面贴着底边，回答是从最下面一行一行往上长，
+	 * 屏幕下区挤、上区空着，眼睛要一直跟着底边走。现在发出去的消息自己往上顶（离顶 18px），
+	 * 回答就从中上部往下长：跟读文档一样，视线是顺着往下走的。
+	 *
+	 * 回答短的时候不会跳回底部、超过一屏才继续跟着底边走（见 `stick-to-bottom.ts` 的两种模式）。
+	 *
+	 * **换会话不锚**：打开一条旧会话应该落在最新进度（底部），而不是被拽到「最后一条用户消息」处。
+	 * **插队消息不锚**：那是打断正在跑的一轮，中途把画面抽到上方会很慌。
+	 *
+	 * **必须用 `useLayoutEffect`**：`useStickToBottom` 里跟 signal 的那个是**被动 effect**，
+	 * 顺序上比这里晚；用 `useEffect` 会先按旧状态滚一次底，然后才被拉回上方 —— 一帧里先下后上。
+	 */
+	const anchorRef = useRef<AnchorSeen>({
+		conversation: null,
+		messageId: null,
+		queuedId: null,
+	});
+	useLayoutEffect(() => {
+		/**
+		 * 顶到那条消息上方。节点没挂上就下一帧再试 —— 以前 `getElementById` 拿到 null
+		 * 就静默放弃（`anchorTo(null)` 直接 return），表现就是「有时候顶了，有时候没顶」。
+		 */
+		const anchorToId = (id: string, tries = 4): void => {
+			const node = document.getElementById(`msg-${id}`);
+			if (node) {
+				scroll.anchorTo(node);
+				return;
+			}
+			if (tries > 0) requestAnimationFrame(() => anchorToId(id, tries - 1));
+		};
+		const next = nextAnchorTarget(anchorRef.current, {
+			conversation: snapshot?.active.conversationId ?? null,
+			messageId: lastUserId,
+			queuedId: lastQueuedId,
+		});
+		anchorRef.current = next.seen;
+		if (next.target !== null) anchorToId(next.target);
+	}, [lastUserId, lastQueuedId, snapshot?.active.conversationId, scroll.anchorTo]);
 
 	/**
 	 * 侧栏 / 抽屉开关：**顶栏里一颗都不画**（桌面和手机一样，用户：「手机版的也一样哦」）。
@@ -1084,9 +1198,9 @@ export function App() {
 				chatSide === "right" ? " app-flip" : ""
 			}${collapsed ? " app-collapsed" : ""}`}
 		>
-			{switching || state.creating ? (
+			{switching || creating ? (
 				<div className="switch-hint" role="status">
-					{state.creating ? t("正在新建会话…", "Creating session…") : t("正在打开会话…", "Opening session…")}
+					{creating ? t("正在新建会话…", "Creating session…") : t("正在打开会话…", "Opening session…")}
 				</div>
 			) : null}
 			{/* 顶部区域：**分成两段** —— 左边一段（`.appbar-side`）放「品牌 + 新会话 + 全屏」，
@@ -1486,25 +1600,17 @@ export function App() {
 							}}
 						>
 							<Sidebar
-								conversations={(snapshot?.conversations ?? []).filter((item) => !isSideConversation(item.id))}
+								conversations={sidebarConversations}
 								/* 新会话界面不高亮任何一行：这条会话还不存在（旧会话亮着会让人以为「就是它」） */
-								activeId={newSession ? null : (state.pendingActive ?? snapshot?.active.conversationId ?? null)}
-								piProjects={snapshot?.piProjects ?? []}
-								runningIds={Object.keys(snapshot?.runningByConversation ?? {})}
+								activeId={newSession ? null : (pendingActive ?? snapshot?.active.conversationId ?? null)}
+								piProjects={sidebarProjects}
+								runningIds={sidebarRunningIds}
 								/* 顶栏被藏起来了没有：「新会话」平时在顶栏，只有藏起来时才回落到侧栏抬头里画一颗 */
 								appbarHidden={appbarHidden}
-								onOpenTerminal={(cwd) => {
-									const id = `term:${termSeq}:${cwd}`;
-									setTermSeq((value) => value + 1);
-									setPanelItems((current) => [...current, { id, kind: "terminal", cwd }]);
-									setActiveItem(id);
-									// 侧栏点「终端」就是要看到它：分栏没开 / 正在落地页都要抳回标签上
-									setPreviewVisible(true);
-									setPanelLanding(false);
-								}}
+								onOpenTerminal={openTerminal}
 								onOpenFile={openFileInPanel}
-								onSearchContents={() => setContentSearchOpen(true)}
-								onNewProject={() => setNewProjectOpen(true)}
+								onSearchContents={openContentSearch}
+								onNewProject={openNewProjectDialog}
 								fileOpen={filesOpen}
 								onFileOpenChange={setFilesOpen}
 								root={fileTreeRoot}
@@ -1513,10 +1619,7 @@ export function App() {
 								revealSeq={fileReveal.seq}
 								/* 空串（还没定位过）= 交回 `activePath`，别把默认目标盖成空 */
 								revealPath={fileReveal.path || null}
-								onRevealPath={(path) =>
-									// 文件名搜索点了目录：不开文件，只让左树展开到那儿（见 SidebarFiles 的 onPick）
-									setFileReveal((current) => ({ path, seq: current.seq + 1 }))
-								}
+								onRevealPath={revealPathInTree}
 								/* 收起这一栏：**只有分割线上那颗舌形箭头**（侧栏底部那颗小的已去掉） */
 							/>
 							{/*
@@ -1618,6 +1721,15 @@ export function App() {
 									) : (
 										<div className="empty">{t("等待服务端快照…（后端没起来的话看终端日志）")}</div>
 									)}
+									{/*
+									 * 「回答区」占位（用户 2026-10-30，照 codex）：发出消息后把它顶到上方，
+									 * 下面这段空白就是回答要长的地方。高度由 `useStickToBottom` 算（`scroll.pad`），
+									 * 回答变长它自己收缩到 0，画面顺势交回「跟着底部」。
+									 * **必须是容器内部的一个元素**：给 `<main>` 加 padding-bottom 撑不出可滚动空间。
+									 */}
+									{scroll.pad > 0 ? (
+										<div className="scroll-anchor-tail" style={{ height: scroll.pad }} aria-hidden="true" />
+									) : null}
 								</main>
 								<ConversationOutline messages={messages} />
 
@@ -1732,10 +1844,12 @@ export function App() {
 									}
 									running={
 										!newSession &&
+										/* 建会话在飞时 active 还是上一条：那一轮的「运行中」不该画到这块空屏上 */
+										!pendingNewChat &&
 										snapshot?.running.status !== "idle" &&
 										snapshot?.running.conversationId === (snapshot?.active.conversationId ?? null)
 									}
-									conversationId={newSession ? null : (snapshot?.active.conversationId ?? null)}
+									conversationId={newSession || pendingNewChat ? null : (snapshot?.active.conversationId ?? null)}
 									/* 标注算待发内容：有标注时发送按钮亮着，回车直接把它们发出去 */
 									annotations={shownAnnotations}
 									onAnnotationsSent={clearSentAnnotations}
