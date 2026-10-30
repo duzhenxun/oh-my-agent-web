@@ -1,12 +1,5 @@
 import { useEffect, useState } from "react";
-import {
-	currentChatFont,
-	currentChatWidth,
-	onChatDisplayChange,
-	setChatFont,
-	setChatWidth,
-	type ChatWidthId,
-} from "./chat-display.ts";
+import { currentChatFont, currentChatWidth, onChatDisplayChange, setChatFont, setChatWidth } from "./chat-display.ts";
 
 /**
  * 聊天区字号 / 宽度 + 改它们。
@@ -17,9 +10,10 @@ import {
 export function useChatDisplay(): {
 	/** 正文字号（像素） */
 	font: number;
-	width: ChatWidthId;
+	/** 对话列的最大宽度（像素；0 = 满宽） */
+	width: number;
 	setFont: (px: number) => void;
-	setWidth: (id: ChatWidthId) => void;
+	setWidth: (px: number) => void;
 } {
 	const [state, setState] = useState(() => ({ font: currentChatFont(), width: currentChatWidth() }));
 	useEffect(() => onChatDisplayChange(setState), []);

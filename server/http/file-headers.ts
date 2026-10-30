@@ -25,7 +25,7 @@ const EMBEDDED_DESTS = new Set(["iframe", "frame", "object", "embed", "image", "
  * 只认文档类：html / xhtml / svg / 其它 xml。图片（png/jpeg/webp…）不是主动内容，
  * 视频音频也不是 —— 它们该照旧内联，别被误伤。
  */
-function isActiveContentMime(mime: string): boolean {
+export function isActiveContentMime(mime: string): boolean {
 	const value = mime.toLowerCase();
 	if (value.startsWith("text/html")) return true;
 	if (value.includes("xhtml")) return true;
@@ -34,7 +34,7 @@ function isActiveContentMime(mime: string): boolean {
 }
 
 /** 请求方是不是「页面内嵌」来的（拿不到 Sec-Fetch-Dest 时按顶层导航处理） */
-function isEmbeddedRequest(headers: Record<string, string | string[] | undefined>): boolean {
+export function isEmbeddedRequest(headers: Record<string, string | string[] | undefined>): boolean {
 	const raw = headers["sec-fetch-dest"];
 	const dest = Array.isArray(raw) ? raw[0] : raw;
 	if (typeof dest !== "string" || dest === "") return false;
@@ -42,7 +42,7 @@ function isEmbeddedRequest(headers: Record<string, string | string[] | undefined
 }
 
 /** `Content-Disposition: attachment` 头。非 ASCII 文件名走 RFC 5987 的 `filename*` */
-function attachmentHeader(filename?: string): string {
+export function attachmentHeader(filename?: string): string {
 	const raw = filename ?? "file";
 	// Node 的 setHeader 会拒绝非 ASCII 头值（ERR_INVALID_CHAR），所以 filename= 那份必须是纯 ASCII：
 	// 中文名靠后面的 filename* 传（RFC 5987），旧客户端只会看到一个下划线文件名，不会报错

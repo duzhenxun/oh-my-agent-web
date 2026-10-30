@@ -10,7 +10,7 @@
  *      坏值（NaN / 0 / 负数）退回宽窗行为，不抛错。
  *
  * CSS 侧同一个数在 `styles/responsive.css`（`@media (min-width: 401px) and (max-width: 1000px)`
- * 里的 `max(180px, calc(100vw - 430px))`）—— 改一边必须改另一边，
+ * 里的 `max(240px, calc(100vw - 430px))`）—— 改一边必须改另一边，
  * 否则两处宽度不一致，顶栏那道分段线就会跟侧栏边框错开。
  */
 import assert from "node:assert/strict";
@@ -29,7 +29,7 @@ describe("sidebarMaxWidth", () => {
 	});
 
 	it("窄窗：上限 = 窗口宽 - 430px（留给标题 + 入口排）", () => {
-		assert.equal(sidebarMaxWidth(560), 180); // 560-430=130 → 保底 180
+		assert.equal(sidebarMaxWidth(560), 240); // 560-430=130 → 保底 SIDEBAR_MIN_WIDTH
 		assert.equal(sidebarMaxWidth(700), 270); // 700-430
 		assert.equal(sidebarMaxWidth(1000), 570); // 1000-430（再由 SIDEBAR_MAX_WIDTH 的上层负责）
 	});
@@ -48,9 +48,9 @@ describe("sidebarMaxWidth", () => {
 	it("配合 clampSidebarWidth：窄窗里拖不出「显示不出来的宽度」", () => {
 		const max = sidebarMaxWidth(700); // 270
 		assert.equal(clampSidebarWidth(516, max), 270);
-		assert.equal(clampSidebarWidth(200, max), 200);
+		assert.equal(clampSidebarWidth(200, max), SIDEBAR_MIN_WIDTH); // 比下限还窄 → 抬到下限
 		// 窄到「窗口宽 - 430」低于最小宽度时，仍保底给 MIN（不是 0）
-		const tiny = sidebarMaxWidth(405); // 180
+		const tiny = sidebarMaxWidth(405); // 405-430 < 0 → 240
 		assert.equal(tiny, SIDEBAR_MIN_WIDTH);
 		assert.equal(clampSidebarWidth(400, tiny), SIDEBAR_MIN_WIDTH);
 	});

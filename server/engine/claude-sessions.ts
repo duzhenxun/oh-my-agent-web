@@ -47,7 +47,7 @@ function claudeHome(home?: string): string {
 }
 
 /** 与 claude-code-acp 的 `encodeProjectPath` 完全一致（不可逆，只用于定位目录） */
-function encodeProjectPath(cwd: string): string {
+export function encodeProjectPath(cwd: string): string {
 	return cwd.replace(/[^a-zA-Z0-9]/g, "-");
 }
 
@@ -89,7 +89,7 @@ type ClaudeEntry = {
 };
 
 /** 逐行容忍解析：坏行（历史版本、被截断的行）跳过，不让整个会话消失 */
-function parseTranscript(text: string): ClaudeEntry[] {
+export function parseTranscript(text: string): ClaudeEntry[] {
 	const out: ClaudeEntry[] = [];
 	for (const line of text.split("\n")) {
 		const trimmed = line.trim();
@@ -219,7 +219,12 @@ type ClaudeSessionMeta = {
 };
 
 /** 一条会话的元数据（cwd / 标题 / 起止时间 / 模型）；判不出 cwd 或落在临时目录的返回 null */
-function sessionMetaOf(id: string, file: string, entries: ClaudeEntry[], updatedAt: number): ClaudeSessionMeta | null {
+export function sessionMetaOf(
+	id: string,
+	file: string,
+	entries: ClaudeEntry[],
+	updatedAt: number,
+): ClaudeSessionMeta | null {
 	let cwd = "";
 	let title: string | null = null;
 	let startedAt = 0;
@@ -247,7 +252,7 @@ function sessionMetaOf(id: string, file: string, entries: ClaudeEntry[], updated
 }
 
 /** 纯分组：会话 → 项目（按 cwd；项目名取目录名） */
-function groupClaudeSessions(sessions: ClaudeSessionMeta[]): PiProject[] {
+export function groupClaudeSessions(sessions: ClaudeSessionMeta[]): PiProject[] {
 	const groups = new Map<string, PiProject>();
 	for (const session of sessions) {
 		const group =

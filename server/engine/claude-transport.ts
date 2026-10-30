@@ -34,7 +34,7 @@ import { createJsonRpcStdioClient } from "./jsonrpc-stdio.js";
  *   - `@agentclientprotocol/claude-agent-acp` → `claude-agent-acp`（改名后的新包）。
  * 只认一个的话，用户按 deprecation 提示装完新包反而变成「没有找到适配器」。
  */
-const CLAUDE_ACP_BINS = ["claude-code-acp", "claude-agent-acp"] as const;
+export const CLAUDE_ACP_BINS = ["claude-code-acp", "claude-agent-acp"] as const;
 
 /** 默认可执行文件：PATH 里先命中哪个用哪个；都没装就报第一个名字（错误信息里再教怎么装） */
 export function defaultClaudeBin(

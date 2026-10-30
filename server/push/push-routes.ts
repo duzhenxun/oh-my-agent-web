@@ -1,11 +1,14 @@
 /**
  * 推送的 HTTP 路由（设置面板用）。
  *
- *   GET  /api/push/key          取 VAPID 公钥（前端订阅要用）
- *   POST /api/push/subscribe    存订阅
- *   POST /api/push/unsubscribe  删订阅
- *   POST /api/push/brand        存这台设备的界面自称（设置 → 外观 改名后同步过来）
- *   POST /api/push/test         给自己推一条测试通知
+ *   GET  /api/push/key             取 VAPID 公钥（前端订阅要用）
+ *   GET  /api/push/config          这台服务端的 VAPID 状态（指纹 / 来源 / subject 合不合法）
+ *   POST /api/push/config          改联系方式（subject），不影响已订阅设备
+ *   POST /api/push/keys/regenerate 换一对新密钥（**会清空全部订阅**，红按钮后面那个）
+ *   POST /api/push/subscribe       存订阅
+ *   POST /api/push/unsubscribe     删订阅
+ *   POST /api/push/brand           存这台设备的界面自称（设置 → 外观 改名后同步过来）
+ *   POST /api/push/test            给自己推一条测试通知
  */
 import type { Express } from "express";
 import { type PushStore } from "./push.js";
@@ -45,6 +48,37 @@ function brandNamePatch(raw: unknown): { brandName?: string } {
 export function registerPushRoutes(app: Express, options: { store: PushStore }): void {
 	app.get("/api/push/key", async (_request, response) => {
 		response.json({ publicKey: await options.store.publicKey() });
+	});
+
+	app.get("/api/push/config", async (_request, response) => {
+		response.json(await options.store.config());
+	});
+
+	/**
+	 * 改联系方式。传空串 = 回兜底值（界面上的「清空后保存」）。
+	 * 返回值故意带上整份 config：界面存完就能直接渲染新的合法性 / 来源，不用再刷一次。
+	 */
+	app.post("/api/push/config", async (request, response) => {
+		const body = request.body as { subject?: unknown } | undefined;
+		if (typeof body?.subject !== "string") {
+			response.status(400).json({ error: { code: "push.bad_request", message: "缺少 subject" } });
+			return;
+		}
+		const result = await options.store.saveSubject(body.subject);
+		if (!result.ok) {
+			response.status(400).json({ error: { code: result.code, message: "subject 不合法" } });
+			return;
+		}
+		response.json(result.config);
+	});
+
+	app.post("/api/push/keys/regenerate", async (_request, response) => {
+		const result = await options.store.regenerateKeys();
+		if (!result.ok) {
+			response.status(409).json({ error: { code: result.code, message: "密钥由环境变量指定，不能在这里换" } });
+			return;
+		}
+		response.json({ ...result.config, cleared: result.cleared ?? 0 });
 	});
 
 	app.post("/api/push/subscribe", async (request, response) => {

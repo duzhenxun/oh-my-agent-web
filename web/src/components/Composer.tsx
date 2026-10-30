@@ -2,6 +2,7 @@ import {
 	useCallback,
 	useEffect,
 	useLayoutEffect,
+	useMemo,
 	useRef,
 	useState,
 	type ClipboardEvent,
@@ -16,6 +17,7 @@ import { ProjectBranchChips } from "./ProjectBranchChips.tsx";
 import { ThinkButton } from "./ThinkButton.tsx";
 import { TemplateEditor, TemplateGallery } from "./TemplateModals.tsx";
 import { setDraft as setStoreDraft, useAppState } from "../store.ts";
+import { textOfMessage } from "../message-text.ts";
 import { COMPOSER_ITEM_KEY, COMPOSER_TOGGLES } from "../ui-prefs.ts";
 import { usePrefFlags } from "../use-pref-flags.ts";
 import { useSeedQuickFromServer } from "../use-quick-seed.ts";
@@ -75,6 +77,7 @@ export function Composer({
 	tempChat = false,
 	annotations = [],
 	onAnnotationsSent,
+	onOpenFile,
 	annotationSummary = null,
 }: {
 	running: boolean;
@@ -119,6 +122,14 @@ export function Composer({
 	 * 这里只负责给它一个位置 —— `.composer` 的边框之内、输入框上方。
 	 */
 	annotationSummary?: ReactNode;
+	/**
+	 * 「@ 提及」面板行尾的「在右侧打开」：`(path, root)` 交给 App 的 `openFileInPanel`。
+	 *
+	 * 不传就不画那颗按钮（临时聊天那条通道没有右侧分栏，也没必要开）。
+	 * 这里只往草稿里插引用，**不**顺手打开文件 —— 那是两个动作，混在一起就变成了
+	 * 「每选一个文件就弹一个标签」。
+	 */
+	onOpenFile?: (path: string, root: string | null) => void;
 }) {
 	const t = useT();
 	const app = useAppState();
@@ -430,6 +441,58 @@ export function Composer({
 		else applyReference(row.path, row.isDir);
 	};
 
+	/* ---------------- ↑ / ↓ 翻「上次发过的话」（像 shell 的历史） ---------------- */
+	/**
+	 * 历史从哪来：**这条会话里真正发出去过的用户消息**（不是本地草稿）。
+	 * 这样多设备 / 刷新之后都在，也不会把没发出去的半句话当成"上次的输入"。
+	 * 只取最近 50 条：更早的翻起来也没有意义。
+	 */
+	const sentTexts = useMemo(() => {
+		const out: string[] = [];
+		for (const message of snapshot?.active.messages ?? []) {
+			if (message.role !== "user") continue;
+			const text = textOfMessage(message).trim();
+			if (text !== "") out.push(text);
+		}
+		return out.slice(-50);
+	}, [snapshot?.active.messages]);
+	/** 正在翻历史：null = 正在写自己的草稿；数字 = 历史里的第几条（0 最早） */
+	const [historyAt, setHistoryAt] = useState<number | null>(null);
+	/** 开始翻历史之前手上那段草稿：翻回最新一条时原样还回去 */
+	const draftBeforeHistory = useRef("");
+	// 换会话（或换成临时聊天）就把历史游标清掉：两个会话的历史不是一份
+	useEffect(() => {
+		setHistoryAt(null);
+	}, [conversationId]);
+
+	/**
+	 * 往上 / 往下翻一条。返回 true = 这个方向键被吃掉了。
+	 *
+	 * 只在「光标在第一行按 ↑」或「在最后一行按 ↓」时生效（见 onKeyDown 里的判断）：
+	 * 多行草稿里光标在中间时，上下键还是老老实实走光标 —— 否则写长提示词时没法翻行。
+	 */
+	const recallHistory = (direction: -1 | 1): boolean => {
+		if (sentTexts.length === 0) return false;
+		if (historyAt === null && direction === 1) return false; // 没在翻历史时按 ↓：不管
+		if (historyAt === null) draftBeforeHistory.current = draftRef.current;
+		let next: number | null = historyAt === null ? sentTexts.length - 1 : historyAt + direction;
+		if (next !== null && next < 0) next = 0;
+		if (next !== null && next >= sentTexts.length) next = null; // 越过最新一条 → 回到自己的草稿
+		setHistoryAt(next);
+		const text = next === null ? draftBeforeHistory.current : (sentTexts[next] ?? "");
+		setDraft(text);
+		caretRef.current = text.length;
+		setCaret(text.length);
+		// 光标摆到末尾（历史多半是用来改一改再发的）
+		requestAnimationFrame(() => {
+			const element = inputRef.current;
+			if (!element) return;
+			element.focus();
+			element.setSelectionRange(text.length, text.length);
+		});
+		return true;
+	};
+
 	// 老版本把这一项存在服务端（`quickPhrasesEnabled`，多设备一致）：本机没写过就抄一次旧值
 	useSeedQuickFromServer(snapshot?.settings.quickPhrasesEnabled);
 	// 关掉时连短语都不取，下面 `quickPhrases.length > 0` 那个判断就顺手把整行和分隔线收掉了
@@ -543,6 +606,9 @@ export function Composer({
 		const text = body + imagesMarkdown(pending);
 		deliver(text, pending.length > 0 ? pending : undefined, mode);
 		setDraft(""); // 高度由上面那个 effect 跟着 draft 一起收回一行
+		// 发出去了：历史游标复位（刚发的这条已经进了历史）
+		setHistoryAt(null);
+		draftBeforeHistory.current = "";
 		setPending([]);
 		setUploadError(null);
 		if (notes !== "") onAnnotationsSent?.();
@@ -702,6 +768,9 @@ export function Composer({
 					onPick={(row) => applyReference(row.path, row.isDir)}
 					onHover={setMentionActive}
 					onBrowse={(target) => void browsePath(target)}
+					/* 相对路径按 `mentionRoot` 那个根算（搜出来的就是相对它的）；
+					   工作区外的绝对路径原样交给面板 —— 服务端认得绝对是哪个文件 */
+					onOpenFile={onOpenFile ? (path) => onOpenFile(path, mentionRoot) : undefined}
 				/>
 			) : null}
 
@@ -727,6 +796,12 @@ export function Composer({
 					onChange={(event) => {
 						const value = event.target.value;
 						const position = event.target.selectionStart ?? value.length;
+						// 正在翻历史时手动改字：退出历史浏览，改过的这段就当成「自己的草稿」
+						//（否则再按 ↓ 会把它换回翻历史之前那一版，刚打的字白丢）
+						if (historyAt !== null) {
+							setHistoryAt(null);
+							draftBeforeHistory.current = value;
+						}
 						setDraft(value);
 						caretRef.current = position;
 						setCaret(position);
@@ -780,6 +855,26 @@ export function Composer({
 								event.preventDefault();
 								setDraft("");
 								return;
+							}
+						}
+						/*
+						 * ↑ / ↓ 翻「上次发过的话」：只在光标处于**第一行（↑）/ 最后一行（↓）**且没有选区时接管。
+						 * 「@ 提及」「/ 命令」面板开着时不让位给这里（上面那两段已经 return 了）。
+						 */
+						if (
+							!event.nativeEvent.isComposing &&
+							(event.key === "ArrowUp" || event.key === "ArrowDown") &&
+							event.currentTarget.selectionStart === event.currentTarget.selectionEnd
+						) {
+							const before = event.currentTarget.value.slice(0, event.currentTarget.selectionStart ?? 0);
+							const after = event.currentTarget.value.slice(event.currentTarget.selectionEnd ?? 0);
+							const atEdge = event.key === "ArrowUp" ? !before.includes("\n") : !after.includes("\n");
+							if (atEdge) {
+								// 有候选面板开着时方向键归面板（上面已经处理），走到这里说明没有面板
+								if (recallHistory(event.key === "ArrowUp" ? -1 : 1)) {
+									event.preventDefault();
+									return;
+								}
 							}
 						}
 						if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;

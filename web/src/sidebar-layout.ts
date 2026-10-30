@@ -13,8 +13,8 @@
  *
  * CSS 侧同一个数在 `styles/responsive.css`（`max(240px, calc(100vw - 430px))`）—— 改一边必须改另一边。
  */
-const SIDEBAR_MIN_WIDTH = 240;
-const SIDEBAR_MAX_WIDTH = 520;
+export const SIDEBAR_MIN_WIDTH = 240;
+export const SIDEBAR_MAX_WIDTH = 520;
 const SIDEBAR_DEFAULT_WIDTH = 260;
 
 export const SIDEBAR_WIDTH_KEY = "agent-web.sidebar.width";

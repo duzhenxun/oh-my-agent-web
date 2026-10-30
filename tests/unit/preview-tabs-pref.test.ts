@@ -13,32 +13,38 @@ import {
 	parsePanelState,
 	restorePanelItems,
 	serializePanelState,
-	toStoredTabs,
 } from "../../web/src/preview-tabs-pref.ts";
 
-describe("toStoredTabs", () => {
+describe("存档时的取舍（serializePanelState）", () => {
 	it("文件 / 网页 / 文件树存，终端与临时聊天丢掉", () => {
-		const tabs = toStoredTabs([
-			{ id: "f", kind: "file", path: "a.ts", root: "/p" },
-			{ id: "t", kind: "terminal", cwd: "/p" },
-			{ id: "w", kind: "web", url: "https://example.com" },
-			{ id: "d", kind: "files" },
-			{ id: "s", kind: "side" },
-		]);
-		assert.deepEqual(tabs, [
+		const raw = serializePanelState(
+			[
+				{ id: "file:/p:a.ts", kind: "file" as const, path: "a.ts", root: "/p" },
+				{ id: "term:1:/p", kind: "terminal" as const, cwd: "/p" },
+				{ id: "web:1", kind: "web" as const, url: "https://example.com" },
+				{ id: "files:1", kind: "files" as const },
+			],
+			"term:1:/p",
+			true,
+		);
+		const parsed = JSON.parse(raw) as { tabs: unknown[]; active: string | null };
+		assert.deepEqual(parsed.tabs, [
 			{ kind: "file", path: "a.ts", root: "/p" },
 			{ kind: "web", url: "https://example.com" },
 			{ kind: "files" },
 		]);
+		// 聚焦的正好是那条不存的终端 → active 不能指着一条刷新后不存在的 id
+		assert.equal(parsed.active, null);
 	});
 
 	it("最多只留 MAX_RESTORED_TABS 条", () => {
 		const many = Array.from({ length: MAX_RESTORED_TABS + 5 }, (_, i) => ({
-			id: `w${i}`,
+			id: `web:${i}`,
 			kind: "web" as const,
 			url: `u${i}`,
 		}));
-		assert.equal(toStoredTabs(many).length, MAX_RESTORED_TABS);
+		const parsed = JSON.parse(serializePanelState(many, null, false)) as { tabs: unknown[] };
+		assert.equal(parsed.tabs.length, MAX_RESTORED_TABS);
 	});
 });
 

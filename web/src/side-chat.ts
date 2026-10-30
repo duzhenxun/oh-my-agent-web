@@ -14,6 +14,7 @@
  */
 import type { AttachmentRef, Snapshot } from "./types.ts";
 import { appendTextToMessage } from "./lib/delta.ts";
+import { newId } from "./lib/uid.ts";
 
 export type SideState = {
 	snapshot: Snapshot | null;
@@ -36,7 +37,7 @@ const EMPTY: SideState = { snapshot: null, error: null, draft: "" };
  * 只认这三种：整份快照、流式增量、请求被拒。其余（通知、审批弹窗、其它会话的增量）一律忽略 ——
  * 右侧这块地方只负责「这一条临时聊天」。
  */
-function applySideFrame(state: SideState, frame: unknown): SideState {
+export function applySideFrame(state: SideState, frame: unknown): SideState {
 	if (typeof frame !== "object" || frame === null) return state;
 	const raw = frame as Record<string, unknown>;
 	if (raw.type === "reply" && raw.ok === false) {
@@ -95,7 +96,7 @@ let seq = 0;
 
 function createSideChannel(): SideChannel {
 	// 前缀 `side-`：服务端日志里一眼能分出「这是右侧分栏开的那条」，不是主窗口
-	const id = `side-${crypto.randomUUID()}`;
+	const id = `side-${newId()}`;
 	let state: SideState = EMPTY;
 	const listeners = new Set<Listener>();
 	let source: EventSource | null = null;

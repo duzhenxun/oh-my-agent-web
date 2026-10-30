@@ -102,7 +102,14 @@ export type ServerState = {
 };
 
 export function emptyRunning(): RunningState {
-	return { status: "idle", conversationId: null, turnStartedAt: null, streamingText: "", activeTool: null };
+	return {
+		status: "idle",
+		conversationId: null,
+		turnStartedAt: null,
+		streamingText: "",
+		activeTool: null,
+		retrying: null,
+	};
 }
 
 export function createServerState(
@@ -219,7 +226,11 @@ export function createConversation(input: {
  */
 function runningForClient(state: ServerState, activeId: string | null, override?: string | null) {
 	if (override === undefined || override === state.running.conversationId) {
-		return { ...state.running, activeTool: state.running.activeTool ? { ...state.running.activeTool } : null };
+		return {
+			...state.running,
+			activeTool: state.running.activeTool ? { ...state.running.activeTool } : null,
+			retrying: state.running.retrying ? { ...state.running.retrying } : null,
+		};
 	}
 	const own = activeId ? state.runningByConversation[activeId] : undefined;
 	return {
@@ -228,6 +239,8 @@ function runningForClient(state: ServerState, activeId: string | null, override?
 		turnStartedAt: own?.turnStartedAt ?? null,
 		streamingText: "",
 		activeTool: null,
+		// 「正在重试」属于真正在跑的那条会话，别人的快照里不该出现
+		retrying: null,
 	};
 }
 

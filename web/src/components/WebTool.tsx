@@ -9,6 +9,8 @@
 import { useRef, useState } from "react";
 import { normalizeUrl, proxyUrlOf } from "../url-bar.ts";
 import { useT } from "../use-language.ts";
+import { usePanelZoom } from "../panel-zoom.ts";
+import { WEB_ZOOM_KEY } from "../ui-prefs.ts";
 
 const SUGGESTIONS = ["http://localhost:3000", "https://www.baidu.com", "https://developer.mozilla.org"];
 
@@ -22,6 +24,11 @@ export function WebTool({ initialUrl = "" }: { initialUrl?: string }) {
 	/** 刷新：src 不变时改 key 才会真的重新加载 */
 	const [reloadSeq, setReloadSeq] = useState(0);
 	const frameRef = useRef<HTMLIFrameElement | null>(null);
+	/**
+	 * ⌘/Ctrl + `+` / `-` 只缩放页面内容（居中那层 iframe），地址栏保持原样 ——
+	 * 见 panel-zoom.ts 里关于「为什么挂在 window 捕获阶段」和 iframe 焦点边界的说明。
+	 */
+	const zoom = usePanelZoom(WEB_ZOOM_KEY);
 
 	const current = index >= 0 ? history[index] : "";
 
@@ -38,7 +45,7 @@ export function WebTool({ initialUrl = "" }: { initialUrl?: string }) {
 	};
 
 	return (
-		<div className="work-web">
+		<div className="work-web" ref={zoom.ref} {...zoom.pointerHandlers}>
 			<div className="work-web-bar">
 				<button
 					type="button"
@@ -100,6 +107,7 @@ export function WebTool({ initialUrl = "" }: { initialUrl?: string }) {
 					key={`${current}#${reloadSeq}`}
 					ref={frameRef}
 					className="work-web-frame"
+					style={{ zoom: zoom.percent / 100 }}
 					src={proxyUrlOf(current) ?? current}
 					title={current}
 					// 不设 allow-top-navigation：嵌进来的站点不能把整个工作台导走。

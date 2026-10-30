@@ -65,13 +65,18 @@ export function SessionBatchMenu({
 				title={
 					del.armed
 						? t(
-								"再点一次就全部改名成 .deleted-时间戳（可从磁盘恢复）",
-								"Click again to rename them all to .deleted-<timestamp>",
+								`再点一次就真删这 ${count} 个会话文件：不可恢复`,
+								`Click again to permanently delete these ${count} session file(s) — not recoverable`,
 							)
-						: t(`把选中的 ${count} 条一起删掉；第一下只是确认`, `Delete all ${count} — the first click only arms it`)
+						: t(
+								`把选中的 ${count} 条连同磁盘上的文件一起删掉（不可恢复）；第一下只是确认`,
+								`Permanently delete the selected ${count} including their files — first click only arms it`,
+							)
 				}
 				aria-label={
-					del.armed ? t("再点一次确认删除", "Click again to confirm delete") : t("删除选中的会话", "Delete selected")
+					del.armed
+						? t("再点一次确认彻底删除", "Click again to delete permanently")
+						: t("彻底删除选中的会话", "Permanently delete selected sessions")
 				}
 				onClick={() =>
 					del.run(() => {
@@ -81,8 +86,8 @@ export function SessionBatchMenu({
 				}
 			>
 				{del.armed
-					? t(`🗑 再点一次删除这 ${count} 条`, `🗑 Click again to delete ${count}`)
-					: t(`🗑 删除这 ${count} 条`, `🗑 Delete ${count}`)}
+					? t(`🧨 再点一次彻底删除这 ${count} 条`, `🧨 Click again to purge ${count}`)
+					: t(`🧨 彻底删除这 ${count} 条`, `🧨 Purge ${count}`)}
 			</button>
 			<button type="button" className="proj-menu-item" onClick={act(onClear)}>
 				✕ {t("取消选择", "Clear selection")}

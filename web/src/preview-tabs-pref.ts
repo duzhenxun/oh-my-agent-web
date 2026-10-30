@@ -20,7 +20,7 @@ import type { PanelItem } from "./components/PreviewPanel.tsx";
 export const PANEL_STATE_KEY = "agent-web.preview.tabs.v1";
 
 /** 最多恢复这么多标签：手滑开二十个也不该在刷新后原样铺回来 */
-const MAX_RESTORED_TABS = 10;
+export const MAX_RESTORED_TABS = 10;
 
 type StoredTab = { kind: "file"; path: string; root: string } | { kind: "web"; url: string } | { kind: "files" };
 

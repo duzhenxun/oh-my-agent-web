@@ -15,13 +15,13 @@ import {
 	findConflict,
 	formatCombo,
 	isReservedCombo,
-	matchesCombo,
 	normalizeCombo,
 	parseCombo,
 	readShortcuts,
 	shortcutFor,
 } from "../../web/src/shortcuts.ts";
 import { sheetRows } from "../../web/src/shortcut-sheet.ts";
+import type { ShortcutMap } from "../../web/src/shortcuts.ts";
 
 /** 造一个键盘事件（只需要我们读的那几个字段） */
 function key(init: { key: string; code?: string; meta?: boolean; ctrl?: boolean; shift?: boolean; alt?: boolean }) {
@@ -35,6 +35,18 @@ function key(init: { key: string; code?: string; meta?: boolean; ctrl?: boolean;
 	};
 }
 
+/**
+ * 「这条绑定会不会被这个按键命中」。
+ *
+ * 以前 `shortcuts.ts` 里有一个 `matchesCombo`；现在匹配的唯一事实源是
+ * `comboFromEvent`（事件 → 组合串）+ 表比对（`shortcutFor`），所以这里按同一语义拼出来。
+ */
+function hits(combo: string | null | undefined, event: ReturnType<typeof key>, mac = true): boolean {
+	const fromEvent = comboFromEvent(event, mac);
+	const expected = normalizeCombo(combo);
+	return fromEvent !== null && expected !== null && fromEvent === expected;
+}
+
 describe("组合键解析与归一化", () => {
 	it("macOS 只认 ⌘、其它平台只认 Ctrl，两边都归一成 Mod+K", () => {
 		assert.equal(comboFromEvent(key({ key: "k", code: "KeyK", meta: true }), true), "Mod+K");
@@ -43,7 +55,7 @@ describe("组合键解析与归一化", () => {
 
 	it("macOS 上的 Ctrl+K 不被抢（那是文本框里「删到行尾」）", () => {
 		assert.equal(comboFromEvent(key({ key: "k", code: "KeyK", ctrl: true }), true), null);
-		assert.equal(matchesCombo("Mod+K", key({ key: "k", code: "KeyK", ctrl: true }), true), false);
+		assert.equal(hits("Mod+K", key({ key: "k", code: "KeyK", ctrl: true }), true), false);
 	});
 
 	it("Windows 上的 Win 键不算 Mod（只认 Ctrl）", () => {
@@ -93,18 +105,25 @@ describe("组合键解析与归一化", () => {
 
 describe("匹配", () => {
 	it("同一条绑定，两个平台各按各的主修饰键都能命中", () => {
-		assert.equal(matchesCombo("Mod+K", key({ key: "k", code: "KeyK", meta: true }), true), true);
-		assert.equal(matchesCombo("Mod+K", key({ key: "k", code: "KeyK", ctrl: true }), false), true);
+		assert.equal(hits("Mod+K", key({ key: "k", code: "KeyK", meta: true }), true), true);
+		assert.equal(hits("Mod+K", key({ key: "k", code: "KeyK", ctrl: true }), false), true);
 	});
 
 	it("多按 / 少按修饰键都不算命中", () => {
-		assert.equal(matchesCombo("Mod+K", key({ key: "k", code: "KeyK", meta: true, shift: true })), false);
-		assert.equal(matchesCombo("Mod+Shift+K", key({ key: "k", code: "KeyK", meta: true })), false);
-		assert.equal(matchesCombo("Mod+Alt+K", key({ key: "k", code: "KeyK", meta: true })), false);
+		assert.equal(hits("Mod+K", key({ key: "k", code: "KeyK", meta: true, shift: true })), false);
+		assert.equal(hits("Mod+Shift+K", key({ key: "k", code: "KeyK", meta: true })), false);
+		assert.equal(hits("Mod+Alt+K", key({ key: "k", code: "KeyK", meta: true })), false);
 	});
 
 	it("未设置（null）永远不命中", () => {
-		assert.equal(matchesCombo(null, key({ key: "k", code: "KeyK", meta: true })), false);
+		assert.equal(hits(null, key({ key: "k", code: "KeyK", meta: true })), false);
+	});
+
+	it("派发器只认表里的那一条（`shortcutFor`）", () => {
+		const map = { ...defaultShortcuts(), newChat: "Mod+K" } as ShortcutMap;
+		assert.equal(shortcutFor(map, key({ key: "k", code: "KeyK", meta: true }), true), "newChat");
+		// 没绑的键不该顺手开一个新会话
+		assert.equal(shortcutFor(map, key({ key: "j", code: "KeyJ", meta: true }), true), null);
 	});
 });
 

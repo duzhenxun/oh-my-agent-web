@@ -48,7 +48,11 @@ function hasControlChars(value: string): boolean {
  * NTFS 备用数据流；超长路径在 Node 没加 `\\?\` 前缀时直接 `ENOENT`，
  * 而递归搜索里的 `catch` 会把整棵子树静默丢掉。
  */
-function checkWindowsPath(value: string, platform: NodeJS.Platform = process.platform, maxLength = 250): string | null {
+export function checkWindowsPath(
+	value: string,
+	platform: NodeJS.Platform = process.platform,
+	maxLength = 250,
+): string | null {
 	if (platform !== "win32" || value === "") return null;
 	if (value.length > maxLength) return `路径太长（Windows 上限约 260 字符）：${value.slice(0, 48)}…`;
 	// 盘符里的冒号是合法的：先剥掉再逐段检查
@@ -101,7 +105,7 @@ export function webDistCandidates(serverDir: string): string[] {
  * `/root2` 不是 `/root` 的子路径，但 `startsWith("/root")` 会误判为真。
  * 传入的路径应当是**已经 realpath 过**的（调用方负责），否则 symlink 能逃出去。
  */
-function isPathInside(root: string, candidate: string): boolean {
+export function isPathInside(root: string, candidate: string): boolean {
 	const relativePath = relative(resolve(root), resolve(candidate));
 	if (relativePath === "") return true; // 就是根本身
 	return !isEscapePath(relativePath);

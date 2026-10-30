@@ -42,7 +42,7 @@ type DshSessionHeader = {
 export type DshSessionLog = { header: DshSessionHeader | null; events: DshLogEvent[] };
 
 /** projectKey(cwd) —— 镜像 DSH 的会话目录命名：分隔符 → "-"，其它非法字符 → ~XXXX（大写 hex） */
-function projectKey(cwd: string): string {
+export function projectKey(cwd: string): string {
 	let readable = "";
 	let separatorRun = false;
 	for (let i = 0; i < cwd.length; i += 1) {

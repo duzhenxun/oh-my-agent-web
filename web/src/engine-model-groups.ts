@@ -23,7 +23,7 @@ type EngineModelGroup = {
 };
 
 /** `provider/model` 里的 provider；没有斜杠（或斜杠在首尾）就是 null */
-function modelProviderOf(modelId: string): string | null {
+export function modelProviderOf(modelId: string): string | null {
 	const cut = modelId.indexOf("/");
 	if (cut <= 0 || cut === modelId.length - 1) return null;
 	return modelId.slice(0, cut);

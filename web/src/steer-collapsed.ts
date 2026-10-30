@@ -23,7 +23,7 @@ type KeyValueStore = {
 };
 
 /** 解析存量：坏值（非数组/非字符串项/JSON 坏）一律丢弃，不抛错也不整份作废 */
-function parseExpanded(raw: string | null): string[] {
+export function parseExpanded(raw: string | null): string[] {
 	if (!raw) return [];
 	let parsed: unknown;
 	try {
@@ -43,7 +43,7 @@ function parseExpanded(raw: string | null): string[] {
 }
 
 /** 序列化：截到最近 MAX_IDS 条（数组尾部是最近的，见 toggleExpanded） */
-function serializeExpanded(ids: Iterable<string>): string {
+export function serializeExpanded(ids: Iterable<string>): string {
 	return JSON.stringify([...ids].slice(-MAX_IDS));
 }
 

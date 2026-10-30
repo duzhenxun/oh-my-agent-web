@@ -13,6 +13,9 @@
 	border-radius: 999px;
 	background: var(--bg-elev);
 	align-self: flex-start;
+	/* 永远不要比面板内容宽（手机上以前会撑出屏幕，右边“远程”卡在边上） */
+	max-width: 100%;
+	box-sizing: border-box;
 }
 
 .settings-tab {
@@ -24,6 +27,10 @@
 	font-size: 14px;
 	padding: 3px 14px;
 	cursor: pointer;
+	/* flex 子项默认会被压：压下去「快捷键」这类三字标签就会竖着折行（手机上截图里那块“变形”）。
+	 * 不缩、不换行，放不下就交给外层换行（移动端）或横向溢出。 */
+	flex: none;
+	white-space: nowrap;
 	/* 能拖着排序（2026-10-29 用户：「这些可以手动调位置」）：
 	 * 横向拖 = 排序，竖向拖仍交给页面滚动；拖的时候不要顺手选中文字 */
 	touch-action: pan-y;
@@ -31,10 +38,9 @@
 	-webkit-user-select: none;
 }
 
-/* 拖动中的三态（与弹窗顶部那排 Tab 用同一套观感，见 panel-tabs.css）：
- * reordering = 正在拖（全场让位动画）、dragging = 跟手的那一个、settling = 松手后滑入槽位。 */
-.settings-tab-reordering,
-.settings-tab-settling {
+/* 拖动中的两态（与弹窗顶部那排 Tab 用同一套观感，见 panel-tabs.css）：
+ * reordering = 正在拖（全场让位动画）、dragging = 跟手的那一个。 */
+.settings-tab-reordering {
 	will-change: transform;
 	transition:
 		transform 180ms cubic-bezier(0.2, 0, 0, 1),
@@ -51,11 +57,6 @@
 	box-shadow: 0 3px 12px color-mix(in srgb, var(--text) 16%, transparent);
 }
 
-.settings-tab-settling {
-	z-index: 4;
-	cursor: grabbing;
-}
-
 html.is-tab-sort-dragging,
 html.is-tab-sort-dragging * {
 	cursor: grabbing !important;
@@ -64,8 +65,7 @@ html.is-tab-sort-dragging * {
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.settings-tab-reordering,
-	.settings-tab-settling {
+	.settings-tab-reordering {
 		transition: none;
 	}
 }

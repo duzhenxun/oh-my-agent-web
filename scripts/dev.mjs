@@ -29,6 +29,10 @@ const SERVER = {
 	args: ["--import", "tsx", "--watch", join(REPO_ROOT, "server/index.ts")],
 	env: {
 		AGENT_WEB_PORT: SERVER_PORT,
+		// 开发态标记：让后端对 EADDRINUSE 短暂重试（tsx --watch 重启时旧进程可能还没放开端口，
+		// 以前那样会直接退出，而 tsx 只会说 `Failed running … Waiting for file changes` —— 后端就真没了，
+		// 界面上每个请求都是 502）
+		AGENT_WEB_DEV: "1",
 		// 开发态后端永远只听回环：对外由 Vite 承担（它会把真实来源写进 X-Forwarded-For）
 		AGENT_WEB_HOST: "127.0.0.1",
 		// 让后端的 Origin/Host 白名单认这个对外端口（否则 WS 握手会被判为跨站）
@@ -36,11 +40,25 @@ const SERVER = {
 	},
 };
 
+/**
+ * Vite **直接**用 node 起（`node node_modules/vite/bin/vite.js`），不要走 `npm exec`。
+ *
+ * 为什么（真实踩过）：`npm exec vite` 会多出一层 npm 进程，真正监听 25257 的是它的**孙子**。
+ * 这层收摊时只杀到 npm，Vite 活下来成了孤儿 —— 于是端口被占，下一次 `npm run dev` 直接
+ * `Error: Port 25257 is already in use`，而 `ps` 里只看得到一个早就该退出的 vite。
+ * 直接 spawn 之后父子关系是干净的，SIGTERM 一定打到那个真的监听端口的进程。
+ *
+ * 额外参数仍然透传给 vite（例如 `npm run dev -- --host 0.0.0.0` 让手机也能访问）。
+ */
 const WEB = {
 	name: "web",
-	command: "npm",
-	// 额外参数透传给 vite（例如 `npm run dev -- --host 0.0.0.0` 让手机也能访问）
-	args: ["exec", "--", "vite", "--config", join(REPO_ROOT, "web/vite.config.ts"), ...process.argv.slice(2)],
+	command: process.execPath,
+	args: [
+		join(REPO_ROOT, "node_modules/vite/bin/vite.js"),
+		"--config",
+		join(REPO_ROOT, "web/vite.config.ts"),
+		...process.argv.slice(2),
+	],
 	env: {},
 };
 
@@ -51,8 +69,15 @@ function shutdown(code) {
 	if (shuttingDown) return;
 	shuttingDown = true;
 	for (const child of running.values()) child.kill("SIGTERM");
-	setTimeout(() => process.exit(code), 200);
+	// 兜底强杀：宁可硬停，也别留一个占着 25257 的孤儿把下一次启动顶掉
+	setTimeout(() => {
+		for (const child of running.values()) child.kill("SIGKILL");
+		process.exit(code);
+	}, 400);
 }
+
+// 自己收到信号时也要收摊（`kill <pid>` / 终端关掉都走这里），否则子进程会被遗弃
+for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => shutdown(0));
 
 function start(spec) {
 	const child = spawn(spec.command, spec.args, {

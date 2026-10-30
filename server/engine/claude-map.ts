@@ -59,7 +59,7 @@ export function currentModelId(models: ClaudeModels | undefined): string | null 
 }
 
 /** `anthropic/opus` → `opus`；`opus` 也接受（AGENT_WEB_CLAUDE_MODEL 允许写裸别名） */
-function parseClaudeModelId(value: string | undefined | null): string | null {
+export function parseClaudeModelId(value: string | undefined | null): string | null {
 	const raw = (value ?? "").trim();
 	if (raw === "") return null;
 	if (!raw.startsWith(`${CLAUDE_PROVIDER}/`)) return raw;

@@ -38,7 +38,7 @@ export const APPBAR_SCALE_MAX = 120;
 export const APPBAR_SCALE_STEP = 5;
 
 /** 默认 100% = 快捷卡「标准」（用户 2026-10-29：标注写 100，默认也就是这一档） */
-const DEFAULT_APPBAR_SCALE = 100;
+export const DEFAULT_APPBAR_SCALE = 100;
 
 type AppbarScaleId = "s" | "m" | "l" | "xl";
 
@@ -72,14 +72,14 @@ export const APPBAR_SCALE_PRESETS: readonly AppbarScalePreset[] = [
  * 为什么在这里就规整：滑杆会给 87.00000001 这种浮点尾巴，直接写进 CSS 变量再 `calc`
  * 会算出 14.7900000016px 这种值；而且老存储里可能有 88 这种不在刻度上的数，读取时对齐更稳。
  */
-function clampAppbarScale(percent: number): number {
+export function clampAppbarScale(percent: number): number {
 	if (!Number.isFinite(percent)) return DEFAULT_APPBAR_SCALE;
 	const clamped = Math.min(Math.max(percent, APPBAR_SCALE_MIN), APPBAR_SCALE_MAX);
 	return Math.round(clamped / APPBAR_SCALE_STEP) * APPBAR_SCALE_STEP;
 }
 
 /** 纯函数：坏值 / 没存过 → 默认档 */
-function readStoredAppbarScale(raw: string | null | undefined): number {
+export function readStoredAppbarScale(raw: string | null | undefined): number {
 	if (raw === null || raw === undefined || raw === "") return DEFAULT_APPBAR_SCALE;
 	const asNumber = Number(raw);
 	if (Number.isFinite(asNumber)) return clampAppbarScale(asNumber);
@@ -97,7 +97,7 @@ const LEGACY_PRESET_PERCENT: Record<string, number> = { s: 70, m: 85, l: 100, xl
  * 旧 115% → 新 100%、旧 85% → 新 75%、旧 70% → 新 60%、旧 140% → 新 120%：
  * **物理大小一个像素都不变**，只是数字换了坐标系（用户要看到「标注写 100」）。
  */
-function migrateLegacyAppbarScale(raw: string): number {
+export function migrateLegacyAppbarScale(raw: string): number {
 	const asNumber = Number(raw);
 	// 手改的档位 id（旧版存过 "m"）按旧表换算；认不出来的就当旧刻度 100%
 	const oldPercent = Number.isFinite(asNumber) ? asNumber : (LEGACY_PRESET_PERCENT[raw] ?? 100);
@@ -105,7 +105,7 @@ function migrateLegacyAppbarScale(raw: string): number {
 }
 
 /** 纯函数：百分比 → CSS 变量取值（无单位数字，`calc(6px * 1.15)` 靠它算） */
-function appbarScaleCss(percent: number): string {
+export function appbarScaleCss(percent: number): string {
 	// 先按新刻度换回倍数，再乘基准 1.15；最后四位小数收一下（0.6900000000000001 → 0.69）
 	const factor = (clampAppbarScale(percent) / 100) * CSS_PER_HUNDRED_PERCENT;
 	return String(Math.round(factor * 10_000) / 10_000);

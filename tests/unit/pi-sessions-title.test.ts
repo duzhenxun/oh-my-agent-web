@@ -35,7 +35,9 @@ function makeSessionFile(
 			// base64 体积 = 原始字节数 / 3 * 4，凑够「一行远超头部预算」就行
 			parts.push({ type: "image", mimeType: "image/png", data: "A".repeat(options.imageBytes) });
 		}
-		lines.push(JSON.stringify({ type: "message", id: "m1", parentId: null, message: { role: "user", content: parts } }));
+		lines.push(
+			JSON.stringify({ type: "message", id: "m1", parentId: null, message: { role: "user", content: parts } }),
+		);
 	}
 	writeFileSync(file, `${lines.join("\n")}\n`);
 	return file;
@@ -73,6 +75,10 @@ describe("侧栏会话标题扫描", () => {
 		const result = await scanPiSessions({ sessionsRoot: root });
 
 		const title = result.groups[0]?.sessions[0]?.title ?? "";
-		assert.match(title, /^\d{4}\/\d{1,2}\/\d{1,2}/);
+		// 兜底值是 `toLocaleString()`，具体格式跟机器 locale 走（中文 2026/10/30、英文 10/30/2026）——
+		// 这里只钉「不是空、也不是文件名」这两件真正会出问题的事。
+		assert.ok(title.trim() !== "", "空会话也要有个标题");
+		assert.match(title, /\d/);
+		assert.ok(!title.endsWith(".jsonl"));
 	});
 });

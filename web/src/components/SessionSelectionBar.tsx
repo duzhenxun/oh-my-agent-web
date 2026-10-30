@@ -6,8 +6,12 @@
  *
  * 两处纪律跟右键菜单（`SessionBatchMenu`）完全一致，改一边记得改另一边：
  *   - 第一行先把「选了 N 条」写清楚（批量操作最怕不知道动了几个）；
- *   - 「删除」**两下**：第一下上膛、第二下真删，不用 `window.confirm`（能被整页屏蔽，
+ *   - 「彻底删除」**两下**：第一下上膛、第二下真删，不用 `window.confirm`（能被整页屏蔽，
  *     屏蔽之后按钮就变成「点了没反应」，见 delete-session.ts 顶部那段）。
+ *
+ * 只有一颗删除按钮（用户 2026-10-30：「不要删除，只要彻底删除」）：
+ * 以前「删除」（只改名、可恢复）与「彻底删除」（真删）两颗并排，名字分不出区别，
+ * 磁盘上白白攒了 207 个 `.deleted-*`（469MB）。现在只有真删那一颗，并且直说「不可恢复」。
  *
  * 上膛状态放在**这个组件内部**：选区清空时整条会被卸载，状态跟着归零 ——
  * 不然「上膛了但没删」会留到下一次选中，一进来就是红的。
@@ -24,6 +28,7 @@ export function SessionSelectionBar({
 	/** 选中条数（按钮文案、提示里都要说到具体几条） */
 	count: number;
 	onArchive: () => void;
+	/** **真删**（服务端 `unlink`，不可恢复） */
 	onDelete: () => void;
 	onClear: () => void;
 }) {
@@ -60,17 +65,22 @@ export function SessionSelectionBar({
 				title={
 					armed.armed
 						? t(
-								"再点一次就真的删：文件改名成 .deleted-时间戳，能从磁盘恢复",
-								"Click again to rename them to .deleted-<timestamp> (recoverable on disk)",
+								`再点一次就真删这 ${count} 个会话文件：不可恢复`,
+								`Click again to permanently delete these ${count} session file(s) — not recoverable`,
 							)
-						: t(`把选中的 ${count} 条一起删掉；第一下只是确认`, `Delete all ${count} — the first click only arms it`)
+						: t(
+								`把选中的 ${count} 条连同磁盘上的文件一起删掉（不可恢复）；第一下只是确认`,
+								`Permanently delete the selected ${count} including their files — first click only arms it`,
+							)
 				}
 				aria-label={
-					armed.armed ? t("再点一次确认删除", "Click again to confirm delete") : t("删除选中的会话", "Delete selected")
+					armed.armed
+						? t("再点一次确认彻底删除", "Click again to delete permanently")
+						: t("彻底删除选中的会话", "Permanently delete selected sessions")
 				}
 				onClick={() => armed.run(onDelete)}
 			>
-				{armed.armed ? t("确认删除", "Confirm") : t("删除", "Delete")}
+				{armed.armed ? t("确认彻底删除", "Confirm purge") : t("彻底删除", "Purge")}
 			</button>
 			<button
 				type="button"

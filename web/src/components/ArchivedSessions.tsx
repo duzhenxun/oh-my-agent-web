@@ -2,7 +2,7 @@
  * 「已归档」视图：入口在侧栏标题栏（🗄 图标），点进来后**整个列表区**切换到这个视图。
  *
  * 归档只是从主列表隐藏（settings.sessionPrefs.archived），数据仍在磁盘 —— 所以这里
- * 既能「恢复」，也能**批量选中后批量删除**（删除 = 文件改名成 `.deleted-时间戳`，可恢复）。
+ * 既能「恢复」，也能**批量选中后批量删除**（删除 = 真删会话文件，不可恢复）。
  */
 import { useState } from "react";
 import { deleteSessions } from "../delete-session.ts";
@@ -131,7 +131,9 @@ export function ArchivedSessions({
 						type="button"
 						className={`btn btn-tiny btn-danger${del.armed ? " proj-menu-item-armed" : ""}`}
 						onClick={removeSelected}
-						title={del.armed ? t("再点一次就删掉（可从磁盘恢复）") : t("删除这些（可从磁盘恢复）；第一下只是确认")}
+						title={
+							del.armed ? t("再点一次就真删这些会话文件：不可恢复") : t("彻底删除这些（不可恢复）；第一下只是确认")
+						}
 					>
 						{del.armed ? t("再点一次确认") : t("删除选中")}
 					</button>

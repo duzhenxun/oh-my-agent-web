@@ -14,7 +14,6 @@ import {
 	addAnnotation,
 	annotationNumber,
 	annotationsAsMessage,
-	annotationsOf,
 	markQuoted,
 	parseAnnotations,
 	removeAnnotation,
@@ -165,21 +164,13 @@ describe("addAnnotation", () => {
 	});
 });
 
-describe("removeAnnotation / annotationNumber / annotationsOf", () => {
+describe("removeAnnotation / annotationNumber", () => {
 	it("删掉之后编号重排（编号 = 列表第几条）", () => {
 		let list = addAnnotation([], sample("a", "第一处"));
 		list = addAnnotation(list, sample("b", "第二处"));
 		list = removeAnnotation(list, "a");
 		assert.equal(annotationNumber(list, "b"), 1);
 		assert.equal(annotationNumber(list, "a"), 0);
-	});
-
-	it("按消息过滤", () => {
-		const list = [sample("a", "x"), { ...sample("b", "y"), messageId: "m2" }];
-		assert.deepEqual(
-			annotationsOf(list, "m2").map((item) => item.id),
-			["b"],
-		);
 	});
 });
 

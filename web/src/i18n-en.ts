@@ -193,9 +193,9 @@ export const EN: Record<string, string> = {
 	切换后项目与会话跟着新引擎: "Projects and conversations follow the new engine",
 	"删除这个模板（内置模板可以改成同名用户文件再删，等于恢复默认）":
 		"Delete this template (a built-in one can be restored by deleting a user file with the same name)",
-	"删除这个项目下的全部会话（文件改名成 .deleted-时间戳，可从磁盘恢复）":
-		"Delete every conversation in this project (files renamed to .deleted-<timestamp>; recoverable from disk)",
-	"删除这些（可从磁盘恢复）": "Delete these (recoverable from disk)",
+	"再点一次就真删这些会话文件：不可恢复": "Click again to permanently delete these session files (not recoverable)",
+	"彻底删除这些（不可恢复）；第一下只是确认":
+		"Permanently delete these (not recoverable) — the first click only arms it",
 	"刷新分支列表（别的终端里刚建的分支）": "Refresh the branch list (branches just created in another terminal)",
 	参数: "Arguments",
 	双击改名: "Double-click to rename",
@@ -222,8 +222,8 @@ export const EN: Record<string, string> = {
 	思考强度: "Thinking level",
 	"思考强度（越高的档位越慢，推理也更细）": "Thinking level (higher is slower but reasons more finely)",
 	恢复到主列表: "Restore to the main list",
-	"把会话文件改名到 .deleted-时间戳（可从磁盘恢复）":
-		"Renames the session file to .deleted-<timestamp> (recoverable from disk)",
+	"彻底删除这个项目下的全部会话（不可恢复）；第一下只是确认":
+		"Permanently delete every conversation in this project (not recoverable) — the first click only arms it",
 	把常用工作流存成模板: "Save a recurring workflow as a template",
 	把这些恢复回主列表: "Restore these to the main list",
 	"拖动调整文件区高度（双击复位）": "Drag to resize the file area (double-click to reset)",

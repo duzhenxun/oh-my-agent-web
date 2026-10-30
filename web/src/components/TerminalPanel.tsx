@@ -4,6 +4,8 @@ import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { basename } from "../path-utils.ts";
 import { useT } from "../use-language.ts";
+import { TERMINAL_FONT_DEFAULT, TERMINAL_FONT_KEY, TERMINAL_FONT_MAX, TERMINAL_FONT_MIN } from "../ui-prefs.ts";
+import { useStoredNumber } from "../use-stored-number.ts";
 
 /**
  * 终端面板（ADR-0027）：xterm + SSE。
@@ -39,6 +41,26 @@ export function TerminalPanel({
 	const hostRef = useRef<HTMLDivElement>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [ready, setReady] = useState(false);
+	/**
+	 * 字号（设置 → 外观 → 「终端字号」里也能改，⚠ 同一个 key）：默认 12px。
+	 *
+	 * 为什么要可调（用户 2026-10-30：「右侧终端文字有时太小」）：12 是当时随手定的值，
+	 * 大屏上偏小、小屏上又占地方。三个入口写的是同一份偏好：
+	 *   · 终端里 **⌘/Ctrl + 滚轮**（往下滚变小、往上滚变大 —— 跟终端/编辑器的习惯一致）；
+	 *   · 终端里 **⌘/Ctrl + `=` / `+` / `-`**（`0` 恢复默认，见下面的 onKeyDown）；
+	 *   · 设置 → 外观里的滑杆。
+	 */
+	const [fontPx, setFontPx] = useStoredNumber(
+		TERMINAL_FONT_KEY,
+		TERMINAL_FONT_DEFAULT,
+		TERMINAL_FONT_MIN,
+		TERMINAL_FONT_MAX,
+	);
+	/** xterm 实例：改字号要直接改它，然后 refit（不重建终端 —— 重建会把 shell 输出 / 历史全丢掉） */
+	const termRef = useRef<Terminal | null>(null);
+	const fitRef = useRef<FitAddon | null>(null);
+	const fontPxRef = useRef(fontPx);
+	fontPxRef.current = fontPx;
 
 	// 切回这个标签时：重新 fit（隐藏期间容器宽高是 0）+ 把焦点还给终端
 	const refitRef = useRef<(() => void) | null>(null);
@@ -53,7 +75,8 @@ export function TerminalPanel({
 		const host = hostRef.current;
 		if (!host) return;
 		const term = new Terminal({
-			fontSize: 12,
+			// 初值取当前偏好；之后由下面那个 effect 跟着改（不重建终端）
+			fontSize: fontPxRef.current,
 			// 补上 Windows 字体：SFMono/Menlo 都没有，缺了就落到 Courier New，TUI 制表符会错位
 			fontFamily: '"Cascadia Mono", Consolas, "Courier New", ui-monospace, SFMono-Regular, Menlo, monospace',
 			theme: { background: "#0d1117", foreground: "#c9d1d9" },
@@ -64,6 +87,47 @@ export function TerminalPanel({
 		term.loadAddon(fit);
 		term.open(host);
 		fit.fit();
+		termRef.current = term;
+		fitRef.current = fit;
+
+		/**
+		 * ⌘/Ctrl + 滚轮 = 改字号。要 `passive: false` 才能 preventDefault ——
+		 * 否则浏览器会同时把整页放大/缩小（那会连带把侧栏、对话一起缩放，不是用户想要的）。
+		 * 用 ref 读当前值：这个监听只挂一次，不该因为字号变化反复解绑重挂。
+		 */
+		const onWheel = (event: WheelEvent) => {
+			if (!event.ctrlKey && !event.metaKey) return;
+			event.preventDefault();
+			const step = event.deltaY < 0 ? 2 : -2;
+			setFontPx(fontPxRef.current + step);
+		};
+		host.addEventListener("wheel", onWheel, { passive: false });
+
+		/**
+		 * ⌘/Ctrl + `+` / `-` / `0`：键盘那条路（用户 2026-10-30：「点在这里面，Ctrl 加 + 或 - 时
+		 * 这个终端里的文字要变大变小」）。
+		 *
+		 * 为什么挂在 host 的**捕获阶段**、而不是只靠 xterm 的 `attachCustomKeyEventHandler`：
+		 *   - 那条路只有在焦点正好落在 xterm 的隐藏 textarea 上时才走得到；
+		 *   - 而且它 `return false` 只是「xterm 不处理这个键」，**不会** preventDefault ——
+		 *     于是浏览器把 Ctrl+`=` 当成「页面放大」，整页（侧栏、对话一起）放大缩小，正是要避免的。
+		 * 捕获阶段先拦住并 `preventDefault + stopPropagation`：浏览器不缩放、xterm 也不会把 `=` 送进 shell。
+		 */
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (!event.ctrlKey && !event.metaKey) return;
+			// AltGr 在 Windows 上会带 ctrl+alt，别把人家输入特殊字符的手势抢了
+			if (event.altKey) return;
+			const zoomIn = event.key === "+" || event.key === "=" || event.code === "NumpadAdd";
+			const zoomOut = event.key === "-" || event.key === "_" || event.code === "NumpadSubtract";
+			const reset = event.key === "0" || event.code === "Numpad0";
+			if (!zoomIn && !zoomOut && !reset) return;
+			event.preventDefault();
+			event.stopPropagation();
+			if (zoomIn) setFontPx(fontPxRef.current + 2);
+			else if (zoomOut) setFontPx(fontPxRef.current - 2);
+			else setFontPx(TERMINAL_FONT_DEFAULT);
+		};
+		host.addEventListener("keydown", onKeyDown, true);
 
 		let source: EventSource | null = null;
 		let observer: ResizeObserver | null = null;
@@ -145,6 +209,10 @@ export function TerminalPanel({
 
 		return () => {
 			disposed = true;
+			host.removeEventListener("wheel", onWheel);
+			host.removeEventListener("keydown", onKeyDown, true);
+			termRef.current = null;
+			fitRef.current = null;
 			observer?.disconnect();
 			source?.close();
 			// 必须带 id：服务端 `/api/terminal/stop` 是「按 id 杀进程」，空 id 直接 no-op，
@@ -157,6 +225,19 @@ export function TerminalPanel({
 			term.dispose();
 		};
 	}, [cwd, termId, initialCommand]);
+
+	/**
+	 * 字号变了：直接改 xterm 的 option，然后 refit。
+	 * **不能重建终端** —— 那会把这一路 shell 的字、历史、滚动位置全丢掉。
+	 * refit 之后 onResize 会把新的 cols/rows 报给服务端，vim / top 的布局才跟着对。
+	 */
+	useEffect(() => {
+		const term = termRef.current;
+		if (!term) return;
+		if (term.options.fontSize === fontPx) return;
+		term.options.fontSize = fontPx;
+		fitRef.current?.fit();
+	}, [fontPx]);
 
 	return (
 		<aside className={`terminal-panel${standalone ? "" : " terminal-panel-embedded"}`}>

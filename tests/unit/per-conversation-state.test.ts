@@ -161,3 +161,26 @@ describe("提示条按会话归属", () => {
 		assert.equal(pushed[0]?.conversationId, undefined);
 	});
 });
+
+describe("「正在重试」按会话归位", () => {
+	it("只在「正在跑的那条会话」的快照里出现，别人的是 null", () => {
+		const state = createServerState("/w");
+		state.activeId = "conv-a";
+		state.running = {
+			status: "streaming",
+			conversationId: "conv-a",
+			turnStartedAt: Date.now(),
+			streamingText: "",
+			activeTool: null,
+			retrying: { attempt: 1, maxAttempts: 2 },
+		};
+		assert.deepEqual(buildSnapshot(state, 100, "conv-a").running.retrying, { attempt: 1, maxAttempts: 2 });
+		// 切到另一个会话看：那是别人的回合，不该跟着显示「正在重试」
+		assert.equal(buildSnapshot(state, 100, "conv-b").running.retrying, null);
+	});
+
+	it("空转态默认就是 null（不会瞎显示）", () => {
+		const state = createServerState("/w");
+		assert.equal(buildSnapshot(state, 100, state.activeId).running.retrying, null);
+	});
+});

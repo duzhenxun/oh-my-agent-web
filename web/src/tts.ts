@@ -54,8 +54,6 @@ export const TTS_LINE = {
 	approval: "有一条工具调用等待你的批准",
 } as const;
 
-type TtsKind = keyof typeof TTS_LINE;
-
 const STORAGE_KEY = "agent-web.voice.tts";
 
 export function loadTtsSettings(): TtsSettings {
@@ -135,7 +133,7 @@ export function subscribeVoices(callback: () => void): () => void {
  * 开了 `allowOnline`（面板的「只列在线音色」）则反过来**优先在线**：这台机器上本机音色就是念不出来，
  * 此时还优先本机只会让「自动」落到一条永远不 start 的语音上。
  */
-function resolveVoice(
+export function resolveVoice(
 	voiceURI: string,
 	voices: readonly VoiceOption[],
 	pageLang: string,
@@ -249,6 +247,30 @@ const WAKEABLE_CODES = new Set(["canceled", "interrupted", "synthesis-unavailabl
 const liveUtterances = new Set<SpeechSynthesisUtterance>();
 
 /**
+ * 真的还有东西在队列里时才 `cancel()` —— 空队列上的一记 cancel 只有坏处。
+ *
+ * 为什么这么抠：`cancel()` 在 Chrome / macOS 上是**有余波**的（事件异步投递），紧跟着排进去的
+ * 那句会拿到 `error: canceled`。队列本来就空的时候再 cancel，一点东西都没清掉，却让下一句
+ * 白白死一次。
+ *
+ * 「队列空着就不要 cancel」是这一整套「没声 / 唤醒也没用」问题的分水岭：以前唤醒句念完
+ * （`onend`）也要 cancel 一次 —— 于是**唤醒成功反而保证了紧跟其后的正文被取消**，两轮重试
+ * 全军覆没，用户看到的就是「已自动唤醒并重试 2 次仍然没出声」（而关掉面板再点一次「试听」
+ * 又能念，因为那一次队列是干净的）。
+ *
+ * 返回值：这次到底 cancel 了没有（假合成器上可断言）。永远不抛。
+ */
+function cancelIfBusy(synth: SpeechSynthesis): boolean {
+	try {
+		if (!synth.speaking && !synth.pending) return false;
+		synth.cancel();
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+/**
  * 唤醒系统语音服务 —— 专治「语音还没开始就被系统打断了（canceled）」。
  *
  * 现象与成因：Web Speech 的合成器其实交给**系统服务**代跑（macOS 是 `speechsynthesisd`，
@@ -271,8 +293,9 @@ export function wakeSpeechService(done: () => void, gapMs = RETRY_GAP_MS): void 
 	const synth = window.speechSynthesis;
 	let wake: SpeechSynthesisUtterance;
 	try {
-		// 先把卡住的那句清掉，并解开 paused（macOS 上 cancel 之后常停在 paused，不解就永远不出声）
-		synth.cancel();
+		// 队列里真有东西卡着才清（见 cancelIfBusy：空队列上 cancel 会连坐掉接下来那句），
+		// 并解开 paused（macOS 上 cancel 之后常停在 paused，不解就永远不出声）
+		cancelIfBusy(synth);
 		synth.resume();
 		wake = new SpeechSynthesisUtterance(" ");
 	} catch {
@@ -284,13 +307,20 @@ export function wakeSpeechService(done: () => void, gapMs = RETRY_GAP_MS): void 
 	// 不设 lang：要问的是「默认路径通不通」，指定语言反而可能落进一个没有语音的分支
 	wake.lang = "";
 	let finished = false;
-	const finish = (): void => {
+	/**
+	 * 收尾。**不传 reason 就别 cancel** —— 这是这颗函数的全部要害：
+	 *   - `"end"`：唤醒句自己念完了，队列本来就是空的。这一步 cancel 掉，紧接着的正文必然被
+	 *     连坐成 `error: canceled`，等于「唤醒成功一次，正文必死一次」，重试永远不可能成功；
+	 *   - `"timeout"` / `"error"`：可能真有一条卡在队列里，这时候 cancel 才是它该干的活
+	 *     （而且是 `cancelIfBusy`：空着就一个字节的不发）。
+	 */
+	const finish = (reason: "end" | "error" | "timeout"): void => {
 		if (finished) return;
 		finished = true;
 		window.clearTimeout(timer);
 		liveUtterances.delete(wake);
 		try {
-			synth.cancel();
+			if (reason !== "end") cancelIfBusy(synth);
 			synth.resume();
 		} catch {
 			// 忽略：唤醒失败不额外上报
@@ -298,13 +328,13 @@ export function wakeSpeechService(done: () => void, gapMs = RETRY_GAP_MS): void 
 		window.setTimeout(done, gapMs);
 	};
 	// 故意不听 onstart：唤醒句也要走到 onend 才算链路真的通了；只 start 不回 end 的，靠下面这个超时
-	const timer = window.setTimeout(finish, WAKE_TIMEOUT_MS);
-	wake.onend = finish;
-	wake.onerror = finish;
+	const timer = window.setTimeout(() => finish("timeout"), WAKE_TIMEOUT_MS);
+	wake.onend = () => finish("end");
+	wake.onerror = () => finish("error");
 	try {
 		synth.speak(wake);
 	} catch {
-		finish();
+		finish("error");
 	}
 }
 
@@ -447,10 +477,12 @@ export function speak(text: string, settings: TtsSettings = loadTtsSettings(), h
 					});
 					if (wakes < MAX_WAKES) {
 						wakes += 1;
-						// 第一轮如果还挑着具体音色，就从这一轮起改用浏览器默认（唤醒 + 换音色一起试）
-						const nextStage = stage === "first" ? "retry" : stage;
+						// 这里**不换音色**：`canceled` 说的是「服务没起来」，跟音色是两件事。
+						// 以前这一轮顺手改成浏览器默认音色，在这类机器上正好落到那条念不出来的本机音色上
+						// （真正能念的是在线音色），于是「唤醒成功、音色失败」，看起来还是一句没念。
+						// 音色那一路由看门狗兜：900ms 没开始就退回浏览器默认再试一次。
 						wakeSpeechService(() => {
-							if (!stale()) speakNow(pool, nextStage);
+							if (!stale()) speakNow(pool, stage);
 						}, RETRY_GAP_MS * wakes);
 						return;
 					}
@@ -493,7 +525,7 @@ export function speak(text: string, settings: TtsSettings = loadTtsSettings(), h
 					if (settled || stale()) return;
 					settled = true;
 					release();
-					synth.cancel(); // 它其实也没在念：清掉那条卡住的
+					cancelIfBusy(synth); // 它其实也没在念：清掉那条卡住的（空着就什么都不做）
 					synth.resume();
 					if (stage === "first" && voice) {
 						console.warn("[tts] 音色 900ms 没有开始，改用默认音色重试", { voice: voice.name });
@@ -527,7 +559,7 @@ export function speak(text: string, settings: TtsSettings = loadTtsSettings(), h
 				if (attempt >= 6) {
 					settled = true;
 					stopWatchdog();
-					synth.cancel();
+					cancelIfBusy(synth);
 					synth.resume();
 					console.warn("[tts] 上一句没退干净，队列清不掉", { stage });
 					hooks.onIssue?.("语音服务卡住了（上一句没退干净）：点「停止」再试听一次", { wakeable: true });
@@ -538,7 +570,7 @@ export function speak(text: string, settings: TtsSettings = loadTtsSettings(), h
 
 			// ① 有上一句在队列里：掐掉（两句排队会糊成一团），等真清了再排（见上面的坑 1）
 			if (synth.speaking || synth.pending) {
-				synth.cancel();
+				cancelIfBusy(synth);
 				synth.resume(); // ② cancel 之后可能停在 paused
 				speakWhenIdle(0);
 				return;
@@ -615,7 +647,7 @@ export function diagnoseSpeech(timeoutMs = 2500): Promise<SpeechDiagnosis> {
 			if (utter) liveUtterances.delete(utter);
 			// 探针可能停在队列里（既没开始也没报错）：清掉，否则后面正常的播报会
 			// 以为「有一句还在排队」，被我们自己的 cancel 连坐成 canceled
-			if (window.speechSynthesis.speaking || window.speechSynthesis.pending) window.speechSynthesis.cancel();
+			cancelIfBusy(window.speechSynthesis);
 			resolve({ ...base, ...patch, ms: Date.now() - startedAt });
 		};
 		const timer = window.setTimeout(() => finish({}), timeoutMs);
@@ -635,17 +667,9 @@ export function diagnoseSpeech(timeoutMs = 2500): Promise<SpeechDiagnosis> {
 	});
 }
 
-/** 念一句内置短句（`hooks` 透传给 `speak`，自动播报用它把失败报出来） */
-export function speakLine(kind: TtsKind, settings: TtsSettings = loadTtsSettings(), hooks: SpeakHooks = {}): void {
-	speak(TTS_LINE[kind], settings, hooks);
-}
-
 export function stopSpeaking(): void {
 	if (!isTtsAvailable()) return;
 	stopped = true;
-	try {
-		window.speechSynthesis.cancel();
-	} catch {
-		// 忽略
-	}
+	// 空队列上不发 cancel：队列里本来就没什么可停的，而这一记 cancel 会连坐掉下一句
+	cancelIfBusy(window.speechSynthesis);
 }

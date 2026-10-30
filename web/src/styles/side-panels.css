@@ -224,7 +224,7 @@
 	/* 内联尺寸（拖拽后）要能突破 .modal 的 80vh，所以这里重新给上限 */
 	max-width: calc(100vw - 2 * var(--gap, 16px));
 	max-height: calc(100vh - 2 * var(--gap, 16px));
-	/* 右下角有自绘的拖拽手柄（.modal-resize）：位置要落到弹窗角上，不能随内容滚走 */
+	/* 四角有自绘的拖拽手柄（.modal-resize-*）：位置要落到弹窗角上，不能随内容滚走 */
 	position: relative;
 	overflow: hidden;
 	display: flex;
@@ -258,19 +258,45 @@
 	font-size: 14px;
 }
 
-/* 拖拽手柄（use-modal-size.ts）：两条斜线，颜色跟主题走 */
+/* 拖拽手柄（use-modal-size.ts）：四个角各一只；两条斜线，颜色跟主题走 */
 .modal-resize {
 	position: absolute;
-	right: 0;
-	bottom: 0;
+	z-index: 2;
 	width: 18px;
 	height: 18px;
 	cursor: nwse-resize;
 	touch-action: none;
-	opacity: 0.55;
+	opacity: 0.45;
 	background:
 		linear-gradient(135deg, transparent 46%, var(--border-strong) 46%, var(--border-strong) 55%, transparent 55%),
 		linear-gradient(135deg, transparent 66%, var(--border-strong) 66%, var(--border-strong) 75%, transparent 75%);
+}
+
+/* 摆放 + 光标方向。基底图案是右下角（se）那一只，其余三只镜像过去：
+   光标用系统原生的双向箭头（nwse = ↖↘，nesw = ↗↙），人手不用重新学。 */
+.modal-resize-se {
+	right: 0;
+	bottom: 0;
+}
+
+.modal-resize-nw {
+	left: 0;
+	top: 0;
+	transform: rotate(180deg);
+}
+
+.modal-resize-ne {
+	right: 0;
+	top: 0;
+	cursor: nesw-resize;
+	transform: scaleY(-1);
+}
+
+.modal-resize-sw {
+	left: 0;
+	bottom: 0;
+	cursor: nesw-resize;
+	transform: scaleX(-1);
 }
 
 .modal-resize:hover {
@@ -300,7 +326,9 @@
 	display: inline-flex;
 	align-items: center;
 	gap: 6px;
-	border: 1px solid transparent;
+	/* 每个入口都描一圈：一排七个摆在一起时，“这是一个个能点的按钮”比纯文字更清楚。
+	 * 用 border-strong 而不是 border：border 在浅色主题下几乎看不见（用户 2026-10-30 要求“加边框”）。 */
+	border: 1px solid var(--border-strong);
 	border-radius: 8px;
 	background: none;
 	color: var(--text-dim);

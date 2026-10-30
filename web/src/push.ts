@@ -6,6 +6,19 @@
  */
 export type PushState = "unsupported" | "default" | "granted" | "denied" | "subscribed";
 
+/** 服务端 VAPID 状态（对应 `server/push/push.ts` 的 `PushConfigView`，私钥永远不会过来） */
+export type PushConfig = {
+	publicKey: string;
+	fingerprint: string;
+	keySource: "env" | "file";
+	keyCreatedAt: number | null;
+	subject: string;
+	subjectSource: "env" | "file" | "fallback";
+	subjectValid: boolean;
+	subjectProblem: string | null;
+	locked: { keys: boolean; subject: boolean };
+};
+
 function urlBase64ToUint8Array(base64: string): Uint8Array {
 	const padded = `${base64}${"=".repeat((4 - (base64.length % 4)) % 4)}`.replace(/-/g, "+").replace(/_/g, "/");
 	const raw = atob(padded);
@@ -33,6 +46,50 @@ function deviceName(): string {
 	return "未知设备";
 }
 
+/** 订阅里的 `applicationServerKey` 与「服务端现在这把公钥」是不是同一把 */
+function sameServerKey(current: ArrayBuffer | null | undefined, expected: Uint8Array): boolean {
+	if (!current) return false;
+	const bytes = new Uint8Array(current);
+	if (bytes.length !== expected.length) return false;
+	for (let i = 0; i < bytes.length; i += 1) if (bytes[i] !== expected[i]) return false;
+	return true;
+}
+
+export async function fetchPushConfig(): Promise<PushConfig | null> {
+	try {
+		const response = await fetch("/api/push/config");
+		if (!response.ok) return null;
+		return (await response.json()) as PushConfig;
+	} catch {
+		return null;
+	}
+}
+
+/** 存联系方式（subject）：**不影响已订阅设备**，存完立刻生效 */
+export async function savePushSubject(
+	subject: string,
+): Promise<{ ok: true; config: PushConfig } | { ok: false; code: string }> {
+	const response = await fetch("/api/push/config", {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify({ subject }),
+	});
+	const body = (await response.json()) as PushConfig | { error?: { code?: string } };
+	if (!response.ok) return { ok: false, code: (body as { error?: { code?: string } }).error?.code ?? "push.unknown" };
+	return { ok: true, config: body as PushConfig };
+}
+
+/** 换一对新密钥（服务端会同时清空全部订阅，旧订阅已经不可能再推通） */
+export async function regeneratePushKeys(): Promise<
+	{ ok: true; config: PushConfig; cleared: number } | { ok: false; code: string }
+> {
+	const response = await fetch("/api/push/keys/regenerate", { method: "POST" });
+	const body = (await response.json()) as (PushConfig & { cleared?: number }) | { error?: { code?: string } };
+	if (!response.ok) return { ok: false, code: (body as { error?: { code?: string } }).error?.code ?? "push.unknown" };
+	const view = body as PushConfig & { cleared?: number };
+	return { ok: true, config: view, cleared: view.cleared ?? 0 };
+}
+
 export function pushSupported(): boolean {
 	return "serviceWorker" in navigator && "PushManager" in window;
 }
@@ -56,7 +113,9 @@ export async function currentPushState(): Promise<PushState> {
  *   传空串而不是回落后的产品名：服务端那边没值就按产品默认名算，
  *   这样以后产品改名时这台设备还能跟着新名字走（见 server/push/push.ts 的 brandNameOf）。
  */
-export async function subscribePush(customBrandName = ""): Promise<{ ok: true } | { ok: false; message: string }> {
+export async function subscribePush(
+	customBrandName = "",
+): Promise<{ ok: true; rekeyed?: boolean } | { ok: false; message: string }> {
 	if (!pushSupported()) return { ok: false, message: "这个浏览器不支持推送（需要 https 或 localhost）" };
 	const permission = await Notification.requestPermission();
 	if (permission !== "granted") return { ok: false, message: "通知权限被拒绝" };
@@ -64,11 +123,26 @@ export async function subscribePush(customBrandName = ""): Promise<{ ok: true } 
 	const reg = await registration();
 	const keyResponse = await fetch("/api/push/key");
 	const { publicKey } = (await keyResponse.json()) as { publicKey: string };
+	const serverKey = urlBase64ToUint8Array(publicKey);
+
+	/**
+	 * 已有订阅必须**核对公钥**再复用。
+	 *
+	 * `getSubscription()` 会把浏览器里那条旧订阅原样还回来，即使服务端已经换过密钥 ——
+	 * 那条订阅在 Apple 那边永远 `VapidPkHashMismatch`，点多少次「重新注册」都救不回来
+	 * （只能先在浏览器里 unsubscribe 才能拿到新公钥下的订阅）。
+	 */
+	const existing = await reg.pushManager.getSubscription();
+	let rekeyed = false;
+	if (existing && !sameServerKey(existing.options.applicationServerKey as ArrayBuffer | null, serverKey)) {
+		await existing.unsubscribe();
+		rekeyed = true;
+	}
 	const sub =
-		(await reg.pushManager.getSubscription()) ??
+		(rekeyed ? null : existing) ??
 		(await reg.pushManager.subscribe({
 			userVisibleOnly: true,
-			applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
+			applicationServerKey: serverKey as BufferSource,
 		}));
 
 	const json = sub.toJSON() as { endpoint?: string; keys?: { p256dh: string; auth: string } };
@@ -79,7 +153,7 @@ export async function subscribePush(customBrandName = ""): Promise<{ ok: true } 
 		body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys, name: deviceName(), brandName: customBrandName }),
 	});
 	if (!response.ok) return { ok: false, message: `订阅保存失败：HTTP ${response.status}` };
-	return { ok: true };
+	return rekeyed ? { ok: true, rekeyed } : { ok: true };
 }
 
 /**

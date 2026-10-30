@@ -18,7 +18,7 @@ import { currentMobileShell } from "./mobile-shell-dom.ts";
 
 const MODAL_POS_KEY = "agent-web:big-modal-pos:v1";
 /** 每个方向至少要留在视口内的宽度（推得再远也还能抓到它） */
-const MIN_VISIBLE = 140;
+export const MIN_VISIBLE = 140;
 /** 超过这个位移才算「拖动」而不是「点击」（否则点 tab 会被当成拖拽） */
 const DRAG_THRESHOLD = 4;
 
@@ -35,7 +35,7 @@ const clamp = (value: number, min: number, max: number) => Math.min(Math.max(val
  * 位移 x 之后左边缘是那个值 + x。要求「右边缘 ≥ MIN_VISIBLE」且「左边缘 ≤ 视口宽 - MIN_VISIBLE」，
  * 解出 x 的上下界。上下同理。
  */
-function clampModalPos(pos: ModalPos, size: Box, view: Box): ModalPos {
+export function clampModalPos(pos: ModalPos, size: Box, view: Box): ModalPos {
 	const left = (view.width - size.width) / 2;
 	const top = (view.height - size.height) / 2;
 	const minX = Math.min(0, MIN_VISIBLE - size.width - left);
@@ -46,7 +46,7 @@ function clampModalPos(pos: ModalPos, size: Box, view: Box): ModalPos {
 }
 
 /** 纯函数：读存下来的位移（坏值 → 归零，不抛） */
-function readStoredModalPos(raw: string | null): ModalPos {
+export function readStoredModalPos(raw: string | null): ModalPos {
 	if (!raw) return { x: 0, y: 0 };
 	try {
 		const parsed: unknown = JSON.parse(raw);
@@ -67,6 +67,14 @@ export function useModalMove(options: { size: Box | null }): {
 	start: (event: React.PointerEvent<HTMLElement>) => void;
 	/** 双击头部复位 */
 	reset: () => void;
+	/**
+	 * 调尺寸时鎢住「对面的角」（交给 `useModalSize`）：
+	 * `beginResize` 在按下手柄时调，`shiftBy` 在每次 pointermove 里传累计位移，
+	 * `commit` 在松手时把新位置落盘（与拖头部同一份存储）。
+	 */
+	beginResize: () => void;
+	shiftBy: (delta: { x: number; y: number }) => void;
+	commitResize: () => void;
 } {
 	const [mobile, setMobile] = useState(currentMobileShell);
 	const [pos, setPos] = useState<ModalPos>(() => readStoredModalPos(localStorage.getItem(MODAL_POS_KEY)));
@@ -145,9 +153,36 @@ export function useModalMove(options: { size: Box | null }): {
 		setPos({ x: 0, y: 0 });
 	}, []);
 
+	/**
+	 * 调尺寸时的位置锚点（见 use-modal-size.ts 的 `ResizeAnchor`）。
+	 *
+	 * 为什幺不在 useModalSize 里直接改位置：位置归这个钩子管（夹取 / 持久化都在这里），
+	 * 两边各改一半会互相打架。这里只暴露「从手势开始时那个位置算，平移多少」。
+	 */
+	const anchorBase = useRef(pos);
+	const beginResize = useCallback(() => {
+		anchorBase.current = latest.current;
+	}, []);
+	const shiftBy = useCallback((delta: { x: number; y: number }) => {
+		const next = { x: anchorBase.current.x + delta.x, y: anchorBase.current.y + delta.y };
+		// 同步 latest：pointerup 可能赶在下一帧渲染之前（松手时靠它落盘）
+		latest.current = next;
+		setPos(next);
+	}, []);
+	const commitResize = useCallback(() => {
+		try {
+			localStorage.setItem(MODAL_POS_KEY, JSON.stringify(latest.current));
+		} catch {
+			// 存不了就只在本次生效
+		}
+	}, []);
+
 	return {
 		style: mobile ? undefined : { transform: `translate(${Math.round(pos.x)}px, ${Math.round(pos.y)}px)` },
 		start,
 		reset,
+		beginResize,
+		shiftBy,
+		commitResize,
 	};
 }

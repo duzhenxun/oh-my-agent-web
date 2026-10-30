@@ -86,6 +86,12 @@ export type RunningState = {
 	/** 当前助手文本（增量另走 message_delta 事件，避免每字全量重推） */
 	streamingText: string;
 	activeTool: { name: string; argsSummary: string; startedAt: number } | null;
+	/**
+	 * 正在**自动重试**（传输层被打断，引擎自己再试一次）：
+	 * 退避期间界面上什么都不会动，必须靠这一行说「还在，在重试」。
+	 * 下一次尝试开始吐字 / 调工具时清掉。
+	 */
+	retrying: { attempt: number; maxAttempts: number } | null;
 };
 
 export type PendingApproval = {

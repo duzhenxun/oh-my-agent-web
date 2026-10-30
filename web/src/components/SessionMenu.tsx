@@ -58,6 +58,7 @@ export function SessionMenu({
 	onPin: () => void;
 	onOpenInNewTab: () => void;
 	onArchive: () => void;
+	/** **真删**（服务端 `unlink`，不可恢复）：界面上只有这一种删除 */
 	onDelete: () => void;
 }) {
 	const t = useT();
@@ -141,23 +142,20 @@ export function SessionMenu({
 			<button
 				type="button"
 				className={`proj-menu-item proj-menu-danger${del.armed ? " proj-menu-item-armed" : ""}`}
-				title={t(
+				title={
 					del.armed
-						? `再点一次就改名成 .deleted-时间戳（可从磁盘恢复）`
-						: `把「${title}」改名到 .deleted-时间戳（可从磁盘恢复）；第一下只是确认`,
-					del.armed
-						? "Click again to rename it to .deleted-<timestamp> (recoverable)"
-						: `Rename "${title}" to .deleted-<timestamp> (recoverable) — first click only arms it`,
-				)}
+						? `再点一次就真删「${title}」的会话文件：不可恢复`
+						: `把「${title}」连同磁盘上的会话文件一起删掉（不可恢复）；第一下只是确认`
+				}
 				onClick={() =>
 					del.run(() => {
 						onClose();
 						onDelete();
 					})
 				}
-				aria-label={del.armed ? t("再点一次确认删除", "Click again to confirm delete") : t("删除", "Delete")}
+				aria-label={del.armed ? t("再点一次确认彻底删除", "Click again to delete permanently") : t("彻底删除", "Purge")}
 			>
-				{del.armed ? t("🗑 再点一次确认删除", "🗑 Click again to delete") : `🗑 ${t("删除", "Delete")}`}
+				{del.armed ? t("🧨 再点一次彻底删除", "🧨 Click again to purge") : `🧨 ${t("彻底删除", "Purge")}`}
 			</button>
 		</ProjectMenuPopover>
 	);

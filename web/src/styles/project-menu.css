@@ -80,6 +80,13 @@
 	cursor: not-allowed;
 }
 
+/* 菜单里的分组线（目前只有文件预览右键的「折叠 / 追加」两组之间用）：
+ * 一条 1px 淡线 + 上下各 3px，不抢菜单项的权重 */
+.proj-menu-sep {
+	margin: 3px 4px;
+	border-top: 1px solid var(--border);
+}
+
 .proj-menu-danger {
 	color: var(--red);
 }
@@ -570,10 +577,19 @@
 	border-top-left-radius: 2px;
 }
 
-/* 文件预览的右键菜单：比侧栏菜单宽一点（「追加选中的 12 行到对话」这种中文标签更长），
- * 也不占侧栏那 220px 的死宽度。 */
+/* 文件预览的右键菜单：比侧栏菜单宽一点（「添加这一块代码到对话（第 31–71 行，含收起的部分）」
+ * 这种中文标签更长），也不占侧栏那 220px 的死宽度。
+ *
+ * 2026-10-30 用户：「不要折行，可以再宽一些」——
+ * 菜单项现在**一律不折行**，宽度靠 max-width 放宽来容纳（真的超长时由浏览器截断，
+ * 也不会再出现「（含收起的
+部分）」这种断行）。 */
 .ctx-menu {
 	width: auto;
-	min-width: 230px;
-	max-width: 340px;
+	min-width: 260px;
+	max-width: 520px;
+}
+
+.ctx-menu .proj-menu-item {
+	white-space: nowrap;
 }

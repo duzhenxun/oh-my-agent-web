@@ -364,6 +364,51 @@
 	display: none;
 }
 
+/*
+ * 大弹窗顶部那排入口（语音 / 技能 / 推送 / 插件 / MCP / 模型 / 子代理 / 设置）：
+ * 手机上**换行摆成两排**，不再横向滚动（用户 2026-10-30：「手上看不全需要左右滑动」）。
+ * 顺序不变（手机上不开放拖动排序，见 SortablePanelTabs.tsx）。
+ * 尺寸收紧到 4 个一排：图标 14px、内边距 4/8，两个字 + 图标约 64px，四只加间隙 ≈ 280px。
+ */
+.is-mobile-shell .big-modal-head {
+	flex-wrap: wrap;
+	overflow: visible;
+	gap: 4px;
+	row-gap: 6px;
+}
+
+.is-mobile-shell .big-tab {
+	gap: 4px;
+	padding: 4px 8px;
+	font-size: 14px;
+}
+
+.is-mobile-shell .big-tab-icon {
+	width: 14px;
+	height: 14px;
+}
+
+/*
+ * 设置里那排分类（界面 / 对话 / 外观 / … / 远程）：手机上换成 **4 列网格（两行）**，
+ * 既不用横向滑动，也不会被挤扁。
+ * 以前 `.settings-tab` 是 flex 子项（默认 shrink），7 个一起挤在 340px 里，
+ * 「快捷键」被压成竖着两行 —— 用户截图里那块“变形”就是它。
+ * 用 grid 而不是 wrap：每格等宽，第二行只有 3 个也不会参差不齐。
+ */
+.is-mobile-shell .settings-tabs {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	align-self: stretch;
+	border-radius: 14px;
+	padding: 4px;
+	gap: 4px;
+}
+
+.is-mobile-shell .settings-tab {
+	padding: 4px 6px;
+	font-size: 13px;
+}
+
 .is-mobile-shell .big-modal-body {
 	padding: 8px;
 }

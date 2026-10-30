@@ -1,0 +1,100 @@
+/*
+ * 代码预览里的「查找」（Cmd/Ctrl+F 或右键「查找」唤出，见 `components/FileFindBar.tsx`）。
+ *
+ * 放在正文下面、贴着预览底边：离手近、不挡第一行，也不会跟页顶那排「源码 / 改动」抢位置。
+ */
+.file-find {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex: none;
+	margin-top: 6px;
+	padding: 5px 8px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--bg-elev);
+	font-size: 13px;
+}
+
+.file-find-icon {
+	flex: none;
+	width: 14px;
+	height: 14px;
+	fill: none;
+	stroke: var(--text-faint);
+	stroke-width: 1.5;
+	stroke-linecap: round;
+}
+
+.file-find-input {
+	flex: 1 1 auto;
+	min-width: 0;
+	border: none;
+	background: none;
+	color: var(--text);
+	font: inherit;
+	font-size: 13px;
+	padding: 2px 0;
+	outline: none;
+}
+
+/* 有命中 / 没命中的计数列固定宽度，免得数字跳动把输入框挤来挤去 */
+.file-find-count {
+	flex: none;
+	min-width: 4.5em;
+	text-align: right;
+	color: var(--text-faint);
+	font-variant-numeric: tabular-nums;
+}
+
+.file-find-count-none {
+	color: var(--red);
+}
+
+.file-find-btn {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	border: none;
+	border-radius: 6px;
+	background: none;
+	color: var(--text-dim);
+	cursor: pointer;
+}
+
+.file-find-btn svg {
+	width: 13px;
+	height: 13px;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.6;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+.file-find-btn:hover:not(:disabled) {
+	background: var(--bg-elev-2);
+	color: var(--text);
+}
+
+.file-find-btn:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+/* 命中的那几处（`markMatches` 拼出来的 <mark>）：
+ * 非当前 = 淡黄底，当前 = 主色实底白字 —— 一眼能分出「都在哪」和「现在跳到哪」 */
+mark.file-find-hit {
+	padding: 0 1px;
+	border-radius: 3px;
+	background: color-mix(in srgb, var(--yellow, #d9a441) 42%, transparent);
+	color: inherit;
+}
+
+mark.file-find-hit-on {
+	background: var(--accent);
+	color: #fff;
+}

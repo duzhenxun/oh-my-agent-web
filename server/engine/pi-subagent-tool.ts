@@ -57,7 +57,7 @@ function resultText(run: SubagentRunView): string {
  * 导出是为了能单独调：这里有一个「先查再订阅」的竞态，
  * 只有把函数单独拿出来才能构造出那个窗口。
  */
-function waitForRun(port: SubagentEnginePort, id: string, timeoutMs: number): Promise<SubagentRunView | null> {
+export function waitForRun(port: SubagentEnginePort, id: string, timeoutMs: number): Promise<SubagentRunView | null> {
 	// 极快的任务可能在 start() 返回前就结束了：先看一眼，再订阅
 	const current = port.get(id);
 	if (current && TERMINAL.has(current.status)) return Promise.resolve(current);

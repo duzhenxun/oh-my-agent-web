@@ -93,15 +93,15 @@ export function ProjectMenu({
 			>
 				🔍 在 Finder 中显示
 			</button>
-			{/* 破坏性操作放最后、标红：删的是这条项目的全部会话（可从磁盘恢复）。
+			{/* 破坏性操作放最后、标红：删的是这条项目的全部会话，**真删文件、不可恢复**。
 			 * 两下确认：第一下只上膛 —— 见文件里 `wipe` 那段注释。 */}
 			<button
 				type="button"
 				className={`proj-menu-item proj-menu-danger${wipe.armed ? " proj-menu-item-armed" : ""}`}
 				title={
 					wipe.armed
-						? t("再点一次就删掉这些会话（文件改名成 .deleted-时间戳，可从磁盘恢复）")
-						: t("删除这个项目下的全部会话（第一下只是确认）")
+						? t("再点一次就真删这些会话文件：不可恢复")
+						: t("彻底删除这个项目下的全部会话（不可恢复）；第一下只是确认")
 				}
 				onClick={() =>
 					wipe.run(() => {

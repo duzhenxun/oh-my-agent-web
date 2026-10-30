@@ -93,8 +93,10 @@ function mapMessage(entryId: string, message: unknown, order: number): UiMessage
 					argsSummary: summarizeArgs(item.arguments),
 					// 摘要被截断时带一份完整的：历史里展开也要看得见整条命令
 					argsFull: fullArgs(item.arguments),
-					// 结果在后面的条目里回填；此刻只表明「调用过」
-					status: "ok",
+					// 结果在后面的条目里回填；此刻只表明「调用过」。收尾时仍没等到结果的（服务重启 /
+					// 崩溃把这一轮带走了）由 entriesToUiMessages 标成 failed —— 跟 dsh 历史同一个口径：
+					// 不能装成「完成」，那看起来就像「模型自己停了、什么也没做」。
+					status: "running",
 					outputExcerpt: "",
 					truncated: false,
 					startedAt: ts,
@@ -135,12 +137,15 @@ function addUsage(base: UiMessage["usage"], extra: NonNullable<UiMessage["usage"
 /**
  * 纯函数：条目 → 界面消息。
  * 工具结果按 `toolCallId` 回填到最近的对应工具块（找不到就补一条工具块，保证结果不丢）。
+ *
+ * `live`（这一轮**正在跑**）：还不许把「有调用没结果」判成失败 —— 中间那次工具这会儿
+ * 正在执行，它的结果只是还没落盘。历史回放（默认）才收口。
  */
-export function entriesToUiMessages(entries: unknown[]): UiMessage[] {
-	return sanitizeHistoricalActions(entriesToUiMessagesRaw(entries));
+export function entriesToUiMessages(entries: unknown[], options: { live?: boolean } = {}): UiMessage[] {
+	return sanitizeHistoricalActions(entriesToUiMessagesRaw(entries, options.live === true));
 }
 
-function entriesToUiMessagesRaw(entries: unknown[]): UiMessage[] {
+function entriesToUiMessagesRaw(entries: unknown[], live: boolean): UiMessage[] {
 	const messages: UiMessage[] = [];
 	/** toolCallId → 已经放进消息里的那个块（用于回填结果） */
 	const toolBlocks = new Map<string, Extract<MessageBlock, { kind: "tool" }>>();
@@ -209,6 +214,18 @@ function entriesToUiMessagesRaw(entries: unknown[]): UiMessage[] {
 		messages.push(mapped);
 		for (const block of mapped.blocks) {
 			if (block.kind === "tool") toolBlocks.set(block.toolCallId, block);
+		}
+	}
+
+	/**
+	 * 悬空的工具调用（有 toolCall、没有 toolResult）：这一轮在工具执行时被打断 ——
+	 * 最常见的是 dev 的 `tsx --watch` 改了文件就重启、`aw restart`、进程被 kill。
+	 * 不能留在 running（界面永远转圈），更不能装成 ok（界面显示「完成」却没有输出，
+	 * 看起来就像模型莫名停住）。
+	 */
+	if (!live) {
+		for (const block of toolBlocks.values()) {
+			if (block.status === "running") block.status = "failed";
 		}
 	}
 

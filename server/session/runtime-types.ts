@@ -63,11 +63,13 @@ export type Runtime = {
 	 * 成功时把最终用的标题带回来，界面可直接拿来提示。
 	 */
 	suggestSessionTitle(conversationId: string): Promise<SuggestTitleResult>;
-	/** 删除会话：引擎原生删除（codex）或文件改名（pi）；已经不在的按成功处理（`gone`） */
+	/** 删除会话：引擎原生删除（codex）或文件改名（pi）；已经不在的按成功处理（`gone`）。
+	 * `purge` 为真时 pi 那条路是真删（`unlink`），默认只是改名 —— 见 `delete-session.ts` */
 	deleteSession(
 		conversationId: string,
+		options?: { purge?: boolean },
 	): Promise<
-		| { ok: true; mode: "engine" | "file" | "gone"; movedTo?: string }
+		| { ok: true; mode: "engine" | "file" | "purged" | "gone"; movedTo?: string }
 		| { ok: false; error: { code: string; message: string } }
 	>;
 	/** 把会话拖到另一个项目（改 cwd，id 与历史不变） */

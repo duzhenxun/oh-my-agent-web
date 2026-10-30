@@ -31,8 +31,8 @@ export function registerAuxRoutes(
 		onChange: () => void | Promise<void>;
 		workspaceOf: () => string | null;
 		projects: () => import("../protocol.js").PiProject[];
-		/** 删会话：引擎原生删除 or 文件改名，由 runtime 决定 */
-		deleteSession: (id: string) => Promise<SessionDeleteResult>;
+		/** 删会话：引擎原生删除 or 文件改名（`purge` 为真时真删），由 runtime 决定 */
+		deleteSession: (id: string, options?: { purge?: boolean }) => Promise<SessionDeleteResult>;
 		pushStore: PushStore;
 		/** 订阅服务（OAuth）：引擎不实现就不传，界面上那一块自然不出现 */
 		providerAuth?: ProviderAuthPort;

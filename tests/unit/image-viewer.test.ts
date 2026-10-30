@@ -49,7 +49,10 @@ describe("图片预览缩放", () => {
 
 describe("图片预览下载文件名", () => {
 	it("优先用上传时的原始名（带扩展名）", () => {
-		assert.equal(downloadNameOf("/api/uploads/abc-123", "截图 2024-01-02 10.00.00.png"), "截图 2024-01-02 10.00.00.png");
+		assert.equal(
+			downloadNameOf("/api/uploads/abc-123", "截图 2024-01-02 10.00.00.png"),
+			"截图 2024-01-02 10.00.00.png",
+		);
 	});
 
 	it("alt 没扩展名时，退回服务端路径里的文件名", () => {

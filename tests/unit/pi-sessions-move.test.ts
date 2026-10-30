@@ -46,6 +46,9 @@ describe("会话搬家（文件层）", () => {
 		// 旧文件不在了（归档成 .moved-*，扫描器按 .jsonl 结尾过滤，不会重复出现）
 		const oldDir = readdirSync(join(root, "--old-proj--"));
 		assert.equal(oldDir.filter((name) => name.endsWith(".jsonl")).length, 0);
-		assert.equal(oldDir.some((name) => name.endsWith(".moved-") || name.includes(".moved-")), true);
+		assert.equal(
+			oldDir.some((name) => name.endsWith(".moved-") || name.includes(".moved-")),
+			true,
+		);
 	});
 });

@@ -31,6 +31,7 @@ describe("parseClientRequest 基本形状", () => {
 			send_message: { text: "hi" },
 			interrupt: { conversationId: "c1" },
 			rename_session: { conversationId: "c1", title: "新名字" },
+			suggest_title: { conversationId: "c1" },
 			approve: { requestId: "a1", decision: "once" },
 			get_state: {},
 			new_chat: {},

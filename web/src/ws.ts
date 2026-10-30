@@ -32,6 +32,7 @@ import { appendTextToMessage } from "./lib/delta.ts";
 import { sessionUrlFor } from "./session-url.ts";
 import { reloadIfUnauthorized, reloadOnExpiredLogin } from "./auth-expiry.ts";
 import { promoteNewSession } from "./session-order.ts";
+import { newId } from "./lib/uid.ts";
 
 const MAX_BACKOFF_MS = 8000;
 const BASE_BACKOFF_MS = 500;
@@ -46,7 +47,7 @@ const CLIENT_KEY = "agent-web-client";
 function clientId(): string {
 	let value = sessionStorage.getItem(CLIENT_KEY);
 	if (!value) {
-		value = crypto.randomUUID();
+		value = newId();
 		sessionStorage.setItem(CLIENT_KEY, value);
 	}
 	return value;
@@ -55,6 +56,31 @@ function clientId(): string {
 let source: EventSource | null = null;
 let attempt = 0;
 let seq = 0;
+
+/**
+ * 请求失败之后的**状态对帐**（退避重试的轮数 + 已经排上的定时器）。
+ *
+ * 为什么要有：服务重启（dev 的 `tsx --watch` 一改 server 文件就重启）、反代抖一下时，
+ * `POST /api/rpc` 会直接回 502 —— 这一轮的收尾帧（`turn_end` + 最后一帧快照）**永远不会到**。
+ * 客户端只留一条红字，界面上就卡在「正在等待模型…」转圈，用户除了手动刷新没有别的出路。
+ * 所以失败后主动要一次权威快照：新服务根本没有在跑的回合 → 转圈立刻停。
+ */
+let resyncAttempt = 0;
+let resyncTimer: ReturnType<typeof setTimeout> | null = null;
+
+function resyncAfterFailure(): void {
+	if (resyncTimer !== null) return; // 已经在排队了，别叠加
+	if (resyncAttempt >= 3) {
+		resyncAttempt = 0;
+		return;
+	}
+	const delay = Math.min(BASE_BACKOFF_MS * 2 ** resyncAttempt, MAX_BACKOFF_MS);
+	resyncAttempt += 1;
+	resyncTimer = setTimeout(() => {
+		resyncTimer = null;
+		void send({ id: `req-${++seq}`, type: "get_state" });
+	}, delay);
+}
 
 export function connect(): void {
 	if (source && source.readyState !== EventSource.CLOSED) return;
@@ -123,9 +149,26 @@ export function send(requestMessage: ClientRequest): Promise<void> {
 			});
 			if (!response.ok) {
 				if (reloadIfUnauthorized(response.status)) return;
-				setAppState({ lastError: { text: `请求失败：HTTP ${response.status}`, conversationId: null } });
+				/**
+				 * 502 / 503 / 504 几乎都是「后端刚好不在」：开发态 `tsx --watch` 重启的那一两秒，
+				 * 或者 `aw restart` 的空窗。此时 Vite / 反向代理连不上后端，回的就是 502
+				 * （终端里那行 `http proxy error: connect ECONNREFUSED 127.0.0.1:25258`）。
+				 * 这**不是**模型报错，也不是请求本身错了 —— 文案要说清，别让人去查 provider。
+				 * 红条会在 SSE 重新连上时自动清掉（见 `connect()` 里的 lastError: null）。
+				 */
+				const backendDown = response.status === 502 || response.status === 503 || response.status === 504;
+				setAppState({
+					lastError: {
+						text: backendDown
+							? `后端正在重启或还没起来（HTTP ${response.status}），稍等自动恢复`
+							: `请求失败：HTTP ${response.status}`,
+						conversationId: null,
+					},
+				});
+				resyncAfterFailure();
 				return;
 			}
+			resyncAttempt = 0; // 通了就清零：下次再挂还是从 0.5s 起
 			const body = (await response.json()) as { frames?: string[] };
 			// 同步产生的帧（reply / notice）在这里消费；异步事件走 SSE
 			for (const frame of body.frames ?? []) {
@@ -137,6 +180,7 @@ export function send(requestMessage: ClientRequest): Promise<void> {
 			}
 		} catch {
 			setAppState({ lastError: { text: "连接尚未就绪，稍后再试", conversationId: null } });
+			resyncAfterFailure();
 		}
 	})();
 }

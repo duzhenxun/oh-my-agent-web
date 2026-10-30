@@ -1,28 +1,28 @@
 /**
  * 字号（`web/src/font-scale.ts`）：聊天正文 / 侧栏项目名 / 侧栏会话名**各一套**四档，
- * 共用同一个"滑杆 + 快捷档"模型。
+ * 共用同一个「滑杆 + 快捷档」模型。
  *
  * 这里锁五件事：
- *   1. 每处四档、等距 2px；「标准」= 该处默认值（聊天 12 / 项目名 13 / 会话名 12）；
- *   2. 老版本存的档位 id（`s/m/l/xl`）按**该处**刻度换算 —— 所以 `"m"` 在项目名那里是 13；
- *   3. 坏值 / 越界值都被夹回区间并对齐 0.5px，不能出现 0px、NaNpx、12.500001px；
+ *   1. 每处四档、等距 2px；三处现在同一套刻度 12 / 14 / 16 / 18，「标准」= 默认 14；
+ *   2. 老版本存的档位 id（`s/m/l/xl`）按该处刻度换算成像素；
+ *   3. 坏值 / 越界值都被夹回 [2, 30] 并对齐 2px，不能出现 0px、NaNpx、12.500001px；
  *   4. 只有正好等于某档时才高亮那张快捷卡（`presetOfPx`）；
- *   5. 老键（`agent-web.chat-font` 存 "m" 之类）升级后仍读得出来。
+ *   5. 老刻度（标准 12 / 13px）的存量像素按档位序号 / 等量平移搬到新刻度。
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
 	DEFAULT_FONT_PX,
-	DEFAULT_FONT_SCALE,
 	FONT_LADDERS,
 	FONT_MAX_PX,
 	FONT_MIN_PX,
+	FONT_STEP_PX,
 	clampFontPx,
 	findFontScale,
 	fontPxCss,
 	presetOfPx,
 	readStoredFontPx,
-	readStoredFontScale,
+	upgradeLegacyFontPx,
 	type FontLayer,
 } from "../../web/src/font-scale.ts";
 
@@ -37,17 +37,16 @@ describe("每处一套四档", () => {
 		}
 	});
 
-	it("「标准」= 该处默认值：聊天 12 / 项目名 13 / 会话名 12", () => {
-		assert.deepEqual(
-			{
-				chat: FONT_LADDERS.chat.find((item) => item.id === "m")?.px,
-				project: FONT_LADDERS.project.find((item) => item.id === "m")?.px,
-				session: FONT_LADDERS.session.find((item) => item.id === "m")?.px,
-			},
-			{ chat: 12, project: 13, session: 12 },
-		);
-		assert.deepEqual(DEFAULT_FONT_PX, { chat: 12, project: 13, session: 12 });
-		assert.equal(DEFAULT_FONT_SCALE, "m");
+	it("「标准」= 该处默认值 = 14px（三处同一套刻度，都是双数）", () => {
+		for (const layer of LAYERS) {
+			assert.equal(findFontScale("m", layer)?.px, 14, layer);
+			assert.equal(DEFAULT_FONT_PX[layer], 14, layer);
+			assert.deepEqual(
+				FONT_LADDERS[layer].map((item) => item.px),
+				[12, 14, 16, 18],
+				layer,
+			);
+		}
 	});
 
 	it("最小一档叫「特小」，比标准小 2px", () => {
@@ -68,20 +67,18 @@ describe("容错与映射", () => {
 		}
 	});
 
-	it("新版存像素：原样读回来（含档位之间的连续值）", () => {
-		assert.equal(readStoredFontPx("11.5", "chat"), 11.5);
-		assert.equal(readStoredFontPx("13", "chat"), 13);
-		assert.equal(readStoredFontPx("20", "chat"), FONT_MAX_PX);
+	it("新版存像素：对齐到双数后读回来", () => {
+		assert.equal(readStoredFontPx("11.5", "chat"), 12); // 11.5 → 最近的偶数
+		assert.equal(readStoredFontPx("13", "chat"), 14);
+		assert.equal(readStoredFontPx("20", "chat"), 20);
+		assert.equal(readStoredFontPx("99", "chat"), FONT_MAX_PX);
 	});
 
 	it("老版本存的档位 id：按该处刻度换算", () => {
-		assert.equal(readStoredFontPx("m", "chat"), 12);
-		assert.equal(readStoredFontPx("m", "project"), 13); // 同一句 "m"，项目名那里是 13
-		assert.equal(readStoredFontPx("m", "session"), 12);
 		for (const layer of LAYERS) {
 			for (const item of FONT_LADDERS[layer]) {
-				assert.equal(readStoredFontPx(item.id, layer), item.px);
-				assert.equal(readStoredFontScale(item.id, layer), item.id);
+				assert.equal(readStoredFontPx(item.id, layer), item.px, `${layer}:${item.id}`);
+				assert.equal(findFontScale(item.id, layer)?.id, item.id, `${layer}:${item.id}`);
 			}
 		}
 	});
@@ -94,35 +91,58 @@ describe("容错与映射", () => {
 	});
 });
 
-describe("夹区间 + 0.5 步长", () => {
-	it("越界夹回 [2, 20]", () => {
+describe("夹区间 + 2px 步长", () => {
+	it("越界夹回 [2, 30]", () => {
 		assert.equal(clampFontPx(0.5), FONT_MIN_PX);
 		assert.equal(clampFontPx(40), FONT_MAX_PX);
-		assert.equal(clampFontPx(5), 5); // 区间内的小字号照原样
+		assert.equal(clampFontPx(20), 20);
 	});
 
-	it("浮点尾巴对齐到 0.5（滑杆会给出 12.500000001 这种数）", () => {
-		assert.equal(clampFontPx(12.500000001), 12.5);
-		assert.equal(clampFontPx(12.74), 12.5);
-		assert.equal(clampFontPx(12.76), 13);
+	it("奇数 / 浮点尾巴对齐到最近的偶数（滑杆会给出 13、12.0000001 这种数）", () => {
+		assert.equal(clampFontPx(13), 14);
+		assert.equal(clampFontPx(11), 12);
+		assert.equal(clampFontPx(12.0000001), 12);
+		assert.ok(clampFontPx(17) % FONT_STEP_PX === 0);
 	});
 
 	it("NaN / Infinity → 该处默认值", () => {
-		assert.equal(clampFontPx(Number.NaN, "project"), 13);
-		assert.equal(clampFontPx(Number.POSITIVE_INFINITY, "session"), 12);
+		assert.equal(clampFontPx(Number.NaN, "project"), 14);
+		assert.equal(clampFontPx(Number.POSITIVE_INFINITY, "session"), 14);
 	});
 });
 
 describe("快捷档高亮", () => {
-	it("正好等于某档才高亮（档位之间不高亮任何一张）", () => {
+	it("正好等于某档才高亮（档位之外不高亮任何一张）", () => {
 		for (const layer of LAYERS) {
 			for (const item of FONT_LADDERS[layer]) assert.equal(presetOfPx(item.px, layer), item.id, layer);
-			assert.equal(presetOfPx(12.5, layer), null, layer);
+			// 步长 2 = 四档之间没有落得下的偶数，所以「档位之间」只能是超出四档的值
+			assert.equal(presetOfPx(20, layer), null, layer);
+			assert.equal(presetOfPx(30, layer), null, layer);
 		}
 	});
+});
 
-	it("同一像素在不同层的高亮互不影响", () => {
-		assert.equal(presetOfPx(13, "project"), "m");
-		assert.equal(presetOfPx(13, "chat"), null); // 聊天那里的 13 落在档位之间
+describe("老刻度迁移（标准从 12 / 13 抬到 14）", () => {
+	it("正好在老档位上：按档位序号搬到新档位（相对选择不变）", () => {
+		// 聊天老刻度 10 / 12 / 14 / 16 → 新 12 / 14 / 16 / 18
+		assert.deepEqual(
+			[10, 12, 14, 16].map((px) => upgradeLegacyFontPx(px, "chat")),
+			[12, 14, 16, 18],
+		);
+		// 项目名老刻度 11 / 13 / 15 / 17 → 同样落到新四档
+		assert.deepEqual(
+			[11, 13, 15, 17].map((px) => upgradeLegacyFontPx(px, "project")),
+			[12, 14, 16, 18],
+		);
+	});
+
+	it("拖出来的奇数值：按两层标准的差等量平移，结果仍是双数", () => {
+		assert.equal(upgradeLegacyFontPx(20, "chat"), 22); // +2
+		assert.equal(upgradeLegacyFontPx(9, "chat"), 12); // 9+2=11 → 对到 12
+		assert.ok(upgradeLegacyFontPx(15, "project") % FONT_STEP_PX === 0);
+	});
+
+	it("坏值 → 该处默认值（不抛错）", () => {
+		assert.equal(upgradeLegacyFontPx(Number.NaN, "chat"), 14);
 	});
 });

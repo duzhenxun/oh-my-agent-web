@@ -19,6 +19,8 @@ import { Composer } from "./Composer.tsx";
 import { sideChannelFor, type SideState } from "../side-chat.ts";
 import type { ChatSurface } from "../chat-surface.ts";
 import { useT } from "../use-language.ts";
+import { usePanelZoom } from "../panel-zoom.ts";
+import { SIDE_CHAT_ZOOM_KEY } from "../ui-prefs.ts";
 import { showToast } from "../toast.ts";
 import { useSyncExternalStore } from "react";
 
@@ -87,9 +89,17 @@ export function SideChat({ itemId }: { itemId: string }) {
 		}),
 		[state.draft, snapshot, channel],
 	);
+	/** 这一块的缩放（⌘/Ctrl + `+` / `-` / `0`）：偏好本机记一份，和网页 / 代码预览各存各的 */
+	const zoom = usePanelZoom(SIDE_CHAT_ZOOM_KEY);
 
 	return (
-		<div className="work-chat work-chat-main">
+		/* ⌘/Ctrl + `+` / `-` 只缩放这一块（见 panel-zoom.ts），不影响整页 */
+		<div
+			className="work-chat work-chat-main"
+			ref={zoom.ref}
+			{...zoom.pointerHandlers}
+			style={{ zoom: zoom.percent / 100 }}
+		>
 			<div className="work-chat-stream">
 				{messages.length === 0 ? (
 					<div className="work-chat-empty">{t("问一句就走：这条聊天不落盘，关掉即消失。")}</div>

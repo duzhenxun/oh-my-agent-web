@@ -20,6 +20,20 @@ export async function chmodSecret(path: string): Promise<void> {
 }
 
 /**
+ * 「**任何账户都能读**」的权限（`rw-r--r--`）：给访问密码、VAPID 密钥这类
+ * 需要被同机其它进程 / 账户读到的东西用（用户 2026-10-30 明确要求）。
+ *
+ * 代价说清楚：同机任何账户都能读到明文密码与私钥。默认仍然是 0600（`chmodSecret`），
+ * 只有明确选择共享的那几个文件走这里。
+ */
+export const SHARED_FILE_MODE = 0o644;
+
+export async function chmodShared(path: string): Promise<void> {
+	if (process.platform !== "win32") await chmod(path, SHARED_FILE_MODE);
+	// Windows 上是继承来的 ACL：放宽就是「什么都不用做」，加密钥类文件不做 icacls 收紧
+}
+
+/**
  * `icacls <文件> /inheritance:r /grant:r <用户>:F`
  *   /inheritance:r —— 去掉从父目录继承来的 ACE（这一条才是关键）
  *   /grant:r       —— 覆盖式授予当前用户完全控制

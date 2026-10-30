@@ -7,7 +7,7 @@ import { useUnseenFinishWatch } from "./use-unseen-finish.ts";
 import { ToastHost } from "./components/ToastHost.tsx";
 import { useDocumentFullscreen } from "./use-fullscreen.ts";
 import { ImageViewer } from "./components/ImageViewer.tsx";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
 	clampSidebarWidth,
 	defaultCollapsed,
@@ -153,6 +153,21 @@ export function App() {
 	const headingInputRef = useRef<HTMLInputElement>(null);
 	/** 顶栏那颗标题（`.appbar-slot`）：会话菜单的小尾巴要指着它（跟侧栏会话行同一套） */
 	const headingSlotRef = useRef<HTMLSpanElement>(null);
+	/**
+	 * 「会话标题永远落在对话这一栏的上面」：标题槽本身在顶栏里是紧跟在左段（品牌 / 新会话 / 全屏）
+	 * 后面的，而左段宽度是**按内容定的**、刻意跟侧栏宽度解耦（之前用户明确要过「拖侧栏时顶部不动」）。
+	 * 于是侧栏一宽，标题的默认起点就跑到侧栏上空去了（用户 2026-10-30 的截图：标题骑在项目列表
+	 * 上面，左边跨过了对话栏那条线）。
+	 *
+	 * 这里在布局后量一次「对话栏左沿相对顶栏主段的偏移」，把标题按这个偏移推开；宽度也只到
+	 * 对话栏右沿 —— 分栏开着时对话栏变窄，标题就跟着窄，不会盖到右边那块上去。
+	 * 用**测量**而不是算：侧栏宽度 + 各处 padding / gap + 分栏、换边、手机抽屉都会动，算不准。
+	 */
+	const [headingInset, setHeadingInset] = useState(0);
+	const [headingWidth, setHeadingWidth] = useState<number | null>(null);
+	const appbarMainRef = useRef<HTMLDivElement | null>(null);
+	const workspaceRef = useRef<HTMLDivElement | null>(null);
+	const rightColRef = useRef<HTMLDivElement | null>(null);
 	const [contentSearchOpen, setContentSearchOpen] = useState(false);
 	/**
 	 * 「新建项目」对话框在这一层画（以前挂在 Sidebar 里）。
@@ -919,9 +934,14 @@ export function App() {
 			state.lastError.conversationId === (snapshot?.active.conversationId ?? null))
 			? state.lastError.text
 			: null;
-	// 刚点下、服务端还没把这一份快照推回来（乐观高亮已生效）—— 给一条「正在打开」提示，
-	// 否则外网/手机上几百毫秒里界面看着像没反应，用户会再点一下。
-	const switching = state.pendingActive !== null && state.pendingActive !== activeId;
+	// 刚点下、服务端还没把这一份快照推回来（乐观高亮已生效）。
+	//
+	// 只在**屏幕上什么都没有**的时候才给这颗泡泡：
+	//   · 有本地缓存预览（`preview`）→ 正文已经铺满屏幕了，再盖一颗「正在同步…」
+	//     只会让人觉得慢（用户 2026-10-30：「内容不是瞬间就出来了吗？为什么老显示这个」）。
+	//     这一下服务端实测只有 0~10ms，剩下的时间全是本机渲染，泡泡没有任何信息量；
+	//   · 没有缓存（第一次开这条会话）→ 屏幕是空的，这时候它真的在报「还没好，等一下」。
+	const switching = state.pendingActive !== null && state.pendingActive !== activeId && preview === null;
 	// 地址栏 ↔ 当前会话（?session=xxx）
 	const urlSession = useRef<string | null>(sessionIdFromUrl(window.location.search));
 	const appliedUrlSession = useRef(false);
@@ -1006,6 +1026,38 @@ export function App() {
 	 * 于是同一件事有方图标 / 舌形两种样子、位置还差一整个顶栏高度（用户连着报了三次「要一样」）。
 	 */
 
+	/**
+	 * 把「会话标题」摆到对话栏的范围内：左沿对齐对话栏左沿，宽度不越过对话栏右沿。
+	 *
+	 * 时机：布局后量（`useLayoutEffect`），免得用户看到标题先跳一下；
+	 * 跟着変的东西靠 ResizeObserver 盯：拖侧栏分割线、开关分栏、拉窗口都会改对话栏宽度。
+	 */
+	useLayoutEffect(() => {
+		const main = appbarMainRef.current;
+		const chat = workspaceRef.current ?? rightColRef.current;
+		if (!main || !chat) return;
+		const measure = () => {
+			const mainBox = main.getBoundingClientRect();
+			const box = chat.getBoundingClientRect();
+			// 顶栏被藏起来（`hidden`）/ 元素还没布局时 rect 全是 0：那一瞬不动，否则会把标题推到奇怪的地方
+			if (mainBox.width === 0 || box.width === 0) return;
+			const inset = Math.max(0, Math.round(box.left - mainBox.left));
+			const width = Math.round(box.width);
+			setHeadingInset((current) => (current === inset ? current : inset));
+			setHeadingWidth((current) => (current === width ? current : width));
+		};
+		measure();
+		const observer = new ResizeObserver(measure);
+		observer.observe(main);
+		observer.observe(chat);
+		window.addEventListener("resize", measure);
+		return () => {
+			observer.disconnect();
+			window.removeEventListener("resize", measure);
+		};
+		// 对话栏会在「铺开」时整块不渲染 / 侧栏收起时位置大变：这些都重新挂一次量尺
+	}, [collapsed, mobileShell, sideWidth, previewVisible, previewWide, chatSide, appbarHidden]);
+
 	return (
 		<div
 			className={`app${splitLifted ? " app-split" : ""}${wideLifted ? " app-wide-lift" : ""}${
@@ -1014,11 +1066,7 @@ export function App() {
 		>
 			{switching || state.creating ? (
 				<div className="switch-hint" role="status">
-					{state.creating
-						? t("正在新建会话…", "Creating session…")
-						: preview
-							? t("本地缓存 · 正在同步…", "Local cache · syncing…")
-							: t("正在打开会话…", "Opening session…")}
+					{state.creating ? t("正在新建会话…", "Creating session…") : t("正在打开会话…", "Opening session…")}
 				</div>
 			) : null}
 			{/* 顶部区域：**分成两段** —— 左边一段（`.appbar-side`）放「品牌 + 新会话 + 全屏」，
@@ -1111,7 +1159,7 @@ export function App() {
 				 * （用户报的「才这么宽，顶部标题就不显示了」）。包起来之后 `900px` 那个阈值量的就是
 				 * 真正可用的宽度，侧栏拖多宽、分栏抢多少都能如实反映出来。
 				 */}
-				<div className="appbar-main">
+				<div className="appbar-main" ref={appbarMainRef}>
 					{/*
 					 * 中间那块：当前会话的名字（「这回在跟谁聊」以前只藏在浏览器标签页里）。
 					 * 左对齐、跟对话区同一条左边线；**双击就地改名**（跟侧栏会话行同一套规矩）；
@@ -1123,6 +1171,8 @@ export function App() {
 					<span
 						ref={headingSlotRef}
 						className="appbar-slot"
+						/* 左沿 / 宽度都锁在「对话这一栏」里（量的值，见上面 headingInset 的注释） */
+						style={{ marginLeft: headingInset, maxWidth: headingWidth ?? undefined }}
 						onContextMenu={
 							activeSessionId
 								? (event) => {
@@ -1484,12 +1534,12 @@ export function App() {
 					</>
 				)}
 
-				<div className="right-col">
+				<div className="right-col" ref={rightColRef}>
 					<div
 						className={`right-upper${previewWide ? " right-upper-wide" : ""}${chatSide === "right" ? " right-upper-flip" : ""}`}
 					>
 						{previewWide && panelOpen ? null : (
-							<div className="workspace">
+							<div className="workspace" ref={workspaceRef}>
 								<main className="main" ref={scroll.ref}>
 									{snapshot && messages.length === 0 ? (
 										// 空会话：图标/名字/版本 + 一句招呼，整块居中（不占消息流、不需要滚动）
@@ -1510,6 +1560,8 @@ export function App() {
 											running={liveRunning !== null}
 											// 「正在运行 bash…」：过程容器默认折扇，中间在干什么得单独给一行
 											activeTool={liveRunning?.activeTool ?? null}
+											// 「模型调用被打断，正在自动重试（1/2）」：挂在同一条实时动作行上
+											retrying={liveRunning?.retrying ?? null}
 											// 每条消息按自己生成时的模型显示（id → 显示名）
 											modelLabels={Object.fromEntries(snapshot.models.map((item) => [item.id, item.label]))}
 											// 「改动过的文件」：把工具参数里的绝对路径折成相对工作区，点 chip 就能预览
@@ -1667,6 +1719,8 @@ export function App() {
 									/* 标注算待发内容：有标注时发送按钮亮着，回车直接把它们发出去 */
 									annotations={shownAnnotations}
 									onAnnotationsSent={clearSentAnnotations}
+									/* 「@ 提及」面板行尾的「在右侧打开」：走同一套标签体系（不会出现两份预览） */
+									onOpenFile={(path, root) => openFileInPanel(path, root ?? workspaceRoot ?? "")}
 									/* 新会话界面：多一行「项目 · 分支」；建好会话后这块变回 null，那行就没了 */
 									newSession={
 										newSession

@@ -8,7 +8,7 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { isAllowedHost, isAllowedOrigin, isSameOrigin, type OriginPolicy } from "../../server/util/origin.js";
+import { isAllowedOrigin, isLoopbackHostHeader, isSameOrigin, type OriginPolicy } from "../../server/util/origin.js";
 
 const policy: OriginPolicy = { port: 25257, devPorts: [5173], extraHosts: ["192.168.1.9"] };
 
@@ -61,17 +61,17 @@ describe("isAllowedOrigin", () => {
 	});
 });
 
-describe("isAllowedHost", () => {
-	it("缺失时放行（老客户端 / HTTP/1.0 不带 Host）", () => {
-		assert.equal(isAllowedHost(undefined, policy), true);
+describe("isLoopbackHostHeader（DNS rebinding 的判据，auth 的 decide 用它）", () => {
+	it("缺失时按本机处理（老客户端 / HTTP/1.0 不带 Host；浏览器与反代一定会带）", () => {
+		assert.equal(isLoopbackHostHeader(undefined), true);
 	});
-	it("loopback 带白名单端口放行", () => {
-		assert.equal(isAllowedHost("127.0.0.1:25257", policy), true);
+	it("回环名连同整个 127/8 段都算本机", () => {
+		assert.equal(isLoopbackHostHeader("127.0.0.1:25257"), true);
+		assert.equal(isLoopbackHostHeader("127.0.0.5:25257"), true);
+		assert.equal(isLoopbackHostHeader("localhost:25257"), true);
 	});
-	it("陌生主机名 → 拒（DNS rebinding）", () => {
-		assert.equal(isAllowedHost("attacker.example:25257", policy), false);
-	});
-	it("端口不在白名单 → 拒", () => {
-		assert.equal(isAllowedHost("127.0.0.1:1234", policy), false);
+	it("陌生主机名 / 局域网 IP → 不算本机（于是必须过密码门）", () => {
+		assert.equal(isLoopbackHostHeader("attacker.example:25257"), false);
+		assert.equal(isLoopbackHostHeader("192.168.1.9:25257"), false);
 	});
 });

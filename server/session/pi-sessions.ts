@@ -133,7 +133,7 @@ export function defaultPiSessionsRoot(agentDir: string): string {
 }
 
 /** 纯函数：解析首行 header；不是会话文件就返回 null */
-function parseSessionHeader(line: string): { id: string; cwd: string; startedAt: number } | null {
+export function parseSessionHeader(line: string): { id: string; cwd: string; startedAt: number } | null {
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(line);
@@ -436,7 +436,7 @@ export async function writeCacheFile(file: string, cache: PiSessionsCache): Prom
  * SDK 的编码（`session-manager.js`）：`--${cwd.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`。
  * 这里**不 import SDK**（ADR-0003：只有 `server/engine` 能碰 SDK），只复刻这一个确定性编码。
  */
-function encodeSessionCwdDir(cwd: string): string {
+export function encodeSessionCwdDir(cwd: string): string {
 	return `--${cwd.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
 }
 

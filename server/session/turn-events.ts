@@ -51,8 +51,11 @@ export function createTurnContext(options: {
 	now: () => number;
 	pushSnapshot: () => void;
 	emitEvent: (event: ServerEvent) => void;
-	/** `conversationId` = 这条提示属于哪个会话（见 Notice.conversationId） */
-	notice: (text: string, level?: Notice["level"], conversationId?: string) => void;
+	/**
+	 * 注入的提示出口：**与提示牌同一个四参签名**（`key` 原地替换、`conversationId` 按会话归位）。
+	 * 参数位置别搞错：传错位就成了「按会话 id 去重」或者「提示跑到别的会话里」。
+	 */
+	notice: (text: string, level?: Notice["level"], key?: string, conversationId?: string) => void;
 	/** 思考增量节流后的推帧（runtime 注入 createThrottle 的结果） */
 	onThinkingDelta: (conversationId: string) => void;
 	/** 原始正文累积并返回可显示部分（ADR-0022 的标记扣留） */
@@ -99,7 +102,24 @@ export function applyEngineEvent(context: TurnEventContext, input: TurnEventInpu
 
 	if (event.type !== "thinking_delta") closeThinking();
 
+	/**
+	 * 「正在重试」只在退避期间成立：这一轮重新开始吐字 / 调工具（或收尾）就清掉。
+	 * 只清**变化**才推快照，不然每帧都要多推一次。
+	 */
+	if (event.type !== "retry" && event.type !== "notice" && event.type !== "usage" && event.type !== "model") {
+		if (state.running.retrying !== null) {
+			state.running.retrying = null;
+			context.pushSnapshot();
+		}
+	}
+
 	switch (event.type) {
+		case "retry": {
+			// 传输层被打断、引擎正在再试一次：把这行字交给「正在等待模型…」那一行去显示
+			state.running.retrying = { attempt: event.attempt, maxAttempts: event.maxAttempts };
+			context.pushSnapshot();
+			return;
+		}
 		case "text_delta": {
 			const visible = context.onTextDelta(event.text, conversationId);
 			if (visible === "") return; // 抠住了（可能在写标记）
@@ -182,6 +202,11 @@ export function applyEngineEvent(context: TurnEventContext, input: TurnEventInpu
 			patch((message) => appendError(message, event.code, event.message));
 			state.running.status = "error";
 			context.notice(`${event.code}: ${event.message}`, "error", undefined, conversationId);
+			return;
+		}
+		case "notice": {
+			// 引擎的过程提示（自动重试等）：按会话归位；同 key 原地替换，不往提示条里堆行
+			context.notice(event.text, event.level, event.key, conversationId);
 			return;
 		}
 		case "turn_end": {

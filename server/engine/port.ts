@@ -68,6 +68,20 @@ export type EngineEvent =
 	/** 这条回复用的模型（`provider/model`）：界面按它显示，别用「当前选择的模型」 */
 	| { type: "model"; model: string }
 	| { type: "turn_end"; reason: "done" | "interrupted" | "error" }
+	/**
+	 * 「这一轮被传输层打断了，正在自动重试」。
+	 *
+	 * 界面就把它渲染在「正在等待模型…」那一行（state.running.retrying）——
+	 * 退避期间不往屏幕上吐什么，必须有一行字说明「还在，在重试」，
+	 * 否则看着就像卡死了。下一次尝试开始吐东西时就清掉。
+	 */
+	| { type: "retry"; attempt: number; maxAttempts: number }
+	/**
+	 * 过程提示（**不进对话记录**）：给「正在自动重试」这种「引擎自己知道、但用户看不到就
+	 * 完全不知道发生了什么」的事。宿主按会话归位（Notice.conversationId），
+	 * `key` 相同就在同一行上**原地替换**（重试 1/2 → 2/2 → 已恢复，不堆三条）。
+	 */
+	| { type: "notice"; level: "info" | "warn" | "error"; text: string; key?: string }
 	| { type: "error"; code: string; message: string };
 
 /** 引擎侧的转录（宿主自己决定怎么映射成 UiMessage） */

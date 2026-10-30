@@ -139,3 +139,50 @@
 	color: var(--accent);
 	font-weight: 600;
 }
+
+/* ---- 推送面板：服务端 VAPID（公钥指纹 / 来源 / 联系方式）----
+   这是**服务端**的配置，跟上面那排「本机能力」不是一回事，所以用两条独立的小行：
+   左边固定标签（对齐），右边控件；手机上整行折起来（标签换到上一行）。 */
+.push-config-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+.push-config-label {
+	min-width: 5.5em;
+	font-size: 13px;
+	color: var(--text-dim);
+}
+
+.push-config-note {
+	font-size: 13px;
+	color: var(--text-faint);
+}
+
+.push-config-input {
+	flex: 1 1 12em;
+	min-width: 8em;
+	padding: 3px 8px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--bg);
+	color: var(--text);
+	font-size: 14px;
+}
+
+.push-config-input:disabled {
+	opacity: 0.6;
+}
+
+/* subject 不合法：现在多半只是「iPhone 收不到」，不给红字没人会去填邮箱 */
+.push-config-warn {
+	font-size: 13px;
+	line-height: 1.4;
+	color: var(--red, #d33);
+}
+
+.is-mobile-shell .push-config-label {
+	min-width: 0;
+}

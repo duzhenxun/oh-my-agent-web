@@ -1,5 +1,10 @@
 /**
- * 删除会话：调服务端把文件改名成 `.deleted-时间戳`（可从磁盘恢复）。
+ * 删除会话 = **真删**（服务端 `unlink` 掉会话文件，不可恢复）。
+ *
+ * 界面上只有这一种删除（用户 2026-10-30：「不要删除，只要彻底删除」）：
+ * 以前两颗并存 —— 一颗只把文件改名成 `.deleted-时间戳`、另一颗才真删 —— 名字上分不出区别，
+ * 存了 207 个「已删除」的文件、469MB 却谁都不知道。现在只留真删那颗，按钮就叫「彻底删除」。
+ * 服务端仍然两种模式都支持（`purge` 是可选参数）：这里一律带上。
  *
  * **两条纪律**（都是 2026-10-29「怎么删不掉啊？」那次踩出来的）：
  *
@@ -16,7 +21,7 @@ import { forgetCachedMessages } from "./session-cache.ts";
 import { showToast } from "./toast.ts";
 import { requestState } from "./ws.ts";
 
-type RemoveOutcome = { ok: true } | { ok: false; message: string };
+type RemoveOutcome = { ok: true; mode?: string } | { ok: false; message: string };
 
 async function removeOne(id: string): Promise<RemoveOutcome> {
 	void forgetCachedMessages(id); // 本地缓存的正文也一并删掉
@@ -24,7 +29,8 @@ async function removeOne(id: string): Promise<RemoveOutcome> {
 		const response = await fetch("/api/sessions/delete", {
 			method: "POST",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ id }),
+			// 一律真删：界面上没有「只改名」那条路了
+			body: JSON.stringify({ id, purge: true }),
 		});
 		if (!response.ok) {
 			const body = (await response.json().catch(() => null)) as {
@@ -38,20 +44,31 @@ async function removeOne(id: string): Promise<RemoveOutcome> {
 			if (response.status === 404 || body?.error?.code === "session.not_found") return { ok: true };
 			return { ok: false, message: body?.error?.message ?? `HTTP ${response.status}` };
 		}
-		return { ok: true };
+		// 服务端回的 mode 要看一下：`purged` = 真删了，`file` = 只是改名
+		const body = (await response.json().catch(() => null)) as { mode?: string } | null;
+		return { ok: true, mode: body?.mode };
 	} catch (error) {
 		return { ok: false, message: error instanceof Error ? error.message : String(error) };
 	}
 }
+
+/**
+ * 「要了 purge，服务端却只给 file」= 对面还是旧版本（没有 purge 参数）。
+ *
+ * 不提醒的话：界面上说「已彻底删除」，磁盘上其实只改了个名 —— 跟以前一模一样。
+ * 一句话把真相说出来，别让人以为真删了（重启服务端之后就没了）。
+ */
+const STALE_SERVER = "服务端还是旧版本：只改了名、没真删（重启服务后重试，或先把控制台里的服务端重构一下）";
 
 /** 删一条（确认已经在上层做过）：成功就刷新列表，失败把原因说出来 */
 export function deleteSession(id: string, label: string): void {
 	void (async () => {
 		const result = await removeOne(id);
 		if (!result.ok) {
-			showToast({ text: `删除「${label}」失败：${result.message}`, ttl: 12_000 });
+			showToast({ text: `彻底删除「${label}」失败：${result.message}`, ttl: 12_000 });
 			return;
 		}
+		if (result.mode === "file") showToast({ text: `「${label}」${STALE_SERVER}`, ttl: 12_000 });
 		requestState();
 	})();
 }
@@ -64,16 +81,20 @@ export function deleteSessions(ids: string[], label = "选中的会话"): void {
 	if (ids.length === 0) return;
 	void (async () => {
 		let done = 0;
+		let staleServer = false;
 		const failures: string[] = [];
 		for (const id of ids) {
 			const result = await removeOne(id);
-			if (result.ok) done += 1;
-			else failures.push(result.message);
+			if (result.ok) {
+				done += 1;
+				if (result.mode === "file") staleServer = true;
+			} else failures.push(result.message);
 		}
 		requestState();
+		if (staleServer) showToast({ text: `${done} 条${STALE_SERVER}`, ttl: 12_000 });
 		if (failures.length > 0) {
 			showToast({
-				text: `删除${label}：成功 ${done} 条，失败 ${failures.length} 条（${failures[0]}）`,
+				text: `彻底删除${label}：成功 ${done} 条，失败 ${failures.length} 条（${failures[0]}）`,
 				ttl: 12_000,
 			});
 		}

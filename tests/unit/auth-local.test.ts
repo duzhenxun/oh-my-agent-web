@@ -10,9 +10,13 @@
  * 现在两者都要满足：对端是本机 **且** 请求是发给本机的（Host 是回环名）。
  */
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { describe, it } from "node:test";
-import { cookieToken, decide } from "../../server/http/auth.ts";
-import { isLoopbackHostHeader } from "../../server/util/origin.ts";
+import { decide, isCrossOriginRejected } from "../../server/http/auth.ts";
+import { isLoopbackHostHeader, type OriginPolicy } from "../../server/util/origin.ts";
+
+/** 登录 cookie 的值（`sha256("agent-web:" + 密码)`）——刻意在测试里重算一遍，把格式钉住 */
+const cookieToken = (password: string): string => createHash("sha256").update(`agent-web:${password}`).digest("hex");
 
 const PASSWORD = "testpass123";
 
@@ -83,5 +87,66 @@ describe("decide：本机直连的判定", () => {
 	it("没有 Host 头的老客户端仍然按对端地址判断（本机放行 / 远程要密码）", () => {
 		assert.equal(decide({ ...base, remoteAddress: "127.0.0.1" }), "allow");
 		assert.equal(decide({ ...base, remoteAddress: "10.0.0.2" }), "challenge");
+	});
+});
+
+/**
+ * 跨源门禁只管「发给本机」：
+ * 域名 / 局域网 IP 的访问已经要过密码门，不该再拿域名白名单卡一道
+ * （用户的要求：「非 127.0.0.1 和域名访问不受限制，但必须先设密码」）。
+ */
+describe("isCrossOriginRejected：只拦发给本机的跨源请求", () => {
+	const policy: OriginPolicy = { port: 25257, devPorts: [25257], extraHosts: [] };
+
+	it("发给本机（Host 是回环）的跨源请求 → 拦（本机直连免密码 = CSRF 靶子）", () => {
+		assert.equal(isCrossOriginRejected({ origin: "https://evil.example.com", host: "127.0.0.1:25257", policy }), true);
+	});
+
+	it("同源请求 → 放（页面是从这儿加载的，它的 POST 当然该能用）", () => {
+		assert.equal(
+			isCrossOriginRejected({ origin: "https://agent.example.com", host: "agent.example.com", policy }),
+			false,
+		);
+		assert.equal(isCrossOriginRejected({ origin: "http://127.0.0.1:25257", host: "127.0.0.1:25257", policy }), false);
+	});
+
+	it("目标是域名 / 局域网 IP 的跨源请求 → 不拦（交给密码门，不用配 --allow-host）", () => {
+		assert.equal(
+			isCrossOriginRejected({ origin: "https://agent.example.com", host: "192.168.31.112:25257", policy }),
+			false,
+		);
+		assert.equal(
+			isCrossOriginRejected({ origin: "https://other.example.com", host: "agent.example.com", policy }),
+			false,
+		);
+	});
+
+	it("不带 Origin（curl / 脚本 / 老客户端）→ 不拦", () => {
+		assert.equal(isCrossOriginRejected({ origin: undefined, host: "127.0.0.1:25257", policy }), false);
+	});
+
+	it("远程来源（local=false）→ 不拦，哪怕反代把 Host 重写成了 127.0.0.1", () => {
+		// cloudflared / nginx 常见写法：proxy_set_header Host 127.0.0.1。
+		// 只看 Host 的话，用自己域名访问的人会被判成「本机点开」，每一条 POST 都要去配 --allow-host ——
+		// 用户 2026-10-30：不要域名白名单，只要不是本地访问就要密码。
+		assert.equal(
+			isCrossOriginRejected({ origin: "https://web.xs25.cn", host: "127.0.0.1:25257", policy, local: false }),
+			false,
+		);
+		assert.equal(
+			isCrossOriginRejected({ origin: "https://evil.example.com", host: "192.168.31.112:25257", policy, local: false }),
+			false,
+		);
+	});
+
+	it("真本机（local=true）→ 跨源照旧拦，本机自己的页面照旧放行", () => {
+		assert.equal(
+			isCrossOriginRejected({ origin: "https://evil.example.com", host: "127.0.0.1:25257", policy, local: true }),
+			true,
+		);
+		assert.equal(
+			isCrossOriginRejected({ origin: "http://127.0.0.1:25257", host: "127.0.0.1:25257", policy, local: true }),
+			false,
+		);
 	});
 });

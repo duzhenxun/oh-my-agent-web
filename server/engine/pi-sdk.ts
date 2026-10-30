@@ -18,6 +18,7 @@ import { dirname } from "node:path";
 import { getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
 import { classifyScope } from "../approval/scope.js";
 import { mapSessionEvent } from "./pi-events.js";
+import { RETRY_MAX_ATTEMPTS, classifyProviderError, retryDelayMs, retryOmitTargets } from "./pi-retry.js";
 import { createPiSubagents } from "./pi-subagents.js";
 import { makeSubagentToolExtension } from "./pi-subagent-tool.js";
 import { enabledSubagentSpecs, readSubagentSettings } from "../subagents/profile-store.js";
@@ -44,6 +45,12 @@ type PiSdkEngineOptions = {
 	/** 出问题时给宿主看的提示（不抛给用户，避免把一轮对话打死） */
 	onNotice?: (text: string, level: "info" | "warn" | "error") => void;
 	/**
+	 * 结构化日志（引擎层没有 logger 实例，宿主把 createLogger 接进来）。
+	 * 为什么必须有：provider 报错以前只变成界面上一条红条，**日志里一个字都没有** ——
+	 * 用户报「有时会 engine.provider_error」时完全无从下手（进程日志里查不到原因）。
+	 */
+	log?: (level: "debug" | "info" | "warn" | "error", text: string, ctx?: Record<string, unknown>) => void;
+	/**
 	 * 额外的**技能目录**（`<dir>/<技能名>/SKILL.md`）。
 	 *
 	 * 为什么必须给：pi 的 `/skill:名字` 是在 `AgentSession.prompt()` 里展开的 —— 它按名字去
@@ -69,6 +76,10 @@ type SessionHandle = {
 		dispose: () => void;
 		messages: unknown[];
 		isStreaming: boolean;
+		/** 底层 agent：自动重试用（`continue()` 从当前转录接着跑，不新增用户消息） */
+		agent?: { continue: () => Promise<void> };
+		/** 从会话文件重新投影出上下文（抹掉失败回复后要刷新 agent 状态） */
+		refreshContext?: () => void;
 		/** pi 原生的会话导出（`/export` 同一套序列化）：临时会话转正靠它落盘 */
 		exportToJsonl: (outputPath: string) => string;
 	};
@@ -94,6 +105,8 @@ type SessionHandle = {
 		getHeader: () => AnyRecord | null;
 		/** 从 `leafId` 往上走到根的整条路径（派生分支就是把它抄进新会话） */
 		getBranch: (leafId?: string) => ForkEntry[];
+		/** 把某条 entry 从**模型上下文**里去掉（重试时抹掉那条失败的回复；见 pi-retry.ts） */
+		appendContextEdit?: (targetId: string, replacement: null) => string;
 		getChildren: (parentId: string) => ForkEntry[];
 		getEntry: (id: string) => ForkEntry | undefined;
 	};
@@ -155,6 +168,55 @@ const STEER_SETTLE_FALLBACK_MS = 20 * 60 * 1000;
  * 800ms 是个只影响「settle 干脆不来」那种病态情况的兵底，正常回合 settles 一到就返回。
  */
 const SETTLE_GRACE_MS = 800;
+
+/** 退避用的小工具（不引入依赖；`.unref()` 免得挂着一个没人等的定时器） */
+function sleep(ms: number): Promise<void> {
+	return new Promise<void>((resolve) => {
+		setTimeout(resolve, ms).unref?.();
+	});
+}
+
+/** 引擎层的日志出口：没接日志时啥也不干（测试里就这么跑） */
+type EngineLog = (level: "debug" | "info" | "warn" | "error", text: string, ctx?: Record<string, unknown>) => void;
+
+/**
+ * 重试前把这一轮失败的回复从**模型上下文**里抹掉（`context_edit` = null）。
+ *
+ * 为什么必须做：pi 的 `agent.continue()` 要求转录末尾是用户消息 / 工具结果 ——
+ * 而失败之后末尾躺着一条空的（或半截的）助手消息，直接续跑会被它顶回来
+ * （`Cannot continue from message role: assistant`）。pi 自己的自动重试走的也是
+ * 「先抹掉、再 continue」这一套（见 SDK 的 `_omitRecoveryAttempt`）。
+ *
+ * 用户那条提问**不动**：重试是从它接着跑，不重复发一遍。
+ */
+function omitFailedAttempt(handle: SessionHandle, log: EngineLog, sessionId: string): boolean {
+	const manager = handle.sessionManager;
+	const edit = manager.appendContextEdit;
+	const refresh = handle.session.refreshContext;
+	if (!edit || !refresh) return false;
+
+	let targets: string[];
+	try {
+		targets = retryOmitTargets(manager.getBranch());
+	} catch (error) {
+		log("warn", "读会话树失败，放弃自动重试", { sessionId, message: errorMessageOf(error) });
+		return false;
+	}
+	if (targets.length === 0) return false;
+
+	try {
+		for (const id of targets) edit.call(manager, id, null);
+		refresh.call(handle.session);
+		return true;
+	} catch (error) {
+		log("warn", "抹掉失败回复失败，放弃自动重试", { sessionId, message: errorMessageOf(error) });
+		return false;
+	}
+}
+
+function errorMessageOf(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
 
 /**
  * 订阅服务里用到的 ModelRuntime 面（和 model-registry-reload.ts 一样：只描述真正用到的部分，
@@ -271,6 +333,9 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 	let approvalHandler: ApprovalHandler | null = null;
 
 	const notice = (text: string, level: "info" | "warn" | "error" = "warn") => options.onNotice?.(text, level);
+
+	/** 日志出口：没接线时是空函数（单测里就这么跑） */
+	const log: EngineLog = (level, text, ctx) => options.log?.(level, text, ctx);
 
 	// 子代理运行时（ADR：多开 + 面板管理）：会话文件放在父会话旁边，工具白名单来自模板
 	const resolvedAgentDir = options.agentDir ?? getAgentDir();
@@ -706,7 +771,9 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 		async readUiMessages(sessionId) {
 			const handle = sessions.get(sessionId);
 			if (!handle) return [];
-			return entriesToUiMessages(handle.sessionManager.getEntries());
+			// 这一轮还在跑：中间那条工具的结果只是还没落盘，别提前判成失败（切回来看会话时会发生）
+			const live = handle.session.isStreaming === true || handle.subscriptions.size > 0;
+			return entriesToUiMessages(handle.sessionManager.getEntries(), { live });
 		},
 
 		async sendMessage(
@@ -718,96 +785,219 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 				streamingBehavior?: "steer" | "followUp";
 			},
 		) {
-			const handle = sessions.get(sessionId);
-			if (!handle) {
+			const found = sessions.get(sessionId);
+			if (!found) {
 				onEvent({ type: "error", code: "engine.no_session", message: `引擎里没有这个会话：${sessionId}` });
 				onEvent({ type: "turn_end", reason: "error" });
 				return;
 			}
+			// 换个别名：下面 `runAttempt` 是**函数声明**（会被提升），TS 不会把上面的收窄带进去
+			const handle = found;
 
 			handle.aborting = false;
-			let interrupted = false;
-			let providerError = false;
-			let failed: { code: string; message: string } | null = null;
-			let settled: Promise<void> | null = null;
-			let markSettled: (() => void) | null = null;
-			settled = new Promise<void>((resolve) => {
-				markSettled = resolve;
-			});
 
-			// 订阅**按次**持有：steer 会并发再进一次 sendMessage，两轮各自摘自己的监听器
-			const off = handle.session.subscribe((event: unknown) => {
-				const mapped = mapSessionEvent(event);
-				if (mapped) {
-					// provider 报错也要算「这一轮失败」：不能最后还发 turn_end: done
-					if (mapped.type === "error") providerError = true;
-					onEvent(mapped);
-					return;
-				}
-				const record = asRecord(event);
-				if (record.type === "agent_settled") {
-					interrupted = record.aborted === true || handle.aborting;
-					markSettled?.();
-				}
-			});
-			handle.subscriptions.add(off);
+			/**
+			 * 一轮的收尾结果（自动重试用）。
+			 * provider 报错**先攒着不发**：中间那些马上会被重试掉的失败不该在界面上留一条红条，
+			 * 最终由下面决定往外发哪一条。
+			 */
+			type AttemptOutcome = {
+				failed: { code: string; message: string } | null;
+				errors: Array<{ code: string; message: string }>;
+				interrupted: boolean;
+				/** 这一轮有没有往界面上吐过东西（正文 / 思考 / 工具卡） */
+				producedOutput: boolean;
+				/** 这条消息是被「插进正在跑的那一轮」的 */
+				steered: boolean;
+			};
 
-			/** 这条消息是被「插进正在跑的那一轮」的：它的输出要等那一轮结束，不能 50ms 就收尾 */
-			let steered = false;
-			try {
-				// 图片走 SDK 的 images 参数（视觉注入）；没有图片时不传，避免空数组影响提示词缓存
-				const images = messageOptions?.images?.map((image) => ({
-					type: "image" as const,
-					data: image.data,
-					mimeType: image.mimeType,
-				}));
-				// streamingBehavior 交给 pi 自己排队：steer = 打断当前轮插入，followUp = 等这轮结束
-				const promptOptions: { images?: unknown[]; streamingBehavior?: "steer" | "followUp" } = {};
-				if (images && images.length > 0) promptOptions.images = images;
-				if (messageOptions?.streamingBehavior) promptOptions.streamingBehavior = messageOptions.streamingBehavior;
-				const session = handle.session as unknown as {
-					prompt: (text: string, options: typeof promptOptions) => Promise<void>;
-				};
+			// 图片走 SDK 的 images 参数（视觉注入）；没有图片时不传，避免空数组影响提示词缓存
+			const images = messageOptions?.images?.map((image) => ({
+				type: "image" as const,
+				data: image.data,
+				mimeType: image.mimeType,
+			}));
+			// streamingBehavior 交给 pi 自己排队：steer = 打断当前轮插入，followUp = 等这轮结束
+			const promptOptions: { images?: unknown[]; streamingBehavior?: "steer" | "followUp" } = {};
+			if (images && images.length > 0) promptOptions.images = images;
+			if (messageOptions?.streamingBehavior) promptOptions.streamingBehavior = messageOptions.streamingBehavior;
+
+			/** 跑一轮（第一次 = 发用户消息；重试 = 从转录续跑）并等它收尾 */
+			async function runAttempt(index: number): Promise<AttemptOutcome> {
+				let interrupted = false;
+				let producedOutput = false;
+				let steered = false;
+				let failed: AttemptOutcome["failed"] = null;
+				const errors: AttemptOutcome["errors"] = [];
+				let markSettled: (() => void) | null = null;
+				const settled = new Promise<void>((resolve) => {
+					markSettled = resolve;
+				});
+
+				// 订阅**按次**持有：steer 会并发再进一次 sendMessage，两轮各自摘自己的监听器
+				const off = handle.session.subscribe((event: unknown) => {
+					const mapped = mapSessionEvent(event);
+					if (mapped) {
+						// provider 报错也要算「这一轮失败」：不能最后还发 turn_end: done。
+						// 先攒着不发 —— 这类错误很可能下一步就被重试掉了。
+						if (mapped.type === "error") {
+							errors.push({ code: mapped.code, message: mapped.message });
+							// 每一次 provider 报错都进日志（以前只有界面上一条红条，日志里查不到任何东西）
+							log("warn", "provider 报错", {
+								sessionId,
+								attempt: index,
+								code: mapped.code,
+								message: mapped.message,
+							});
+							return;
+						}
+						if (
+							mapped.type === "text_delta" ||
+							mapped.type === "thinking_delta" ||
+							mapped.type === "tool_start" ||
+							mapped.type === "tool_end"
+						) {
+							producedOutput = true;
+						}
+						onEvent(mapped);
+						return;
+					}
+					const record = asRecord(event);
+					// pi 自己的重试（overloaded / 5xx / socket hang up 那几类）：记一笔就够，
+					// 界面上不打扰 —— 用户看到的仍然是一轮正常的回答。
+					if (record.type === "auto_retry_start") {
+						log("info", "pi 自动重试", { sessionId, attempt: record.attempt, reason: record.errorMessage });
+						return;
+					}
+					if (record.type === "agent_settled") {
+						interrupted = record.aborted === true || handle.aborting;
+						markSettled?.();
+					}
+				});
+				handle.subscriptions.add(off);
+
 				try {
-					await session.prompt(text, promptOptions);
+					if (index === 0) {
+						const session = handle.session as unknown as {
+							prompt: (text: string, options: typeof promptOptions) => Promise<void>;
+						};
+						try {
+							await session.prompt(text, promptOptions);
+						} catch (error) {
+							/**
+							 * pi 说「已经在跑了」= 宿主的忙碌判断和 pi 的 `isStreaming` 错开了一步（排队排空恰好撞上
+							 * 上一轮还没真正 settle、看门狗强制收尾、插队与 settle 抢跑……）。
+							 * 这**不是**「回合失败」而是「该插队」：补一次 steer 交给 pi 排队（与 turn-queue 的
+							 * flushSteer 同一语义），别把用户那条消息变成界面上的一条红条、然后人也没了。
+							 * 已经就是 steer 还报这句 = 真异常，照旧报错。
+							 */
+							if (promptOptions.streamingBehavior === "steer" || !isAlreadyProcessing(error)) throw error;
+							await session.prompt(text, { ...promptOptions, streamingBehavior: "steer" });
+							steered = true;
+						}
+					} else {
+						// 重试：从当前转录接着跑（那条失败的回复已经被 omitFailedAttempt 抹掉了，
+						// 所以这里**不会**再发一遍用户消息）
+						const agent = handle.session.agent;
+						if (!agent?.continue) throw new Error("这个 pi 版本不支持从转录续跑，无法自动重试");
+						await agent.continue();
+					}
+					// 等 settle：prompt() 返回后仍可能有收尾事件（插队那条更要等整轮真结束，否则会提前收尾）
+					if (steered)
+						await Promise.race([
+							settled,
+							new Promise<void>((done) => setTimeout(done, STEER_SETTLE_FALLBACK_MS).unref?.()),
+						]);
+					else await Promise.race([settled, sleep(SETTLE_GRACE_MS)]);
 				} catch (error) {
-					/**
-					 * pi 说「已经在跑了」= 宿主的忙碌判断和 pi 的 `isStreaming` 错开了一步（排队排空恰好撞上
-					 * 上一轮还没真正 settle、看门狗强制收尾、插队与 settle 抢跑……）。
-					 * 这**不是**「回合失败」而是「该插队」：补一次 steer 交给 pi 排队（与 turn-queue 的
-					 * flushSteer 同一语义），别把用户那条消息变成界面上的一条红条、然后人也没了。
-					 * 已经就是 steer 还报这句 = 真异常，照旧报错。
-					 */
-					if (promptOptions.streamingBehavior === "steer" || !isAlreadyProcessing(error)) throw error;
-					await session.prompt(text, { ...promptOptions, streamingBehavior: "steer" });
-					steered = true;
+					failed = { code: "engine.prompt_failed", message: errorMessageOf(error) };
+				} finally {
+					off();
+					handle.subscriptions.delete(off);
 				}
-				// 等 settle：prompt() 返回后仍可能有收尾事件（插队那条更要等整轮真结束，否则会提前收尾）
-				if (steered)
-					await Promise.race([
-						settled,
-						new Promise<void>((done) => setTimeout(done, STEER_SETTLE_FALLBACK_MS).unref?.()),
-					]);
-				else await Promise.race([settled, new Promise((resolve) => setTimeout(resolve, SETTLE_GRACE_MS).unref?.())]);
-			} catch (error) {
-				failed = {
-					code: "engine.prompt_failed",
-					message: error instanceof Error ? error.message : String(error),
-				};
-			} finally {
-				off();
-				handle.subscriptions.delete(off);
+
+				return { failed, errors, interrupted, producedOutput, steered };
 			}
 
-			if (failed) {
-				onEvent({ type: "error", code: failed.code, message: failed.message });
+			let attempt = 0;
+			let outcome = await runAttempt(0);
+			/**
+			 * 自动重试（见 pi-retry.ts）：pi 只重试它认得出来的瞬时错误，
+			 * 「This operation was aborted」这种传输层 abort 它一律当终态 —— 实际观感就是
+			 * 「模型刚连上就被掐断，界面一条红条，这一轮没了，而用户什么都没干」。
+			 *
+			 * 三条边界：
+			 *   1. 用户点停 / 看门狗中断（`aborting` / `interrupted`）—— 绝不重试；
+			 *   2. 这一轮已经往界面上吐过东西（正文 / 思考 / 工具卡）—— 不重试：
+			 *      重来的答案会和上一段粘在同一个气泡里，比报错更让人困惑；
+			 *   3. 插队（steer）那条不重试：它属于正在跑的那一轮，重跑会把上下文搅乱。
+			 */
+			const retryBudget = messageOptions?.streamingBehavior ? 0 : RETRY_MAX_ATTEMPTS;
+			/**
+			 * 重试进度走事件（`retry`）而不是 `onNotice`：
+			 *   · `retry` → 显示在「正在等待模型…」那一行（退避期间屏幕是静的，必须有一行字说明还在跑）；
+			 *   · `notice`（同 key 原地替换）→ 恢复后一句「已自动恢复」，不堆行。
+			 * 引擎的 `sessionId` 就是会话 id（宿主 `engine.sendMessage(conv, …)`）。
+			 */
+			const retryNoticeKey = `engine-retry:${sessionId}`;
+			while (
+				attempt < retryBudget &&
+				outcome.failed === null &&
+				!outcome.interrupted &&
+				!handle.aborting &&
+				!outcome.producedOutput &&
+				!outcome.steered
+			) {
+				const transient = outcome.errors.find((error) => classifyProviderError(error.message) === "transient");
+				if (!transient) break;
+				attempt += 1;
+				log("warn", "模型调用被打断，自动重试", {
+					sessionId,
+					attempt,
+					maxAttempts: retryBudget,
+					code: transient.code,
+					message: transient.message,
+				});
+				// 只在「正在等待模型…」那一行显示（不走提示条：这一行一直挂到真的重新吐字为止，
+				// 而提示条 4 秒就消失，退避期间反而以为卡死了）
+				onEvent({ type: "retry", attempt, maxAttempts: retryBudget });
+				await sleep(retryDelayMs(attempt));
+				// 退避期间用户点了停止 → 别再折腾了
+				if (handle.aborting) break;
+				if (!omitFailedAttempt(handle, log, sessionId)) break;
+				outcome = await runAttempt(attempt);
+			}
+
+			if (outcome.failed) {
+				log("error", "这一轮没能发出去", { sessionId, message: outcome.failed.message });
+				onEvent({ type: "error", code: outcome.failed.code, message: outcome.failed.message });
 				onEvent({ type: "turn_end", reason: "error" });
 				return;
 			}
 			// `handle.aborting` 是兵底：中断时它已经被 interrupt() 置 true，
 			// 即使 agent_settled 没来得及到，也不要把「点停」报成「完成」
-			const aborted = interrupted || handle.aborting;
-			onEvent({ type: "turn_end", reason: aborted ? "interrupted" : providerError ? "error" : "done" });
+			const aborted = outcome.interrupted || handle.aborting;
+			// 用户自己停的不再往界面上扔红条：他已经知道这一轮停了（日志里留一笔就够复盘）；
+			// 真正失败（重试用尽 / 不可重试）才把最后那条错发出去。
+			if (!aborted) {
+				for (const error of outcome.errors) {
+					onEvent({ type: "error", code: error.code, message: error.message });
+				}
+			}
+			if (aborted) {
+				log("info", "这一轮被中断", { sessionId, attempt });
+			} else if (outcome.errors.length > 0) {
+				log("error", "模型调用失败", { sessionId, attempt, message: outcome.errors.at(-1)?.message });
+			} else if (attempt > 0) {
+				log("info", "自动重试成功", { sessionId, attempt });
+				onEvent({
+					type: "notice",
+					level: "info",
+					key: retryNoticeKey,
+					text: `模型调用已自动恢复（重试 ${attempt} 次）`,
+				});
+			}
+			onEvent({ type: "turn_end", reason: aborted ? "interrupted" : outcome.errors.length > 0 ? "error" : "done" });
 		},
 
 		async interrupt(sessionId: string) {

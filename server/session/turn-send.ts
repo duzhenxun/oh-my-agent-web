@@ -165,6 +165,7 @@ export function createTurnSender(deps: TurnSenderDeps) {
 					turnStartedAt: ts,
 					streamingText: "",
 					activeTool: null,
+					retrying: null,
 				};
 				state.running = running;
 			}

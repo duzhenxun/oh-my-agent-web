@@ -41,7 +41,11 @@ function snapshot(input: {
 	const conversationId = input.conversationId ?? "c1";
 	const status = input.status ?? "idle";
 	const runningConversationId =
-		input.runningConversationId === undefined ? (status === "idle" ? null : conversationId) : input.runningConversationId;
+		input.runningConversationId === undefined
+			? status === "idle"
+				? null
+				: conversationId
+			: input.runningConversationId;
 	return {
 		active: { conversationId, messages: input.messages ?? [] },
 		running: {
@@ -52,7 +56,8 @@ function snapshot(input: {
 			activeTool: null,
 		},
 		runningByConversation:
-			input.byConversation ?? (status === "idle" ? {} : { [conversationId]: { status, turnStartedAt: input.turnStartedAt ?? 100 } }),
+			input.byConversation ??
+			(status === "idle" ? {} : { [conversationId]: { status, turnStartedAt: input.turnStartedAt ?? 100 } }),
 		pendingApproval: null,
 		notices: [],
 	} as unknown as Snapshot;

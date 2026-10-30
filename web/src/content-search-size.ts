@@ -12,11 +12,11 @@
  */
 
 /** 再窄就只剩一条省略号了 */
-const SEARCH_MIN_WIDTH = 420;
+export const SEARCH_MIN_WIDTH = 420;
 /** 再矮连「一行关键字 + 一条结果 + 脚注」都放不下 */
-const SEARCH_MIN_HEIGHT = 240;
+export const SEARCH_MIN_HEIGHT = 240;
 /** 默认宽度：原来的 720px 换成 920px（用户要求「默认的话再宽一些」） */
-const SEARCH_DEFAULT_WIDTH = 920;
+export const SEARCH_DEFAULT_WIDTH = 920;
 
 export const SEARCH_SIZE_KEY = "agent-web.contentSearch.size";
 

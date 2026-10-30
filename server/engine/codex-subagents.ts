@@ -54,7 +54,7 @@ type CodexSubAgentActivityItem = {
 type CodexSubagentItem = CodexCollabItem | CodexSubAgentActivityItem;
 
 /** 子代理 thread 的状态（`CollabAgentStatus`）→ 面板的三态 */
-function statusOfAgentState(status: string | null | undefined): SubagentStatus | null {
+export function statusOfAgentState(status: string | null | undefined): SubagentStatus | null {
 	switch (status) {
 		case "running":
 		case "pendingInit":
@@ -77,7 +77,7 @@ function statusOfAgentState(status: string | null | undefined): SubagentStatus |
  * codex 要求小写字母 / 数字 / 下划线（`spawn_agent` 的 `task_name` 是同一套规则），
  * 我们的模板 id 里带连字符（`general-purpose`），所以映射一次。
  */
-function agentTypeId(id: string): string {
+export function agentTypeId(id: string): string {
 	const cleaned = id
 		.trim()
 		.toLowerCase()
@@ -87,7 +87,7 @@ function agentTypeId(id: string): string {
 }
 
 /** `agentPath` 的最后一段就是模型给这次任务起的名字（`/root/directory_inventory`） */
-function taskNameOf(agentPath: string | null | undefined, fallback: string): string {
+export function taskNameOf(agentPath: string | null | undefined, fallback: string): string {
 	const last = (agentPath ?? "")
 		.split("/")
 		.filter((part) => part !== "")
@@ -114,7 +114,7 @@ type CollabPatch = {
  *
  * 文案全从引擎给的原话里取（`agentPath` / `model`），不自己编。
  */
-function activityPatch(item: CodexSubAgentActivityItem, at: number): CollabPatch | null {
+export function activityPatch(item: CodexSubAgentActivityItem, at: number): CollabPatch | null {
 	const threadId = typeof item.agentThreadId === "string" ? item.agentThreadId : "";
 	if (threadId === "") return null;
 	const base: CollabPatch = { threadId, label: taskNameOf(item.agentPath, threadId.slice(0, 8)) };
@@ -140,7 +140,7 @@ function activityPatch(item: CodexSubAgentActivityItem, at: number): CollabPatch
  * 只认 `agentsStates`：那是引擎对「这个子代理现在怎么样」的**权威回答**。
  * `wait` 之类的工具调用状态不等于子代理状态（wait 结束了不代表子代理跑完）。
  */
-function collabStatesPatch(item: CodexCollabItem): CollabPatch[] {
+export function collabStatesPatch(item: CodexCollabItem): CollabPatch[] {
 	const states = item.agentsStates ?? {};
 	const patches: CollabPatch[] = [];
 	for (const [threadId, state] of Object.entries(states)) {

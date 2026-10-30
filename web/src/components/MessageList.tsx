@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { setDraft } from "../store.ts";
-import { THINKING_OPEN_KEY, TOOL_OPEN_KEY } from "../ui-prefs.ts";
+import { SELECTION_TOOLBAR_KEY, THINKING_OPEN_KEY, TOOL_OPEN_KEY } from "../ui-prefs.ts";
 import { useStoredBool } from "../use-stored-bool.ts";
 import { useShowCost } from "../use-show-cost.ts";
 import type { ActionItem, SubagentRunView, UiMessage } from "../types.ts";
@@ -245,20 +245,24 @@ function useStalled(active: boolean, length: number, delayMs = 2500): boolean {
 function LiveActivity({
 	message,
 	tool,
+	retrying,
 }: {
 	message: UiMessage;
 	/** 正在跑的工具（来自快照 `running.activeTool`；没有就是 null） */
 	tool: { name: string; argsSummary: string; startedAt: number } | null;
+	/** 传输层被打断、引擎正在自动重试（来自快照 `running.retrying`） */
+	retrying?: { attempt: number; maxAttempts: number } | null;
 }) {
 	const t = useT();
 	const tail = message.blocks.at(-1);
 	const tailText = tail?.kind === "text" ? tail.text.trim() : "";
 	const stalled = useStalled(tailText !== "", tailText.length);
 	const now = useSecondTick(tool !== null);
-	// 正文还在长 → 让它自己说话
-	if (tailText !== "" && !tool && !stalled) return null;
+	// 正文还在长 → 让它自己说话。但「正在重试」期间正文本来就是停的，必须盖过这条规则
+	if (tailText !== "" && !tool && !stalled && !retrying) return null;
 
-	const verb = tool ? activityVerb(tool.name) : "正在等待模型";
+	const retryLabel = retrying ? `模型调用被打断，正在自动重试（${retrying.attempt}/${retrying.maxAttempts}）` : null;
+	const verb = tool ? activityVerb(tool.name) : (retryLabel ?? "正在等待模型");
 	const args = tool ? argsPreview(tool.argsSummary) : null;
 	const seconds = tool ? Math.max(0, Math.floor((now - tool.startedAt) / 1000)) : 0;
 	return (
@@ -321,6 +325,7 @@ function MessageViewInner({
 	modelLabel,
 	live,
 	activeTool = null,
+	retrying = null,
 	workspaceRoot,
 	onOpenFile,
 	subagentRuns,
@@ -333,6 +338,8 @@ function MessageViewInner({
 	subagentRuns?: readonly SubagentRunView[];
 	/** 这一轮此刻在跑的工具（只在「当前会话 + 正在跑」的那条上给；用来画实时动作提示） */
 	activeTool?: { name: string; argsSummary: string; startedAt: number } | null;
+	/** 正在自动重试（快照的 `running.retrying`）：同样只给「当前会话 + 正在跑」的那条 */
+	retrying?: { attempt: number; maxAttempts: number } | null;
 	/** 当前会话的工作区（把工具参数里的绝对路径折成相对路径；没有就折不了） */
 	workspaceRoot: string | null;
 	onOpenFile?: (path: string, root: string | null) => void;
@@ -559,7 +566,7 @@ function MessageViewInner({
 						);
 					})}
 					{/* 「正在运行 bash…」/「正在等待模型…」：在折扇体外面，收起也看得见（见 LiveActivity） */}
-					{live ? <LiveActivity message={message} tool={activeTool} /> : null}
+					{live ? <LiveActivity message={message} tool={activeTool} retrying={retrying} /> : null}
 				</div>
 				{/* 「插队」小标已经移到气泡内的抬头里（见上方 msg-steer-head），这里不再重复 */}
 			</div>
@@ -753,6 +760,7 @@ export function MessageList({
 	onOpenPath,
 	running = false,
 	activeTool = null,
+	retrying = null,
 	pending = [],
 	onRecallPending,
 	onCancelPending,
@@ -778,8 +786,10 @@ export function MessageList({
 	onOpenPath?: (path: string) => void;
 	/** 当前会话这一轮是否在跑：只有它才会给最后一条助手消息挂实时数字 */
 	running?: boolean;
-	/** 这一轮正在跑的工具（`running.activeTool`）：画「正在运行 bash…」用 */
+	/** 这一轮正在跑的工具（快照的 `running.activeTool`）：画「正在运行 bash…」用 */
 	activeTool?: { name: string; argsSummary: string; startedAt: number } | null;
+	/** 这一轮正在自动重试（快照的 `running.retrying`）：把「正在等待模型…」换成「正在重试…」 */
+	retrying?: { attempt: number; maxAttempts: number } | null;
 	/** 「插队 / 排队」中、还没真正发出的消息 */
 	pending?: QueuedView[];
 	onRecallPending?: (id: string) => void;
@@ -800,6 +810,8 @@ export function MessageList({
 	const t = useT();
 	/** 消息区自己（`.messages`）：选区工具栏只认这棵子树里的选中 */
 	const listRef = useRef<HTMLDivElement | null>(null);
+	/** 设置 → 对话 → 「标注」：关掉之后选字不再浮那颗工具栏（已标好的照样画，见 `AnnotationMarks`） */
+	const [selectionToolbarOn] = useStoredBool(SELECTION_TOOLBAR_KEY, true);
 	// 抬头的模型名只算一次（以前是每条消息各自从 store 里拿）
 	/** 一条消息抬头显示什么模型：**用它自己生成时的模型**（历史不会跟当前选择变） */
 	const labelOf = (model: string | undefined): string => {
@@ -842,6 +854,7 @@ export function MessageList({
 					live={message.id === liveId}
 					// 只给 live 那条：memo 才能继续跳过其他消息的重渲染
 					activeTool={message.id === liveId ? activeTool : null}
+					retrying={message.id === liveId ? retrying : null}
 					workspaceRoot={workspaceRoot}
 					onOpenFile={onOpenFile}
 					subagentRuns={runsByMessage.get(message.id)}
@@ -892,8 +905,9 @@ export function MessageList({
 			{/*
 			 * 选中一段文字后浮出来的几个动作（见 SelectionToolbar）：
 			 * 「添加到会话」/「在临时聊天中提问」（自己说的话再添回去没意义，那个分支由组件自己判断）。
+			 * 整颗浮层受设置 → 对话 →「标注」控制（`SELECTION_TOOLBAR_KEY`）：关掉就只是选字。
 			 */}
-			{onAskSelectionInSideChat ? (
+			{onAskSelectionInSideChat && selectionToolbarOn ? (
 				<SelectionToolbar
 					container={listRef}
 					onAddToSession={onAddSelectionToSession}

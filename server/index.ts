@@ -4,7 +4,7 @@
 import { defaultSkillsDir } from "./skills/skill-store.js";
 import { homedir, networkInterfaces } from "node:os";
 import { createServer } from "node:http";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import express from "express";
 import { createEngineWiring } from "./engine/wiring.js";
@@ -59,7 +59,10 @@ import { compressText, immutableAssets } from "./http/compress.js";
 import { fanOutSnapshot } from "./snapshot/fan-out.js";
 import { checkDataDirWritable, describeListenError } from "./util/startup.js";
 import { migrateLegacyDataDir } from "./util/data-dir.js";
+import { DEFAULT_DATA_DIR_NAME } from "./util/env.js";
+import { resolveStartupPassword } from "./http/password-store.js";
 import { packageMeta } from "./util/version.js";
+import { checkForUpdate, describeUpdate } from "./update-check.js";
 import { styleText } from "node:util";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
@@ -68,6 +71,22 @@ const DEV_WEB_PORT = Number(process.env.AGENT_WEB_DEV_PORT ?? 25257);
 /** 快照节流窗口（ADR-0004 §3） */
 const SNAPSHOT_WINDOW_MS = 60;
 const TICK_MS = 20;
+
+/**
+ * 访问密码：**唯一来源是 `<dataDir>/password`**（在 `readConfig` 之前就要定下来）。
+ *
+ * 以前这个入口（`npm run dev` / `npm run serve`，源码直跑）只认 `AGENT_WEB_PASSWORD`，
+ * 而 `cli.ts`（`aw` / `npm start`）会先把文件补进 env —— 于是同一个人用两种方式起，
+ * 「设置 → 远程」里改的密码只在其中一种方式下生效，重启后就成了「密码怎么变了」
+ * （用户 2026-10-30）。现在两边同一个口径：文件优先，env 只在文件还没生成时当一次性来源。
+ */
+const startupDataDir =
+	process.env.AGENT_WEB_DATA_DIR && process.env.AGENT_WEB_DATA_DIR !== ""
+		? resolve(process.env.AGENT_WEB_DATA_DIR)
+		: join(homedir(), DEFAULT_DATA_DIR_NAME);
+const startupPassword = resolveStartupPassword(join(startupDataDir, "password"), process.env.AGENT_WEB_PASSWORD);
+if (startupPassword.password !== null) process.env.AGENT_WEB_PASSWORD = startupPassword.password;
+else delete process.env.AGENT_WEB_PASSWORD;
 
 const {
 	config,
@@ -82,9 +101,11 @@ let fileSink: RotatingFileSink | null = null;
 /**
  * 前台运行（CLI 默认）：终端只留 warn / error。
  *
- * 以前后台才是默认，这些 info（装载会话索引、每来一个客户端一条「SSE 已连接」……）都落在
- * daemon.log 里看不见；现在前台成了默认，再照旧打就会把用户自己的输机记录冲没。
+ * 以前后台才是默认，这些 info（装载会话索引、provider 列表……）都落在 daemon.log 里看不见；
+ * 现在前台成了默认，再照旧打就会把用户自己的输机记录冲没。
  * 它们仍然**全部**进轮转日志文件；显式给了 `AGENT_WEB_LOG=debug|info` 就按用户的意思正常打。
+ * （每来一个客户端一条的「SSE 已连接 / 已断开」已经降到 debug：每个标签页每次重连都写一行，
+ * 正常运行时纯噪声，真排查时 `AGENT_WEB_LOG=debug aw` 再看。）
  */
 const foreground = process.env.AGENT_WEB_FOREGROUND === "1";
 const quietConsole = foreground && !process.env.AGENT_WEB_LOG;
@@ -96,6 +117,18 @@ const logger = createLogger({
 		fileSink?.write(line);
 	},
 });
+// 密码来源只记来源、记来源里的**文件名**，绝不记密码本身：
+// 「改了密码还是不生效」十有八九是读的那份和你改的不是同一份。
+if (startupPassword.source === "migrated") {
+	logger.info("访问密码来自环境变量，已一次性存进数据目录（以后只读那份）", {
+		file: join(startupDataDir, "password"),
+	});
+} else if (startupPassword.source === "none") {
+	logger.info("没有设访问密码：远程访问一律不开（本机回环免密）");
+} else if (startupPassword.conflict) {
+	logger.info(`环境变量里的密码与数据目录那份不一致：以 ${join(startupDataDir, "password")} 为准`);
+}
+
 // 单用户工作台：一处 fire-and-forget 的 Promise 拒绝（推送写盘失败、模型热重载失败……）
 // 不该把整个服务带走（Node ≥15 默认会直接退出）。记日志、继续跑。
 process.on("unhandledRejection", (reason) => {
@@ -167,8 +200,13 @@ const engineWiring = createEngineWiring({
 	piSessions,
 	onNotice: (text, level) => runtimeRef.current?.notify(text, level),
 	// 引擎子进程的 stderr / 诊断输出：正常运行时它是噪声（codex、dsh 都会吐），
-	// 真正要用户知道的事走 onNotice（界面提示）。所以记 info 光进文件，别占终端。
-	onLog: (text, meta) => logger.info(text, meta),
+	// 真正要用户知道的事走 onNotice（界面提示）。所以记日志光进文件，别占终端。
+	// `meta.level` 是引擎自己标的等级（provider 报错 / 自动重试等），没标就按 info。
+	onLog: (text, meta) => {
+		const { level: rawLevel, ...ctx } = meta ?? {};
+		const level = rawLevel === "debug" || rawLevel === "warn" || rawLevel === "error" ? rawLevel : "info";
+		logger[level](text, Object.keys(ctx).length > 0 ? ctx : undefined);
+	},
 });
 const engineCatalog = engineWiring.catalog;
 const resolved = engineWiring.resolved;
@@ -182,7 +220,14 @@ const catalogMigration = migrateStoreToCatalog(piAgentDir()).then((migrated) => 
 	if (migrated.length > 0) logger.info("已把老 provider 补进 models.json", { providers: migrated });
 });
 const enabledStore = createEnabledStore({ agentDir: piAgentDir() });
-const pushStore = createPushStore({ dataDir: config.dataDir, now: Date.now });
+const pushStore = createPushStore({
+	dataDir: config.dataDir,
+	now: Date.now,
+	// 推送失败只进日志（`失败 403` 这种状态码看不出病因，body 里的
+	// `BadJwtToken` / `VapidPkHashMismatch` 才是）；它也不该弹成界面提示 ——
+	// 回合结束时用户可能根本不在电脑前。
+	log: (message, meta) => logger.warn(message, meta),
+});
 
 const runProviderRequest = createProviderWiring({
 	store: providerStore,
@@ -356,7 +401,7 @@ registerAuxRoutes(app, {
 	builtinProviders: () => providerPool({ models: runtime?.state().models ?? [], catalog: engineCatalogProviders }),
 	workspaceOf,
 	projects: () => runtime.state().piProjects,
-	deleteSession: (id) => runtime.deleteSession(id),
+	deleteSession: (id, options) => runtime.deleteSession(id, options),
 	pushStore,
 	// 订阅服务（OAuth）：引擎没有这个能力时界面上那一块不画
 	providerAuth: engine.providerAuth,
@@ -470,7 +515,7 @@ function printStartBanner(options: { cli: string; version: string; url: string }
 	console.log("");
 	console.log(row(`${cli} -d`, "run in background (logs to daemon.log)"));
 	console.log(row(`${cli} restart  /  ${cli} stop`, "restart / stop"));
-	console.log(row(`${cli} -H 0.0.0.0 -P <password>`, "remote access (add --allow-host for a domain)"));
+	console.log(row(`${cli} -H 0.0.0.0 -P <password>`, "remote access (password required)"));
 	console.log(row(`${cli} --help`, "all options"));
 	console.log("");
 }
@@ -525,12 +570,49 @@ async function main(): Promise<void> {
 	void runProviderRequest({ type: "list_providers" }, () => {}); // 启动先填一次 provider 列表
 	logger.info("会话索引已装载", { conversations: conversations.length });
 
-	httpServer.on("error", (error: NodeJS.ErrnoException) => {
-		logger.error(describeListenError(error, config.port, `可能是另一个 agent-web 或别的程序占着这个端口`));
-		void releaseLock(config.dataDir, process.pid).finally(() => process.exit(1));
-	});
-
-	await new Promise<void>((resolve) => httpServer.listen(config.port, config.host, resolve));
+	/**
+	 * 监听。开发态（`AGENT_WEB_DEV=1`，dev.mjs 传）对 EADDRINUSE 短暂重试：
+	 * `tsx --watch` 改文件就重启，新进程经常赶在**旧进程还没放开端口**时就 listen ——
+	 * 以前直接报「已被占用」退出，而 tsx 那边只说 `Failed running … Waiting for file changes`，
+	 * 于是后端就真的没了：界面上每个请求都是 502（Vite 反代连不上 25258），
+	 * 红条一直挂着，直到你再改一个文件把它撞活。这里把这个窗口吃掉。
+	 * 生产态不变：该报错就报错、退出。
+	 */
+	const devRetry = process.env.AGENT_WEB_DEV === "1";
+	for (let attempt = 0; ; attempt += 1) {
+		try {
+			await new Promise<void>((resolve, reject) => {
+				const onError = (error: NodeJS.ErrnoException) => {
+					httpServer.off("listening", onListening);
+					reject(error);
+				};
+				const onListening = () => {
+					httpServer.off("error", onError);
+					resolve();
+				};
+				httpServer.once("error", onError);
+				httpServer.once("listening", onListening);
+				httpServer.listen(config.port, config.host);
+			});
+			break;
+		} catch (error) {
+			const code = (error as NodeJS.ErrnoException).code;
+			if (devRetry && code === "EADDRINUSE" && attempt < 20) {
+				if (attempt === 0) logger.warn("端口还占着（多半是上一个开发进程没退干净），等它放开…", { port: config.port });
+				await new Promise<void>((resolve) => setTimeout(resolve, 300).unref?.());
+				continue;
+			}
+			logger.error(
+				describeListenError(
+					error as NodeJS.ErrnoException,
+					config.port,
+					"可能是另一个 agent-web 或别的程序占着这个端口",
+				),
+			);
+			await releaseLock(config.dataDir, process.pid);
+			process.exit(1);
+		}
+	}
 
 	if (foreground) {
 		// 正常日志已经不在终端刷了，这屏就是「真的跑起来了」 + 最常用的几条命令。
@@ -544,6 +626,26 @@ async function main(): Promise<void> {
 		});
 	}
 
+	/**
+	 * 「有没有新版」：前台启动时印在启动那屏（banner）**下面**。
+	 *
+	 * 以前在 cli.ts 里等 `await import("./index.js")` 之后才印 —— 结果它跑到了 banner
+	 * **上面**（而且与启动日志交错），很容易让人以为没有这个功能。
+	 *
+	 * `AGENT_WEB_UPDATE_NOTICE=1` 由 cli.ts 只在前台分支里设：后台（`-d`）那一路的提示是
+	 * CLI 在终端上自己印的，这里不能再印一份到 daemon.log。
+	 * 不 await：查到再印；查不到（离线 / 关掉了 / 本来就是最新）就什么都不说，
+	 * 绝不拖慢启动（update-check 自己有 1.5s 超时）。
+	 */
+	if (process.env.AGENT_WEB_UPDATE_NOTICE === "1") {
+		void checkForUpdate({ dataDir: config.dataDir })
+			.then((result) => {
+				const line = describeUpdate(result);
+				if (line) console.log(`  ${paint("yellow", line)}`);
+			})
+			.catch(() => undefined);
+	}
+
 	logger.info("agent-web 已启动", {
 		url: `http://${config.host}:${config.port}`,
 		workspace: config.workspace,
@@ -552,9 +654,9 @@ async function main(): Promise<void> {
 		protocolVersion: PROTOCOL_VERSION,
 		conversations: runtime.state().conversations.length,
 	});
-	// 对外开放但还没设密码：谁先打开谁就能把密码定下来 —— 先把话说清楚
+	// 对外开放但还没设密码：远程会全部被拒（且只能在本机设密码）—— 先把话说清楚
 	if (!passwordStore.get() && !isLoopbackHostname(config.host)) {
-		logger.warn("还没设访问密码：先用浏览器打开一次设上它（否则先访问到的人就能设）", {
+		logger.warn("还没设访问密码：远程访问一律不开，先在本机打开一次设上它（或 `-P` 启动）", {
 			host: config.host,
 		});
 	}

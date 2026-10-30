@@ -166,7 +166,10 @@
 }
 
 .mention-row {
-	grid-template-columns: 24px auto 1fr;
+	/* 第 4 列是行尾那颗「在右侧打开」（见 .mention-open）：格数固定，悬停时才出现也不跳动。
+	   名字那列用 `minmax(0, auto)`：窄的时候可以被压（`auto` 作上限、最小值 0），
+	   否则一个长文件名会把「从项目根开始的完整路径」挤没。 */
+	grid-template-columns: 24px minmax(0, auto) minmax(0, 1fr) auto;
 	gap: 10px;
 }
 
@@ -196,13 +199,59 @@
 	font-size: 13px;
 }
 
+/* 行尾「在右侧打开」：常驻但淡一档（不然没人知道有这个功能），悬停/键盘高亮时变实 */
+.mention-open {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	border-radius: 6px;
+	color: var(--text-faint);
+	opacity: 0.55;
+	cursor: pointer;
+}
+
+.mention-open svg {
+	width: 14px;
+	height: 14px;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.4;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+.mention-row:hover .mention-open,
+.slash-row-on .mention-open {
+	color: var(--accent);
+	opacity: 1;
+}
+
+.mention-open:hover {
+	background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+/* 手机：没有悬停，这颗按钮得一直看得见，否则等于不存在 */
+@media (hover: none) {
+	.mention-open {
+		opacity: 1;
+	}
+}
+
 /* 手机：名字那一行放不下「名字 + 路径」，路径挪到第二行（同 .slash-desc 的处理） */
 @media (max-width: 720px) {
 	.mention-row {
-		grid-template-columns: 24px 1fr;
+		/* 名字 · 打开按钮在上一行，路径占满下一行 */
+		grid-template-columns: 24px minmax(0, 1fr) auto;
 	}
 
 	.mention-path {
 		grid-column: 1 / -1;
+	}
+
+	.mention-open {
+		grid-row: 1;
+		grid-column: 3;
 	}
 }

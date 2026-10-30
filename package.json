@@ -1,6 +1,6 @@
 {
 	"name": "oh-my-agent-web",
-	"version": "1.0.8",
+	"version": "1.0.9",
 	"bin": {
 		"oh-my-agent-web": "dist/server/cli.js",
 		"aw": "dist/server/cli.js",
@@ -42,6 +42,7 @@
 		"dev": "node scripts/dev.mjs",
 		"dev:server": "node --import tsx --watch server/index.ts",
 		"dev:web": "vite --config web/vite.config.ts",
+		"serve": "node --import tsx server/index.ts",
 		"build": "npm run build:server && npm run build:web",
 		"build:server": "tsc -p tsconfig.server.json",
 		"build:web": "vite build --config web/vite.config.ts",

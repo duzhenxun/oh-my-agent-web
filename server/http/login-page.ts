@@ -138,7 +138,10 @@ const SCRIPT = `
 		})
 			.then(function (response) {
 				if (response.ok) {
-					location.replace(location.pathname + location.search);
+					// 这张页有两种挂法：生产态未登录时直接挂在 "/"（刷新它就是进应用）；
+					// 开发态 / 前端 401 跳转时挂在 "/login"（刷新自己只会再看一次登录框）。
+					var next = location.pathname.indexOf("/login") === 0 ? "/" : location.pathname + location.search;
+					location.replace(next);
 					return;
 				}
 				return response
@@ -263,22 +266,26 @@ const SETUP_SCRIPT = `
 `;
 
 /**
- * 「还没设访问密码」时给远程访客看的设置页。
+ * 「还没设访问密码」时给的页。
  *
- * 为什么需要它：没密码时的老行为是直接 403 一段纯文本，手机上打开就只是白屏 + 一行英文错误 ——
- * 用户根本不知道下一步该干什么。这里直接给表单：设完就种 cookie 进主界面，不用回终端重启。
- *
- * 前提：只有**主动用 `-H 0.0.0.0` 暴露**时才会遇到这个页；默认只听回环，这个页不可达。
+ * 两种形态：
+ *   · 本机打开 → **设置表单**（设完就种 cookie 进主界面，不用回终端重启）；
+ *   · 远程打开（`locked`）→ 不给表单，只说清「先在本机设好」。
+ *     为什么不能远程设：那个谁先打开谁设密码的写法等于「先扫到端口的接管这台机器」。
  */
-export function renderSetupPage(options: { brandName?: string } = {}): string {
+export function renderSetupPage(options: { brandName?: string; locked?: boolean; host?: string } = {}): string {
 	const brand = escapeHtml(options.brandName ?? BRAND_NAME);
+	// 端口照实际请求的（默认 25257）：远程看到的提示里得是本机能打开的那个地址
+	const port = /:(\d+)$/.exec(options.host ?? "")?.[1] ?? "25257";
+	const sub = options.locked ? "还没设访问密码：请在本机打开设置它" : "先设一个访问密码，之后远程访问都用它登录";
+	const body = options.locked ? lockedBody(`http://127.0.0.1:${port}/setup`) : SETUP_FORM;
 	return `<!doctype html>
 <html lang="zh-CN">
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="robots" content="noindex, nofollow" />
-		<title>设置访问密码 · ${brand}</title>
+		<title>${options.locked ? "需要访问密码" : "设置访问密码"} · ${brand}</title>
 		<link rel="icon" href="/favicon.ico?v=4" sizes="16x16 32x32 48x48" />
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=4" />
 		<link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon-180.png?v=4" />
@@ -294,10 +301,18 @@ export function renderSetupPage(options: { brandName?: string } = {}): string {
 				<span class="mark"><img src="/favicon.svg?v=4" alt="" width="44" height="44" /></span>
 				<div>
 					<h1>${brand}</h1>
-					<p class="sub">先设一个访问密码，之后远程访问都用它登录</p>
+					<p class="sub">${sub}</p>
 				</div>
 			</div>
-			<form id="form" method="post" action="/api/auth/setup">
+			${body}
+		</main>
+	</body>
+</html>
+`;
+}
+
+/** 本机：设置表单 */
+const SETUP_FORM = `			<form id="form" method="post" action="/api/auth/setup">
 				<div class="field">
 					<input
 						id="password"
@@ -325,9 +340,16 @@ export function renderSetupPage(options: { brandName?: string } = {}): string {
 			</form>
 			<p class="error" id="error" role="alert" hidden></p>
 			<p class="hint">密码存在运行服务的这台机器上（数据目录里的 <code>password</code>），忘了就删掉它再重启。本机 127.0.0.1 访问不需要密码。</p>
-		</main>
-		<script>${SETUP_SCRIPT}</script>
-	</body>
-</html>
-`;
+			<script>${SETUP_SCRIPT}</script>`;
+
+/** 远程：不给表单，只说怎么才对（setupUrl 是“本机打开哪个地址”） */
+function lockedBody(setupUrl: string): string {
+	return `			<p class="hint">
+				这台工作台还没设访问密码，所以远程访问一律不开。密码只能在<b>运行它的那台机器上</b>设：
+			</p>
+			<p class="hint">
+				① 在那台机器上打开 <code>${escapeHtml(setupUrl)}</code>（或直接打开首页），按提示设一个；<br />
+				② 或者带密码启动：<code>aw -P &lt;密码&gt;</code>（远程连得上还得给 <code>-H 0.0.0.0</code>）。
+			</p>
+			<p class="hint">为什么不让你在这儿设：端口一暴露，能远程设密码就等于「谁先扫到谁接管」。</p>`;
 }

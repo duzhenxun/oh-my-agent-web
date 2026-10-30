@@ -88,6 +88,7 @@ export function SessionRow({
 	/** 提交新名字（就地编辑保存时调用） */
 	onRename: (title: string) => void;
 	onArchive: () => void;
+	/** **真删**（服务端 `unlink`，不可恢复）：界面上只有这一种删除 */
 	onDelete: () => void;
 	/** 在新标签页打开这条会话（多开几个标签对照着看时用） */
 	onOpenInNewTab: () => void;
@@ -196,6 +197,16 @@ export function SessionRow({
 			onContextMenu={(event) => {
 				// 右键 = 菜单（原来那个「⋯」按钮的位置）
 				event.preventDefault();
+				/**
+				 * macOS 上 **Ctrl+左键 = 二级点击**，浏览器会把它当 `contextmenu` 发出来 —— 而本工作台里
+				 * Ctrl+单击是「加/减选」（见下面 onClick 的 `toggle`）。以前这里会把菜单也弹出来，
+				 * 看起来就是「一选就冒出一个浮窗」（用户 2026-10-30：「ctrl+单击 时不要弹出右边的弹窗」）。
+				 * 带 ctrl 的一律只当选中：顺便把系统菜单也 preventDefault 掉。
+				 */
+				if (event.ctrlKey) {
+					onSwitch({ shift: false, toggle: true });
+					return;
+				}
 				onOpenMenu({ x: event.clientX, y: event.clientY });
 			}}
 			onMouseEnter={measureTitleScroll}

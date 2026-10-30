@@ -2,10 +2,14 @@
  * 「大弹窗」可调宽窄 / 高低（模型、技能、推送、插件、设置五个面板共用）。
  *
  * 为什么要自绘手柄：浏览器原生的 `resize` 只在右下角画一个小三角，深色主题下很扎眼，
- * 也没法双击复位、刷新后尺寸也留不住。这里自己挂一只右下角手柄：
- *   - 拖动改宽高（右下角往右/下变大）；
- *   - 双击手柄回到默认尺寸；
+ * 也没法双击复位、刷新后尺寸也留不住。这里自己挂四只手柄（四个角都能拖）：
+ *   - 拖动改宽高（拖哪个角，**对面的角就不动**）；
+ *   - 双击手柄回到默认尺寸（连带位置复位）；
  *   - 尺寸存 localStorage（纯界面偏好，不进快照 —— 和侧栏宽度同一套纪律）。
+ *
+ * 「对面的角不动」怎么做到：`:modal-backdrop` 是 flex 居中的，宽高一变，两边各让一半。
+ * 所以改完尺寸再让位置补一半（`ResizeAnchor`，由 `useModalMove` 提供）——
+ * 拖左上角往右下拖时，右下角就稳稳地钉在原地。
  *
  * 约束：
  *   - 最小 620×340：再小就放不下「左列表 + 右详情」两栏了；
@@ -37,8 +41,23 @@ const MIN_MODAL_HEIGHT = 340;
 /** 与 CSS 的 --gap 对齐：四周留一圈，别贴着视口边缘 */
 const VIEWPORT_MARGIN = 16;
 
-type ModalSize = { width: number; height: number };
+export type ModalSize = { width: number; height: number };
 export type Viewport = { width: number; height: number };
+
+/** 四只手柄，名字就是它们所在的角（s/n + e/w） */
+export type ModalCorner = "nw" | "ne" | "sw" | "se";
+
+/**
+ * 调尺寸时推动位置，让「对面的角」不动（`use-modal-move.ts` 实现）。
+ *
+ * `begin`：手势开始时记下当前位置；`shift`：相对那个位置该平移多少（从手势开始累计）；
+ * `commit`：松手时把新位置落盘（和拖动头部同一份存储）。
+ */
+export type ResizeAnchor = {
+	begin: () => void;
+	shift: (delta: { x: number; y: number }) => void;
+	commit: () => void;
+};
 
 const viewport = (): Viewport => ({ width: window.innerWidth, height: window.innerHeight });
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
@@ -80,6 +99,39 @@ function clampModalSize(size: ModalSize, view: Viewport): ModalSize {
 	};
 }
 
+/**
+ * 纯函数：拖某一个角之后的新尺寸 + 位置要补的位移（见 `ResizeAnchor`）。
+ *
+ * 位移的符号按「对面那个角钉住」推出来：
+ *   - 拖东侧的角（se / ne）锚左边的角 → 宽的变化由位置让一半（dx > 0，即变小 → 位置往右）；
+ *   - 拖西侧的角（sw / nw）锚右边的角 → 反过来；上下同理。
+ * 先夹取再算位移：拖到最小/最大边界时，位置不该继续跑。
+ */
+export function resizeFromCorner(input: {
+	start: ModalSize;
+	dx: number;
+	dy: number;
+	corner: ModalCorner;
+	view: Viewport;
+}): { size: ModalSize; shift: { x: number; y: number } } {
+	const horizontal = input.corner === "se" || input.corner === "ne" ? 1 : -1;
+	const vertical = input.corner === "se" || input.corner === "sw" ? 1 : -1;
+	const size = clampModalSize(
+		{
+			width: input.start.width + horizontal * input.dx,
+			height: input.start.height + vertical * input.dy,
+		},
+		input.view,
+	);
+	// `0` 而不是 `-0`：夹取时差值是 0，乘上方向会变成负零（无害，但单测里很难看）
+	const shiftX = (horizontal * (size.width - input.start.width)) / 2;
+	const shiftY = (vertical * (size.height - input.start.height)) / 2;
+	return {
+		size,
+		shift: { x: shiftX === 0 ? 0 : shiftX, y: shiftY === 0 ? 0 : shiftY },
+	};
+}
+
 /** 纯函数：从 localStorage 读尺寸（没存过 / 坏值 → 默认尺寸） */
 function readStoredModalSize(raw: string | null, view: Viewport): ModalSize {
 	if (!raw) return defaultModalSize(view);
@@ -95,7 +147,8 @@ function readStoredModalSize(raw: string | null, view: Viewport): ModalSize {
 	}
 }
 
-export function useModalSize() {
+export function useModalSize(options?: { anchor?: { current: ResizeAnchor | null } }) {
+	const anchorRef = options?.anchor;
 	const [size, setSize] = useState<ModalSize>(() => {
 		for (const key of LEGACY_MODAL_SIZE_KEYS) localStorage.removeItem(key); // 换了键就没人读了，清掉
 		return readStoredModalSize(localStorage.getItem(MODAL_SIZE_KEY), viewport());
@@ -126,33 +179,42 @@ export function useModalSize() {
 		return () => window.removeEventListener("resize", onResize);
 	}, [pinned]);
 
-	/** 拖右下角：pointer 事件挂 document（鼠标滑出手柄范围也不会中断） */
+	/**
+	 * 拖四个角之一：pointer 事件挂 document（鼠标滑出手柄范围也不会中断）。
+	 *
+	 * 宽高变化的方向由 corner 决定；同时把**一半**的变化量交给位置（面板居中，两边各让一半），
+	 * 这样对面的角就固定在原地 —— 不补这一下，拖左上角时面板会以中心为轴两边一起长，
+	 * 手感像“拖了一半”。
+	 */
 	const start = useCallback(
-		(event: React.PointerEvent<HTMLDivElement>) => {
+		(event: React.PointerEvent<HTMLDivElement>, corner: ModalCorner = "se") => {
 			event.preventDefault();
 			setPinned(true); // 从这一刻起尺寸归用户管（右键："我拖过了，记住它"）
+			const anchor = anchorRef?.current ?? null;
+			anchor?.begin();
 			const startX = event.clientX;
 			const startY = event.clientY;
 			const startSize = size;
 			const onMove = (moveEvent: PointerEvent) => {
-				setSize(
-					clampModalSize(
-						{
-							width: startSize.width + (moveEvent.clientX - startX),
-							height: startSize.height + (moveEvent.clientY - startY),
-						},
-						viewport(),
-					),
-				);
+				const { size: next, shift } = resizeFromCorner({
+					start: startSize,
+					dx: moveEvent.clientX - startX,
+					dy: moveEvent.clientY - startY,
+					corner,
+					view: viewport(),
+				});
+				setSize(next);
+				anchor?.shift(shift);
 			};
 			const onUp = () => {
 				document.removeEventListener("pointermove", onMove);
 				document.removeEventListener("pointerup", onUp);
+				anchor?.commit();
 			};
 			document.addEventListener("pointermove", onMove);
 			document.addEventListener("pointerup", onUp);
 		},
-		[size],
+		[size, anchorRef],
 	);
 
 	/** 双击手柄：回到「跟着视口铺满」，并且**把存的那份删掉**（否则下次打开还是旧的） */

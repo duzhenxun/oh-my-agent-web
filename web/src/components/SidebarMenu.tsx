@@ -14,7 +14,7 @@ import { PanelIcon, type PanelIconName } from "./PanelIcon.tsx";
 import { SortablePanelTabs } from "./SortablePanelTabs.tsx";
 import { PanelOrderRow } from "./PanelOrderRow.tsx";
 import { usePanelOrder } from "../panel-order.ts";
-import { useModalSize } from "../use-modal-size.ts";
+import { useModalSize, type ResizeAnchor } from "../use-modal-size.ts";
 import { useModalMove } from "../use-modal-move.ts";
 import { useAppState } from "../store.ts";
 import { useT } from "../use-language.ts";
@@ -47,6 +47,9 @@ const PANEL_LABEL_EN: Record<Exclude<Panel, null>, string> = {
 };
 
 /** 弹窗顶部那一条反馈（只留一条，到点自己消失） */
+/** 四只手柄的渲染顺序：先四角（nw / ne / sw / se），CSS 按类名摆位置 */
+const RESIZE_CORNERS = ["nw", "ne", "sw", "se"] as const;
+
 type ModalTip = { key: string; text: string; level: "info" | "warn" | "error"; at: number };
 
 /** 显示多久：错误留久一点（否则用户还没看清就没了） */
@@ -110,9 +113,18 @@ export function SidebarMenu({
 		if (controlledPanel === undefined) setUncontrolledPanel(next);
 	};
 	// 弹窗尺寸可拖（模型面板里价格 / 分时价格一多，默认的 760 高就不够用了）
-	const modalSize = useModalSize();
+	//
+	// 尺寸与位置互相依赖：调四个角时要推动位置（锢住对面的角），而位置钩子又要知道尺寸。
+	// 用一个 ref 打通，不把两个钩子合并 —— 它们各自有独立的持久化 / 夹取逻辑。
+	const anchorRef = useRef<ResizeAnchor | null>(null);
+	const modalSize = useModalSize({ anchor: anchorRef });
 	/** 面板可以拖动位置（推开来对照着看被挡住的对话；双击头部复位） */
 	const modalMove = useModalMove({ size: modalSize.size });
+	anchorRef.current = {
+		begin: modalMove.beginResize,
+		shift: modalMove.shiftBy,
+		commit: modalMove.commitResize,
+	};
 	/**
 	 * 弹窗里的反馈：服务端的提示条（`.error-bar` / `NoticeBar`）都在工作区顶上，
 	 * 而弹窗是全屏遮罩 —— 用户在弹窗里操作时**什么都看不到**（保存成功/失败郿如此）。
@@ -300,15 +312,21 @@ export function SidebarMenu({
 									{panel === "settings" ? <SettingsPanel /> : null}
 								</div>
 
-								{/* 右下角拖拽手柄：拖改宽高，双击回默认（尺寸存 localStorage） */}
-								<div
-									className="modal-resize"
-									role="separator"
-									aria-label={t("调整面板大小")}
-									title={t("拖动调整窗口大小（双击复位）")}
-									onPointerDown={modalSize.start}
-									onDoubleClick={modalSize.reset}
-								/>
+								{/* 四个角都能拖：拖哪个角，对面的角就不动。双击任意手柄回到默认尺寸（位置也复位） */}
+								{RESIZE_CORNERS.map((corner) => (
+									<div
+										key={corner}
+										className={`modal-resize modal-resize-${corner}`}
+										role="separator"
+										aria-label={t("调整面板大小")}
+										title={t("拖动调整窗口大小（双击复位）")}
+										onPointerDown={(event) => modalSize.start(event, corner)}
+										onDoubleClick={() => {
+											modalSize.reset();
+											modalMove.reset();
+										}}
+									/>
+								))}
 							</div>
 						</div>,
 						document.body,

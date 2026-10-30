@@ -2,7 +2,9 @@
  * Web Push（VAPID）：注册订阅 + 推送。
  *
  * 订阅存 `<dataDir>/push-subscriptions.json`（0600，只含 endpoint / keys，没有凭证）。
- * VAPID 密钥存 `<dataDir>/vapid-keys.json`（0600，可用环境变量覆盖）。
+ * VAPID **密钥对**存 `<dataDir>/vapid-keys.json`、**联系方式（subject）** 存
+ * `<dataDir>/push-config.json`：一个换掉就作废所有订阅，一个随便改，所以分开存也分开说明。
+ * 两者都可用环境变量覆盖，取用 / 校验的细节在 `vapid-config.ts`。
  *
  * **密钥以前是三个常量直接写在源码里**：那是真凭证 —— 谁拿到私钥就能冒充这个应用，
  * 往该应用所有已订阅设备推任意通知；而且它跟着 npm 包一起发出去（`files` 含 dist）。
@@ -14,46 +16,41 @@ import { basename, dirname, join } from "node:path";
 import webpush from "web-push";
 import { BRAND_NAME } from "../brand.js";
 import { chmodSecret } from "../util/file-mode.js";
-
-/** VAPID subject：只是给推送网关留个联系方式，不是凭证 */
-const DEFAULT_VAPID_SUBJECT = "mailto:noreply@localhost";
-
-type VapidKeys = { publicKey: string; privateKey: string; subject: string };
+import {
+	fingerprintOf,
+	loadVapidKeys,
+	loadVapidSubject,
+	normalizeVapidSubject,
+	regenerateVapidKeys,
+	saveVapidSubject,
+	vapidSubjectProblem,
+	type VapidKeys,
+	type VapidKeySource,
+	type VapidSubjectSource,
+} from "./vapid-config.js";
 
 /**
- * 取 VAPID 密钥：环境变量 > `<dataDir>/vapid-keys.json` > 首次生成并落盘。
+ * 推给界面的「这台服务端的 VAPID 状态」（**不含私钥**）。
  *
- * 只读一次就够（进程内缓存在 createPushStore）。
+ * 界面上「本机推送」那一段要能回答三个问题：用的是哪把钥匙（指纹）、哪来的（env / 文件）、
+ * 联系方式配没配对（Apple 只收合法 subject）。没有这些，用户看到 `失败 403` 只能猜。
  */
-async function loadVapidKeys(dataDir: string): Promise<VapidKeys> {
-	const envPublic = process.env.VAPID_PUBLIC_KEY ?? "";
-	const envPrivate = process.env.VAPID_PRIVATE_KEY ?? "";
-	const subject = process.env.VAPID_SUBJECT ?? DEFAULT_VAPID_SUBJECT;
-	if (envPublic !== "" && envPrivate !== "") return { publicKey: envPublic, privateKey: envPrivate, subject };
+export type PushConfigView = {
+	publicKey: string;
+	fingerprint: string;
+	keySource: VapidKeySource;
+	/** 密钥文件生成时间（来源是环境变量时为 null） */
+	keyCreatedAt: number | null;
+	subject: string;
+	subjectSource: VapidSubjectSource;
+	subjectValid: boolean;
+	/** 不合法时的机器码（`push.subject.*`），界面上翻译成人话 */
+	subjectProblem: string | null;
+	/** 被环境变量钉死的那一项：界面上禁掉输入 / 按钮，并说明改哪 */
+	locked: { keys: boolean; subject: boolean };
+};
 
-	const path = join(dataDir, "vapid-keys.json");
-	try {
-		const parsed = JSON.parse(await readFile(path, "utf8")) as Partial<VapidKeys>;
-		if (typeof parsed.publicKey === "string" && typeof parsed.privateKey === "string") {
-			return {
-				publicKey: parsed.publicKey,
-				privateKey: parsed.privateKey,
-				subject: typeof parsed.subject === "string" && parsed.subject !== "" ? parsed.subject : subject,
-			};
-		}
-	} catch {
-		// 没有 / 坏了 → 下面生成一份（旧的订阅会失效，客户端重新订阅即可）
-	}
-
-	const generated = webpush.generateVAPIDKeys();
-	const keys: VapidKeys = { publicKey: generated.publicKey, privateKey: generated.privateKey, subject };
-	await mkdir(dataDir, { recursive: true });
-	const temporary = tempPathFor(path);
-	await writeFile(temporary, `${JSON.stringify(keys, null, 2)}\n`, { mode: 0o600 });
-	await rename(temporary, path);
-	await chmodSecret(path);
-	return keys;
-}
+type PushConfigResult = { ok: true; config: PushConfigView } | { ok: false; code: string };
 
 type PushSubscriptionView = {
 	endpoint: string;
@@ -93,6 +90,12 @@ export type PushStore = {
 	add: (subscription: PushSubscriptionView) => Promise<{ ok: true; total: number }>;
 	remove: (endpoint: string) => Promise<{ ok: true; total: number }>;
 	send: (payload: PushPayloadSource, endpoints?: string[]) => Promise<{ sent: number; failed: number }>;
+	/** 当前 VAPID 状态（公钥指纹 / 来源 / subject 合不合法） */
+	config: () => Promise<PushConfigView>;
+	/** 改联系方式（`""` = 清掉配置、回兜底）；**不影响已订阅设备** */
+	saveSubject: (subject: string) => Promise<PushConfigResult>;
+	/** 换一对新密钥：**所有旧订阅都会失效**，这里顺手清空，调用方提示各设备重订 */
+	regenerateKeys: () => Promise<PushConfigResult & { cleared?: number }>;
 	rename: (endpoint: string, name: string) => Promise<{ ok: true; total: number }>;
 	/** 改这台设备的界面自称（空串 = 改回产品默认名） */
 	setBrandName: (endpoint: string, brandName: string) => Promise<{ ok: true; total: number }>;
@@ -101,25 +104,50 @@ export type PushStore = {
 	count: () => Promise<number>;
 };
 
-export function createPushStore(options: { dataDir: string; now: () => number }): PushStore {
+export function createPushStore(options: {
+	dataDir: string;
+	now: () => number;
+	/** 推送失败时说话（网关给的原因比状态码有用得多，别只留个 `失败 403`） */
+	log?: (message: string, meta?: Record<string, unknown>) => void;
+}): PushStore {
 	const path = join(options.dataDir, "push-subscriptions.json");
 	/**
-	 * 密钥懒解析 + 只算一次。
+	 * VAPID 懒解析 + 只算一次（密钥 + subject 一对，因为 `setVapidDetails` 要一起吃）。
 	 * 失败不缓存（清回 null），下次请求会重试 —— 否则一次磁盘满就把推送永久钉死。
 	 */
-	let keysPromise: Promise<VapidKeys> | null = null;
-	const keys = (): Promise<VapidKeys> => {
-		if (!keysPromise) {
-			const pending = loadVapidKeys(options.dataDir).then((resolved) => {
-				webpush.setVapidDetails(resolved.subject, resolved.publicKey, resolved.privateKey);
-				return resolved;
-			});
-			keysPromise = pending;
+	let vapidPromise: Promise<{ keys: VapidKeys; subject: { subject: string; source: VapidSubjectSource } }> | null =
+		null;
+	const vapid = (): NonNullable<typeof vapidPromise> => {
+		if (!vapidPromise) {
+			const pending = (async () => {
+				const [keys, subject] = await Promise.all([loadVapidKeys(options.dataDir), loadVapidSubject(options.dataDir)]);
+				webpush.setVapidDetails(subject.subject, keys.publicKey, keys.privateKey);
+				return { keys, subject };
+			})();
+			vapidPromise = pending;
 			pending.catch(() => {
-				if (keysPromise === pending) keysPromise = null;
+				if (vapidPromise === pending) vapidPromise = null;
 			});
 		}
-		return keysPromise;
+		return vapidPromise;
+	};
+	/** 把内部状态摊成界面看得懂的那份视图（私钥永远不出去） */
+	const configView = async (): Promise<PushConfigView> => {
+		const { keys, subject } = await vapid();
+		return {
+			publicKey: keys.publicKey,
+			fingerprint: fingerprintOf(keys.publicKey),
+			keySource: keys.source,
+			keyCreatedAt: keys.createdAt,
+			subject: subject.subject,
+			subjectSource: subject.source,
+			subjectValid: vapidSubjectProblem(subject.subject) === null,
+			subjectProblem: vapidSubjectProblem(subject.subject),
+			locked: {
+				keys: keys.source === "env",
+				subject: subject.source === "env" || Boolean(process.env.VAPID_SUBJECT),
+			},
+		};
 	};
 
 	const read = async (): Promise<PushSubscriptionView[]> => {
@@ -140,7 +168,28 @@ export function createPushStore(options: { dataDir: string; now: () => number })
 	};
 
 	return {
-		publicKey: async () => (await keys()).publicKey,
+		publicKey: async () => (await vapid()).keys.publicKey,
+		config: configView,
+		async saveSubject(subject) {
+			const normalized = normalizeVapidSubject(subject);
+			// 空串 = 清回兜底（不是「不合法」）；非空必须先过校验，否则存进去也只是下次 403
+			const problem = normalized === "" ? null : vapidSubjectProblem(normalized);
+			if (problem !== null) return { ok: false, code: problem };
+			await saveVapidSubject(options.dataDir, normalized);
+			vapidPromise = null; // 下次取用会重新读盘 + 重设 setVapidDetails
+			return { ok: true, config: await configView() };
+		},
+		async regenerateKeys() {
+			// 环境变量钉死时不能换：换了也不生效（下次读取又回到 env 那把），只会白清订阅
+			if ((await vapid()).keys.source === "env") return { ok: false, code: "push.keys_locked" };
+			await regenerateVapidKeys(options.dataDir);
+			vapidPromise = null;
+			// 旧订阅是用旧公钥订的，留着只会每次都失败（Apple 的 VapidPkHashMismatch 永不消）
+			const cleared = (await read()).length;
+			await write([]);
+			options.log?.("已重新生成 VAPID 密钥，旧推送订阅已清空", { cleared });
+			return { ok: true, config: await configView(), cleared };
+		},
 		list: read,
 		async add(subscription) {
 			const list = await read();
@@ -193,7 +242,7 @@ export function createPushStore(options: { dataDir: string; now: () => number })
 		},
 		async send(payload, endpoints) {
 			// 先把密钥准备好：setVapidDetails 没调过就发，web-push 会直接抛「没配 VAPID」
-			await keys();
+			await vapid();
 			const all = await read();
 			const list = endpoints ? all.filter((item) => endpoints.includes(item.endpoint)) : all;
 			let sent = 0;
@@ -216,6 +265,19 @@ export function createPushStore(options: { dataDir: string; now: () => number })
 					// 404/410：订阅已失效，顺手清掉，避免每次白打
 					if (code === 404 || code === 410) dead.push(subscription.endpoint);
 					status.set(subscription.endpoint, `失败 ${code ?? ""}`.trim());
+					// 网关把真正的原因放在 body 里（`BadJwtToken` / `VapidPkHashMismatch`）。
+					// 只记状态码的话，「iPhone 收不到」永远得靠人肉复现才能查。
+					let host = "unknown";
+					try {
+						host = new URL(subscription.endpoint).host;
+					} catch {
+						// endpoint 坏了也照样记一条，至少说明是哪台设备
+					}
+					options.log?.("推送失败", {
+						host,
+						code: code ?? null,
+						body: String((error as { body?: unknown }).body ?? "").slice(0, 200),
+					});
 				}
 			}
 			// 记下「上次推送」：界面要显示时间与结果

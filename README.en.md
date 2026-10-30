@@ -101,10 +101,10 @@ Two behavioural rules:
 |---|---|---|---|
 | `-p, --port` | `AGENT_WEB_PORT` | `25257` | Listen port |
 | `-H, --host` | `AGENT_WEB_HOST` | `127.0.0.1` | Listen address; only change it for remote access |
-| `-P, --password` | `AGENT_WEB_PASSWORD` | none | Login password; unset = loopback only (a remote first visit asks you to set one) |
+| `-P, --password` | `AGENT_WEB_PASSWORD` | none | Login password; unset = loopback only (remote cannot enter). A value given here is saved into `<dataDir>/password`, **and that file is the single source of truth afterwards** (the env var is only used when the file does not exist yet); Settings → Remote edits the same file |
 | `-d, --detach` | — | off (foreground by default) | Background run, detached, logs go to `~/.oh-my-agent-web/daemon.log`; `-f` / `--foreground` is the old spelling and now equals the default |
 | `--no-open` | — | on | Don't open the browser |
-| `--allow-host` | `AGENT_WEB_ALLOWED_HOSTS` | loopback only | Extra allowed hostnames / LAN IPs (repeatable or comma-separated) |
+| `--allow-host` | `AGENT_WEB_ALLOWED_HOSTS` | none | Rarely needed: extra cross-origin hosts for requests **addressed to this machine** only |
 | `--data-dir` | `AGENT_WEB_DATA_DIR` | `~/.oh-my-agent-web` | Settings, password, uploads, logs and the lock file live here |
 | — | `AGENT_WEB_CWD` | `process.cwd()` | Default workspace (before any session exists) |
 | — | `AGENT_WEB_ENGINE` | `pi` | Default engine |
@@ -123,10 +123,13 @@ oh-my-agent-web status && oh-my-agent-web restart  # check, then restart
 oh-my-agent-web stop                               # stop it (works for foreground and background)
 oh-my-agent-web --data-dir ~/agent-web-data             # different data directory
 AGENT_WEB_CWD=~/code/my-proj oh-my-agent-web       # set the default workspace
-oh-my-agent-web -H 0.0.0.0 --allow-host agent.example.com   # allow outside access (first visit asks you to set a password)
+oh-my-agent-web -H 0.0.0.0                           # reachable outside (set the password locally first)
+oh-my-agent-web -H 0.0.0.0 -P 'my-pass'             # start with a password — saved, so restarts keep it
 ```
 
-> **Reaching it from your phone**: `oh-my-agent-web -H 0.0.0.0 --allow-host your.domain`. The first visit from the phone asks you to **set an access password** (stored as `password` in the data dir; after that you just log in). Reverse proxies / tunnels should pass `X-Forwarded-For` (origin checking looks at it).
+> **Reaching it from your phone**: `oh-my-agent-web -H 0.0.0.0`. Set the password **on the machine running it first**: open `http://127.0.0.1:25257/` and use the field in **Settings → Remote** (or open `/setup`, or start with `-P`).
+> The password lives in the data directory's `password` file (default `~/.oh-my-agent-web/password`) — no environment variable needed. Afterwards **a LAN IP, a public IP or a domain** all work by entering that password; **no `--allow-host` allowlist** is required.
+> It can only be set locally: while unset, remote visitors just see "set it on the host machine" (`/setup`, `/api/auth/setup` and `/api/auth/password` return 403 for remote). Otherwise whoever scanned the port first would take over. Reverse proxies / tunnels should pass `X-Forwarded-For` (origin checking looks at it).
 >
 > **Running `oh-my-agent-web` from your home directory** works, but home is an unsafe workspace (the file tree, search and the agent's cwd would be your whole home). In that case it falls back to `<data dir>/workspace` and prints a line about it; to point at a project use `AGENT_WEB_CWD=/path/to/project`.
 
@@ -144,7 +147,7 @@ Three hard rules:
 
 1. **No database**: a conversation *is* the JSONL / thread the engine wrote. The web UI reads it, renames it, and deletes it when asked.
 2. **No pretending**: anything an engine can't do is hidden in the UI (the capability matrix); a panel that can't get data says so, and no other engine's config is passed off as this one's.
-3. **No overreach**: it listens on `127.0.0.1` only by default; exposing it remotely takes all three of `-H`, `-P` and `--allow-host`.
+3. **No overreach**: it listens on `127.0.0.1` only by default; exposing it remotely takes `-H` plus a password set locally (**Settings → Remote**, or `-P`).
 
 ---
 
@@ -363,6 +366,9 @@ A subagent's session file is archived next to the parent session (`<parent sessi
 
 **Push**: Web Push (VAPID) subscriptions, one notification per finished turn — title is the project, body is the session, with a ❌ / ⏹ prefix for failures and interrupts. Multiple devices, a test push, and a one-click clear-all. Needs https or localhost.
 
+The VAPID key pair and the contact (subject) are managed in the same panel: the pair is generated on first start into `<dataDir>/vapid-keys.json` (0600, overridable with `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`), the contact is stored in `<dataDir>/push-config.json` (overridable with `VAPID_SUBJECT`).
+**The subject must be a real email or an https site**: the default `mailto:noreply@localhost` is rejected by Apple with `403 BadJwtToken` (Chrome/FCM ignores it, so the usual symptom is “works on the desktop, silent on the iPhone”). Replacing the key pair invalidates every subscription (the panel clears them; re-register each device). Changing the contact invalidates nothing.
+
 **Voice**: four event sounds (start / finish / error / waiting for approval) with preview and adjustable volume; local TTS reads the final reply using the browser's built-in voices, with adjustable rate and voice, and never touches the network.
 
 ---
@@ -477,7 +483,7 @@ Process model: `cli.ts` parses the flags → `session/lock.ts` grabs `<dataDir>/
 | Codex sessions | Codex's own thread store (`thread/list \| resume \| delete`) |
 | opencode / DSH / claude sessions | Their own data dirs (opencode lists per cwd with `session/list`; DSH reads `~/.dsh`; claude reads `~/.claude`) |
 | Session titles | For pi, the first user message (reads only the first 60 lines); renaming appends `session_info.name` |
-| Workbench state | `<dataDir>/settings.json`, `approval-rules.json`, `server.lock`, `logs/`, `uploads/`, `push-subscriptions.json`, `vapid-keys.json` |
+| Workbench state | `<dataDir>/settings.json`, `approval-rules.json`, `server.lock`, `logs/`, `uploads/`, `push-subscriptions.json`, `vapid-keys.json`, `push-config.json` |
 | Skills / subagent templates / MCP | `~/.agents/skills/`, `~/.pi/agent/agents/`, `~/.pi/agent/mcp.json` |
 | Local UI preferences | Browser `localStorage` (`agent-web.` prefix: theme, font sizes, widths, shortcuts, notes, tabs) |
 
@@ -485,14 +491,15 @@ Process model: `cli.ts` parses the flags → `session/lock.ts` grabs `<dataDir>/
 
 ## Security model
 
-- Binds `127.0.0.1` by default and validates `Origin` / `Host` (including the `AGENT_WEB_ALLOWED_HOSTS` allowlist, the vite port and LAN addresses).
-- Identity: a loopback peer **and** a loopback Host → allowed. With no password set, remote requests always get 403. With a password, either the cookie (`agent-web-auth`, 7 days, HttpOnly) or HTTP Basic will do; failed logins are throttled at 20 attempts / 10 minutes.
+- Binds `127.0.0.1` by default and decides identity from the real peer address (`X-Forwarded-For` when a local proxy is in front) plus the `Host` header.
+- Identity: a loopback peer **and** a loopback Host → allowed. With no password set, remote requests always get 403. The password is stored in `<data dir>/password` (one plaintext line, 0600) and can be set/changed **only locally** (Settings → Remote, `/setup`, or `-P`); changes apply immediately without a restart. With a password, either the cookie (`agent-web-auth`, 7 days, HttpOnly) or HTTP Basic will do; failed logins are throttled at 20 attempts / 10 minutes.
+- **No domain / IP allowlist**: any domain, public IP, LAN IP or tunnel works once the password is in. The cross-origin check only guards requests that genuinely come from **this machine** (loopback needs no password, so that is the CSRF target); remote requests are already behind the password gate.
 - Tools and commands go through approvals: **read-only tools** (read / grep / find / ls) and read-only commands pass automatically, everything else is asked per `scopeKey` (tool + executable name or target directory). Choosing "always allow" writes the rule into `approval-rules.json` (atomic write; a corrupt file counts as empty).
 - When a turn ends, every pending approval for that session is cleared, so nothing hangs waiting for a human.
 - Uploaded temp files and session caches live in the data directory, never in your project.
 - The built-in web page's proxy carries no cookies, and its iframe sandbox omits `allow-same-origin` (otherwise remote JS could reach `localStorage` and the RPC endpoint).
 
-> Exposing it remotely is an explicit act: `-H`, `-P` and `--allow-host` must all be present — miss one and it stays shut.
+> Exposing it remotely is an explicit act: `-H` to be reachable plus a password set locally (Settings → Remote, or `-P`). Domain/IP allowlists are not needed.
 
 ---
 

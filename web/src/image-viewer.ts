@@ -51,9 +51,9 @@ export function useViewedImage(): ViewedImage | null {
 export const ZOOM_MIN = 0.25;
 export const ZOOM_MAX = 8;
 /** 每点一次乘/除它：25% 一档，手感上不会「跳」 */
-const ZOOM_STEP = 1.25;
+export const ZOOM_STEP = 1.25;
 
-function clampZoom(value: number): number {
+export function clampZoom(value: number): number {
 	if (!Number.isFinite(value) || value <= 0) return 1;
 	return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, value));
 }

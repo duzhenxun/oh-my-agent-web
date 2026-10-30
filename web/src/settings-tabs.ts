@@ -11,7 +11,7 @@
  * 不进会话快照、不上服务端 —— 换个浏览器就是出厂顺序，不会出现「同步过来一页不相干的顺序」。
  *
  * 存坏 / 存旧也安全：清洗规则是「未知项丢掉、重复项只留第一个、缺的项按出厂顺序补回去」，
- * 所以以后往设置里加第七页，老用户不会被旧的六项顺序卡住看不见它。
+ * 所以以后往设置里加第八页，老用户不会被旧的七项顺序卡住看不见它。
  */
 import { useCallback, useEffect, useState } from "react";
 import { readStored, writeStored } from "./ui-prefs.ts";
@@ -24,13 +24,14 @@ export const DEFAULT_SETTINGS_ORDER: readonly SettingsTabId[] = [
 	"theme",
 	"language",
 	"shortcuts",
+	"remote",
 ];
 
-export type SettingsTabId = "ui" | "general" | "appearance" | "theme" | "language" | "shortcuts";
+export type SettingsTabId = "ui" | "general" | "appearance" | "theme" | "language" | "shortcuts" | "remote";
 
 const ORDER_KEY = "agent-web.settings-tab-order.v1";
 /** 同页通知：拖完一处，别的订阅者（其它面板实例 / 下一次打开）立刻跟上 */
-export const SETTINGS_ORDER_EVENT = "agent-web:settings-tab-order";
+const SETTINGS_ORDER_EVENT = "agent-web:settings-tab-order";
 
 const KNOWN_TABS: ReadonlySet<string> = new Set(DEFAULT_SETTINGS_ORDER);
 
@@ -58,12 +59,12 @@ export function parseSettingsOrder(raw: string | null): SettingsTabId[] {
 	}
 }
 
-export function readSettingsOrder(): SettingsTabId[] {
+function readSettingsOrder(): SettingsTabId[] {
 	return parseSettingsOrder(readStored(ORDER_KEY));
 }
 
 /** 落盘前先清洗；返回真正写下去的那一份，调用方可以直接当新状态用。 */
-export function saveSettingsOrder(order: readonly SettingsTabId[]): SettingsTabId[] {
+function saveSettingsOrder(order: readonly SettingsTabId[]): SettingsTabId[] {
 	const next = normalizeSettingsOrder(order);
 	writeStored(ORDER_KEY, JSON.stringify(next));
 	if (typeof window !== "undefined") {
@@ -77,7 +78,7 @@ export function defaultSettingsTab(): SettingsTabId {
 	return readSettingsOrder()[0] ?? DEFAULT_SETTINGS_ORDER[0];
 }
 
-export function sameSettingsOrder(a: readonly SettingsTabId[], b: readonly SettingsTabId[]): boolean {
+function sameSettingsOrder(a: readonly SettingsTabId[], b: readonly SettingsTabId[]): boolean {
 	return a.length === b.length && a.every((id, index) => id === b[index]);
 }
 

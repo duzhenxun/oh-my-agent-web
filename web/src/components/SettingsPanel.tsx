@@ -4,7 +4,7 @@ import { setSettings } from "../ws.ts";
 import { THEMES, modeOf, type ThemeDef } from "../theme.ts";
 import { useTheme } from "../use-theme.ts";
 import { useChatDisplay } from "../use-chat-display.ts";
-import { CHAT_WIDTHS } from "../chat-display.ts";
+import { CHAT_WIDTHS, CHAT_WIDTH_MIN_PX, CHAT_WIDTH_STEP_PX, chatWidthCap } from "../chat-display.ts";
 import { FONT_LADDERS, FONT_MAX_PX, FONT_MIN_PX, FONT_STEP_PX, presetOfPx, type FontLayer } from "../font-scale.ts";
 import {
 	APPBAR_SCALE_MAX,
@@ -18,6 +18,7 @@ import { useSidebarFonts } from "../use-sidebar-font.ts";
 import {
 	THINKING_OPEN_KEY,
 	TOOL_OPEN_KEY,
+	SELECTION_TOOLBAR_KEY,
 	APPBAR_ITEM_LABEL,
 	APPBAR_PART_KEY,
 	APPBAR_PART_LABEL,
@@ -37,6 +38,10 @@ import {
 	SESSIONS_PER_PROJECT_MIN,
 	CHAT_IMAGE_WIDTH_DEFAULT,
 	CHAT_IMAGE_WIDTH_KEY,
+	TERMINAL_FONT_KEY,
+	TERMINAL_FONT_DEFAULT,
+	TERMINAL_FONT_MIN,
+	TERMINAL_FONT_MAX,
 	type AppbarPart,
 	type AppbarToggle,
 	type ComposerToggle,
@@ -60,6 +65,8 @@ import { LANGUAGES, type Language } from "../language.ts";
 import { PanelIcon } from "./PanelIcon.tsx";
 import { SettingsTabStrip } from "./SettingsTabStrip.tsx";
 import { defaultSettingsTab, useSettingsTabOrder } from "../settings-tabs.ts";
+import { isRemoteAccess, logoutRemote } from "../auth-expiry.ts";
+import { fetchAccessPasswordStatus, saveAccessPassword } from "../access-password.ts";
 import { ShortcutsPane } from "./ShortcutsPane.tsx";
 
 const DEFAULT_PLACEHOLDER = "继续\n总结一下\n详细解释一下";
@@ -92,12 +99,12 @@ const APPBAR_PART_EN: Record<AppbarPart, string> = {
 	icon: "Show icons",
 };
 
-type SettingsTab = "general" | "appearance" | "theme" | "language" | "ui" | "shortcuts";
+type SettingsTab = "general" | "appearance" | "theme" | "language" | "ui" | "shortcuts" | "remote";
 
 /**
  * 设置面板（ADR-0020 §P1）：**内联在侧栏里，不是模态** —— ADR-0013 规定只有审批可以弹模态。
  *
- * 五个 tab（ADR-0030），默认停在「界面」（最常用的一组；也排在最左）：
+ * 七个 tab（ADR-0030），默认停在「界面」（最常用的一组；也排在最左）：
  *   - **界面**：外框 —— 侧栏、对话里图片的最大宽度、
  *     顶栏（模型 / 技能 / 推送 / 语音 / 插件 / MCP / 子代理）、
  *     顶栏文字与图标（每个入口画不画文案 / 图标，只管顶栏那一排）、
@@ -118,6 +125,12 @@ type SettingsTab = "general" | "appearance" | "theme" | "language" | "ui" | "sho
  *     顶栏高度（整条栏的缩放系数，`appbar-scale.ts`）、内容宽度 4 档。
  *   - **主题**：3 浅 + 3 深的色板卡（2026-10-29 从「外观」拆出来的一页）。
  *     这两页都是立刻生效、不用保存，只改本机 `<html data-theme>` / CSS 变量与 `localStorage`。
+ *   - **快捷键**：一张表 + 改键 + 冲突提示（`shortcuts.ts`，本机偏好）。
+ *   - **远程**：这台服务现在是怎么被访问的（本机 / 域名），**本机可以设 / 改访问密码**，
+ *     远程可以**退出登录**。
+ *     密码存在数据目录的 `password` 文件里（默认 `~/.oh-my-agent-web/password`），
+ *     改完立即生效、不用重启；启动时 `-P` 给的也会写进去。登录态是一张 7 天的 cookie，
+ *     没有退出入口的话「在别人电脑上登过一次」就只能等它过期。
  *
  * 「插件」不在这里：它是跟「模型 / 技能 / 推送」并列的一级面板（SidebarMenu 的 plugins）。
  *
@@ -145,9 +158,10 @@ export function SettingsPanel() {
 		theme: t("主题", "Theme"),
 		language: t("语言", "Language"),
 		shortcuts: t("快捷键", "Shortcuts"),
+		remote: t("远程", "Remote"),
 	};
 	/* 兜底：存储里没有当前页（老版本存的 / 手动改过）时回落到第一页，避免空白面板 */
-	const activeTab: SettingsTab = order.includes(tab) ? tab : order[0] ?? "ui";
+	const activeTab: SettingsTab = order.includes(tab) ? tab : (order[0] ?? "ui");
 	return (
 		<div className="settings-stack">
 			<SettingsTabStrip
@@ -167,8 +181,147 @@ export function SettingsPanel() {
 				<LanguageSettings />
 			) : activeTab === "shortcuts" ? (
 				<ShortcutsPane />
+			) : activeTab === "remote" ? (
+				<RemoteSettings />
 			) : (
 				<UiSettings />
+			)}
+		</div>
+	);
+}
+
+/**
+ * 远程：访问方式 + 访问密码（本机可改）+ 退出登录。
+ *
+ * 背景（用户 2026-10-30）：
+ *   ① 「远程访问时，输入密码后可以用，但想退出如何退出呢」—— 服务端早就有
+ *      `POST /api/auth/logout`，可界面上一个入口都没有，在别人电脑上登过一次就只能等 cookie 过期；
+ *   ② 「密码不用系统变量，存在 ~/.oh-my-agent-web 下面的配置里就行；在访问 127.0.0.1 时，
+ *      在 设置/远程 里加个密码输入框来设置」。
+ *
+ * 所以这一页分两半：
+ *   - 本机（免密）：密码输入框 + 保存（打 `/api/auth/password`，落盘后立即生效）；
+ *   - 远程：只显示状态 + 退出登录（改密码必须在本机做，服务端也只认本机）。
+ * 不限制访问的域名 / 外网 IP / 局域网 IP —— 只要有密码，从哪儿来都能进。
+ */
+function RemoteSettings() {
+	const t = useT();
+	const remote = isRemoteAccess();
+	const host = typeof location === "undefined" ? "" : location.host;
+	/** null = 还没问到（本机才问） */
+	const [passwordSet, setPasswordSet] = useState<boolean | null>(null);
+	const [statusError, setStatusError] = useState("");
+	const [draft, setDraft] = useState("");
+	const [saving, setSaving] = useState(false);
+
+	useEffect(() => {
+		if (remote) return;
+		void fetchAccessPasswordStatus().then((result) => {
+			if (result.ok) {
+				setPasswordSet(result.set);
+				setStatusError("");
+				return;
+			}
+			setStatusError(result.error);
+		});
+	}, [remote]);
+
+	const save = () => {
+		const password = draft.trim();
+		if (password.length < 4) {
+			showToast({ text: t("密码至少 4 位", "Use at least 4 characters") });
+			return;
+		}
+		setSaving(true);
+		void saveAccessPassword(password).then((result) => {
+			setSaving(false);
+			if (!result.ok) {
+				showToast({ text: result.error });
+				return;
+			}
+			setPasswordSet(true);
+			setStatusError("");
+			setDraft("");
+			showToast({ text: t("访问密码已保存，立即生效", "Password saved — active now") });
+		});
+	};
+
+	const stateText =
+		passwordSet === null
+			? statusError !== ""
+				? statusError
+				: t("读取中…", "Loading…")
+			: passwordSet
+				? t("已设置", "Set")
+				: t("未设置", "Not set");
+
+	return (
+		<div className="settings-panel">
+			<div className="settings-head">
+				<span>{t("访问方式", "Access")}</span>
+				<span className="settings-sub">
+					{remote
+						? t(`通过 ${host} 远程访问`, `Remote — ${host}`)
+						: t("本机访问（免密）", "This machine (no password)")}
+				</span>
+			</div>
+			<div className="settings-hint">
+				{remote
+					? t(
+							"远程访问必须输密码；域名 / 外网 IP / 局域网 IP 都能访问，不用再配白名单。改密码请到运行服务的这台机器上（127.0.0.1）的 设置 → 远程。",
+							"Remote access always needs the password. Any domain, public IP or LAN IP works — no allowlist. To change it, open Settings → Remote on the machine running the server (127.0.0.1).",
+						)
+					: t(
+							"本机直连（127.0.0.1）不需要密码。设一个之后，远程用任意域名 / 局域网 IP / 隧道地址打开都要先输它。",
+							"The local address (127.0.0.1) needs no password. Once set, any remote address — domain, LAN IP or tunnel — will ask for it.",
+						)}
+			</div>
+			{remote ? (
+				<div className="settings-row">
+					<button type="button" className="btn btn-tiny" onClick={() => logoutRemote()}>
+						{t("退出登录", "Sign out")}
+					</button>
+					<span className="settings-hint">
+						{t(
+							"清掉这台浏览器上的登录 cookie（有效期 7 天，每次访问顺延）。",
+							"Clears the login cookie in this browser (valid 7 days, renewed on every visit).",
+						)}
+					</span>
+				</div>
+			) : (
+				<>
+					<div className="settings-row">
+						<span className="settings-field">{t("访问密码", "Password")}</span>
+						<input
+							className="settings-input settings-password-input"
+							type="password"
+							value={draft}
+							autoComplete="new-password"
+							placeholder={
+								passwordSet
+									? t("输入新密码以修改（至少 4 位）", "New password to change it (min 4)")
+									: t("设置访问密码（至少 4 位）", "Set a password (min 4)")
+							}
+							onChange={(event) => setDraft(event.target.value)}
+							onKeyDown={(event) => {
+								if (event.key === "Enter" && !saving) save();
+							}}
+						/>
+						<button type="button" className="btn btn-tiny" onClick={save} disabled={saving || draft.trim() === ""}>
+							{saving ? t("保存中…", "Saving…") : t("保存", "Save")}
+						</button>
+						<span className="settings-hint">
+							{t("当前：", "Now: ")}
+							{stateText}
+						</span>
+					</div>
+					<div className="settings-hint">
+						{t(
+							"密码存在数据目录的 password 文件里（默认 ~/.oh-my-agent-web/password），保存后立即生效，不用重启。忘了就删掉这个文件再重启，或者启动时带 aw -P <新密码>（也会写进去）。",
+							"Stored in the data directory's password file (default ~/.oh-my-agent-web/password). It applies immediately — no restart. Forgot it? Delete that file and restart, or start with aw -P <new password> (that is saved too).",
+						)}
+					</div>
+				</>
 			)}
 		</div>
 	);
@@ -363,10 +516,49 @@ function GeneralSettings() {
 			</div>
 
 			{/* 这两块原在「界面」tab（用户 2026-10-29：「这几块都移动到对话里去」）：
-			 * 说的都是对话区本身，跟顶栏 / 侧栏同为“本机偏好、点一下生效”。 */}
+			 * 说的都是对话区本身，跟顶栏 / 侧栏同为“本机偏好、点一下生效”。
+			 * 「标注」排在它们前面：它管的是「选字之后那一小下」，比过程卡片更靠近正文。 */}
+			<AnnotationSettings />
 			<ProcessSettings />
 			<UsageSettings />
 		</>
+	);
+}
+
+/**
+ * 标注：在对话里**选中一段文字**后浮出来的那颗小工具栏（添加到会话 / 标注 / 在临时会话中提问）
+ * 要不要弹。纯本机偏好，勾一下立即生效（见 `ui-prefs.ts` 的 `SELECTION_TOOLBAR_KEY`）。
+ *
+ * 只管「弹不弹」：已经标好的引用 + 编号、输入框里那行「N 条注释」都不受影响 ——
+ * 那已经是会话的内容了，把开关关掉不该让历史里的标注一夜之间消失。
+ */
+function AnnotationSettings() {
+	const t = useT();
+	const [on, setOn] = useStoredBool(SELECTION_TOOLBAR_KEY, true);
+	return (
+		<div className="settings-panel">
+			<div className="settings-head">
+				<span>{t("标注", "Annotations")}</span>
+				<span className="settings-sub">
+					{t("选中文字后浮出的小工具栏", "The toolbar that pops up on text selection")}
+				</span>
+			</div>
+			<div className="settings-checks">
+				<label className="settings-toggle settings-check">
+					<input type="checkbox" checked={on} onChange={(event) => setOn(event.target.checked)} />
+					<span className="settings-check-icon" aria-hidden="true">
+						✍️
+					</span>
+					{t("开启选中标注", "Enable selection annotations")}
+				</label>
+			</div>
+			<div className="settings-hint">
+				{t(
+					"打开时，在对话里选中一段文字会浮出「添加到会话 / 标注 / 在临时会话中提问」；关掉后选字就只是选字（复制、搜索都不受打扰）。已标好的内容照旧显示。只存本机，手机和桌面各记各的。",
+					"On: selecting text in the conversation shows Add to session / Annotate / Ask in the side chat. Off: selecting text is just selecting (copying stays unobstructed). Existing annotations are kept. Stored per device.",
+				)}
+			</div>
+		</div>
 	);
 }
 
@@ -905,6 +1097,78 @@ function FontSizeControl({
 }
 
 /**
+ * 聊天内容宽度的滑杆 + 四档快捷卡。
+ *
+ * 2026-10-30 用户：「也加一个滑动条吧，但最大只能是满屏」——
+ * 所以右端就是 `chatWidthCap()` 量出来的**满屏**（对话区可用宽度）：拖到最右 = 满宽（存 0）。
+ * 四档卡片保留（点一下就到位，省得拖着找），与字号 / 顶栏高度那几块同一套版式。
+ */
+function ChatWidthControl({ value, onChange }: { value: number; onChange: (px: number) => void }) {
+	const t = useT();
+	// 打开面板时量一次：面板本身是浮层，对话区还在 DOM 里，量得到真值
+	const [cap, setCap] = useState(chatWidthCap);
+	useEffect(() => {
+		// 开面板之后又转过屏 / 改过侧栏宽度：重开后重新量（不必监听 resize，面板是每次重渲染的）
+		setCap(chatWidthCap());
+	}, []);
+	/** `0` 与「已经拖到上限」都是满宽：两种状态在界面上必须长得一样 */
+	const full = value <= 0 || value >= cap;
+	const sliderValue = full ? cap : value;
+	return (
+		<>
+			<div className="settings-font-slider">
+				<span className="settings-font-label">{t("自定义", "Custom")}</span>
+				<div className="settings-font-track">
+					<input
+						id="settings-chat-width"
+						type="range"
+						min={CHAT_WIDTH_MIN_PX}
+						max={cap}
+						step={CHAT_WIDTH_STEP_PX}
+						value={sliderValue}
+						aria-label={t(
+							`内容宽度（${CHAT_WIDTH_MIN_PX}px 到满宽）`,
+							`Content width (${CHAT_WIDTH_MIN_PX}px to full)`,
+						)}
+						aria-valuetext={full ? t("满宽", "Full width") : `${sliderValue}px`}
+						// 拖的时候立刻生效：正文就在浮层后面，能直接看到一行有多长
+						onChange={(event) => {
+							const next = Number(event.target.value);
+							// 拖到右端 = 满宽（存 0 = 不限制）：这样“最大只能是满屏”是滑杆本身就保证的
+							onChange(next >= cap ? 0 : next);
+						}}
+					/>
+					<div className="settings-font-bounds" aria-hidden="true">
+						<span>{CHAT_WIDTH_MIN_PX}px</span>
+						<span>{t("满宽", "Full width")}</span>
+					</div>
+				</div>
+				<span className="settings-font-value mono">{full ? t("满宽", "Full") : `${value}px`}</span>
+			</div>
+			<div className="settings-langs settings-langs-4">
+				{CHAT_WIDTHS.map((item) => (
+					<label
+						key={item.id}
+						className={`settings-lang${item.px === value ? " settings-lang-on" : ""}`}
+						title={item.px > 0 ? `${item.px}px` : t("铺满整个对话区", "Fill the whole area")}
+					>
+						<input
+							type="radio"
+							name="settings-chat-width"
+							value={item.id}
+							checked={item.px === value}
+							onChange={() => onChange(item.px)}
+						/>
+						<span className="settings-lang-name">{t(item.label, item.labelEn)}</span>
+						<span className="settings-lang-hint">{item.px > 0 ? `${item.px}px` : t("默认", "Default")}</span>
+					</label>
+				))}
+			</div>
+		</>
+	);
+}
+
+/**
  * 顶栏高度（整条栏的缩放系数，见 `appbar-scale.ts`）。
  *
  * 和字号那几块用同一套「滑杆 + 四档快捷卡」：滑杆负责"我就要 90% 这种"，
@@ -994,6 +1258,61 @@ function ThemeCard({ theme, active, onPick }: { theme: ThemeDef; active: boolean
 	);
 }
 
+/**
+ * 右侧终端（xterm）的字号：8–24px，默认 12。
+ *
+ * 只影响 `TerminalPanel` 里的那一路终端；改完**立刻生效**（终端里也能 ⌘/Ctrl + 滚轮 / `=` `-` 调，
+ * 两边写的是同一份本机偏好，所以不会出现「设置里改了、终端里滚一下又变回去」）。
+ * 滑杆和数字走同一套 `settings-font-slider` 样式，跟上面三处字号看起来是一家的。
+ */
+function TerminalFontSettings() {
+	const t = useT();
+	const [px, setPx] = useStoredNumber(TERMINAL_FONT_KEY, TERMINAL_FONT_DEFAULT, TERMINAL_FONT_MIN, TERMINAL_FONT_MAX);
+	return (
+		<div className="settings-panel">
+			<div className="settings-head">
+				<span>{t("命令行字号（终端）", "Command-line font size (terminal)")}</span>
+				<span className="settings-sub">
+					{t(
+						"右侧终端面板里的字（也能在终端里用 ⌘/Ctrl + 滚轮调）",
+						"Text inside the terminal panel (or ⌘/Ctrl + wheel in it)",
+					)}
+				</span>
+			</div>
+			<div className="settings-font-slider">
+				<span className="settings-font-label">{t("字号", "Size")}</span>
+				<div className="settings-font-track">
+					<input
+						id="settings-terminal-font"
+						type="range"
+						min={TERMINAL_FONT_MIN}
+						max={TERMINAL_FONT_MAX}
+						step={1}
+						value={px}
+						aria-label={t(
+							`命令行字号（${TERMINAL_FONT_MIN}–${TERMINAL_FONT_MAX} 像素）`,
+							`Command-line font size (${TERMINAL_FONT_MIN}–${TERMINAL_FONT_MAX} px)`,
+						)}
+						aria-valuetext={`${px}px`}
+						onChange={(event) => setPx(Number(event.target.value))}
+					/>
+					<div className="settings-font-bounds" aria-hidden="true">
+						<span>{TERMINAL_FONT_MIN}px</span>
+						<span>{TERMINAL_FONT_MAX}px</span>
+					</div>
+				</div>
+				<span className="settings-font-value mono">{px}px</span>
+			</div>
+			<div className="settings-hint">
+				{t(
+					"只存本机，立即生效。终端里 ⌘/Ctrl + 滚轮、⌘/Ctrl + = / - 也能调，⌘/Ctrl + 0 恢复 14px。",
+					"Stored on this device and applied immediately. You can also use ⌘/Ctrl + wheel or ⌘/Ctrl + = / - inside the terminal; ⌘/Ctrl + 0 resets to 14px.",
+				)}
+			</div>
+		</div>
+	);
+}
+
 function AppearanceSettings() {
 	const t = useT();
 	const { font, width, setFont, setWidth } = useChatDisplay();
@@ -1019,6 +1338,9 @@ function AppearanceSettings() {
 			</div>
 			{/* 三处字号并排：聊天正文 → 侧栏项目名 → 侧栏会话名。
 			    都是「字多大」这一类，放一起才不用在 tab 里来回找；同一套档位卡片。 */}
+			{/* 终端字号排在三处字号**前面**（用户 2026-10-30：「在聊天字体大小上面加一个」）：
+			 * 它调的是右侧终端面板（xterm）的字，跟下面三处一样都是「字多大」这一类，只是管的地方不同。 */}
+			<TerminalFontSettings />
 			<div className="settings-panel">
 				<div className="settings-head">
 					<span>{t("聊天字体大小", "Chat font size")}</span>
@@ -1068,25 +1390,7 @@ function AppearanceSettings() {
 						{t("对话列的最大宽度（窄屏自动铺满）", "Max width of the conversation column (narrow screens fill it)")}
 					</span>
 				</div>
-				<div className="settings-langs settings-langs-4">
-					{CHAT_WIDTHS.map((item) => (
-						<label
-							key={item.id}
-							className={`settings-lang${width === item.id ? " settings-lang-on" : ""}`}
-							title={item.px > 0 ? `${item.px}px` : t("铺满整个对话区", "Fill the whole area")}
-						>
-							<input
-								type="radio"
-								name="settings-chat-width"
-								value={item.id}
-								checked={width === item.id}
-								onChange={() => setWidth(item.id)}
-							/>
-							<span className="settings-lang-name">{t(item.label, item.labelEn)}</span>
-							<span className="settings-lang-hint">{item.px > 0 ? `${item.px}px` : t("默认", "Default")}</span>
-						</label>
-					))}
-				</div>
+				<ChatWidthControl value={width} onChange={setWidth} />
 			</div>
 			{/* 色板不在这里了：2026-10-29 用户要求单独一页「主题」（见下面的 ThemeSettings）。
 			 * 这一页只管“字多大 / 多宽 / 顶栏多高”这类尺寸。 */}

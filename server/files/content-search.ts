@@ -20,7 +20,7 @@ const GREP_MAX_RESULTS = 200;
 const GREP_MAX_FILES = 20000;
 const GREP_MAX_FILE_BYTES = 512 * 1024;
 /** 单行最多回多少字（长的压缩行 / 生成的 JSON 别把整屏撑爆） */
-const GREP_LINE_CHARS = 400;
+export const GREP_LINE_CHARS = 400;
 const GREP_MAX_DEPTH = 12;
 
 export type ContentMatch = {
@@ -44,7 +44,7 @@ const REGEX_SPECIAL = /[.+^${}()|[\]\\]/g;
  * 简易 glob → 正则：`*` 不跨目录、`**` 跨目录、`?` 一个字符。
  * 空模式回 null（= 不筛）。
  */
-function globToRegExp(glob: string): RegExp | null {
+export function globToRegExp(glob: string): RegExp | null {
 	const pattern = glob.trim();
 	if (pattern === "") return null;
 	let out = "";
@@ -80,7 +80,7 @@ function globToRegExp(glob: string): RegExp | null {
  *   - 不带的只看文件名（`*.ts` = 所有 ts），这是最常用的一种；
  *   - 一个通配符都没有的纯词按「包含」处理（`ts` → `*ts*`），省得人人先学 glob。
  */
-function matchesGlob(path: string, glob: string): boolean {
+export function matchesGlob(path: string, glob: string): boolean {
 	const pattern = glob.trim();
 	if (pattern === "") return true;
 	const effective = /[*?]/.test(pattern) ? pattern : `*${pattern}*`;
@@ -94,7 +94,7 @@ function matchesGlob(path: string, glob: string): boolean {
  * 把一行文本裁成「看得见命中」的一段。
  * 长行（压缩过的 JSON 之类）从命中前留 40 字开始截 —— 只留开头的话，命中在 3000 列就白截了。
  */
-function lineWindow(raw: string, at: number): { text: string; column: number } {
+export function lineWindow(raw: string, at: number): { text: string; column: number } {
 	const trimmed = raw.replace(/\s+$/, "");
 	// 行首缩进也算「有效内容」：从行首开始截时保持原样（缩进很有信息量），但命中离行首太远就平移窗口
 	const lead = trimmed.length - trimmed.trimStart().length;

@@ -6,7 +6,9 @@
  *
  * 四条纪律：
  *   1. **不挡启动**：整件事异步跑，网络失败 / 超时（1.5 秒）就当没这回事，绝不抛错；
- *   2. **不每次都问 npm**：结果按 24 小时缓存在 `<dataDir>/update-check.json`；
+ *   2. **不每次都问 npm**：结果缓存在 `<dataDir>/update-check.json`（新鲜期 6 小时）；
+ *      但「缓存的 latest 比本机还旧」时**不信缓存**（换过源 / 镜像同步慢 / 刚发完版），
+ *      重量一次 —— 不然一条过期记录能把「有新版」按到人看不见；
  *   3. **能关**：`AGENT_WEB_UPDATE_CHECK=off`（离线 / 内网 / CI）；
  *   4. **只报告，不替用户升级**：升级可能打断正在跑的回合，必须由人来按（`aw upgrade`）。
  */
@@ -15,11 +17,11 @@ import { dirname, join } from "node:path";
 import { packageMeta } from "./util/version.js";
 
 const CACHE_FILE = "update-check.json";
-/** 缓存 24 小时：够新鲜，也不至于敲一次 `aw` 就问一次 npm */
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+/** 缓存 6 小时：够新鲜，也不至于敲一次 `aw` 就问一次 npm（发完版半小时内就能看到提示） */
+const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 1500;
 
-export type UpdateCheckResult = {
+type UpdateCheckResult = {
 	current: string;
 	latest: string;
 	hasUpdate: boolean;
@@ -119,7 +121,16 @@ export async function checkForUpdate(options: {
 
 	const now = options.now?.() ?? Date.now();
 	const cached = readCache(options.dataDir);
-	let latest = cached && now - cached.checkedAt < CACHE_TTL_MS && cached.checkedAt <= now ? cached.latest : null;
+	/**
+	 * 缓存能不能直接用：新鲜 **且** 不比本机旧。
+	 *
+	 * 后半个条件是**自愈**用的：缓存里存着一条比本机还旧的 `latest`，说明这次查询结果本来就
+	 * 不可信（换过 `AGENT_WEB_NPM_REGISTRY` / 镜像还没同步 / 以前查过更旧的）—— 拿它当 6 小时
+	 * 的答案，就会把「有新版」按到人看不见。遇到这种就重查一次，查到新的自然把缓存洗芳。
+	 */
+	const fresh = cached !== null && now - cached.checkedAt < CACHE_TTL_MS && cached.checkedAt <= now;
+	const usable = fresh && !isNewerVersion(meta.version, cached.latest);
+	let latest = usable ? cached.latest : null;
 	if (!latest) {
 		const fetched = await fetchLatestVersion(meta.name);
 		if (!fetched) return null; // 查不到就不提示，也不写缓存（下次启动再试）

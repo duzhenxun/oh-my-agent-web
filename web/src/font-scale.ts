@@ -12,7 +12,7 @@
  * 起因是「侧栏项目名和会话标题看着像被压扁了」：当时两处是 12 / 13px + 项目名半粗体，
  * 中文在半粗体小字号下笔画会糊在一起；14px 起步就恢复正常的字面比了。
  */
-export type FontScaleId = "s" | "m" | "l" | "xl";
+type FontScaleId = "s" | "m" | "l" | "xl";
 
 /** 三处字号：聊天正文 / 侧栏项目名 / 侧栏会话名 */
 export type FontLayer = "chat" | "project" | "session";
@@ -68,7 +68,7 @@ export const FONT_MAX_PX = 30;
 export const FONT_STEP_PX = 2;
 
 /** 某一层的档位表里按 id 找（老存储值 `s/m/l/xl` 靠它映射到该层对应的像素） */
-function findFontScale(id: string | null | undefined, layer: FontLayer = "chat"): FontScaleDef | null {
+export function findFontScale(id: string | null | undefined, layer: FontLayer = "chat"): FontScaleDef | null {
 	return FONT_LADDERS[layer].find((item) => item.id === id) ?? null;
 }
 

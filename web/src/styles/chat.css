@@ -496,6 +496,13 @@
 	color: var(--text-faint);
 }
 
+/* 「设置 → 远程」里的密码输入框：跟说明文字 / 保存按钮并排，不撑满整行
+   （撑满会把保存按钮挤到下一行，看起来像两个不相干的东西） */
+.settings-password-input {
+	flex: 1 1 200px;
+	max-width: 320px;
+}
+
 .settings-hint {
 	color: var(--text-faint);
 	font-size: 13px;

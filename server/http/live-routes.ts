@@ -34,7 +34,11 @@ type LiveDeps = {
 	};
 	/** 请求分发（与 WS 那条路共用） */
 	handleMessage: (clientId: string, socket: { send: (payload: string) => void }, raw: string) => Promise<void>;
-	logger: { info: (message: string, meta?: Record<string, unknown>) => void };
+	logger: {
+		info: (message: string, meta?: Record<string, unknown>) => void;
+		/** 噪声级别的（每个客户端一条的 SSE 连/断）：只在 `AGENT_WEB_LOG=debug` 时落盘 */
+		debug: (message: string, meta?: Record<string, unknown>) => void;
+	};
 };
 
 /** 客户端标识：优先请求头 / 查询参数（每个标签页不一样），最后才回落到 cookie */
@@ -103,7 +107,10 @@ export function registerLiveRoutes(app: Express, deps: LiveDeps): void {
 		// 能力协商：带 slim=1 的客户端由服务端决定「会话清单只在变化时带」
 		deps.clientTracker?.setSlim(clientId, request.query?.slim === "1");
 		// 带上客户端标识前缀：排查「两个设备互相拽着切会话」时，一眼能看出它们是不是同一个 id
-		deps.logger.info("SSE 已连接", {
+		//
+		// 故意用 debug：每个标签页 / 每次重连都会写一条，正常运行时纯噪声（日志文件里一天几十行）。
+		// 真要查「谁把谁拽走了」时用 `AGENT_WEB_LOG=debug aw` 打开。
+		deps.logger.debug("SSE 已连接", {
 			clients: deps.sinks.size,
 			slim: request.query?.slim === "1",
 			client: clientId.slice(0, 8),
@@ -125,7 +132,7 @@ export function registerLiveRoutes(app: Express, deps: LiveDeps): void {
 				deps.sinks.delete(clientId);
 				deps.clientTracker?.drop(clientId);
 			}
-			deps.logger.info("SSE 已断开", { clients: deps.sinks.size });
+			deps.logger.debug("SSE 已断开", { clients: deps.sinks.size });
 		});
 	});
 

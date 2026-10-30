@@ -7,7 +7,6 @@
  */
 import { useEffect, useRef } from "react";
 import { fileTypeOf } from "../file-type.ts";
-import { dirname, tailSegments } from "../path-utils.ts";
 import { useT } from "../use-language.ts";
 import type { MentionRow } from "../at-mentions.ts";
 
@@ -26,6 +25,7 @@ export function MentionPalette({
 	onPick,
 	onHover,
 	onBrowse,
+	onOpenFile,
 }: {
 	rows: MentionRow[];
 	/** 当前高亮的第几条（键盘选择） */
@@ -38,6 +38,8 @@ export function MentionPalette({
 	onHover: (index: number) => void;
 	/** 选中「文件和文件夹 / 文件夹」：让服务端弹原生选择框 */
 	onBrowse: (target: "file" | "dir") => void;
+	/** 行尾那颗「在右侧打开」：不往草稿里插引用，直接把这个文件开到右边分栏里 */
+	onOpenFile?: (path: string) => void;
 }) {
 	const t = useT();
 	const listRef = useRef<HTMLDivElement | null>(null);
@@ -98,8 +100,30 @@ export function MentionPalette({
 									<>
 										<FileBadge name={row.name} isDir={row.isDir} />
 										<span className="mention-name mono">{row.name}</span>
-										{/* 路径只给「在哪儿」：项目深的时候前面几段省略，别把文件名挤掉 */}
-										<span className="mention-path">{tailSegments(dirname(row.path), 3)}</span>
+										{/* 路径给**从项目根开始的完整一条**（含文件名）：
+										    `1212.json` 这种同名文件靠它才分得清是哪个目录里的 */}
+										<span className="mention-path">{row.path}</span>
+										{/* 目录不能开预览（那是「读文件」），所以只有文件行给这颗按钮 */}
+										{onOpenFile && !row.isDir ? (
+											<span
+												className="mention-open"
+												role="button"
+												title={t("在右侧面板打开这个文件", "Open this file in the side panel")}
+												aria-label={t("在右侧面板打开", "Open in the side panel")}
+												onMouseDown={(event) => {
+													// 只开文件，不插引用：所以不能让它冒泡到行的 onMouseDown（那一下是「选中」）
+													event.preventDefault();
+													event.stopPropagation();
+													onOpenFile(row.path);
+												}}
+											>
+												<svg viewBox="0 0 16 16" aria-hidden="true">
+													<path d="M9.5 2.5H13.5V6.5" />
+													<path d="M13.5 2.5 8 8" />
+													<path d="M12.5 9.5V13.5H2.5V3.5H6.5" />
+												</svg>
+											</span>
+										) : null}
 									</>
 								)}
 							</button>

@@ -12,8 +12,9 @@
  * 选项（也可用同名环境变量，命令行优先）：
  *   -p, --port <n>        AGENT_WEB_PORT       默认 25257
  *   -H, --host <addr>     AGENT_WEB_HOST       默认 127.0.0.1
- *   -P, --password <pwd>  AGENT_WEB_PASSWORD   非本机访问时的登录密码
- *       --allow-host <h>  AGENT_WEB_ALLOWED_HOSTS  额外允许的域名（可重复）
+ *   -P, --password <pwd>  AGENT_WEB_PASSWORD   非本机访问时的登录密码（写进 <dataDir>/password，之后以那份为准）
+ *                                              给了就存进数据目录，下次重启不必再给
+ *       --allow-host <h>  AGENT_WEB_ALLOWED_HOSTS  给「发给本机」的跨源请求额外放行的域名（一般用不到）
  *       --data-dir <dir>  AGENT_WEB_DATA_DIR   默认 ~/.oh-my-agent-web
  *   -d, --detach          后台运行（脱离终端，日志进 daemon.log）
  *   -f, --foreground      前台运行（就是默认，留着给老脚本）
@@ -33,6 +34,7 @@ import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { applyStoredOptions } from "./cli-config.js";
+import { writePasswordFile } from "./http/password-store.js";
 import { migrateLegacyDataDir } from "./util/data-dir.js";
 import { DEFAULT_DATA_DIR_NAME } from "./util/env.js";
 import { prunePtyPrebuilds } from "./util/prune-pty.js";
@@ -55,20 +57,23 @@ const USAGE = `用法: agent-web [命令] [选项]        （agent-web / aw / oh
 选项（也可以用环境变量）:
   -p, --port <n>       监听端口            AGENT_WEB_PORT（默认 25257）
   -H, --host <addr>    监听地址            AGENT_WEB_HOST（默认 127.0.0.1）
-  -P, --password <pwd> 访问密码            AGENT_WEB_PASSWORD
-      --allow-host <h> 额外允许的域名      AGENT_WEB_ALLOWED_HOSTS（可多次 / 逗号分隔）
+  -P, --password <pwd> 访问密码            AGENT_WEB_PASSWORD（给了就存进数据目录；之后一律以数据目录那份为准）
+      --allow-host <h> 跨源白名单（少见）    AGENT_WEB_ALLOWED_HOSTS（可多次 / 逗号分隔）
       --data-dir <dir> 数据目录            AGENT_WEB_DATA_DIR（默认 ~/.oh-my-agent-web）
   -d, --detach         后台运行（脱离终端；日志见 daemon.log）
   -f, --foreground     前台运行（就是默认，留着给老脚本）
       --no-open        不要在浏览器里打开页面
 
-没给 --password / --allow-host 时，会读数据目录里的 password / allowed-hosts 兜底
-（设一次就一直在，重启不必重复输入）。远程第一次打开时若还没设密码，页面会让你先设一个。
+密码只有一个来源：<dataDir>/password（给了 -P / AGENT_WEB_PASSWORD 会先写进去，之后只读它）
+（设一次就一直在，重启不必重复输入；也可以在本机页面的 设置 → 远程 里改）。
+远程（局域网 IP / 域名 / 隧道）只要访问时带上密码就能进，**不用再配域名白名单**；
+但密码必须**先在本机设好**（本机打开 设置 → 远程，或启动时 -P）—— 远程不能设第一个密码。
 
 例：
   aw                                                    # 前台起 + 打开页面（Ctrl-C 退出）
   aw -d                                                 # 后台起，终端立刻还给你
-  aw -H 0.0.0.0 --allow-host agent.example.com           # 供外网访问（首次打开会先让你设密码）
+  aw -H 0.0.0.0                                    # 局域网可访问（先在本机设好密码）
+  aw -H 0.0.0.0 -P <密码>                          # 直接带密码起（远程用域名/ IP 访问都行）
   aw status && aw restart                               # 看完状态再重启
   aw stop                                               # 停掉（前台/后台都行）`;
 
@@ -80,6 +85,8 @@ type ParsedArgs = {
 	foreground: boolean;
 	/** 起来后要不要打开浏览器（`--no-open` 关掉） */
 	open: boolean;
+	/** `-P` 显式给的密码（`null` = 没给）：只有它会改写 `<dataDir>/password` */
+	password: string | null;
 };
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -88,6 +95,8 @@ function parseArgs(argv: string[]): ParsedArgs {
 	let help = false;
 	let foreground = true;
 	let open = true;
+	/** `-P` 显式给的密码：只有它会改写 `<dataDir>/password`（纯环境变量不写） */
+	let password: string | null = null;
 
 	for (let i = 0; i < argv.length; i += 1) {
 		const arg = argv[i] ?? "";
@@ -108,15 +117,17 @@ function parseArgs(argv: string[]): ParsedArgs {
 		else if (arg === "--open") open = true;
 		else if (arg === "-p" || arg === "--port") env.AGENT_WEB_PORT = takeValue();
 		else if (arg === "-H" || arg === "--host") env.AGENT_WEB_HOST = takeValue();
-		else if (arg === "-P" || arg === "--password") env.AGENT_WEB_PASSWORD = takeValue();
-		else if (arg === "--allow-host") {
+		else if (arg === "-P" || arg === "--password") {
+			password = takeValue();
+			env.AGENT_WEB_PASSWORD = password;
+		} else if (arg === "--allow-host") {
 			const value = takeValue();
 			env.AGENT_WEB_ALLOWED_HOSTS = [env.AGENT_WEB_ALLOWED_HOSTS, value].filter(Boolean).join(",");
 		} else if (arg === "--data-dir") env.AGENT_WEB_DATA_DIR = resolve(takeValue());
 		else if (arg.startsWith("-")) throw new Error(`未知选项：${arg}`);
 		else throw new Error(`未知命令：${arg}`);
 	}
-	return { command, env, help, foreground, open };
+	return { command, env, help, foreground, open, password };
 }
 
 function dataDir(): string {
@@ -437,6 +448,11 @@ async function main(): Promise<void> {
 	Object.assign(process.env, parsed.env);
 	// 旧目录（~/.agent-web）→ 新目录（~/.oh-my-agent-web）：搬的是密码/订阅/设置/日志/锁
 	migrateLegacyDataDir({ dataDir: dataDir(), log: (line) => console.log(line) });
+	// 只有 `-P/--password` 算「显式改密码」：它会写进 `<dataDir>/password`，
+	// 之后一律以那份文件为准（用户 2026-10-30：「都用 ~/.oh-my-agent-web/password，
+	// 不需要走 AGENT_WEB_PASSWORD」）。纯环境变量不再改写文件 —— 否则又会出现
+	// 「设置里改了、重启后却变回去」那种自相矛盾。
+	const explicitPassword = (parsed.password ?? "").trim();
 	// 命令行没给的：用数据目录里存的那份补上（远程密码忘了带 = 远程直接 403，踩过）
 	await applyStoredOptions(process.env, dataDir());
 
@@ -475,11 +491,24 @@ async function main(): Promise<void> {
 	// start / restart：先确认不是「已经在跑了」（三个命令名共用这一处检测）
 	if (await detectRunning(parsed.open)) return;
 
-	// 顺手查一下有没有新版：启动时就并发问，别让它拖启动（缓存 24h，首次最多 1.5s 超时）
-	const update = checkForUpdate({ dataDir: dataDir() }).catch(() => null);
+	// 真的要起来了，才把「显式给的密码」落盘：已经在跑的时候不写，
+	// 否则文件里的新密码和当前进程里的旧密码对不上，只会让人下次重启时奇怪。
+	// 写进去之后，下次 `aw` 不带 -P 也仍然有密码（用户 2026-10-30 的要求）。
+	if (explicitPassword !== "") {
+		try {
+			await writePasswordFile(join(dataDir(), "password"), explicitPassword);
+		} catch (error) {
+			// 存不下不该拦住启动：进程内存里仍然有密码，只是下次重启得再给一次
+			console.error(
+				`[oh-my-agent-web] 访问密码没能存进数据目录（${error instanceof Error ? error.message : String(error)}）：本次仍然生效，但重启后要重新给`,
+			);
+		}
+	}
 
 	// start / restart：默认**前台**跑（日志直接打在终端，Ctrl-C 退出），`-d` 才丢到后台
 	if (!parsed.foreground) {
+		// 后台启动：并发问一次，起来之后再打印（别让网络拖住启动）
+		const update = checkForUpdate({ dataDir: dataDir() }).catch(() => null);
 		await startDetached(process.argv.slice(2), parsed.open);
 		const line = describeUpdate(await update);
 		if (line) console.log(line);
@@ -489,11 +518,15 @@ async function main(): Promise<void> {
 	// 告诉服务层「终端在看着」：只留 warn / error，正常日志光进文件（见 index.ts 的 quietConsole）。
 	// 必须看 isTTY：后台子进程也走这个分支，但它的 stdout 是 daemon.log —— 那里要保留全部日志。
 	if (process.stdout.isTTY) process.env.AGENT_WEB_FOREGROUND = "1";
+	// 升级提示由 index.ts 印在启动那屏里（`aw > log` 这种不是 TTY 的也照样印）。
+	// 后台子进程（`AGENT_WEB_FOREGROUND=0`，见 startDetached）跳过：那一路的提示由父进程在
+	// 终端上印，子进程再印一份就只会在 daemon.log 里重复一遍（还白查一次 registry）。
+	if (process.env.AGENT_WEB_FOREGROUND !== "0") process.env.AGENT_WEB_UPDATE_NOTICE = "1";
 	// 启动提示里的命令名（aw / agent-web / oh-my-agent-web）由实际敲的那个决定
 	process.env.AGENT_WEB_CLI_NAME = invokedName();
 	await import("./index.js");
-	const line = describeUpdate(await update);
-	if (line) console.log(line);
+	// 前台的「有新版本」提示由 index.ts 印在启动那屏（banner）下面：
+	// 这里再印一次就会跑到 banner 上面去、还容易被启动日志淹没。
 }
 
 // 被当脚本执行时才 main（被 import 时什么都不做）

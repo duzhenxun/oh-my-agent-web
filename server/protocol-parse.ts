@@ -7,7 +7,7 @@ import { normalizeWorkspacePath } from "./util/paths.js";
 
 // ---------------------------------------------------------------------------
 
-const REQUEST_TYPES: ClientRequestType[] = [
+export const REQUEST_TYPES: ClientRequestType[] = [
 	"set_engine",
 	"refresh_actions",
 	"send_message",

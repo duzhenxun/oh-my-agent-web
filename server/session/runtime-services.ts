@@ -53,8 +53,14 @@ export function createRuntimeServices(options: RuntimeServicesOptions): RuntimeS
 		max: options.options.maxNotices,
 		onNotice: options.onNotice,
 	});
-	const notice = (text: string, level: Notice["level"] = "info", key?: string): void =>
-		void sink.push(text, level, key);
+	/**
+	 * 推一条提示（`key` 相同就原地替换；`conversationId` 有值就只给「看那个会话」的界面）。
+	 *
+	 * ⚠️ 四个参数一个都不能丢：之前只转发了三个，`conversationId` 被吃掉，
+	 * 于是「A 会话报的错」在所有会话 / 所有窗口的提示条上都冒出来（用户报过）。
+	 */
+	const notice = (text: string, level: Notice["level"] = "info", key?: string, conversationId?: string): void =>
+		void sink.push(text, level, key, conversationId);
 
 	const approval = createApprovalBridge({
 		rules: options.options.rules,

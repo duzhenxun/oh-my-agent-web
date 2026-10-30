@@ -93,7 +93,7 @@ const PROBE_CWD_PREFIX = "agent-web-probe-";
  * 出字速度按「首字节之后到收尾」这段算：把排队 / 长思考之前的等待扣除，
  * 才是模型真正的生成速度（TTFT 单独给你看）。
  */
-function probeMetrics(
+export function probeMetrics(
 	probe: { startedAt: number; firstAt: number | null; outputTokens: number },
 	endedAt: number,
 ): ModelProbeResult {

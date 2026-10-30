@@ -39,6 +39,7 @@
 @import "./styles/annotations.css"; /* 选中文字的「添加」：正文编号 + 输入框**里面**那颗「N 条注释」 */
 @import "./styles/changed-files.css";
 @import "./styles/files.css";
+@import "./styles/file-find.css"; /* 代码预览的查找条（Cmd/Ctrl+F）*/
 @import "./styles/files-toolbar.css";
 @import "./styles/content-search.css"; /* 全文搜索浮层（文件管理标题栏那面放大镜 / ⌘⇧F） */
 @import "./styles/preview-panel.css";

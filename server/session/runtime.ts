@@ -289,7 +289,6 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			void engine.parkSession?.(id).catch(() => undefined);
 		},
 		pushSnapshot,
-		report: (text) => options.onStartupInfo?.(text), // 只写日志，不进对话流（切会话慢时靠它定位）
 	});
 
 	const refreshModels = createModelRefresher({ engine, state });
@@ -624,7 +623,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 
 		forkSession: (conversationId, messageId, clientId) => forkSession(conversationId, messageId, clientId),
 
-		deleteSession: (conversationId) => deleteSession(conversationId),
+		deleteSession: (conversationId, options) => deleteSession(conversationId, options),
 
 		moveSession: (conversationId, workspace) => moveSession(conversationId, workspace),
 

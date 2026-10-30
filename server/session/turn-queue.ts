@@ -76,7 +76,7 @@ function toViews(entries: QueuedMessage[]): QueuedView[] {
  */
 type BusyResult = { ok: true } | { ok: false; error: { code: string; message: string } } | null;
 
-function createBusyHandler(deps: {
+export function createBusyHandler(deps: {
 	/** 排队 / 插队落在**这条消息真正要去**的那个会话上（不是全局 activeId，见 turn-send 的说明） */
 	queue: (conversationId: string, text: string, attachments: AttachmentRef[] | undefined, mode: QueuedMode) => number;
 	/** steer = true：这条是「插队」插进来的（界面要标一下） */
@@ -326,7 +326,7 @@ export function createTurnPlumbing(options: {
 }
 
 /** 插队挂在宿主上的最长时长：超过它就不再等 step 边界（否则插队会退化成排队） */
-const STEER_HOLD_MS = 3000;
+export const STEER_HOLD_MS = 3000;
 
 /**
  * 插队的**最小撤回窗口**：这段时间内即使 step 边界已经到了也不注入。
@@ -336,7 +336,7 @@ const STEER_HOLD_MS = 3000;
  * 既然提示语承诺"还没插进去、可以撤回"，就得给得出这段真实的时间。
  * 代价是插队最多晚 1.2 秒生效，换来一个可用的撤回按钮。
  */
-const STEER_MIN_HOLD_MS = 1200;
+export const STEER_MIN_HOLD_MS = 1200;
 
 /** 取消一条待发消息的对外动作（runtime 里只留一行） */
 export function cancelQueuedWith(

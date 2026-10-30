@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } f
 import { layoutPanelTabs, panelTabTargetIndex, type PanelTabBox } from "../panel-tab-dnd.ts";
 import { movePanel, samePanelOrder, type PanelKey } from "../panel-order.ts";
 import { useT } from "../use-language.ts";
+import { currentMobileShell } from "../mobile-shell-dom.ts";
 import { PanelIcon } from "./PanelIcon.tsx";
 
 const DRAG_THRESHOLD = 5;
@@ -72,6 +73,12 @@ export function SortablePanelTabs({
 		// Tab 上的拖动用于排序，不能再冒泡成「移动整个弹窗」；头部空白处仍可移动弹窗。
 		event.stopPropagation();
 		if (event.button !== 0 || dragRef.current) return;
+		/**
+		 * 手机上这排 Tab 会换行成两排（responsive.css），而排序的槽位算法是**单行**的
+		 * （只比横向位置）—— 两行时同一列的左右缘会撞在一起，拖起来顺序乱跳。
+		 * 用户 2026-10-30：「手机上不需要更换他们的位置」→ 手机只响应点击，不启动排序。
+		 */
+		if (currentMobileShell()) return;
 
 		const pointerId = event.pointerId;
 		const button = event.currentTarget;

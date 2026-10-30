@@ -25,7 +25,7 @@ const VERSION_RE = /\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?/;
 const DEFAULT_TIMEOUT_MS = 4000;
 
 /** 从一整行输出里挑出版本号本体（`codex-cli 0.162.1` → `0.162.1`）；没有就 null */
-function parseVersionText(text: string): string | null {
+export function parseVersionText(text: string): string | null {
 	const match = VERSION_RE.exec(text ?? "");
 	return match ? match[0] : null;
 }

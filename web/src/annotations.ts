@@ -67,7 +67,7 @@ function parseOne(raw: unknown): Annotation | null {
 }
 
 /** JSON 串 → 标注列表（坏一条丢一条，不整体作废） */
-function parseAnnotations(raw: string | null): Annotation[] {
+export function parseAnnotations(raw: string | null): Annotation[] {
 	if (raw === null || raw === "") return [];
 	let parsed: unknown;
 	try {

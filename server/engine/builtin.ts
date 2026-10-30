@@ -42,7 +42,7 @@ export function createBuiltinEngineRegistry(options: {
 	 */
 	thinkCount?: () => number;
 	/** pi 的告警同时要进日志（引擎层的 notify 不带 logger） */
-	onLog?: (text: string) => void;
+	onLog?: (text: string, meta?: Record<string, unknown>) => void;
 	/**
 	 * codex 的 app-server 客户端（与会话清单提供者共享同一个进程）；不给就不注册 codex。
 	 *
@@ -73,6 +73,11 @@ export function createBuiltinEngineRegistry(options: {
 						options.onLog?.(text);
 						options.onNotice(text, level);
 					},
+					// 引擎自己的结构化日志（provider 报错 / 自动重试 / 中断）：带等级与上下文，
+					// 光进文件不占终端（meta.level 由 index.ts 的 onLog 分发到对应等级）
+					...(options.onLog
+						? { log: (level, text, ctx) => options.onLog?.(text, { ...ctx, level, engine: "pi" }) }
+						: {}),
 					...(options.skillPaths ? { skillPaths: options.skillPaths } : {}),
 					...(options.thinkCount ? { thinkCount: options.thinkCount } : {}),
 				}),

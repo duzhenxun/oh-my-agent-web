@@ -6,6 +6,7 @@ import {
 	type PointerEvent as ReactPointerEvent,
 	type ReactNode,
 } from "react";
+import { currentMobileShell } from "../mobile-shell-dom.ts";
 import {
 	dropSettingsIndex,
 	moveSettingsTab,
@@ -110,6 +111,9 @@ export function SettingsTabStrip({
 	const onPointerDown = (event: ReactPointerEvent<HTMLButtonElement>, id: SettingsTabId) => {
 		// 只认左键 / 单指：右键、中键留给系统菜单
 		if (event.button !== 0 || dragRef.current) return;
+		// 手机上是「两行铺开」而不是单行（见 responsive.css），单行的槽位算法不适用；
+		// 用户 2026-10-30：「手机上不需要更换他们的位置」→ 手机只响应点击，不启动排序。
+		if (currentMobileShell()) return;
 		pending.current = { pointerId: event.pointerId, id, startX: event.clientX, startY: event.clientY };
 		// 抓住指针：拖到标签外面（甚至拖出面板）也还能收到 move/up
 		try {

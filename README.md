@@ -100,10 +100,10 @@ powershell -c "irm https://raw.githubusercontent.com/duzhenxun/oh-my-agent-web/m
 |---|---|---|---|
 | `-p, --port` | `AGENT_WEB_PORT` | `25257` | 监听端口 |
 | `-H, --host` | `AGENT_WEB_HOST` | `127.0.0.1` | 监听地址；对外访问才需要改 |
-| `-P, --password` | `AGENT_WEB_PASSWORD` | 无 | 访问密码；不设 = 只允许本机（远程首次打开会先让你设） |
+| `-P, --password` | `AGENT_WEB_PASSWORD` | 无 | 访问密码；不设 = 只允许本机（远程进不来）。给了就存进 `<dataDir>/password`，**之后一律以这份文件为准**（环境变量只在文件还没生成时用一次），「设置 → 远程」改的也是它 |
 | `-d, --detach` | — | 关（默认前台） | 后台运行，脱离终端，日志进 `~/.oh-my-agent-web/daemon.log`；`-f` / `--foreground` 是旧写法，现在等于默认 |
 | `--no-open` | — | 开 | 不在浏览器里打开页面 |
-| `--allow-host` | `AGENT_WEB_ALLOWED_HOSTS` | 只认 loopback | 额外允许的域名 / 局域网 IP（可多次或逗号分隔） |
+| `--allow-host` | `AGENT_WEB_ALLOWED_HOSTS` | 空 | 一般用不到：只给「发给本机」的**跨源**请求额外放行（域名 / 局域网 IP） |
 | `--data-dir` | `AGENT_WEB_DATA_DIR` | `~/.oh-my-agent-web` | 设置、密码、上传、日志、锁文件都放这 |
 | — | `AGENT_WEB_CWD` | `process.cwd()` | 默认工作区（还没开会话时用） |
 | — | `AGENT_WEB_ENGINE` | `pi` | 默认引擎 |
@@ -122,10 +122,14 @@ oh-my-agent-web status && oh-my-agent-web restart  # 看完状态再重启
 oh-my-agent-web stop                               # 停掉（前台/后台都行）
 oh-my-agent-web --data-dir ~/agent-web-data             # 换数据目录
 AGENT_WEB_CWD=~/code/my-proj oh-my-agent-web       # 指定默认工作区
-oh-my-agent-web -H 0.0.0.0 --allow-host agent.example.com   # 允许对外访问（首次打开会先让你设密码）
+oh-my-agent-web -H 0.0.0.0                           # 局域网/外网可达（前提：已经设过密码）
+oh-my-agent-web -H 0.0.0.0 -P 'my-pass'             # 直接带密码起，远程用 IP / 域名都能进
 ```
 
-> **想从手机访问**：`oh-my-agent-web -H 0.0.0.0 --allow-host 你的域名`，首次在手机上打开会让你**设一个访问密码**（存到数据目录里的 `password`，之后就是输密码登录），反代 / 隧道请带上 `X-Forwarded-For`（来源校验会看它）。
+> **想从手机 / 别的电脑访问**：`oh-my-agent-web -H 0.0.0.0`（让外面连得上），密码**先在本机设好**——在那台机器上打开 `http://127.0.0.1:25257/`，在 **设置 → 远程** 的密码框里设一个（也可以打开 `/setup`，或启动时 `-P`）。
+> 密码存在数据目录的 `password` 文件里（默认 `~/.oh-my-agent-web/password`），不用系统变量；之后不管用 **局域网 IP、外网 IP 还是域名**访问，输密码就能进 —— **不需要**再配 `--allow-host`。
+> 密码只能在本机定：远程访问时若还没设密码，只会看到「请先在本机设置」（`/setup`、`/api/auth/setup`、`/api/auth/password` 对远程一律 403），否则谁先扫到端口谁就接管了。
+> 反代 / 隧道请带上 `X-Forwarded-For`（来源校验会看它，否则分不清是本机还是外网）。
 >
 > **在家目录直接敲 `oh-my-agent-web`** 也能用，但家目录当工作区不安全（文件树 / 搜索 / agent 的 cwd 会是整个 home），这时会自动改用 `<数据目录>/workspace` 并打一行提示；想指定项目就用 `AGENT_WEB_CWD=/path/to/project`。
 
@@ -143,7 +147,7 @@ oh-my-agent-web -H 0.0.0.0 --allow-host agent.example.com   # 允许对外访问
 
 1. **不引数据库**：会话就是引擎写的 JSONL / thread，网页只读它、改它的名字、必要时删它。
 2. **不假装**：引擎没有的能力就在界面上藏起来（能力矩阵），面板拿不到数据就说清楚，不拿别的引擎的配置冒充。
-3. **不越界**：默认只听 `127.0.0.1`，远程暴露要显式给 `-H`、`-P`、`--allow-host` 三样。
+3. **不越界**：默认只听 `127.0.0.1`；要远程就 `-H 0.0.0.0` + **先在本机设好密码**（或 `-P`）。
 
 ---
 
@@ -362,6 +366,9 @@ oh-my-agent-web -H 0.0.0.0 --allow-host agent.example.com   # 允许对外访问
 
 **推送**：Web Push（VAPID）订阅，回合结束推一条 —— 标题=项目名、正文=会话名，失败 ❌ / 中断 ⏹ 带前缀；多设备管理、测试推送、一键清空。需要 https 或 localhost。
 
+VAPID 密钥与联系方式都在面板里管：密钥首次启动自动生成到 `<dataDir>/vapid-keys.json`（0600，可用 `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` 覆盖），联系方式（subject）存 `<dataDir>/push-config.json`（可用 `VAPID_SUBJECT` 覆盖）。
+**subject 得填真实邮箱或 https 站点**：默认值 `mailto:noreply@localhost` 会被 Apple 判 `403 BadJwtToken`（Chrome/FCM 不看这个，所以常见症状是「电脑能收、iPhone 收不到」）。换密钥会让所有已订阅设备失效（面板会顺手清空订阅，各设备重按一次「注册推送」）；改联系方式不影响任何订阅。
+
 **语音**：四类事件提示音（开始 / 结束 / 出错 / 等待审批）可试听、音量可调；本地 TTS 用浏览器内置语音播报最终回复，可调语速与音色，不联网。
 
 ---
@@ -477,7 +484,7 @@ oh-my-agent-web -H 0.0.0.0 --allow-host agent.example.com   # 允许对外访问
 | Codex 会话 | Codex 自己的 thread 存储（`thread/list \| resume \| delete`） |
 | opencode / DSH / claude 会话 | 各自的数据目录（opencode 按 cwd `session/list`；DSH 读 `~/.dsh`；claude 读 `~/.claude`） |
 | 会话标题 | pi 取首条 user 消息（只读头 60 行）；改名 = 追加 `session_info.name` |
-| 工作台状态 | `<dataDir>/settings.json`、`approval-rules.json`、`server.lock`、`logs/`、`uploads/`、`push-subscriptions.json`、`vapid-keys.json` |
+| 工作台状态 | `<dataDir>/settings.json`、`approval-rules.json`、`server.lock`、`logs/`、`uploads/`、`push-subscriptions.json`、`vapid-keys.json`、`push-config.json` |
 | 技能 / 子代理模板 / MCP | `~/.agents/skills/`、`~/.pi/agent/agents/`、`~/.pi/agent/mcp.json` |
 | 本机界面偏好 | 浏览器 `localStorage`（`agent-web.` 前缀：主题、字号、宽度、快捷键、注释、标签页） |
 
@@ -485,14 +492,16 @@ oh-my-agent-web -H 0.0.0.0 --allow-host agent.example.com   # 允许对外访问
 
 ## 安全模型
 
-- 默认只听 `127.0.0.1`，并校验 `Origin` / `Host`（含 `AGENT_WEB_ALLOWED_HOSTS` 白名单、vite 端口、局域网地址）。
-- 身份判定：对端是回环**且** Host 是回环 → 放行；未设密码时远程一律 403；设了密码则走 cookie（`agent-web-auth`，7 天 HttpOnly）或 HTTP Basic；登录失败按 20 次 / 10 分钟节流。
+- 默认只听 `127.0.0.1`；远程要显式 `-H 0.0.0.0`（或指定别的地址）。
+- 身份判定：对端是回环**且** Host 是回环 → 放行（本机不用密码）；其余一律要密码，未设密码时远程全拒。
+- **密码只能在本机设 / 改**（本机 **设置 → 远程** 的密码框、打开 `/setup`，或启动时 `-P`）：远程不能设第一个密码 —— 否则端口一暴露，谁先扫到谁接管。密码落盘在 `<数据目录>/password`（一行明文，0600），改完立即生效、不用重启；`-P` 给的也会写进去，下次重启不必再带。设了密码则走 cookie（`agent-web-auth`，7 天 HttpOnly）或 HTTP Basic；登录失败按 20 次 / 10 分钟节流。
+- **域名 / 局域网 IP / 外网 IP 都不需要白名单**：同源请求直接放行，远程来的请求一律交给密码那道门（`--allow-host` 一般用不上）。跨源门禁只保留给「**真的是从本机来**」的请求 —— 那才是 CSRF 的靶子（本机直连免密码）；判据用真实来源（`X-Forwarded-For` 已算过），所以反代把 `Host` 重写成 `127.0.0.1` 也不会误伤自己的域名。
 - 工具与命令走审批：**只读工具**（read / grep / find / ls）与只读命令自动放行，其余按 `scopeKey`（工具 + 可执行名或目标目录）询问；点「总是允许」把规则写进 `approval-rules.json`（原子写，坏文件当空）。
 - 回合结束时清掉该会话所有悬置审批，不会挂在那等下一个人点。
 - 上传的临时文件、会话缓存都在数据目录里，不写进你的项目。
 - 内置网页的代理不带 cookie、iframe 沙箱不含 `allow-same-origin`（否则远端 JS 能摸到 localStorage 与 RPC）。
 
-> 远程暴露是显式操作：必须同时给 `-H`、`-P`、`--allow-host`，缺一个都不通。
+> 远程暴露 = 两条：`-H`（让外面连得上）+ 密码（在本机 设置 → 远程 设一个，或 `-P`）。域名白名单不需要；域名 / 外网 IP / 局域网 IP 一视同仁。
 
 ---
 
@@ -530,6 +539,9 @@ CI（`.github/workflows/ci.yml`）：`npm ci` → typecheck → lint → test �
 4. 起不来但 `oh-my-agent-web status` 说「陈旧锁」→ 之前进程没退干净，下次 `start` 会自动接管；确实僵着就删 `<dataDir>/server.lock`。
 5. 端口被占 → `oh-my-agent-web -p 25258`，或先 `oh-my-agent-web stop`。
 6. 内置网页一片空白 → 该站点重登录 / 重脚本，代理不隧道 cookie；点 `⧉` 用系统浏览器。
+7. 界面报 `engine.provider_error: This operation was aborted`（偶发）→ 这是**传输层**被打断（模型刚连上、代理换了条连接、请求体被回收），不是模型真的拒绝。现在遇到这类瞬时错误会自动重试 2 次（1s / 3s 退避，界面上只留一条「正在重试」的提示），重试成功就不报错；如果还是失败，去 `<dataDir>/logs/agent-web.log` 里搜 `provider 报错` / `模型调用失败`，每条都带 `sessionId` / `attempt` / `code` / 原始 `message`（以前这类错误只变成界面上一根红条，日志里一个字都没有）。点「停止」导致的中断不会重试，也不会报红条。
+8. 想看引擎到底在干什么 → `AGENT_WEB_LOG=info aw`：`pi 自动重试`（SDK 自己那层）、`自动重试成功`、`这一轮被中断` 都记在日志里。
+9. 界面报 `请求失败：HTTP 502`（或「后端正在重启或还没起来（HTTP 502）」）→ 这是**前端到后端**那条链路，不是模型报错：开发态 `npm run dev` 是 Vite(25257) 反代后端(25258)，改 `server/` 下的文件就会重启后端，那一两秒的窗口里 `POST /api/rpc` 就会 502（终端里是 `http proxy error: connect ECONNREFUSED 127.0.0.1:25258`），正在跑的回合也会被抽掉（会话里最后一条是 `toolUse`、没有 `errorMessage` 就是这个特征）。现在开发态后端遇到端口没及时释放会在 6 秒内重试，红条也会在 SSE 重连后自动消失；**跑长回合请用 `aw`**（跑打包后的 `dist`，没有 watch 重启）。
 
 Windows 上的 shell 解析、进程树回收、路径判断、权限与 CRLF 差异已全部收口在三个模块里：`server/util/spawn-cli.ts`（PATH/PATHEXT、`.cmd` 走 `cmd.exe`、`killTree`）、`server/util/paths.ts` 与 `web/src/path-utils.ts`（分隔符与绝对路径）、`server/util/file-mode.ts`（Windows 走 `icacls`）。改跨平台相关的代码先看这三个文件头。
 

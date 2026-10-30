@@ -15,7 +15,7 @@ const PANEL_ORDER_KEY = "agent-web.panel-order.v1";
 const PANEL_ORDER_EVENT = "agent-web:panel-order";
 
 /** 与旧版界面一致的初始顺序（语音在前，设置在最后）。 */
-const DEFAULT_PANEL_ORDER: readonly PanelKey[] = [
+export const DEFAULT_PANEL_ORDER: readonly PanelKey[] = [
 	"voice",
 	"skills",
 	"push",
@@ -29,7 +29,7 @@ const DEFAULT_PANEL_ORDER: readonly PanelKey[] = [
 const PANEL_KEYS = new Set<string>(DEFAULT_PANEL_ORDER);
 
 /** 清洗持久化 / 外部传入的顺序；返回值永远恰好包含八个面板且各一次。 */
-function normalizePanelOrder(value: unknown): PanelKey[] {
+export function normalizePanelOrder(value: unknown): PanelKey[] {
 	const input = Array.isArray(value) ? value : [];
 	const valid = input.filter(
 		(key, index): key is PanelKey => typeof key === "string" && PANEL_KEYS.has(key) && input.indexOf(key) === index,
@@ -38,7 +38,7 @@ function normalizePanelOrder(value: unknown): PanelKey[] {
 }
 
 /** 读 localStorage 中的 JSON；空值 / 坏 JSON 都回落到默认顺序。 */
-function readPanelOrder(raw: string | null): PanelKey[] {
+export function readPanelOrder(raw: string | null): PanelKey[] {
 	if (!raw) return [...DEFAULT_PANEL_ORDER];
 	try {
 		return normalizePanelOrder(JSON.parse(raw));

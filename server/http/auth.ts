@@ -33,6 +33,18 @@ function cookieToken(password: string): string {
 	return createHash("sha256").update(`agent-web:${password}`).digest("hex");
 }
 
+/**
+ * 这次请求带的 cookie 是不是「用当前密码登录过」。
+ *
+ * 给 `/login` 用：已经登录的人再打开登录页，应该直接放回应用 —— 否则会出现
+ * 「输了密码、服务器 204 了、页面却又回到登录框」这种看起来没反应的死循环。
+ */
+export function isAuthenticatedCookie(cookieHeader: string | undefined, password: string | null): boolean {
+	if (!password) return false;
+	const token = tokenFromCookie(cookieHeader);
+	return token !== null && samePassword(token, cookieToken(password));
+}
+
 /** 登录成功后要写回的 `Set-Cookie`（7 天；HttpOnly：前端读不到也就偷不走） */
 export function authCookieHeader(password: string): string {
 	return [
@@ -86,6 +98,35 @@ export function samePassword(a: string, b: string): boolean {
 	const right = Buffer.from(b);
 	if (left.length !== right.length) return false;
 	return timingSafeEqual(left, right);
+}
+
+/**
+ * 跨源请求到底该不该被拦？—**只拦「真的是本机直连」的**。
+ *
+ * 为什么只拦本机：本机直连（对端回环 + Host 回环）是**不需要密码**的 —— 那才是 CSRF 的靶子：
+ * 浏览器里任何一个网页都能对 `http://127.0.0.1:<port>` 发 no-cors POST（不带 cookie 也能到达），
+ * 不带 body 的端点（起终端、停终端……）照样会被执行。
+ *
+ * 而远程来的请求（域名 / 外网 IP / 局域网 IP）无论跨不跨源都还要过**密码**那道门，
+ * 再拿域名白名单卡一道只会误伤：反向代理 / 隧道 / DNS 写法千奇百怪，
+ * 很多反代还会把 `Host` 重写成 `127.0.0.1` —— 那时只看 Host 就会把「用自己域名访问」
+ * 当成「本机点开」，用户为了能进得去又得去配 `--allow-host`（用户 2026-10-30 明确不要白名单）。
+ *
+ * 所以判据是 `local`（真实来源是否回环，XFF 已经算过）：
+ *   - local = true  → 本机免密码，跨源必须拦；
+ *   - local = false → 密码门在后面，跨源一律放行（任何域名 / IP 都能用）。
+ */
+export function isCrossOriginRejected(input: {
+	origin: string | undefined;
+	host: string | undefined;
+	policy: OriginPolicy | undefined;
+	/** 真实来源是不是本机（`effectiveAddress` 的结果 + `isLoopback`）；不给时按旧的「Host 是本机」算 */
+	local?: boolean;
+}): boolean {
+	if (input.local === false) return false; // 远程：密码门在后面，不再拿域名白名单卡
+	if (!input.policy || input.origin === undefined) return false; // 非浏览器客户端（curl / 脚本）不发 Origin
+	if (!isLoopbackHostHeader(input.host)) return false; // 目标是外面：交给密码门
+	return !isSameOrigin(input.origin, input.host) && !isAllowedOrigin(input.origin, input.policy);
 }
 
 /**
@@ -212,6 +253,44 @@ export function authMiddleware(options: {
 		}
 		// 每次请求现取：密码可能刚在「设置访问密码」页里被设上
 		const password = options.getPassword();
+		// 先把请求头和真实来源解析好（同源门禁 / `/setup` / decide 三处都要用）
+		const originHeader = request.headers.origin;
+		const hostHeader = request.headers.host;
+		const origin = typeof originHeader === "string" ? originHeader : undefined;
+		const host = typeof hostHeader === "string" ? hostHeader : undefined;
+		const forwarded = request.headers["x-forwarded-for"];
+		const remoteAddress = effectiveAddress(
+			request.socket.remoteAddress,
+			typeof forwarded === "string" ? forwarded : undefined,
+		);
+
+		/**
+		 * 本机设置**第一个密码**的入口：`/setup`。
+		 *
+		 * 为什么需要它：本机直连本来就免密码放行（进的是应用本身），而“远程首次访问时给设置页”
+		 * 那个口子现在关掉了（不能由远程定密码）—— 总得有条路能在本机设。只认
+		 * 「对端本机 + Host 本机」；反代 / 隧道打进来的（XFF 或非回环 Host）一律不给。
+		 */
+		if (request.path === "/setup") {
+			if (!(isLoopback(remoteAddress) && isLoopbackHostHeader(host))) {
+				response.setHeader("Content-Type", "application/json; charset=utf-8");
+				response.setHeader("Cache-Control", "no-store");
+				response
+					.status(403)
+					.end(JSON.stringify({ ok: false, error: "访问密码只能在运行它的那台机器上设置（或启动时带 --password）" }));
+				return;
+			}
+			if (password) {
+				response.setHeader("Location", "/");
+				response.status(303).end();
+				return;
+			}
+			sendHtmlPage(
+				response,
+				renderSetupPage({ ...(options.brandName ? { brandName: options.brandName } : {}), ...(host ? { host } : {}) }),
+			);
+			return;
+		}
 		/**
 		 * HTTP 面的同源门禁。
 		 *
@@ -224,32 +303,19 @@ export function authMiddleware(options: {
 		 * 规则：同源（Origin 与 Host 一致）直接放行；跨源必须在白名单里；
 		 * 不带 Origin 的放行（curl / 脚本 / 老客户端不发这个头）。
 		 */
-		const originHeader = request.headers.origin;
-		const hostHeader = request.headers.host;
-		const origin = typeof originHeader === "string" ? originHeader : undefined;
-		const host = typeof hostHeader === "string" ? hostHeader : undefined;
-		if (
-			options.originPolicy &&
-			origin !== undefined &&
-			!isSameOrigin(origin, host) &&
-			!isAllowedOrigin(origin, options.originPolicy)
-		) {
+		if (isCrossOriginRejected({ origin, host, policy: options.originPolicy, local: isLoopback(remoteAddress) })) {
 			response.setHeader("Content-Type", "application/json; charset=utf-8");
 			response.setHeader("Cache-Control", "no-store");
 			response.status(403).end(JSON.stringify({ ok: false, error: "跨站请求被拒绝：Origin 不在允许的来源里" }));
 			return;
 		}
 		const authorization = request.headers.authorization;
-		const forwarded = request.headers["x-forwarded-for"];
 		const cookie = request.headers.cookie;
 		const decision = decide({
 			password,
 			// 复用上面已经解析好的 host（同源校验那段也要用）
 			host,
-			remoteAddress: effectiveAddress(
-				request.socket.remoteAddress,
-				typeof forwarded === "string" ? forwarded : undefined,
-			),
+			remoteAddress,
 			authorization: typeof authorization === "string" ? authorization : undefined,
 			cookie: typeof cookie === "string" ? cookie : undefined,
 		});
@@ -260,11 +326,20 @@ export function authMiddleware(options: {
 			return;
 		}
 		if (decision === "forbid") {
-			// 没设密码：页面请求给「设置访问密码」页，其余（fetch / API）继续给 403 JSON
+			/**
+			 * 没设密码：远程一律不开放，**而且不能由远程把密码定下来**。
+			 *
+			 * 以前这个「设置访问密码」页对谁都渲染 —— 等于「谁先扫到这个端口谁就把密码定成自己的」，
+			 * 端口一暴露就被人接管。现在只有**本机**能设：远程只拿到一句「先在本机设好」。
+			 */
+			const local = isLoopback(remoteAddress);
 			if (
 				wantsLoginPage(request.method, typeof request.headers.accept === "string" ? request.headers.accept : undefined)
 			) {
-				const page = renderSetupPage(options.brandName ? { brandName: options.brandName } : {});
+				const page = renderSetupPage({
+					...(options.brandName ? { brandName: options.brandName } : {}),
+					...(local ? {} : { locked: true }),
+				});
 				sendHtmlPage(response, page);
 				return;
 			}
@@ -273,7 +348,9 @@ export function authMiddleware(options: {
 			response.status(403).end(
 				JSON.stringify({
 					ok: false,
-					error: "还没设访问密码：先用浏览器打开一次设置密码，或启动时带 --password",
+					error: local
+						? "还没设访问密码：先用浏览器打开一次设置密码，或启动时带 --password"
+						: "还没设访问密码：只能在本机（127.0.0.1）打开设置它，或启动时带 --password",
 				}),
 			);
 			return;

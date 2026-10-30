@@ -22,8 +22,44 @@ export const SPLIT_CHAT_SIDE_KEY = "agent-web.split.chatSide";
 /** 「工具卡默认展开」：工具调用的参数/输出一出现就是展开的 */
 export const TOOL_OPEN_KEY = "agent-web.chat.toolOpen";
 
+/**
+ * 「标注」：在对话里选中一段文字后浮出来的那颗小工具栏（添加到会话 / 标注 / 在临时会话中提问）。
+ *
+ * 默认开（这是这套 UI 的一个招牌动作）；关掉之后正文里选字就只是选字，不再弹东西 ——
+ * 手机上误触、或只想老老实实复制一句话的时候，那颗浮层确实碍事。
+ * 纯本机偏好（跟 `THINKING_OPEN_KEY` 同一类）：手机不想弹不代表桌面不想弹。
+ * 已经标好的东西不受影响 —— 关掉的只是「弹不弹」，不是「已存在的标注画不画」。
+ */
+export const SELECTION_TOOLBAR_KEY = "agent-web.chat.selectionToolbar";
+
 /** 「文件预览自动换行」：长行折行显示（默认开 —— 面板本来就窄，横着滚看不见后半行） */
 export const WRAP_KEY = "agent-web.preview.wrap";
+
+/**
+ * 右侧终端（xterm）的字号：默认 **14px**（跟聊天正文同一档），范围 8–24。
+ *
+ * 为什么要能调：原来写死 12px（当时只求“能放下就行”），但它在大屏上偏小、
+ * 小屏上又占地方（用户 2026-10-30：「右侧终端文字有时太小，如何调整字体大小」→ 默认改 14px）。
+ * 用的是浏览器字号那一套习惯：**⌘/Ctrl + 滚轮**在面板上调、⌘/Ctrl + `=` / `-` 键盘调，
+ * 设置 → 外观里也有一根滑杆（三处入口写的是同一个 key，改哪边都同步）。
+ * 纯本机偏好，手机 / 桌面各记各的（终端面板本身只在桌面上常用）。
+ */
+/** 代码预览的字号（⌘/Ctrl + `+` / `-` 在预览里调；默认 15 = 原来 CSS 里那个值） */
+export const PREVIEW_FONT_KEY = "agent-web.preview.fontSize";
+export const PREVIEW_FONT_DEFAULT = 15;
+export const PREVIEW_FONT_MIN = 10;
+export const PREVIEW_FONT_MAX = 32;
+
+/** 临时聊天面板的缩放百分比（⌘/Ctrl + `+` / `-`，CSS `zoom`） */
+export const SIDE_CHAT_ZOOM_KEY = "agent-web.sidechat.zoom";
+
+/** 网页面板的缩放百分比（同上） */
+export const WEB_ZOOM_KEY = "agent-web.web.zoom";
+
+export const TERMINAL_FONT_KEY = "agent-web.terminal.fontSize";
+export const TERMINAL_FONT_DEFAULT = 14;
+export const TERMINAL_FONT_MIN = 8;
+export const TERMINAL_FONT_MAX = 24;
 
 /**
  * 顶栏那一排入口的显隐：**勾上才显示，默认全勾**（见设置里的「顶栏」tab）。
@@ -155,8 +191,6 @@ export const SESSIONS_PER_PROJECT_MAX = 50;
  */
 export const CHAT_IMAGE_WIDTH_KEY = "agent-web.chat.imageMaxWidth";
 export const CHAT_IMAGE_WIDTH_DEFAULT = 400;
-/** 设置里那排按钮的档位（0 放最后 = 原尺寸） */
-export const CHAT_IMAGE_WIDTHS = [320, 400, 520, 720, 0] as const;
 
 /**
  * 本机偏好的**安全读写**（字符串版）。
