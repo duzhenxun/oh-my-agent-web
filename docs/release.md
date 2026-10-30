@@ -41,7 +41,13 @@ git push --follow-tags     # 把 main 和标签一起推上去 → release.yml �
 ```
 
 推上去之后 CI 依次做：校验「标签版本 == package.json 版本」→ `npm ci` → typecheck → lint → build
-→ 确认产物进包 → `npm publish`（OIDC，无需 OTP）。
+→ 确认产物进包 → `npm publish`（OIDC，无需 OTP）→ 建 GitHub Release（`--generate-notes`，
+并标为 Latest；已存在则跳过，所以重跑不会因为这个变红）。
+
+> **tag ≠ Release**：`git tag` 只是仓库里的一个 ref，`/releases` 页面列的是 Release 对象，
+> 「Latest」也只认 Release。所以只有 tag、没 Release 的版本不会出现在 `/releases` 上
+> （历史上 v1.0.6 ~ v1.0.9 是后来补建的）。这只影响页面展示，不影响 npm。
+> 因为这一出要写仓库，工作流的 `contents` 权限是 `write`（npm 发布本身只需要 OIDC）。
 
 关于版本号参数：
 
