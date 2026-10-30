@@ -171,7 +171,7 @@ export function createTurnSender(deps: TurnSenderDeps) {
 			}
 			setActionsOf(state, conv, []);
 			deps.turns.set(conv, { messageId: assistantMessage.id, filter: createMarkerStreamFilter(), rawText: "" });
-			setRunning(state, conv, { status: "streaming", turnStartedAt: ts });
+			setRunning(state, conv, { status: "streaming", turnStartedAt: ts, streamingText: "", activeTool: null });
 			deps.watchdog.start(conv);
 			if (!options.hidden) deps.touchConversation(conv);
 

@@ -202,8 +202,14 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			void models.refresh(id);
 			void refreshStats(id);
 			void models.refreshThinking(id);
+			/**
+			 * 临时会话（pi 的 `--no-session`）一个字都不落盘，磁盘清单不会因为建了它而变：
+			 * 这里再强制扫一遍会话目录，只是白读几百个文件再推一帧全量快照 ——
+			 * 前端侧栏（项目 × 会话都没有 memo）跟着整体重渲染，感知就是「点一下临时会话卡一下」。
+			 */
+			const ephemeral = state.conversations.some((item) => item.id === id && item.ephemeral);
 			// 新会话可能刚让引擎创建了一个项目（codex）：立刻重扫，侧栏不用等下一轮
-			void piRefresher.refresh(true);
+			if (!ephemeral) void piRefresher.refresh(true);
 		},
 	});
 	const models = createModelController({
@@ -288,6 +294,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			if (turns.has(id)) return;
 			void engine.parkSession?.(id).catch(() => undefined);
 		},
+		isTurnActive: (id) => turns.has(id),
 		pushSnapshot,
 	});
 

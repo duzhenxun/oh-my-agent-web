@@ -135,11 +135,17 @@ function settleWith(state: ServerState, nextId: (prefix: string) => string, now?
 	};
 }
 
-/** 维护 runningByConversation（并行时侧栏可以同时多行转圈） */
+/** 维护 runningByConversation（并行时侧栏可以同时多行转圈，看某条会话的人也能拿到它自己的流式正文） */
 export function setRunning(
 	state: ServerState,
 	conversationId: string,
-	value: { status: "idle" | "streaming" | "awaiting_approval" | "error"; turnStartedAt: number } | null,
+	value: {
+		status: "idle" | "streaming" | "awaiting_approval" | "error";
+		turnStartedAt: number;
+		streamingText?: string;
+		activeTool?: ServerState["running"]["activeTool"];
+		retrying?: ServerState["running"]["retrying"];
+	} | null,
 ): void {
 	if (value === null) {
 		const { [conversationId]: _gone, ...rest } = state.runningByConversation;

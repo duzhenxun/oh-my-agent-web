@@ -945,11 +945,31 @@ export function App() {
 	// 地址栏 ↔ 当前会话（?session=xxx）
 	const urlSession = useRef<string | null>(sessionIdFromUrl(window.location.search));
 	const appliedUrlSession = useRef(false);
+	/** 这个标签页「认为自己正在看」的会话：重连后拿它跟服务端对账（见下面那个 effect） */
+	const believedSession = useRef<string | null>(urlSession.current);
 	useEffect(() => {
-		// 连上之后把地址栏里的会话打开（只做一次）
-		if (appliedUrlSession.current || state.connection !== "open") return;
-		appliedUrlSession.current = true;
-		if (urlSession.current) void switchConversation(urlSession.current);
+		const id = snapshot?.active.conversationId ?? null;
+		if (id) believedSession.current = id;
+	}, [snapshot?.active.conversationId]);
+	useEffect(() => {
+		if (state.connection !== "open") return;
+		// 首次连上：把地址栏里的会话打开
+		if (!appliedUrlSession.current) {
+			appliedUrlSession.current = true;
+			if (urlSession.current) void switchConversation(urlSession.current);
+			return;
+		}
+		/**
+		 * 以后每次重连：自己再声明一次「我在看哪条会话」。
+		 *
+		 * 服务端把「每个客户端在看哪」存在内存里（ADR-0033），重启 / 切引擎 / 视图被淘汰之后就忘了；
+		 * 忘了以后给这个客户端的快照里 `active.conversationId` 就是 null —— 右侧**整块空白**
+		 * （消息、思考、工具卡全没了，看上去像回合挂了），而服务端那条会话其实还好好的。
+		 * 以前这里只做一次（`appliedUrlSession`），所以这之后只能靠用户手动点侧栏或刷新。
+		 */
+		if (getAppState().newSession) return; // 在「新会话界面」：别把人拽回上一条
+		const target = believedSession.current;
+		if (target) void switchConversation(target);
 	}, [state.connection]);
 	useEffect(() => {
 		if (!snapshot) return;

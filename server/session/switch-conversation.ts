@@ -21,6 +21,15 @@ type SwitchDeps = {
 	refreshStats: () => void;
 	/** 上一个会话不再看了：让引擎放开写锁（codex）；有回合在跑时不调用 */
 	parkPrevious: (conversationId: string) => void;
+	/**
+	 * 这条会话是不是正在跑回合。
+	 *
+	 * 打开历史会话会 `readUiMessages` 整份覆盖 `state.messages[conv]`，而正在跑的那一轮
+	 * 把「当前用户消息 + 占位的 assistant 消息」放在同一个数组里，靠 messageId 接增量事件。
+	 * 覆盖之后事件全对不上 → 正文 / 工具卡 / 思考**都不再更新**，如果引擎阅读回空数组，
+	 * 连刚发的那条用户消息一起消失（就是「跑着跑着右边空了」，用户 2026-10-30）。
+	 */
+	isTurnActive?: (conversationId: string) => boolean;
 	pushSnapshot: () => void;
 };
 
@@ -55,7 +64,14 @@ export function createSwitchConversation(deps: SwitchDeps) {
 				if (messages === null) {
 					return { ok: false, error: { code: "session.open_failed", message: `打开会话失败：${conversationId}` } };
 				}
-				state.messages[conversationId] = messages;
+				/**
+				 * 这一轮还在跑就别拿转录覆盖内存：转录里是**上一次落盘的**内容，
+				 * 覆盖会把在飞的用户消息和占位 assistant 一起顶掉（见 `isTurnActive` 的注释）。
+				 * 只把它当“补历史”用：内存里一条都没有时（刚重启 / 没加载过）才整份采用。
+				 */
+				const inFlight = deps.isTurnActive?.(conversationId) ?? false;
+				const current = state.messages[conversationId];
+				if (!inFlight || !current || current.length === 0) state.messages[conversationId] = messages;
 				await deps.refreshModels(conversationId);
 				await deps.refreshThinking(conversationId);
 				state.activeId = conversationId;

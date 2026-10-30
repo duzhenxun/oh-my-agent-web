@@ -184,3 +184,65 @@ describe("「正在重试」按会话归位", () => {
 		assert.equal(buildSnapshot(state, 100, state.activeId).running.retrying, null);
 	});
 });
+
+/**
+ * 「我正在看的那条会话在跑」→ 快照里就要有它自己的流式正文与工具。
+ *
+ * 用户 2026-10-30：跑着跑着看不到 agnet 的思考与工具调用。
+ * 并行回合 / 多标签时，客户端看的会话不一定是全局 `activeId` 那条；以前这种快照把
+ * `streamingText` / `activeTool` 一律清空，界面就只剩「在跑」两个字。
+ */
+describe("按客户端视角给的运行状态", () => {
+	it("看的会话不是全局那条：拿到它自己的流式正文与工具", () => {
+		const state = createServerState("/w");
+		state.activeId = "conv-b"; // 全局在跑 B
+		state.running = {
+			status: "streaming",
+			conversationId: "conv-b",
+			turnStartedAt: 1_000,
+			streamingText: "B 的正文",
+			activeTool: null,
+			retrying: null,
+		};
+		state.messages["conv-a"] = [
+			{ id: "m-a", role: "assistant", ts: 1_000, blocks: [{ kind: "text", text: "A 的正文" }] } as never,
+		];
+		state.runningByConversation = {
+			"conv-a": {
+				status: "streaming",
+				turnStartedAt: 900,
+				streamingText: "A 的正文",
+				activeTool: { name: "bash", argsSummary: "npm test", startedAt: 950 },
+			},
+			"conv-b": { status: "streaming", turnStartedAt: 1_000, streamingText: "B 的正文" },
+		};
+
+		const mine = buildSnapshot(state, 100, "conv-a").running;
+		assert.equal(mine.conversationId, "conv-a");
+		assert.equal(mine.status, "streaming");
+		assert.equal(mine.streamingText, "A 的正文");
+		assert.deepEqual(mine.activeTool, { name: "bash", argsSummary: "npm test", startedAt: 950 });
+
+		const other = buildSnapshot(state, 100, "conv-b").running;
+		assert.equal(other.streamingText, "B 的正文");
+		assert.equal(other.activeTool, null, "B 没有在跑工具，不能借 A 的");
+	});
+
+	it("自己的会话没在跑：状态 idle、正文空（不串别人的）", () => {
+		const state = createServerState("/w");
+		state.activeId = "conv-b";
+		state.running = {
+			status: "streaming",
+			conversationId: "conv-b",
+			turnStartedAt: 1_000,
+			streamingText: "B 的正文",
+			activeTool: { name: "bash", argsSummary: "ls", startedAt: 1_000 },
+			retrying: { attempt: 1, maxAttempts: 2 },
+		};
+		const mine = buildSnapshot(state, 100, "conv-a").running;
+		assert.equal(mine.status, "idle");
+		assert.equal(mine.streamingText, "");
+		assert.equal(mine.activeTool, null);
+		assert.equal(mine.retrying, null);
+	});
+});

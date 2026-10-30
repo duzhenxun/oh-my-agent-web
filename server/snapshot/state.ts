@@ -83,7 +83,16 @@ export type ServerState = {
 	modelByConversation: Record<string, string | null>;
 	thinkingByConversation: Record<string, string | null>;
 	filesRootByConversation: Record<string, string>;
-	runningByConversation: Record<string, { status: RunningState["status"]; turnStartedAt: number }>;
+	runningByConversation: Record<
+		string,
+		{
+			status: RunningState["status"];
+			turnStartedAt: number;
+			streamingText?: string;
+			activeTool?: RunningState["activeTool"];
+			retrying?: RunningState["retrying"];
+		}
+	>;
 	pendingApproval: PendingApproval | null;
 	/**
 	 * 版本号：界面（新会话抬头）要显示 `web v0.1.0 · pi v1.3.0`。
@@ -221,8 +230,9 @@ export function createConversation(input: {
  *
  * - 没传 activeIdOverride（老路径）：直接用全局 running；
  * - 传了且正好是全局那个会话：也用全局（它带着流式正文与工具信息）；
- * - 传了但是别的会话：从 runningByConversation 里取它自己的状态，
- *   流式正文/工具不属于这条会话，留空。
+ * - 传了但是别的会话：用 `runningByConversation` 里**这条会话自己那份** ——
+ *   包括它自己的流式正文 / 工具 / 重试。以前这里把这三样置空，于是并行回合或
+ *   多标签时，「我正在看的那条会话明明在跑，界面却看不到思考与工具卡」（用户 2026-10-30）。
  */
 function runningForClient(state: ServerState, activeId: string | null, override?: string | null) {
 	if (override === undefined || override === state.running.conversationId) {
@@ -237,10 +247,10 @@ function runningForClient(state: ServerState, activeId: string | null, override?
 		status: own?.status ?? "idle",
 		conversationId: activeId,
 		turnStartedAt: own?.turnStartedAt ?? null,
-		streamingText: "",
-		activeTool: null,
-		// 「正在重试」属于真正在跑的那条会话，别人的快照里不该出现
-		retrying: null,
+		streamingText: own?.streamingText ?? "",
+		activeTool: own?.activeTool ? { ...own.activeTool } : null,
+		// 「正在重试」属于这条会话自己的那次退避
+		retrying: own?.retrying ? { ...own.retrying } : null,
 	};
 }
 

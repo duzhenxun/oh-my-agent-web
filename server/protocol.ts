@@ -392,7 +392,26 @@ export type Snapshot = {
 	subagentProfiles: SubagentProfileView[];
 	/** 子代理总开关与并发上限 */
 	subagentSettings: SubagentSettingsView;
-	runningByConversation: Record<string, { status: RunningState["status"]; turnStartedAt: number }>;
+	/**
+	 * 每条会话自己的「在跑」状态（并行回合用）。
+	 *
+	 * 带上 `streamingText` / `activeTool` / `retrying`：以前只记 status，于是「客户端看的不是
+	 * 全局那条会话」时，快照只能把流式正文 / 工具卡 / 重试提示**全置空** —— 界面显示「在跑」
+	 * 却什么都看不到（用户 2026-10-30 报的「跑着跑着看不到工具调用」）。现在按会话各记一份，
+	 * 看谁就给谁那份。
+	 */
+	runningByConversation: Record<
+		string,
+		{
+			status: RunningState["status"];
+			turnStartedAt: number;
+			/** 这条会话自己的流式正文（只给正在看它的人；没开始吐字就是空串） */
+			streamingText?: string;
+			activeTool?: RunningState["activeTool"];
+			/** 正在自动重试（属于这条会话的那次退避） */
+			retrying?: RunningState["retrying"];
+		}
+	>;
 	/** 会话统计（顶部会话信息）：消息数 / 工具调用 / token 与上下文占用 */
 	sessionStats: SessionStats | null;
 	/** 本会话当前思考强度（null = 该模型不支持） */

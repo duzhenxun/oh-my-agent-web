@@ -90,6 +90,21 @@ export function applyEngineEvent(context: TurnEventContext, input: TurnEventInpu
 		state.messages[conversationId] = list.map((message) => (message.id === messageId ? change(message) : message));
 	};
 
+	/**
+	 * 改「这条会话自己那份运行状态」（`runningByConversation`）——
+	 * 不管它是不是全局 activeId，都要记：客户端可能正在看它，而全局 activeId 早就飘到别的会话了。
+	 * 没有条目就算了（回合已收尾），不凭空造一个出来。
+	 */
+	const patchOwnRunning = (change: (own: NonNullable<(typeof state.runningByConversation)[string]>) => void) => {
+		const own = state.runningByConversation[conversationId];
+		if (!own) return;
+		const next = { ...own };
+		change(next);
+		state.runningByConversation = { ...state.runningByConversation, [conversationId]: next };
+	};
+	/** 全局那份（`state.running`）只对「全局 activeId 这条会话」有意义 */
+	const isGlobal = () => conversationId === state.activeId;
+
 	/** 结束这一段思考计时，把毫秒累到消息上（thinkingMs） */
 	const closeThinking = () => {
 		const since = thinkingSince.get(messageId);
@@ -107,16 +122,24 @@ export function applyEngineEvent(context: TurnEventContext, input: TurnEventInpu
 	 * 只清**变化**才推快照，不然每帧都要多推一次。
 	 */
 	if (event.type !== "retry" && event.type !== "notice" && event.type !== "usage" && event.type !== "model") {
+		let cleared = false;
 		if (state.running.retrying !== null) {
 			state.running.retrying = null;
-			context.pushSnapshot();
+			cleared = true;
 		}
+		if (state.runningByConversation[conversationId]?.retrying) {
+			patchOwnRunning((own) => (own.retrying = null));
+			cleared = true;
+		}
+		if (cleared) context.pushSnapshot();
 	}
 
 	switch (event.type) {
 		case "retry": {
 			// 传输层被打断、引擎正在再试一次：把这行字交给「正在等待模型…」那一行去显示
-			state.running.retrying = { attempt: event.attempt, maxAttempts: event.maxAttempts };
+			const retrying = { attempt: event.attempt, maxAttempts: event.maxAttempts };
+			state.running.retrying = retrying;
+			patchOwnRunning((own) => (own.retrying = retrying));
 			context.pushSnapshot();
 			return;
 		}
@@ -124,7 +147,9 @@ export function applyEngineEvent(context: TurnEventContext, input: TurnEventInpu
 			const visible = context.onTextDelta(event.text, conversationId);
 			if (visible === "") return; // 抠住了（可能在写标记）
 			patch((message) => appendText(message, visible));
-			if (conversationId === state.activeId) state.running.streamingText += visible;
+			// 两处都记：全局那份给「碰巧就是 activeId」的情况，会话那份给「客户端在看它」的情况
+			if (isGlobal()) state.running.streamingText += visible;
+			patchOwnRunning((own) => (own.streamingText = (own.streamingText ?? "") + visible));
 			context.emitEvent({ type: "event", event: "message_delta", conversationId, messageId, text: visible });
 			return;
 		}
@@ -181,6 +206,9 @@ export function applyEngineEvent(context: TurnEventContext, input: TurnEventInpu
 				}),
 			);
 			state.running.activeTool = { name: event.name, argsSummary: event.argsSummary, startedAt: context.now() };
+			patchOwnRunning(
+				(own) => (own.activeTool = { name: event.name, argsSummary: event.argsSummary, startedAt: context.now() }),
+			);
 			context.pushSnapshot();
 			return;
 		}
@@ -195,12 +223,14 @@ export function applyEngineEvent(context: TurnEventContext, input: TurnEventInpu
 				}),
 			);
 			state.running.activeTool = null;
+			patchOwnRunning((own) => (own.activeTool = null));
 			context.pushSnapshot();
 			return;
 		}
 		case "error": {
 			patch((message) => appendError(message, event.code, event.message));
 			state.running.status = "error";
+			patchOwnRunning((own) => (own.status = "error"));
 			context.notice(`${event.code}: ${event.message}`, "error", undefined, conversationId);
 			return;
 		}
