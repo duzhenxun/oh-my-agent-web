@@ -80,6 +80,45 @@ export async function saveAccessPassword(password: string): Promise<PasswordSave
 	}
 }
 
+/** 登录活动中的一条（设置 → 远程 的那一列） */
+export type LoginActivityEntry = {
+	at: number;
+	address: string;
+	kind: "success" | "failure" | "locked";
+	attempts?: number;
+	lockMinutes?: number;
+};
+
+type LoginActivityResult = { ok: true; entries: LoginActivityEntry[] } | { ok: false; error: string };
+
+/** 读登录活动（服务端已经按**最新在最前面**排好，这里不再排） */
+export async function fetchLoginActivity(): Promise<LoginActivityResult> {
+	try {
+		const response = await fetch("/api/auth/activity", { cache: "no-store", credentials: "same-origin" });
+		const body = await readBody(response);
+		if (!response.ok || body?.ok !== true) return { ok: false, error: errorOf(body, response.status) };
+		const raw = Array.isArray(body.entries) ? body.entries : [];
+		const entries: LoginActivityEntry[] = [];
+		for (const item of raw) {
+			if (item === null || typeof item !== "object") continue;
+			const record = item as Record<string, unknown>;
+			const kind = record.kind;
+			if (kind !== "success" && kind !== "failure" && kind !== "locked") continue;
+			if (typeof record.at !== "number" || typeof record.address !== "string") continue;
+			entries.push({
+				at: record.at,
+				address: record.address,
+				kind,
+				...(typeof record.attempts === "number" ? { attempts: record.attempts } : {}),
+				...(typeof record.lockMinutes === "number" ? { lockMinutes: record.lockMinutes } : {}),
+			});
+		}
+		return { ok: true, entries };
+	} catch {
+		return { ok: false, error: tNow("网络异常，请重试", "Network error — try again") };
+	}
+}
+
 /**
  * 保存「登录保护」（连续错几次 / 暂停多久）。
  *

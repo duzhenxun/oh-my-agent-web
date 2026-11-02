@@ -54,6 +54,7 @@ import { authMiddleware } from "./http/auth.js";
 import { createPasswordStore } from "./http/password-store.js";
 import { registerAuthRoutes } from "./http/auth-routes.js";
 import { createLoginGuard } from "./http/login-guard.js";
+import { createLoginActivity } from "./http/login-activity.js";
 import { BRAND_NAME } from "./brand.js";
 import { registerLiveRoutes, type Sink } from "./http/live-routes.js";
 import { compressText, immutableAssets } from "./http/compress.js";
@@ -365,10 +366,13 @@ const passwordStore = createPasswordStore(config.password, join(config.dataDir, 
  * 把进程搞挂一次就等于解锁（失败计数只在内存，重启归零可以接受）。
  */
 const loginGuard = createLoginGuard({ file: join(config.dataDir, "login-guard.json") });
+/** 登录活动（谁试过 / 成功了）：落盘保留最近 200 条，重启后还在 */
+const loginActivity = createLoginActivity({ file: join(config.dataDir, "login-activity.json") });
 registerAuthRoutes(app, {
 	getPassword: () => passwordStore.get(),
 	setPassword: (password) => passwordStore.set(password),
 	guard: loginGuard,
+	activity: loginActivity,
 	brandName: BRAND_NAME,
 });
 // 鉴权其次：本机放行，其它来源必须过密码；页面请求给登录页，接口请求给 401

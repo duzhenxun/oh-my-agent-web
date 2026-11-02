@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppSelector } from "../store.ts";
 import { setSettings } from "../ws.ts";
 import { THEMES, modeOf, type ThemeDef } from "../theme.ts";
@@ -73,8 +73,10 @@ import { isRemoteAccess, logoutRemote } from "../auth-expiry.ts";
 import {
 	DEFAULT_LOGIN_GUARD_SETTINGS,
 	fetchAccessPasswordStatus,
+	fetchLoginActivity,
 	saveAccessPassword,
 	saveLoginGuard,
+	type LoginActivityEntry,
 } from "../access-password.ts";
 import { ShortcutsPane } from "./ShortcutsPane.tsx";
 
@@ -187,6 +189,18 @@ export function SettingsPanel() {
  *   - 远程：只显示状态 + 退出登录（改密码必须在本机做，服务端也只认本机）。
  * 不限制访问的域名 / 外网 IP / 局域网 IP —— 只要有密码，从哪儿来都能进。
  */
+/**
+ * 「登录活动」那一列的时间：`11-02 19:42:10`。
+ *
+ * 刻意不用 `toLocaleString`：中英两套会把同一列排成两种宽度（`19:42` vs `7:42 PM`），
+ * 而这个列表要的是「一眼扫过去谁在什么时候试」，纯数字最好扫。
+ */
+function timeOf(at: number): string {
+	const date = new Date(at);
+	const pad = (value: number) => String(value).padStart(2, "0");
+	return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
 function RemoteSettings() {
 	const t = useT();
 	const remote = isRemoteAccess();
@@ -199,6 +213,28 @@ function RemoteSettings() {
 	/** 「登录保护」：连续错几次 / 暂停多少分钟（服务端默认 3 / 30） */
 	const [guard, setGuard] = useState(DEFAULT_LOGIN_GUARD_SETTINGS);
 	const [guardSaving, setGuardSaving] = useState(false);
+	/** 登录活动：服务端已按最新在前排好 */
+	const [activity, setActivity] = useState<LoginActivityEntry[]>([]);
+	const [activityError, setActivityError] = useState("");
+	const [activityLoading, setActivityLoading] = useState(false);
+
+	const loadActivity = useCallback(() => {
+		setActivityLoading(true);
+		void fetchLoginActivity().then((result) => {
+			setActivityLoading(false);
+			if (!result.ok) {
+				setActivityError(result.error);
+				return;
+			}
+			setActivityError("");
+			setActivity(result.entries);
+		});
+	}, []);
+
+	useEffect(() => {
+		if (remote) return;
+		loadActivity();
+	}, [remote, loadActivity]);
 
 	useEffect(() => {
 		if (remote) return;
@@ -390,6 +426,46 @@ function RemoteSettings() {
 						{t(
 							"同一个来源连续输错密码到达这个次数，就暂停一段时间，不再比对密码（挡在线爆破）。默认 3 次 / 30 分钟；锁会落盘，重启服务也不会放行。填 1–20 次、1–1440 分钟。",
 							"After this many wrong passwords from the same source, sign-in is paused for a while (anti-brute-force). Default: 3 tries / 30 minutes. Locks are persisted across restarts. Range: 1–20 tries, 1–1440 minutes.",
+						)}
+					</div>
+					<div className="settings-row">
+						<span className="settings-field">{t("登录活动", "Login activity")}</span>
+						<button type="button" className="btn btn-tiny" onClick={loadActivity} disabled={activityLoading}>
+							{activityLoading ? t("刷新中…", "Refreshing…") : t("刷新", "Refresh")}
+						</button>
+						<span className="settings-hint">
+							{t("最近 200 条，最新的在最前面。", "Latest 200 events, newest first.")}
+						</span>
+					</div>
+					{activityError !== "" ? <div className="settings-hint">{activityError}</div> : null}
+					<div className="settings-activity">
+						{activity.length === 0 ? (
+							<div className="settings-hint">
+								{activityLoading ? t("读取中…", "Loading…") : t("还没有登录记录。", "No sign-in activity yet.")}
+							</div>
+						) : (
+							activity.map((entry) => (
+								<div
+									className={`settings-activity-row settings-activity-${entry.kind}`}
+									key={`${entry.at}-${entry.address}-${entry.kind}`}
+								>
+									<span className="settings-activity-time">{timeOf(entry.at)}</span>
+									<span className="settings-activity-ip">{entry.address}</span>
+									<span className="settings-activity-kind">
+										{entry.kind === "success"
+											? t("登录成功", "Signed in")
+											: entry.kind === "locked"
+												? t(
+														`连续错 ${entry.attempts ?? 0} 次，已暂停 ${entry.lockMinutes ?? 0} 分钟`,
+														`${entry.attempts ?? 0} wrong tries — paused ${entry.lockMinutes ?? 0} min`,
+													)
+												: t(
+														`密码错误（连续第 ${entry.attempts ?? 1} 次）`,
+														`Wrong password (try ${entry.attempts ?? 1})`,
+													)}
+									</span>
+								</div>
+							))
 						)}
 					</div>
 				</>

@@ -15,6 +15,7 @@ import express from "express";
 import { applyStoredOptions } from "../../server/cli-config.ts";
 import { registerAuthRoutes } from "../../server/http/auth-routes.ts";
 import { createLoginGuard } from "../../server/http/login-guard.ts";
+import { createLoginActivity } from "../../server/http/login-activity.ts";
 import { createPasswordStore, resolveStartupPassword, writePasswordFile } from "../../server/http/password-store.ts";
 
 const tempDirs: string[] = [];
@@ -67,6 +68,8 @@ describe("/api/auth/password：只认本机", () => {
 	let password: string | null = null;
 	/** 登录保护（只在本机可改）：这里用内存版，不落盘 */
 	const loginGuard = createLoginGuard();
+	/** 登录活动：同样用内存版 */
+	const loginActivity = createLoginActivity();
 
 	before(async () => {
 		const app = express();
@@ -76,6 +79,7 @@ describe("/api/auth/password：只认本机", () => {
 				password = next;
 			},
 			guard: loginGuard,
+			activity: loginActivity,
 		});
 		server = app.listen(0, "127.0.0.1");
 		await new Promise<void>((done) => server.once("listening", () => done()));
@@ -134,6 +138,38 @@ describe("/api/auth/password：只认本机", () => {
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({ maxFailures: 3, lockMinutes: 30 }),
 		});
+	});
+
+	it("登录活动：错、成功、被锁都记下来，且最新的在最前面", async () => {
+		// 前一个用例已把密码设为 "newpass123"
+		const wrong = await fetch(`${base}/api/auth/login`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ password: "nope-1" }),
+		});
+		assert.equal(wrong.status, 401);
+
+		const right = await fetch(`${base}/api/auth/login`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ password: "newpass123" }),
+		});
+		assert.equal(right.status, 204);
+
+		const list = await fetch(`${base}/api/auth/activity`);
+		assert.equal(list.status, 200, "本机可以看");
+		const body = (await list.json()) as {
+			ok: boolean;
+			entries: { kind: string; address: string; attempts?: number }[];
+		};
+		assert.equal(body.ok, true);
+		assert.deepEqual(
+			body.entries.slice(0, 2).map((entry) => entry.kind),
+			["success", "failure"],
+			"最新的在最前面，而且成功与失败都入账",
+		);
+		assert.equal(body.entries[1]?.attempts, 1, "失败那条要带「连续第几次」");
+		assert.equal(body.entries[0]?.address, "127.0.0.1");
 	});
 
 	it("太短 / 空密码 → 400（不改动已存的那份）", async () => {

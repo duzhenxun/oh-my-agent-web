@@ -579,6 +579,64 @@
 	box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
+/* 「设置 → 远程」的登录活动列表：时间 / 来源 / 事件三列，最新的在最前面。
+   时间与 IP 用等宽字（同一列要对得上），事件用颜色区分（成功 / 错误 / 已锁）。 */
+.settings-activity {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	max-height: 260px;
+	overflow-y: auto;
+	padding: 6px 8px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--bg);
+}
+
+.settings-activity-row {
+	display: flex;
+	align-items: baseline;
+	gap: 10px;
+	padding: 2px 0;
+	font-size: 13px;
+	line-height: 1.6;
+	border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+}
+
+.settings-activity-row:last-child {
+	border-bottom: 0;
+}
+
+.settings-activity-time {
+	flex: none;
+	font-family: var(--mono);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-faint);
+}
+
+.settings-activity-ip {
+	flex: none;
+	font-family: var(--mono);
+	color: var(--text-dim);
+}
+
+.settings-activity-kind {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.settings-activity-success .settings-activity-kind {
+	color: var(--green);
+}
+
+.settings-activity-failure .settings-activity-kind {
+	color: var(--amber);
+}
+
+.settings-activity-locked .settings-activity-kind {
+	color: var(--red);
+}
+
 .btn-tiny {
 	padding: 3px 8px;
 	font-size: 14px;

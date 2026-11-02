@@ -28,6 +28,7 @@ import {
 } from "./auth.js";
 import { renderLoginPage, renderSetupPage } from "./login-page.js";
 import { DEFAULT_LOGIN_GUARD, describeLockout, type LoginGuard } from "./login-guard.js";
+import type { LoginActivity } from "./login-activity.js";
 
 /** 密码长度上下限：设密码时挡一下手滑（登录只比对，不做长度限制） */
 const MIN_PASSWORD_CHARS = 4;
@@ -93,11 +94,14 @@ export function registerAuthRoutes(
 		setPassword: (password: string) => Promise<void>;
 		/** 登录失败锁定（默认 3 次 / 30 分钟）；不传就用内存里的默认值 */
 		guard?: LoginGuard;
+		/** 登录活动（设置 → 远程 里那一列）：不传就不记 */
+		activity?: LoginActivity;
 		brandName?: string;
 	},
 ): void {
 	const brandName = options.brandName ?? BRAND_NAME;
 	const guard = options.guard;
+	const activity = options.activity;
 	/** 「改密码 / 设密码」自己的计数（与登录锁无关，见文件头的说明） */
 	const attempts = new Map<string, Attempt>();
 
@@ -209,6 +213,17 @@ export function registerAuthRoutes(
 						? `密码不正确（还可以试 ${after.remainingAttempts} 次）`
 						: "密码不正确";
 				if (lockout) response.setHeader("Retry-After", String(after.retryAfterSeconds));
+				// 只记「真的比对过密码」的那一次：锁住之后的 429 不再入账（否则爆破时日志全是噪音）
+				if (lockout && after) {
+					activity?.record({
+						address,
+						kind: "locked",
+						attempts: after.failures,
+						lockMinutes: guard?.policy().lockMinutes ?? DEFAULT_LOGIN_GUARD.lockMinutes,
+					});
+				} else {
+					activity?.record({ address, kind: "failure", attempts: after?.failures ?? 1 });
+				}
 				response.setHeader("Cache-Control", "no-store");
 				if (html) {
 					response.setHeader("Content-Type", "text/html; charset=utf-8");
@@ -220,6 +235,8 @@ export function registerAuthRoutes(
 				return;
 			}
 			guard?.clear(address);
+			// 登录成功也记一笔：以后看到「凌晨 3 点陌生 IP 登录成功」才知道要改密码
+			activity?.record({ address, kind: "success" });
 			attempts.delete(address);
 			response.setHeader("Set-Cookie", authCookieHeader(password));
 			// 无 JS 的表单提交：种完 cookie 直接跳回首页（不采信任何外部传入的 next，避免开放重定向）
@@ -333,6 +350,24 @@ export function registerAuthRoutes(
 				lockMinutes: policy.lockMinutes,
 			}),
 		);
+	});
+
+	/**
+	 * 登录活动（谁从哪个 IP 试过、成没成、错了几次）：**只认本机**，和改密码同一条规矩。
+	 *
+	 * 不给远程看：那一行行就是「谁在什么时候从哪个 IP 摸过这台机器」，
+	 * 能公开的只有“有没有设密码”，不该把别人的 IP 围到任意访客都能读。
+	 */
+	app.get("/api/auth/activity", (request, response) => {
+		response.setHeader("Cache-Control", "no-store");
+		if (crossSite(request) || !isLocalRequest(request)) {
+			response.setHeader("Content-Type", "application/json; charset=utf-8");
+			response.status(403).end(JSON.stringify({ ok: false, error: "只能在运行服务的这台机器上查看" }));
+			return;
+		}
+		response.setHeader("Content-Type", "application/json; charset=utf-8");
+		// `list()` 已经是「最新的在最前面」
+		response.status(200).end(JSON.stringify({ ok: true, entries: activity?.list() ?? [] }));
 	});
 
 	/**
