@@ -53,6 +53,7 @@ import { isLoopbackHostname } from "./util/origin.js";
 import { authMiddleware } from "./http/auth.js";
 import { createPasswordStore } from "./http/password-store.js";
 import { registerAuthRoutes } from "./http/auth-routes.js";
+import { createLoginGuard } from "./http/login-guard.js";
 import { BRAND_NAME } from "./brand.js";
 import { registerLiveRoutes, type Sink } from "./http/live-routes.js";
 import { compressText, immutableAssets } from "./http/compress.js";
@@ -357,9 +358,17 @@ function reply(
 const app = express();
 // 登录端点必须挂在鉴权**之前**：此刻还没有 cookie，不能要求先过鉴权（ADR-0031 修订）
 const passwordStore = createPasswordStore(config.password, join(config.dataDir, "password"));
+/**
+ * 登录失败锁（默认 3 次 / 30 分钟，可在 设置 → 远程 里改）。
+ *
+ * 落在数据目录：**策略和还没过期的锁**都要能活过重启 —— 否则被爆破时
+ * 把进程搞挂一次就等于解锁（失败计数只在内存，重启归零可以接受）。
+ */
+const loginGuard = createLoginGuard({ file: join(config.dataDir, "login-guard.json") });
 registerAuthRoutes(app, {
 	getPassword: () => passwordStore.get(),
 	setPassword: (password) => passwordStore.set(password),
+	guard: loginGuard,
 	brandName: BRAND_NAME,
 });
 // 鉴权其次：本机放行，其它来源必须过密码；页面请求给登录页，接口请求给 401

@@ -14,6 +14,7 @@ import { after, before, describe, it } from "node:test";
 import express from "express";
 import { applyStoredOptions } from "../../server/cli-config.ts";
 import { registerAuthRoutes } from "../../server/http/auth-routes.ts";
+import { createLoginGuard } from "../../server/http/login-guard.ts";
 import { createPasswordStore, resolveStartupPassword, writePasswordFile } from "../../server/http/password-store.ts";
 
 const tempDirs: string[] = [];
@@ -64,6 +65,8 @@ describe("/api/auth/password：只认本机", () => {
 	let server: import("node:http").Server;
 	let base = "";
 	let password: string | null = null;
+	/** 登录保护（只在本机可改）：这里用内存版，不落盘 */
+	const loginGuard = createLoginGuard();
 
 	before(async () => {
 		const app = express();
@@ -72,6 +75,7 @@ describe("/api/auth/password：只认本机", () => {
 			setPassword: async (next) => {
 				password = next;
 			},
+			guard: loginGuard,
 		});
 		server = app.listen(0, "127.0.0.1");
 		await new Promise<void>((done) => server.once("listening", () => done()));
@@ -87,7 +91,7 @@ describe("/api/auth/password：只认本机", () => {
 		password = null;
 		const status = await fetch(`${base}/api/auth/password`);
 		assert.equal(status.status, 200);
-		assert.deepEqual(await status.json(), { ok: true, set: false });
+		assert.deepEqual(await status.json(), { ok: true, set: false, maxFailures: 3, lockMinutes: 30 });
 
 		const saved = await fetch(`${base}/api/auth/password`, {
 			method: "POST",
@@ -99,7 +103,37 @@ describe("/api/auth/password：只认本机", () => {
 		assert.equal(password, "newpass123");
 
 		const again = await fetch(`${base}/api/auth/password`);
-		assert.deepEqual(await again.json(), { ok: true, set: true });
+		assert.deepEqual(await again.json(), { ok: true, set: true, maxFailures: 3, lockMinutes: 30 });
+	});
+
+	it("登录保护：本机可改（次数 / 分钟），非法值直接 400", async () => {
+		const saved = await fetch(`${base}/api/auth/guard`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ maxFailures: 5, lockMinutes: 10 }),
+		});
+		assert.equal(saved.status, 200);
+		assert.deepEqual(await saved.json(), { ok: true, maxFailures: 5, lockMinutes: 10 });
+		assert.deepEqual(loginGuard.policy(), { maxFailures: 5, lockMinutes: 10 });
+
+		// GET 状态顺带回当前阀值（设置页只发一次请求）
+		const status = await fetch(`${base}/api/auth/password`);
+		assert.deepEqual(await status.json(), { ok: true, set: true, maxFailures: 5, lockMinutes: 10 });
+
+		const bad = await fetch(`${base}/api/auth/guard`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ maxFailures: 0, lockMinutes: 10 }),
+		});
+		assert.equal(bad.status, 400, "0 次等于「一错就锁」，不能存进去");
+		assert.deepEqual(loginGuard.policy(), { maxFailures: 5, lockMinutes: 10 }, "被拒的输入不该改到当前策略");
+
+		// 改回默认，免得影响后面的用例
+		await fetch(`${base}/api/auth/guard`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ maxFailures: 3, lockMinutes: 30 }),
+		});
 	});
 
 	it("太短 / 空密码 → 400（不改动已存的那份）", async () => {

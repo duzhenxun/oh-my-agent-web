@@ -13,7 +13,23 @@
  */
 import { tNow } from "./use-language.ts";
 
-type PasswordResult = { ok: true; set: boolean } | { ok: false; error: string };
+/** 「登录保护」的两个旋钮：连续输错几次 → 暂停多少分钟（服务端默认 3 / 30） */
+export type LoginGuardSettings = { maxFailures: number; lockMinutes: number };
+
+export const DEFAULT_LOGIN_GUARD_SETTINGS: LoginGuardSettings = { maxFailures: 3, lockMinutes: 30 };
+
+/** 「读状态」带回登录保护阀值；「改密码」只关心成没成 */
+type PasswordResult = { ok: true; set: boolean; guard: LoginGuardSettings } | { ok: false; error: string };
+type PasswordSaveResult = { ok: true } | { ok: false; error: string };
+
+/** 把服务端回的两个数字读出来；旧版服务端没这两项时用默认值（不报错） */
+function guardOf(body: Record<string, unknown> | null): LoginGuardSettings {
+	const maxFailures =
+		typeof body?.maxFailures === "number" ? body.maxFailures : DEFAULT_LOGIN_GUARD_SETTINGS.maxFailures;
+	const lockMinutes =
+		typeof body?.lockMinutes === "number" ? body.lockMinutes : DEFAULT_LOGIN_GUARD_SETTINGS.lockMinutes;
+	return { maxFailures, lockMinutes };
+}
 
 /** 从响应里取 body；取不到（HTML / 网络层问题）时给 null，不抛错 */
 async function readBody(response: Response): Promise<Record<string, unknown> | null> {
@@ -31,13 +47,13 @@ function errorOf(body: Record<string, unknown> | null, status: number): string {
 		: tNow(`请求失败（HTTP ${status}）`, `Request failed (HTTP ${status})`);
 }
 
-/** 现在有没有设访问密码（只回布尔值） */
+/** 现在有没有设访问密码（只回布尔值）+ 「登录保护」当前的阀值 */
 export async function fetchAccessPasswordStatus(): Promise<PasswordResult> {
 	try {
 		const response = await fetch("/api/auth/password", { cache: "no-store", credentials: "same-origin" });
 		const body = await readBody(response);
 		if (!response.ok || body?.ok !== true) return { ok: false, error: errorOf(body, response.status) };
-		return { ok: true, set: body.set === true };
+		return { ok: true, set: body.set === true, guard: guardOf(body) };
 	} catch {
 		return { ok: false, error: tNow("网络异常，请重试", "Network error — try again") };
 	}
@@ -47,7 +63,7 @@ export async function fetchAccessPasswordStatus(): Promise<PasswordResult> {
  * 设置 / 修改访问密码：保存后立即生效（服务端写 `<dataDir>/password` 并换掉内存里的那份）。
  * 长度校验服务端也有一份（4–200）；这里先挡一下，省一次往返。
  */
-export async function saveAccessPassword(password: string): Promise<PasswordResult> {
+export async function saveAccessPassword(password: string): Promise<PasswordSaveResult> {
 	try {
 		const response = await fetch("/api/auth/password", {
 			method: "POST",
@@ -58,7 +74,33 @@ export async function saveAccessPassword(password: string): Promise<PasswordResu
 		});
 		const body = await readBody(response);
 		if (!response.ok || body?.ok !== true) return { ok: false, error: errorOf(body, response.status) };
-		return { ok: true, set: true };
+		return { ok: true };
+	} catch {
+		return { ok: false, error: tNow("网络异常，请重试", "Network error — try again") };
+	}
+}
+
+/**
+ * 保存「登录保护」（连续错几次 / 暂停多久）。
+ *
+ * 只在本机能改（服务端 `POST /api/auth/guard` 也只认本机），改完落盘、立即生效：
+ * 已经在锁里的来源不会因为改了数字而解开（改密码才会 `clearAll`）。
+ * 范围校验客户端先挡一道，省一次往返（服务端 `login-guard.ts` 里还有一份）。
+ */
+export async function saveLoginGuard(
+	settings: LoginGuardSettings,
+): Promise<{ ok: true; guard: LoginGuardSettings } | { ok: false; error: string }> {
+	try {
+		const response = await fetch("/api/auth/guard", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(settings),
+			cache: "no-store",
+			credentials: "same-origin",
+		});
+		const body = await readBody(response);
+		if (!response.ok || body?.ok !== true) return { ok: false, error: errorOf(body, response.status) };
+		return { ok: true, guard: guardOf(body) };
 	} catch {
 		return { ok: false, error: tNow("网络异常，请重试", "Network error — try again") };
 	}

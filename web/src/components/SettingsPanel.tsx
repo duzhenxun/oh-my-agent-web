@@ -70,7 +70,12 @@ import { PanelIcon } from "./PanelIcon.tsx";
 import { SettingsTabStrip } from "./SettingsTabStrip.tsx";
 import { defaultSettingsTab, useSettingsTabOrder } from "../settings-tabs.ts";
 import { isRemoteAccess, logoutRemote } from "../auth-expiry.ts";
-import { fetchAccessPasswordStatus, saveAccessPassword } from "../access-password.ts";
+import {
+	DEFAULT_LOGIN_GUARD_SETTINGS,
+	fetchAccessPasswordStatus,
+	saveAccessPassword,
+	saveLoginGuard,
+} from "../access-password.ts";
 import { ShortcutsPane } from "./ShortcutsPane.tsx";
 
 const DEFAULT_PLACEHOLDER = "继续\n总结一下\n详细解释一下";
@@ -191,18 +196,46 @@ function RemoteSettings() {
 	const [statusError, setStatusError] = useState("");
 	const [draft, setDraft] = useState("");
 	const [saving, setSaving] = useState(false);
+	/** 「登录保护」：连续错几次 / 暂停多少分钟（服务端默认 3 / 30） */
+	const [guard, setGuard] = useState(DEFAULT_LOGIN_GUARD_SETTINGS);
+	const [guardSaving, setGuardSaving] = useState(false);
 
 	useEffect(() => {
 		if (remote) return;
 		void fetchAccessPasswordStatus().then((result) => {
 			if (result.ok) {
 				setPasswordSet(result.set);
+				setGuard(result.guard);
 				setStatusError("");
 				return;
 			}
 			setStatusError(result.error);
 		});
 	}, [remote]);
+
+	/**
+	 * 保存登录保护（次数 / 时长）。
+	 *
+	 * 两个数字都夹在自己的范围里（1–20 次、1–1440 分钟）：
+	 * 填 0 次等于「一次就锁」，填 0 分钟等于「锁 0 秒」——两个都不该被存进去。
+	 */
+	const saveGuard = () => {
+		setGuardSaving(true);
+		void saveLoginGuard(guard).then((result) => {
+			setGuardSaving(false);
+			if (!result.ok) {
+				showToast({ text: result.error });
+				return;
+			}
+			setGuard(result.guard);
+			showToast({
+				text: t(
+					`已保存：连续错 ${result.guard.maxFailures} 次，暂停 ${result.guard.lockMinutes} 分钟`,
+					`Saved: pause ${result.guard.lockMinutes} min after ${result.guard.maxFailures} wrong tries`,
+				),
+			});
+		});
+	};
 
 	const save = () => {
 		const password = draft.trim();
@@ -255,17 +288,25 @@ function RemoteSettings() {
 						)}
 			</div>
 			{remote ? (
-				<div className="settings-row">
-					<button type="button" className="btn btn-tiny" onClick={() => logoutRemote()}>
-						{t("退出登录", "Sign out")}
-					</button>
-					<span className="settings-hint">
+				<>
+					<div className="settings-row">
+						<button type="button" className="btn btn-tiny" onClick={() => logoutRemote()}>
+							{t("退出登录", "Sign out")}
+						</button>
+						<span className="settings-hint">
+							{t(
+								"清掉这台浏览器上的登录 cookie（有效期 7 天，每次访问顺延）。",
+								"Clears the login cookie in this browser (valid 7 days, renewed on every visit).",
+							)}
+						</span>
+					</div>
+					<div className="settings-hint">
 						{t(
-							"清掉这台浏览器上的登录 cookie（有效期 7 天，每次访问顺延）。",
-							"Clears the login cookie in this browser (valid 7 days, renewed on every visit).",
+							"登录保护（连续输错几次就暂停多久）只能在运行服务的这台机器上（127.0.0.1）的 设置 → 远程 里改，默认 3 次 / 30 分钟。",
+							"Login protection (attempts / lockout) can only be changed on the machine running the server (127.0.0.1) under Settings → Remote. Default: 3 tries / 30 minutes.",
 						)}
-					</span>
-				</div>
+					</div>
+				</>
 			) : (
 				<>
 					<div className="settings-row">
@@ -297,6 +338,58 @@ function RemoteSettings() {
 						{t(
 							"密码存在数据目录的 password 文件里（默认 ~/.oh-my-agent-web/password），保存后立即生效，不用重启。忘了就删掉这个文件再重启，或者启动时带 aw -P <新密码>（也会写进去）。",
 							"Stored in the data directory's password file (default ~/.oh-my-agent-web/password). It applies immediately — no restart. Forgot it? Delete that file and restart, or start with aw -P <new password> (that is saved too).",
+						)}
+					</div>
+					{/* 登录保护：堵在线爆破。默认 3 次 / 30 分钟，锁的时长与阀值都存服务端（重启后锁还在） */}
+					<div className="settings-row">
+						<span className="settings-field">{t("登录保护", "Login protection")}</span>
+						<label className="settings-field">
+							<span>{t("连续错", "After")}</span>
+							<input
+								className="settings-number"
+								type="number"
+								inputMode="numeric"
+								min={1}
+								max={20}
+								value={guard.maxFailures}
+								onChange={(event) => {
+									const value = Number(event.target.value);
+									if (!Number.isFinite(value)) return;
+									setGuard((current) => ({
+										...current,
+										maxFailures: Math.min(20, Math.max(1, Math.round(value))),
+									}));
+								}}
+							/>
+							<span>{t("次后，暂停", "wrong tries, pause for")}</span>
+						</label>
+						<label className="settings-field">
+							<input
+								className="settings-number"
+								type="number"
+								inputMode="numeric"
+								min={1}
+								max={1440}
+								value={guard.lockMinutes}
+								onChange={(event) => {
+									const value = Number(event.target.value);
+									if (!Number.isFinite(value)) return;
+									setGuard((current) => ({
+										...current,
+										lockMinutes: Math.min(1440, Math.max(1, Math.round(value))),
+									}));
+								}}
+							/>
+							<span>{t("分钟", "minutes")}</span>
+						</label>
+						<button type="button" className="btn btn-tiny" onClick={saveGuard} disabled={guardSaving}>
+							{guardSaving ? t("保存中…", "Saving…") : t("保存", "Save")}
+						</button>
+					</div>
+					<div className="settings-hint">
+						{t(
+							"同一个来源连续输错密码到达这个次数，就暂停一段时间，不再比对密码（挡在线爆破）。默认 3 次 / 30 分钟；锁会落盘，重启服务也不会放行。填 1–20 次、1–1440 分钟。",
+							"After this many wrong passwords from the same source, sign-in is paused for a while (anti-brute-force). Default: 3 tries / 30 minutes. Locks are persisted across restarts. Range: 1–20 tries, 1–1440 minutes.",
 						)}
 					</div>
 				</>

@@ -27,14 +27,21 @@ import {
 	samePassword,
 } from "./auth.js";
 import { renderLoginPage, renderSetupPage } from "./login-page.js";
+import { DEFAULT_LOGIN_GUARD, describeLockout, type LoginGuard } from "./login-guard.js";
 
 /** 密码长度上下限：设密码时挡一下手滑（登录只比对，不做长度限制） */
 const MIN_PASSWORD_CHARS = 4;
 const MAX_PASSWORD_CHARS = 200;
 
-/** 失败节流窗口与上限：同一来源 10 分钟内失败 20 次就从这里起拒收（挡在线爆破） */
-const FAILURE_WINDOW_MS = 10 * 60_000;
-const MAX_FAILURES = 20;
+/**
+ * 「改密码 / 设密码」这两条端点自己的节流（10 分钟 20 次）。
+ *
+ * 刻意**不**和登录失败锁（`login-guard.ts`）共用：那套是「错 3 次锁 30 分钟」，
+ * 而这里本就是只限本机的设置操作 —— 一个人把新密码少打了一位，不该因此被锁在登录页外面。
+ * 这里只防脚本狂刷。
+ */
+const SETTINGS_WINDOW_MS = 10 * 60_000;
+const MAX_SETTINGS_FAILURES = 20;
 const MAX_TRACKED_SOURCES = 512;
 
 type Attempt = { count: number; resetAt: number };
@@ -84,10 +91,14 @@ export function registerAuthRoutes(
 		getPassword: () => string | null;
 		/** 落盘 + 立即生效（由 `createPasswordStore` 提供） */
 		setPassword: (password: string) => Promise<void>;
+		/** 登录失败锁定（默认 3 次 / 30 分钟）；不传就用内存里的默认值 */
+		guard?: LoginGuard;
 		brandName?: string;
 	},
 ): void {
 	const brandName = options.brandName ?? BRAND_NAME;
+	const guard = options.guard;
+	/** 「改密码 / 设密码」自己的计数（与登录锁无关，见文件头的说明） */
 	const attempts = new Map<string, Attempt>();
 
 	/**
@@ -126,14 +137,14 @@ export function registerAuthRoutes(
 		);
 	});
 
-	/** 失败计数（顺手清掉过期的，避免 Map 只增不减） */
+	/** 失败计数（顺手清掉过期的，避免 Map 只增不减）：只管「改密码 / 设密码」那两条端点 */
 	function noteFailure(address: string, now: number): void {
 		const current = attempts.get(address);
 		if (!current || now > current.resetAt) {
 			if (attempts.size >= MAX_TRACKED_SOURCES) {
 				for (const [key, value] of attempts) if (now > value.resetAt) attempts.delete(key);
 			}
-			attempts.set(address, { count: 1, resetAt: now + FAILURE_WINDOW_MS });
+			attempts.set(address, { count: 1, resetAt: now + SETTINGS_WINDOW_MS });
 			return;
 		}
 		current.count += 1;
@@ -146,7 +157,7 @@ export function registerAuthRoutes(
 			attempts.delete(address);
 			return false;
 		}
-		return current.count >= MAX_FAILURES;
+		return current.count >= MAX_SETTINGS_FAILURES;
 	}
 
 	app.post(
@@ -171,28 +182,44 @@ export function registerAuthRoutes(
 				return;
 			}
 			const address = addressOf(request);
-			const now = Date.now();
-			if (throttled(address, now)) {
+			/** 锁住期间**不再比对密码**：直接告诉还要等多久（挡在线爆破） */
+			const before = guard?.status(address);
+			if (before?.locked) {
+				const error = describeLockout(before);
+				response.setHeader("Retry-After", String(before.retryAfterSeconds));
+				response.setHeader("Cache-Control", "no-store");
+				if (html) {
+					response.setHeader("Content-Type", "text/html; charset=utf-8");
+					response.status(429).end(renderLoginPage({ brandName, error }));
+					return;
+				}
 				response.setHeader("Content-Type", "application/json; charset=utf-8");
-				response.status(429).end(JSON.stringify({ ok: false, error: "尝试次数过多，请稍后再试" }));
+				response.status(429).end(JSON.stringify({ ok: false, error, retryAfterSeconds: before.retryAfterSeconds }));
 				return;
 			}
 			const body = request.body as { password?: unknown } | undefined;
 			const submitted = typeof body?.password === "string" ? body.password : "";
 			if (submitted === "" || !samePassword(submitted, password)) {
-				noteFailure(address, now);
-				const error = "密码不正确";
+				const after = guard?.noteFailure(address);
+				// 到上限的那一次就锁：这次返回的不是 401，而是「已暂停」
+				const lockout = after?.locked === true;
+				const error = lockout
+					? describeLockout(after)
+					: after && after.remainingAttempts > 0
+						? `密码不正确（还可以试 ${after.remainingAttempts} 次）`
+						: "密码不正确";
+				if (lockout) response.setHeader("Retry-After", String(after.retryAfterSeconds));
+				response.setHeader("Cache-Control", "no-store");
 				if (html) {
 					response.setHeader("Content-Type", "text/html; charset=utf-8");
-					response.setHeader("Cache-Control", "no-store");
-					response.status(401).end(renderLoginPage({ brandName, error }));
+					response.status(lockout ? 429 : 401).end(renderLoginPage({ brandName, error }));
 					return;
 				}
 				response.setHeader("Content-Type", "application/json; charset=utf-8");
-				response.setHeader("Cache-Control", "no-store");
-				response.status(401).end(JSON.stringify({ ok: false, error }));
+				response.status(lockout ? 429 : 401).end(JSON.stringify({ ok: false, error }));
 				return;
 			}
+			guard?.clear(address);
 			attempts.delete(address);
 			response.setHeader("Set-Cookie", authCookieHeader(password));
 			// 无 JS 的表单提交：种完 cookie 直接跳回首页（不采信任何外部传入的 next，避免开放重定向）
@@ -296,7 +323,53 @@ export function registerAuthRoutes(
 		}
 		response.setHeader("Content-Type", "application/json; charset=utf-8");
 		response.setHeader("Cache-Control", "no-store");
-		response.status(200).end(JSON.stringify({ ok: true, set: Boolean(options.getPassword()) }));
+		// 顺带把「登录失败几次会锁、锁多久」一起给：`设置 → 远程` 那一页只发一次请求
+		const policy = guard?.policy() ?? DEFAULT_LOGIN_GUARD;
+		response.status(200).end(
+			JSON.stringify({
+				ok: true,
+				set: Boolean(options.getPassword()),
+				maxFailures: policy.maxFailures,
+				lockMinutes: policy.lockMinutes,
+			}),
+		);
+	});
+
+	/**
+	 * 登录失败锁的配置（默认 3 次 / 30 分钟）：**只认本机**，和改密码同一条规矩。
+	 *
+	 * 为什么要单开一条 POST 而不是塞进 `/api/auth/password`：改密码那条会把密码重写、
+	 * 顺手换 cookie；这只是两个数字，混在一起会让「只改个数」也担上密码流程的风险。
+	 */
+	app.post("/api/auth/guard", express.json({ limit: "2kb" }), (request, response) => {
+		const reject = (status: number, error: string) => {
+			response.setHeader("Content-Type", "application/json; charset=utf-8");
+			response.setHeader("Cache-Control", "no-store");
+			response.status(status).end(JSON.stringify({ ok: false, error }));
+		};
+		if (crossSite(request)) {
+			reject(403, "跨站请求被拒绕：这项设置只能在本机页面改");
+			return;
+		}
+		if (!isLocalRequest(request)) {
+			reject(403, "登录保护只能在运行服务的这台机器上（127.0.0.1）设置");
+			return;
+		}
+		if (!guard) {
+			reject(501, "当前服务没有启用登录保护（没挂 guard）");
+			return;
+		}
+		const body = request.body as { maxFailures?: unknown; lockMinutes?: unknown } | undefined;
+		const saved = guard.setPolicy({ maxFailures: body?.maxFailures, lockMinutes: body?.lockMinutes });
+		if (!saved.ok) {
+			reject(400, saved.error);
+			return;
+		}
+		response.setHeader("Content-Type", "application/json; charset=utf-8");
+		response.setHeader("Cache-Control", "no-store");
+		response
+			.status(200)
+			.end(JSON.stringify({ ok: true, maxFailures: saved.policy.maxFailures, lockMinutes: saved.policy.lockMinutes }));
 	});
 
 	app.post(
@@ -342,6 +415,8 @@ export function registerAuthRoutes(
 				return;
 			}
 			attempts.delete(address);
+			// 密码已经换了：旧密码的爆破计数没意义了，把所有来源的锁一起放开
+			guard?.clearAll();
 			// 顺手给本机也种上 cookie：改完密码不用重新登录（本机本来也免密码，这里只是保持一致）
 			response.setHeader("Set-Cookie", authCookieHeader(submitted));
 			response.setHeader("Content-Type", "application/json; charset=utf-8");
