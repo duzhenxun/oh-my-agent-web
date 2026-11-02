@@ -49,11 +49,14 @@
  * 为什么不用 `--amber`：那是"警告黄"，在浅色底上偏红、看着像报错；`--steer` 是同一类里更黄的一档。
  * 待发条（还没插进去）与已投递的气泡**同一个颜色**：它们本来就是同一句话的两个阶段，
  * 颜色表示"这是一条插队"，文字（插队 / 已插队）才表示阶段。
+ *
+ * 底色/字色用 `--steer-fill` / `--steer-ink`（亮黄实底 + 同色系深字）：
+ * 以前是「淡黄透明底 + 橄榄黄字」，浅色主题里只有 ~3:1、看着发暗（用户 2026-11-02）。
  */
 .sent-tag-steer {
-	border-color: color-mix(in srgb, var(--steer) 55%, var(--border-strong));
-	background: color-mix(in srgb, var(--steer) 12%, transparent);
-	color: var(--steer);
+	border-color: color-mix(in srgb, var(--steer) 70%, var(--border-strong));
+	background: var(--steer-fill);
+	color: var(--steer-ink);
 }
 
 /* 「插队」小标：贴在用户气泡的**左上角**。
