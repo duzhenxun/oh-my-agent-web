@@ -41,12 +41,14 @@ git push --follow-tags     # 把 main 和标签一起推上去 → release.yml �
 ```
 
 推上去之后 CI 依次做：校验「标签版本 == package.json 版本」→ `npm ci` → typecheck → lint → build
-→ 确认产物进包 → `npm publish`（OIDC，无需 OTP）→ 建 GitHub Release（`--notes-from-tag`，
+→ 确认产物进包 → `npm publish`（OIDC，无需 OTP）→ 建 GitHub Release（说明取自标签附注，
 并标为 Latest；已存在则跳过，所以重跑不会因为这个变红）。
 
-> **Release 说明 = 标签的附注内容**（不是自动生成的 commit 列表）。所以发版时用
-> `npm version minor -m "…"` 把说明写进标签，中英各来一份 —— `/releases` 页面直接就是双语的。
-> 用 `npm version minor`（不给 `-m`）会得到一个只有版本号的标签，Release 也就只有一行。
+> **Release 说明 = 标签的附注内容**（不是自动生成的 commit 列表）。所以发版时先把说明写成中英双语，
+> 再用 `git tag -a v1.1.0 -F notes.md` 打标签（或 `npm version minor -m "…"`）—— `/releases`
+> 页面直接就是双语的。不给附注时会回退成自动生成的 commit 列表。
+> 不要用 `gh release create --notes-from-tag`：实测在 Actions 里会静默回退到 commit 说明
+> （v1.1.0 第一次就这么发成了 `chore(release): 1.1.0`），工作流里改成显式读标签内容。
 
 > **tag ≠ Release**：`git tag` 只是仓库里的一个 ref，`/releases` 页面列的是 Release 对象，
 > 「Latest」也只认 Release。所以只有 tag、没 Release 的版本不会出现在 `/releases` 上
