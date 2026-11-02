@@ -11,10 +11,18 @@
 import { useEffect, useRef } from "react";
 import { playSound } from "./sound.ts";
 import type { Snapshot } from "./types.ts";
-import { loadTtsSettings, speak, stripMarkdownForSpeech, TTS_LINE } from "./tts.ts";
+import { loadTtsSettings, speak, stripMarkdownForSpeech } from "./tts.ts";
 import type { TtsSettings } from "./tts.ts";
 import type { UiMessage } from "./types.ts";
-import { createCueMemory, planCues } from "./voice-cue-logic.ts";
+import { playVoiceClip, preloadVoiceClips } from "./voice-clips.ts";
+import {
+	createAnnounceMemory,
+	createCueMemory,
+	planCues,
+	shouldAnnounceDone,
+	voiceChannelOf,
+} from "./voice-cue-logic.ts";
+import type { Cue } from "./voice-cue-logic.ts";
 
 /**
  * 自动播报：**失败不弹提示**（以前是「每次打开页面最多一条」的长红字 toast，用户要求去掉）。
@@ -59,40 +67,74 @@ function assistantSpeech(message: UiMessage): string {
 	return stripMarkdownForSpeech(text);
 }
 
+type DoneCue = Extract<Cue, { kind: "done" }>;
+
+/**
+ * 一拍里的多条完成只朗读**一条**回复（开了「朗读回复」才会走到这里）。
+ *
+ * 优先当前会话：并行 / 后台会话一起收尾时，把两条回复串起来念只会糊成一团，
+ * 而用户最想听的就是眼前这条。没有可用文本就返回空串（那就只响提示音）。
+ */
+function replyToRead(cues: DoneCue[], activeId: string | null): string {
+	const ordered = activeId === null ? cues : [...cues.filter((cue) => cue.conversationId === activeId), ...cues];
+	for (const cue of ordered) {
+		if (!cue.message) continue;
+		const body = assistantSpeech(cue.message);
+		if (body !== "") return body;
+	}
+	return "";
+}
+
 export function useVoiceCues(snapshot: Snapshot | null): void {
 	const memory = useRef(createCueMemory());
+	// 「完成」声音那一层的去抖记忆（同一拍合并 + 1.5s 内只响一次），见 voice-cue-logic.ts
+	const announced = useRef(createAnnounceMemory());
 
 	useEffect(() => {
 		if (!snapshot) return;
-		for (const cue of planCues(memory.current, snapshot)) {
-			if (cue.kind === "start") {
-				playSound("start");
+		const cues = planCues(memory.current, snapshot);
+		if (cues.length === 0) return;
+		const tts = loadTtsSettings();
+		/** 完成单独攒起来：并行 / 后台会话一起收尾时，它们得合成一次 */
+		const done: DoneCue[] = [];
+		for (const cue of cues) {
+			if (cue.kind === "done") {
+				done.push(cue);
 				continue;
 			}
-			if (cue.kind === "approval") {
-				playSound("approval");
-				const tts = loadTtsSettings();
-				if (tts.enabled && tts.announce) speakAuto(TTS_LINE.approval, tts);
-				continue;
-			}
-			if (cue.kind === "error") {
-				playSound("error");
-				const tts = loadTtsSettings();
-				if (tts.enabled && tts.announce) speakAuto(TTS_LINE.error, tts);
-				continue;
-			}
-			// done
-			playSound("done");
-			const tts = loadTtsSettings();
-			if (!tts.enabled) continue;
-			if (tts.readReplies && cue.message) {
-				const body = assistantSpeech(cue.message);
-				if (body !== "") {
-					speakAuto(body, tts);
-					continue;
-				}
-			}
-			if (tts.announce) speakAuto(TTS_LINE.done, tts);
+			// 开始 / 出错 / 等审批：语音开着就播**预生成的本地片段**，否则只响提示音。
+			// 不再走语音合成（固定句子合成在真机上会重复播，2026-11-02）。
+			const channel = voiceChannelOf({
+				kind: cue.kind,
+				voiceEnabled: tts.enabled,
+				readReplies: tts.readReplies,
+				hasReply: false,
+			});
+			if (channel === "clip") playVoiceClip(cue.kind === "approval" ? "approval" : "error");
+			else playSound(cue.kind);
 		}
+		if (done.length === 0) return;
+		/**
+		 * 两条会话在同一拍收尾时，以前是两句「任务已完成」先后出声（音频层还会把前一句咬掉重念），
+		 * 听感就是「重复播了两遍」。现在：**同一拍合并成一次**（只念一条回复 / 只播一个片段），并且
+		 * 1.5s 内不再重复响（并行收尾也常落在相邻的两拍里）。
+		 */
+		const reply = tts.enabled && tts.readReplies ? replyToRead(done, snapshot.active.conversationId) : "";
+		const channel = voiceChannelOf({
+			kind: "done",
+			voiceEnabled: tts.enabled,
+			readReplies: tts.readReplies,
+			hasReply: reply !== "",
+		});
+		if (!shouldAnnounceDone(announced.current, channel === "reply" ? reply : null, Date.now())) return;
+		if (channel === "reply") speakAuto(reply, tts);
+		else if (channel === "clip") playVoiceClip("done");
+		else playSound("done");
 	}, [snapshot]);
+	// 空闲时先把三类片段拉下来解码好：回答一结束就要出声，那一拍主线程正在收尾渲染，
+	// 现场 fetch + decode 可能把声音拖后半秒（只解码、不播放，不需要先解锁上下文）。
+	useEffect(() => {
+		const timer = window.setTimeout(preloadVoiceClips, 2000);
+		return () => window.clearTimeout(timer);
+	}, []);
 }

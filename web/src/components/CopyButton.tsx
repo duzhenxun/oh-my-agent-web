@@ -10,6 +10,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { copyText } from "../clipboard.ts";
+import { useT } from "../use-language.ts";
 
 const RESET_MS = 1400;
 
@@ -25,6 +26,7 @@ export function CopyButton({
 	title?: string;
 }) {
 	const [copied, setCopied] = useState(false);
+	const t = useT();
 	const timer = useRef<number | null>(null);
 
 	useEffect(
@@ -45,11 +47,11 @@ export function CopyButton({
 		<button
 			type="button"
 			className={`${className}${copied ? " is-copied" : ""}`}
-			title={copied ? "已复制到剪贴板" : title}
+			title={copied ? t("已复制到剪贴板", "Copied to clipboard") : t(title)}
 			aria-live="polite"
 			onClick={() => void copy()}
 		>
-			{copied ? "✓ 已复制" : "⧉ 复制"}
+			{copied ? `✓ ${t("已复制", "Copied")}` : `⧉ ${t("复制", "Copy")}`}
 		</button>
 	);
 }

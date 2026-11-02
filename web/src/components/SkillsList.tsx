@@ -118,7 +118,9 @@ export function SkillsList({
 								: t("已禁用", "Disabled")}
 				</span>
 				<span className="side-panel-count">
-					{query.trim() === "" ? `${shown.length} 个` : `匹配 ${shown.length} / ${byTab.length}`}
+					{query.trim() === ""
+						? t(`${shown.length} 个`, `${shown.length}`)
+						: t(`匹配 ${shown.length} / ${byTab.length}`, `${shown.length} / ${byTab.length} matching`)}
 				</span>
 				<button
 					type="button"
@@ -140,10 +142,10 @@ export function SkillsList({
 						{skills.length === 0
 							? t("还没有技能，点下面「安装技能」", "No skills yet — use “Install skill” below")
 							: tab === "disabled"
-								? "没有禁用的技能"
+								? t("没有禁用的技能", "No disabled skills")
 								: tab === "enabled"
-									? "没有启用的技能"
-									: "没有匹配的技能"}
+									? t("没有启用的技能", "No enabled skills")
+									: t("没有匹配的技能", "No matching skills")}
 					</div>
 				) : (
 					shown.map((skill) => {
@@ -154,7 +156,7 @@ export function SkillsList({
 								key={skill.id}
 								className={`skill-item${selecting ? " skill-item-pick" : ""}${checked ? " skill-item-picked" : ""}${selected === skill.id && !selecting ? " skill-item-on" : ""}${skill.enabled ? "" : " skill-item-off"}`}
 								onClick={() => (selecting ? toggle(skill.id) : onOpenDetail(skill))}
-								title={selecting ? `选择 ${skill.name}` : skill.description}
+								title={selecting ? t(`选择 ${skill.name}`, `Select ${skill.name}`) : skill.description}
 							>
 								{selecting ? (
 									<input
@@ -162,7 +164,7 @@ export function SkillsList({
 										checked={checked}
 										onChange={() => undefined}
 										tabIndex={-1}
-										aria-label={`选择 ${skill.name}`}
+										aria-label={t(`选择 ${skill.name}`, `Select ${skill.name}`)}
 									/>
 								) : (
 									<span className={`mcp-dot${skill.enabled ? " mcp-dot-on" : ""}`} aria-hidden="true" />
@@ -198,7 +200,7 @@ export function SkillsList({
 							disabled={busy || picked.size === 0}
 							onClick={() => onPicked(new Set())}
 						>
-							清空
+							{t("清空", "Clear")}
 						</button>
 					</div>
 					<div className="skills-batch-row">
@@ -209,7 +211,7 @@ export function SkillsList({
 							onClick={() => onBatchEnabled(true)}
 							title={t("把勾选的技能全部启用", "Enable every ticked skill")}
 						>
-							批量启用
+							{t("批量启用", "Enable selected")}
 						</button>
 						<button
 							type="button"
@@ -218,7 +220,7 @@ export function SkillsList({
 							onClick={() => onBatchEnabled(false)}
 							title={t("把勾选的技能全部停用（改名 SKILL.md）", "Disable every ticked skill (renames SKILL.md)")}
 						>
-							批量禁用
+							{t("批量禁用", "Disable selected")}
 						</button>
 						<button
 							type="button"
@@ -227,7 +229,9 @@ export function SkillsList({
 							onClick={onBatchRemove}
 							title={t("整目录删除，不可恢复", "Delete the whole folder — this cannot be undone")}
 						>
-							{confirmRemove === "batch" ? `确认删除 ${picked.size} 个` : "批量删除"}
+							{confirmRemove === "batch"
+								? t(`确认删除 ${picked.size} 个`, `Confirm delete ${picked.size}`)
+								: t("批量删除", "Delete selected")}
 						</button>
 					</div>
 				</div>

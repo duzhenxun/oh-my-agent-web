@@ -39,11 +39,26 @@ const DEFAULT_SOUND_SETTINGS: SoundSettings = {
 	volume: 70,
 };
 
-export const SOUND_LABEL: Record<SoundKind, { title: string; hint: string }> = {
-	start: { title: "回复开始", hint: "智能体开始新一轮时" },
-	done: { title: "回复结束", hint: "智能体完成一轮回答时" },
-	error: { title: "出错", hint: "出现错误提示时" },
-	approval: { title: "等待审批", hint: "AI 请求执行工具、等待批准时" },
+export const SOUND_LABEL: Record<SoundKind, { title: string; titleEn: string; hint: string; hintEn: string }> = {
+	start: {
+		title: "回复开始",
+		titleEn: "Reply starts",
+		hint: "智能体开始新一轮时",
+		hintEn: "when the agent starts a new turn",
+	},
+	done: {
+		title: "回复结束",
+		titleEn: "Reply finishes",
+		hint: "智能体完成一轮回答时",
+		hintEn: "when the agent finishes a turn",
+	},
+	error: { title: "出错", titleEn: "Error", hint: "出现错误提示时", hintEn: "when an error notice appears" },
+	approval: {
+		title: "等待审批",
+		titleEn: "Waiting for approval",
+		hint: "AI 请求执行工具、等待批准时",
+		hintEn: "when the AI asks to run a tool and waits for approval",
+	},
 };
 
 const STORAGE_KEY = "agent-web.voice.sound";
@@ -96,6 +111,25 @@ function createContext(): AudioContext | null {
 /** 上下文是不是已经能出声（`interrupted` 这类非标准状态也走 false，见文件头） */
 function isRunning(context: AudioContext): boolean {
 	return (context.state as string) === "running";
+}
+
+/**
+ * 给「预生成语音片段」（`voice-clips.ts`）用的三个小口子。
+ *
+ * 片段也走**同一个** AudioContext：Safari / iOS 只给「用户手势里建好并 resume 过的」上下文
+ * 放行自动播放，另开一个等于自动播的那一声永远不响。所以下列能力必须从这里借，而不是另起一套。
+ */
+export function audioContextNow(): AudioContext | null {
+	return audio();
+}
+
+export function isAudioRunning(context: AudioContext): boolean {
+	return isRunning(context);
+}
+
+/** 总音量（0–1）：片段与提示音共用一个音量条 */
+export function soundVolumeOf(settings: SoundSettings): number {
+	return Math.max(0, Math.min(1, settings.volume / 100));
 }
 
 /** 懒建 + 顺手唤醒共享的 AudioContext（`interrupted` / `closed` 也一并收拾） */
@@ -194,6 +228,11 @@ function render(context: AudioContext, kind: SoundKind, volume: number): void {
  */
 const LATE_RESUME_MS = 1500;
 
+/** 这次 resume 是否还在「可以补响」的窗口内（片段播放也用同一道闸） */
+export function withinResumeWindow(requestedAt: number): boolean {
+	return Date.now() - requestedAt <= LATE_RESUME_MS;
+}
+
 /** 响一声（按当前设置判断该不该响；响不了就静默，绝不报错） */
 export function playSound(kind: SoundKind, settings: SoundSettings = loadSoundSettings()): void {
 	if (!settings.enabled || !settings[kind]) return;
@@ -203,8 +242,7 @@ export function playSound(kind: SoundKind, settings: SoundSettings = loadSoundSe
 	if (isRunning(context)) {
 		render(context, kind, volume);
 		return;
-	}
-	// 还被浏览器锁着（自动触发时没有手势）：跟着这次 resume 走一趟，只在很短的时间内补响，
+	} // 还被浏览器锁着（自动触发时没有手势）：跟着这次 resume 走一趟，只在很短的时间内补响，
 	// 真正的长效修法是 installUnlock 在手势里先把上下文叫醒。
 	const requestedAt = Date.now();
 	void context

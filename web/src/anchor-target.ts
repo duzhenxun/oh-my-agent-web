@@ -27,14 +27,13 @@ export type AnchorSeen = {
  * @param current 这一帧的三样东西
  * @returns `seen` 要写回的新值，以及要顶到上方的那条消息 id（null = 不动）
  */
-export function nextAnchorTarget(
-	seen: AnchorSeen,
-	current: AnchorSeen,
-): { seen: AnchorSeen; target: string | null } {
+export function nextAnchorTarget(seen: AnchorSeen, current: AnchorSeen): { seen: AnchorSeen; target: string | null } {
 	// 刚换会话（含第一次挂载）：只记下来，不锚 —— 打开旧会话应该落在最新进度
 	if (seen.conversation !== current.conversation) return { seen: current, target: null };
 	// 真实消息优先：排队项解除的那一刻两者同时变化，要盯真正进了聊天区的那条
-	if (current.messageId !== null && seen.messageId !== current.messageId) return { seen: current, target: current.messageId };
-	if (current.queuedId !== null && seen.queuedId !== current.queuedId) return { seen: current, target: current.queuedId };
+	if (current.messageId !== null && seen.messageId !== current.messageId)
+		return { seen: current, target: current.messageId };
+	if (current.queuedId !== null && seen.queuedId !== current.queuedId)
+		return { seen: current, target: current.queuedId };
 	return { seen: current, target: null };
 }

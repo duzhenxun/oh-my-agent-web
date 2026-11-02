@@ -11,6 +11,7 @@
 import { useState } from "react";
 import { basename } from "../path-utils.ts";
 import { ProjectMenuPopover } from "./ProjectMenuPopover.tsx";
+import { useT } from "../use-language.ts";
 
 type RootOption = { cwd: string; label: string };
 
@@ -24,10 +25,12 @@ export function FilesRootSelect({
 	options: RootOption[];
 	onChange: (cwd: string | null) => void;
 }) {
+	const t = useT();
 	const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
 	const [open, setOpen] = useState(false);
 	const current = options.find((option) => option.cwd === value);
-	const label = current?.label ?? (value === "" ? "跟随当前会话" : basename(value) || value);
+	const label =
+		current?.label ?? (value === "" ? t("跟随当前会话", "Follow the current session") : basename(value) || value);
 
 	const pick = (cwd: string | null) => {
 		onChange(cwd);
@@ -40,7 +43,14 @@ export function FilesRootSelect({
 				type="button"
 				ref={setAnchor}
 				className={`side-files-root${open ? " side-files-root-open" : ""}`}
-				title={value === "" ? "文件树跟着当前会话走（点一下可换项目）" : `文件树根目录：${value}`}
+				title={
+					value === ""
+						? t(
+								"文件树跟着当前会话走（点一下可换项目）",
+								"The tree follows the current session (click to pick another project)",
+							)
+						: t(`文件树根目录：${value}`, `Tree root: ${value}`)
+				}
 				aria-haspopup="listbox"
 				aria-expanded={open}
 				onClick={() => setOpen((state) => !state)}
@@ -67,7 +77,7 @@ export function FilesRootSelect({
 						<span className="files-root-check" aria-hidden="true">
 							{value === "" ? "✓" : ""}
 						</span>
-						跟随当前会话
+						{t("跟随当前会话", "Follow the current session")}
 					</button>
 					{options.length > 0 ? <div className="files-root-sep" /> : null}
 					{options.map((option) => (

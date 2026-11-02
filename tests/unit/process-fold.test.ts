@@ -9,9 +9,22 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { foldLayout, isTurnRunning, lastGroupStart, processView, shouldForgetManual } from "../../web/src/process-fold.ts";
+import {
+	foldLayout,
+	isNarrationText,
+	isTurnRunning,
+	processView,
+	shouldForgetManual,
+} from "../../web/src/process-fold.ts";
 
-const base = { running: false, hasAnswer: true, autoCollapse: true, defaultOpen: false, manual: null };
+const base = {
+	running: false,
+	hasAnswer: true,
+	autoCollapse: true,
+	autoFoldRunning: false,
+	defaultOpen: false,
+	manual: null,
+};
 
 describe("这一轮还在跑吗", () => {
 	it("还在流式且没写 endedAt = 在跑", () => {
@@ -28,13 +41,35 @@ describe("这一轮还在跑吗", () => {
 });
 
 describe("过程区怎么展", () => {
-	it("跑着的时候只画最新一组（换组就地替换）", () => {
-		assert.equal(processView({ ...base, running: true }), "tail");
+	it("跑着 + 没勾「跑时自动折叠」（默认）→ 完整铺开", () => {
+		assert.equal(processView({ ...base, running: true }), "all");
 	});
 
-	it("跑着的时候点开就是完整时间线，再点回最新一组", () => {
+	it("跑着的时候点收起就是一行，再点开回到完整时间线", () => {
 		assert.equal(processView({ ...base, running: true, manual: true }), "all");
-		assert.equal(processView({ ...base, running: true, manual: false }), "tail");
+		assert.equal(processView({ ...base, running: true, manual: false }), "collapsed");
+	});
+
+	it("「跑时自动折叠」关着（默认）→ 跑着完整铺开（用户 2026-11-02：「没勾上这个，应展开才对吧」）", () => {
+		assert.equal(processView({ ...base, running: true, autoFoldRunning: false }), "all");
+	});
+
+	it("「跑时自动折叠」勾上 → 跑着就收成那行秒表（只剩实时动作行）", () => {
+		assert.equal(processView({ ...base, running: true, autoFoldRunning: true }), "collapsed");
+	});
+
+	it("跑时折叠也受手动优先：点开看全部，再点回收起", () => {
+		const folded = { ...base, running: true, autoFoldRunning: true };
+		assert.equal(processView({ ...folded, manual: true }), "all");
+		assert.equal(processView({ ...folded, manual: false }), "collapsed");
+	});
+
+	it("「跑时折叠」不影响跑完那一刻（两个时段各管各的）", () => {
+		assert.equal(processView({ ...base, running: false, autoFoldRunning: true }), "collapsed");
+		assert.equal(
+			processView({ ...base, running: false, autoFoldRunning: true, autoCollapse: false, defaultOpen: false }),
+			"collapsed",
+		);
 	});
 
 	it("跑完自动收起（默认设置，有最终答案）", () => {
@@ -54,41 +89,6 @@ describe("过程区怎么展", () => {
 	it("手动优先：已结束的消息点开就得一直开着", () => {
 		assert.equal(processView({ ...base, manual: true }), "all");
 		assert.equal(processView({ ...base, hasAnswer: false, manual: false }), "collapsed");
-	});
-});
-
-describe("最新一组从哪里开始", () => {
-	const thinking = { thinking: { text: "想" } };
-	const lead = { thinking: null };
-
-	it("组的边界在「新开一段思考」：它后面的说明和工具都算这一组", () => {
-		const segments = [
-			{ kind: "process", groups: [thinking] },
-			{ kind: "text", text: "第一组说明" },
-			{ kind: "process", groups: [lead] },
-			{ kind: "process", groups: [thinking] },
-			{ kind: "text", text: "第二组说明" },
-			{ kind: "process", groups: [lead] },
-		] as const;
-		assert.deepEqual(lastGroupStart(segments), { segmentIndex: 3, groupIndex: 0 });
-	});
-
-	it("同一段里挤了好几组（想 → 工具 → 想 → 工具，中间没说话）→ 只从最后那段思考开始画", () => {
-		const segments = [{ kind: "process", groups: [thinking, lead, thinking, lead] }] as const;
-		assert.deepEqual(lastGroupStart(segments), { segmentIndex: 0, groupIndex: 2 });
-	});
-
-	it("一次思考都没有 → 最后一个过程段的开头", () => {
-		const segments = [
-			{ kind: "process", groups: [lead] },
-			{ kind: "text", text: "说明" },
-			{ kind: "process", groups: [lead, lead] },
-		] as const;
-		assert.deepEqual(lastGroupStart(segments), { segmentIndex: 2, groupIndex: 0 });
-	});
-
-	it("压根没动手 → null（纯文字回复不需要折叠）", () => {
-		assert.equal(lastGroupStart([{ kind: "text", text: "第一段" }, { kind: "text", text: "第二段" }]), null);
 	});
 });
 
@@ -123,7 +123,11 @@ describe("折叠收到哪里", () => {
 	});
 
 	it("以工具收尾（最后动手之后没结论）→ 不该收，否则屏幕上只剩一行按钮", () => {
-		const layout = foldLayout([{ kind: "process" }, { kind: "text", text: "查到了，接下来跑一下" }, { kind: "process" }]);
+		const layout = foldLayout([
+			{ kind: "process" },
+			{ kind: "text", text: "查到了，接下来跑一下" },
+			{ kind: "process" },
+		]);
 		assert.equal(layout.hasAnswer, false);
 		assert.equal(layout.insideFold(1), false); // 最后那段说明不在任何结论之前？它在，但不该藏（hasAnswer=false 时根本不会进入收起状态）
 	});
@@ -143,9 +147,109 @@ describe("折叠收到哪里", () => {
 	});
 
 	it("压根没动手（普通问答）→ 没有折叠，正文一句都不能藏", () => {
-		const layout = foldLayout([{ kind: "text", text: "第一段" }, { kind: "text", text: "第二段" }]);
+		const layout = foldLayout([
+			{ kind: "text", text: "第一段" },
+			{ kind: "text", text: "第二段" },
+		]);
 		assert.equal(layout.firstProcessAt, -1);
 		assert.equal(layout.hasAnswer, false);
 		assert.deepEqual([0, 1].map(layout.insideFold), [false, false]);
+	});
+});
+
+describe("哪一段正文用「叙述」字号（同一片过程里必须统一）", () => {
+	// 用户 2026-11-02 的截图：同一条消息里两句过程说明，一句 16.8px、一句 14px
+	const segments = [
+		{ kind: "process", groups: [{ thinking: { text: "想" } }] },
+		{ kind: "text", text: "我去找所有拼 XmYs 的耗时格式化函数" },
+		{ kind: "process", groups: [{ thinking: null }] },
+		{ kind: "text", text: "现在把格式化函数抽到可测的公共模块" },
+		{ kind: "process", groups: [{ thinking: { text: "想" } }] },
+		{ kind: "text", text: "改好了。" },
+	] as const;
+
+	it("跑完：只有整轮最后那段结论算正文，前面两段都是叙述（不再大小不一）", () => {
+		const layout = foldLayout(segments);
+		assert.equal(layout.lastProcessAt, 4);
+		assert.equal(layout.lastAnswerAt, 5);
+		const narration = segments.map((_, index) =>
+			isNarrationText({
+				index,
+				lastAnswerAt: layout.lastAnswerAt,
+				lastProcessAt: layout.lastProcessAt,
+				running: false,
+			}),
+		);
+		// 过程段（0/2/4）不走这个判断；正文段 1/3 是叙述，5 是结论
+		assert.deepEqual(
+			[1, 3].map((index) =>
+				isNarrationText({
+					index,
+					lastAnswerAt: layout.lastAnswerAt,
+					lastProcessAt: layout.lastProcessAt,
+					running: false,
+				}),
+			),
+			[true, true],
+		);
+		assert.equal(
+			isNarrationText({
+				index: 5,
+				lastAnswerAt: layout.lastAnswerAt,
+				lastProcessAt: layout.lastProcessAt,
+				running: false,
+			}),
+			false,
+		);
+		assert.equal(narration.length, segments.length);
+	});
+
+	it("跑着的时候：全部当叙述（还没有「最终答案」这回事，别让同一句中途跳字号）", () => {
+		const layout = foldLayout(segments);
+		for (const index of [1, 3, 5]) {
+			assert.equal(
+				isNarrationText({
+					index,
+					lastAnswerAt: layout.lastAnswerAt,
+					lastProcessAt: layout.lastProcessAt,
+					running: true,
+				}),
+				true,
+			);
+		}
+	});
+
+	it("结论之后又去动手了（这一轮以工具收尾）→ 最后那句也不是结论，仍算叙述", () => {
+		const tailProcess = [
+			{ kind: "process", groups: [{ thinking: { text: "想" } }] },
+			{ kind: "text", text: "我先跑一下测试" },
+			{ kind: "process", groups: [{ thinking: null }] },
+		] as const;
+		const layout = foldLayout(tailProcess);
+		assert.equal(layout.hasAnswer, false);
+		assert.equal(
+			isNarrationText({
+				index: 1,
+				lastAnswerAt: layout.lastAnswerAt,
+				lastProcessAt: layout.lastProcessAt,
+				running: false,
+			}),
+			true,
+		);
+	});
+
+	it("纯文字回复（没动手）→ 正文就是正文", () => {
+		const layout = foldLayout([{ kind: "text", text: "只有一句话" }] as const);
+		assert.equal(layout.firstProcessAt, -1);
+		assert.equal(layout.lastProcessAt, -1);
+		assert.equal(
+			isNarrationText({
+				index: 0,
+				lastAnswerAt: layout.lastAnswerAt,
+				lastProcessAt: layout.lastProcessAt,
+				running: false,
+			}),
+			false,
+		);
 	});
 });

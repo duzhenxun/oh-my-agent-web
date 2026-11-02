@@ -64,26 +64,41 @@ export function ProjectMenu({
 
 	return (
 		<ProjectMenuPopover point={point} anchor={anchor} closeOnLeave onClose={onClose}>
-			<button type="button" className="proj-menu-item" title="在这个项目下开一条新会话" onClick={act(onNewSession)}>
-				💬 新建会话
+			<button
+				type="button"
+				className="proj-menu-item"
+				title={t("在这个项目下开一条新会话", "Start a new session under this project")}
+				onClick={act(onNewSession)}
+			>
+				💬 {t("新建会话", "New session")}
 			</button>
 			<button type="button" className="proj-menu-item" onClick={act(onTogglePin)}>
-				{pinned ? "📌 取消置顶" : "📌 置顶项目"}
+				{pinned ? `📌 ${t("取消置顶", "Unpin")}` : `📌 ${t("置顶项目", "Pin project")}`}
 			</button>
-			<button type="button" className="proj-menu-item" title="在同组内上移一格" onClick={act(onMoveUp)}>
-				↑ 上移
+			<button
+				type="button"
+				className="proj-menu-item"
+				title={t("在同组内上移一格", "Move up one slot within this group")}
+				onClick={act(onMoveUp)}
+			>
+				↑ {t("上移", "Move up")}
 			</button>
-			<button type="button" className="proj-menu-item" title="在同组内下移一格" onClick={act(onMoveDown)}>
-				↓ 下移
+			<button
+				type="button"
+				className="proj-menu-item"
+				title={t("在同组内下移一格", "Move down one slot within this group")}
+				onClick={act(onMoveDown)}
+			>
+				↓ {t("下移", "Move down")}
 			</button>
 			<button type="button" className="proj-menu-item" onClick={act(onRename)}>
-				✏️ 重命名…
+				✏️ {t("重命名", "Rename")}…
 			</button>
 			<button type="button" className="proj-menu-item" onClick={act(onOpenFiles)}>
-				📁 在文件列表中定位
+				📁 {t("在文件列表中定位", "Reveal in the file list")}
 			</button>
 			<button type="button" className="proj-menu-item" onClick={act(onOpenTerminal)}>
-				⌨ 在终端中打开
+				⌨ {t("在终端中打开", "Open in terminal")}
 			</button>
 			<button
 				type="button"
@@ -91,7 +106,7 @@ export function ProjectMenu({
 				title={t("在系统文件管理器里定位这个目录（只定位，不执行任何文件）")}
 				onClick={act(onReveal)}
 			>
-				🔍 在 Finder 中显示
+				🔍 {t("在 Finder 中显示", "Reveal in Finder")}
 			</button>
 			{/* 破坏性操作放最后、标红：删的是这条项目的全部会话，**真删文件、不可恢复**。
 			 * 两下确认：第一下只上膛 —— 见文件里 `wipe` 那段注释。 */}

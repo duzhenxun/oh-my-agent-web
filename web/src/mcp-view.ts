@@ -100,11 +100,27 @@ export const EXPOSURE_LABEL: Record<Exposure, string> = {
 	hidden: "不暴露",
 };
 
+/** 上面那张表的英文（调用点：`t(EXPOSURE_LABEL[x], EXPOSURE_LABEL_EN[x])`） */
+export const EXPOSURE_LABEL_EN: Record<Exposure, string> = {
+	codemode: "Code mode (default)",
+	deferred: "Declared after search",
+	direct: "Declared directly",
+	hidden: "Hidden",
+};
+
 export const EXPOSURE_HINT: Record<Exposure, string> = {
 	codemode: "只列出服务器名称和简介，代码模式脚本按需搜索它的工具。",
 	deferred: "模型先用 tool_search 搜到、下一轮才声明出来，然后直接调用。",
 	direct: "像内置工具一样直接声明给模型，最省事也最占上下文。",
 	hidden: "注册但不暴露：工具还在，模型碰不到。",
+};
+
+/** 上面那张表的英文（调用点：`t(EXPOSURE_HINT[x], EXPOSURE_HINT_EN[x])`） */
+export const EXPOSURE_HINT_EN: Record<Exposure, string> = {
+	codemode: "Only the server name and summary are listed; code-mode scripts search its tools on demand.",
+	deferred: "The model finds it with tool_search, it is declared on the next turn, then called directly.",
+	direct: "Declared to the model like a built-in tool: simplest, but uses the most context.",
+	hidden: "Registered but hidden: the tools exist, the model cannot reach them.",
 };
 
 /** 连接失败是不是「没登录」（pi 的客户端把 401 统一报成 requires authentication） */
@@ -114,6 +130,9 @@ export function needsLogin(error: string | undefined): boolean {
 }
 
 export const SCOPE_LABEL: Record<Scope, string> = { global: "全局", project: "项目" };
+
+/** 上面那张表的英文（调用点：`t(SCOPE_LABEL[x], SCOPE_LABEL_EN[x])`） */
+export const SCOPE_LABEL_EN: Record<Scope, string> = { global: "Global", project: "Project" };
 
 /** 服务器身份：作用域 + 名字（同名可能同时存在于项目和全局） */
 export function serverKey(server: { scope: Scope; name: string }): string {

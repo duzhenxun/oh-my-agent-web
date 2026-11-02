@@ -6,6 +6,7 @@
  * 其它只把路径写进提示词。
  */
 import type { AttachmentRef } from "./types.ts";
+import { tNow } from "./use-language.ts";
 
 const MAX_ATTACHMENTS = 5;
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
@@ -21,15 +22,25 @@ export function pickUploadableFiles<T extends { name: string; size: number; type
 
 	for (const file of files) {
 		if (count >= MAX_ATTACHMENTS) {
-			rejected.push(`${file.name}：一条消息最多 ${MAX_ATTACHMENTS} 个附件`);
+			rejected.push(
+				tNow(
+					`${file.name}：一条消息最多 ${MAX_ATTACHMENTS} 个附件`,
+					`${file.name}: at most ${MAX_ATTACHMENTS} attachments per message`,
+				),
+			);
 			continue;
 		}
 		if (file.size === 0) {
-			rejected.push(`${file.name}：空文件`);
+			rejected.push(tNow(`${file.name}：空文件`, `${file.name}: empty file`));
 			continue;
 		}
 		if (file.size > MAX_UPLOAD_BYTES) {
-			rejected.push(`${file.name}：超过 ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)}MB`);
+			rejected.push(
+				tNow(
+					`${file.name}：超过 ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)}MB`,
+					`${file.name}: over ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)}MB`,
+				),
+			);
 			continue;
 		}
 		accepted.push(file);
@@ -65,7 +76,12 @@ export async function uploadFile(file: {
 		});
 		if (!response.ok) {
 			const body = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
-			return { ok: false, error: body?.error?.message ?? `上传失败（HTTP ${response.status}）` };
+			return {
+				ok: false,
+				error:
+					body?.error?.message ??
+					tNow(`上传失败（HTTP ${response.status}）`, `Upload failed (HTTP ${response.status})`),
+			};
 		}
 		return { ok: true, attachment: (await response.json()) as AttachmentRef };
 	} catch (error) {

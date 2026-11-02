@@ -19,6 +19,36 @@ export function logicalWidthOf(naturalWidth: number, dpr: number, src: string): 
 	return Math.round(naturalWidth / Math.min(dpr, 2));
 }
 
+/**
+ * 图上最终该写进 `style.max-width` 的像素值（三条上限里最小的那条）。
+ *
+ * 第三条上限是**正文列宽**，2026-11-02 补上：前两条都是「绝对值」（逻辑尺寸 / 用户设的 400px），
+ * 手机上的正文列只有 340 上下，400px 的图会把气泡顶出去 —— 图片自己的 `max-width` 是内联的，
+ * 权重高于样式表里的 `max-width: 100%`，于是整条消息栏横向撑开、整页能左右拖（“跑版”）。
+ * 列宽只在运行时知道（顶栏高度/侧栏开合/字号档位都会变），所以由组件量了传进来。
+ *
+ * `availableWidth` 为 null / 非正数时视为「量不到」（面板关着、还没布局），照旧只按前两条收。
+ */
+export function imageMaxWidthOf(input: {
+	naturalWidth: number;
+	dpr: number;
+	src: string;
+	/** 用户设的上限（0 / null = 不设） */
+	cap: number | null;
+	/** 正文列宽（图片所在块级容器的内容宽） */
+	availableWidth: number | null;
+}): number | null {
+	const logical = logicalWidthOf(input.naturalWidth, input.dpr, input.src);
+	const limit = input.cap !== null && Number.isFinite(input.cap) && input.cap > 0 ? input.cap : null;
+	let width = logical === null ? limit : limit === null ? logical : Math.min(logical, limit);
+	const available = input.availableWidth;
+	if (available !== null && Number.isFinite(available) && available > 0) {
+		const room = Math.floor(available);
+		width = width === null ? room : Math.min(width, room);
+	}
+	return width;
+}
+
 /** 这张图是不是本工作台上传的（`/n/<id>` 是聊天附件，`/api/uploads/<id>` 是历史会话里的那种） */
 export function isAppUpload(src: string): boolean {
 	return src.startsWith("/n/") || src.startsWith("/api/uploads/");

@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
 	assignRunsToMessages,
+	runsForBadge,
 	runsOfCurrentTurn,
 	subagentUsageOf,
 	turnStartedAtOf,
@@ -156,8 +157,59 @@ describe("turnStartedAtOf / runsOfCurrentTurn", () => {
 		);
 	});
 
-	it("turnStartedAt 为 null → 空（刷新后还没有用户消息）", () => {
+	it("turnStartedAt 为 null（刷新后还没有用户消息）→ 只留还在跑的", () => {
 		assert.deepEqual(runsOfCurrentTurn([run("r1", 1)], null), []);
+		const live = { ...run("live", 1), status: "running" } as SubagentRunView;
+		assert.deepEqual(
+			runsOfCurrentTurn([run("done", 1), live], null).map((item) => item.id),
+			["live"],
+		);
+	});
+
+	it("插队消息不推本轮起点（子代理在跑时刷新，徽标不该消失）", () => {
+		// 用户 2026-11-02 报的场景：11:39 派子代理，11:40 又插队补了一句 ——
+		// 拿插队那条当起点，11:39 派出去、还在跑的子代理就全被切掉，徽标凭空消失。
+		const withSteer = [
+			{ role: "user", ts: 1000 },
+			{ role: "assistant", ts: 1000 },
+			{ role: "user", ts: 1500, steer: true },
+		];
+		assert.equal(turnStartedAtOf(withSteer), 1000);
+		const runs = [run("sub", 1200)];
+		assert.deepEqual(
+			runsOfCurrentTurn(runs, turnStartedAtOf(withSteer)).map((item) => item.id),
+			["sub"],
+		);
+	});
+
+	it("下一次真发的新消息仍然是新起点（插队不影响这条）", () => {
+		const messages = [
+			{ role: "user", ts: 1000 },
+			{ role: "user", ts: 1500, steer: true },
+			{ role: "user", ts: 2000 },
+		];
+		assert.equal(turnStartedAtOf(messages), 2000);
+	});
+});
+
+describe("runsForBadge（顶栏徽标摆哪几条）", () => {
+	const live = { ...run("live", 1200), status: "running" } as SubagentRunView;
+	const done = run("done", 1100);
+
+	it("在跑的永远留；已结束的刷新后不凭空冒出来", () => {
+		assert.deepEqual(
+			runsForBadge([live, done], new Set()).map((item) => item.id),
+			["live"],
+		);
+	});
+
+	it("这一页看着它跑过的，跑完之后继续挂在徽标上", () => {
+		assert.deepEqual(
+			runsForBadge([live, done], new Set(["done"]))
+				.map((item) => item.id)
+				.sort(),
+			["done", "live"],
+		);
 	});
 });
 

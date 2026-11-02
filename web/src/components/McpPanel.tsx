@@ -3,8 +3,17 @@ import { McpAdd } from "./McpAdd.tsx";
 import { McpList } from "./McpList.tsx";
 import { McpDetailBody } from "./McpDetail.tsx";
 import { McpMarket } from "./McpMarket.tsx";
-import { SCOPE_LABEL, errorText, serverKey, type Action, type LoginState, type Scope, type View } from "../mcp-view.ts";
-import { useT } from "../use-language.ts";
+import {
+	SCOPE_LABEL,
+	SCOPE_LABEL_EN,
+	errorText,
+	serverKey,
+	type Action,
+	type LoginState,
+	type Scope,
+	type View,
+} from "../mcp-view.ts";
+import { tNow, useT } from "../use-language.ts";
 
 /** 右栏现在显示什么：某一台的详情 / 添加表单 / 市场 */
 type Pane = { kind: "detail" } | { kind: "add" } | { kind: "market" };
@@ -196,7 +205,7 @@ export function McpPanel() {
 						</div>
 						<div className="mcp-boot-actions">
 							<button type="button" className="btn btn-tiny" disabled={loading} onClick={() => void load()}>
-								{loading ? "重试中…" : "重试"}
+								{loading ? t("重试中…", "Retrying…") : t("重试", "Retry")}
 							</button>
 						</div>
 					</>
@@ -278,7 +287,7 @@ export function McpPanel() {
 					) : (
 						<>
 							<div className="mcp-detail-head">
-								<span className="mcp-badge">{SCOPE_LABEL[current.scope]}</span>
+								<span className="mcp-badge">{t(SCOPE_LABEL[current.scope], SCOPE_LABEL_EN[current.scope])}</span>
 								<span className="mcp-detail-name">{current.name}</span>
 								<span className="topbar-spacer" />
 								<button
@@ -291,7 +300,7 @@ export function McpPanel() {
 										"Actually connect once using the config: handshake + list tools, then disconnect",
 									)}
 								>
-									{busy?.startsWith("test:") ? "连接中…" : "测试连接"}
+									{busy?.startsWith("test:") ? t("连接中…", "Connecting…") : t("测试连接", "Test connection")}
 								</button>
 								<button
 									type="button"
@@ -302,7 +311,11 @@ export function McpPanel() {
 									}
 									onBlur={() => setConfirming((value) => (value === serverKey(current) ? null : value))}
 								>
-									{busy?.startsWith("remove:") ? "移除中…" : confirming === serverKey(current) ? "确认移除" : "移除"}
+									{busy?.startsWith("remove:")
+										? t("移除中…", "Removing…")
+										: confirming === serverKey(current)
+											? t("确认移除", "Confirm remove")
+											: t("移除", "Remove")}
 								</button>
 								<button
 									type="button"
@@ -312,7 +325,7 @@ export function McpPanel() {
 									disabled={busy !== null}
 									onClick={() => void run("set-enabled", current, { enabled: !current.enabled })}
 								>
-									{current.enabled ? "已启用" : "已停用"}
+									{current.enabled ? t("已启用", "Enabled") : t("已停用", "Disabled")}
 								</button>
 							</div>
 
@@ -339,7 +352,9 @@ export function McpPanel() {
 			<div className="mcp-bar">
 				<span className="side-panel-count">
 					{t("已开启", "Enabled")} {enabled}/{total} {t("个服务器", "servers")}
-					{view.autoEnableCodemode === false ? " · 代码模式不会自动打开" : ""}
+					{view.autoEnableCodemode === false
+						? t(" · 代码模式不会自动打开", " · code mode is not enabled automatically")
+						: ""}
 				</span>
 				<span className="topbar-spacer" />
 				<button type="button" className="btn btn-tiny" disabled={busy !== null} onClick={() => void load()}>
@@ -366,7 +381,7 @@ export function McpPanel() {
 					"项目覆盖全局，只写 enabled / exposure 的项目条目是覆盖项",
 					"project entries override global ones; entries that only set enabled / exposure act as overrides",
 				)}
-				）。
+				{t("）。", "). ")}
 				{t("启停与暴露方式写回同一个文件，", "Enable flags and exposure are written back to the same file, ")}
 				<strong>{t("对新会话生效", "effective for new sessions")}</strong>
 				{t(
@@ -398,8 +413,11 @@ async function readView(response: Response): Promise<{ view?: View; error?: stri
 		return {
 			error:
 				response.status === 404
-					? "服务端没有 /api/mcp 这个接口（大概率是跑着旧版本）：重启 Pi Web 后再打开这个面板"
-					: `HTTP ${response.status}${snippet === "" ? "" : `：${snippet}`}`,
+					? tNow(
+							"服务端没有 /api/mcp 这个接口（大概率是跑着旧版本）：重启 Pi Web 后再打开这个面板",
+							"The server has no /api/mcp endpoint (probably an older build) — restart Pi Web and reopen this panel",
+						)
+					: `HTTP ${response.status}${snippet === "" ? "" : `${tNow("：", ": ")}${snippet}`}`,
 		};
 	}
 }

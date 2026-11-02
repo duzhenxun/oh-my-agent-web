@@ -12,7 +12,7 @@ import {
 	promoteImagePaths,
 } from "../markdown-media.ts";
 import { openImageViewer } from "../image-viewer.ts";
-import { logicalWidthOf } from "../image-display.ts";
+import { imageMaxWidthOf } from "../image-display.ts";
 import { useStoredNumber } from "../use-stored-number.ts";
 import { CHAT_IMAGE_WIDTH_DEFAULT, CHAT_IMAGE_WIDTH_KEY } from "../ui-prefs.ts";
 import { MermaidDiagram } from "./MermaidDiagram.tsx";
@@ -48,6 +48,29 @@ import { looksLikePath, looksLikePathListing, openPathFromMessage, pathTokens } 
  * 回落写在这一层，而不是里面再包一个组件：外层「点击放大」本身就是 `<button>`，
  * 里面再嵌一个 `<button>` 是非法 HTML（React 会警告，点击也会被交叠掉）。
  */
+
+/**
+ * 图片所在的**块级容器**（`p` / `.md-img-grid` / `li` / `td`…）—— 也就是「正文列」在这里多宽。
+ *
+ * 只能量容器，**不能量 `.md-img-btn` 自己**：那颗按钮的宽度是被图片撑出来的，拿它算上限等于自证
+ * —— 图再宽按钮就跟着多宽，永远“刚好放得下”。往上跳一层，才是外部给定的宽度。
+ */
+function imageBoxOf(image: HTMLImageElement): HTMLElement | null {
+	const button = image.parentElement;
+	return button?.classList.contains("md-img-btn") ? button.parentElement : button;
+}
+
+/** 那块容器能放多宽（量不到 —— 面板关着 / 还没布局 —— 就返回 null，按“不设这一道”处理） */
+function availableWidthOf(image: HTMLImageElement): number | null {
+	const box = imageBoxOf(image);
+	if (!box) return null;
+	// clientWidth 含内边距、不含边框与滚动条：减掉内边距，才是图能用的净宽
+	const style = getComputedStyle(box);
+	const padding = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0);
+	const width = box.clientWidth - padding;
+	return Number.isFinite(width) && width > 0 ? width : null;
+}
+
 function MessageImage({ src, path, alt }: { src: string; path: string; alt: string }) {
 	const [cap] = useStoredNumber(CHAT_IMAGE_WIDTH_KEY, CHAT_IMAGE_WIDTH_DEFAULT, 0, 4000);
 	// 记的是「哪个 src 挂了」而不是一个 boolean：流式输出时路径会先半截后完整，
@@ -61,12 +84,37 @@ function MessageImage({ src, path, alt }: { src: string; path: string; alt: stri
 	const apply = useCallback(() => {
 		const image = ref.current;
 		if (!image || !image.complete || image.naturalWidth === 0) return;
-		const logical = logicalWidthOf(image.naturalWidth, window.devicePixelRatio || 1, src);
-		const limit = cap > 0 ? cap : null;
-		const width = logical === null ? limit : limit === null ? logical : Math.min(logical, limit);
-		image.style.maxWidth = width === null ? "" : `${width}px`;
+		const width = imageMaxWidthOf({
+			naturalWidth: image.naturalWidth,
+			dpr: window.devicePixelRatio || 1,
+			src,
+			cap: cap > 0 ? cap : null,
+			// 手机上的正文列只有 330 上下：量一次现成的宽度，别只信样式表里的百分比
+			availableWidth: availableWidthOf(image),
+		});
+		/**
+		 * 只传「上限」，**不**直接写内联 `max-width`。
+		 *
+		 * 内联 max-width 会盖掉样式表里的 `max-width: 100%`，手机上就变成「400px 的图塞进
+		 * 330px 的气泡」→ 整块溢出、对话区出现横向滚动条、内容左右晃（用户 2026-11-02）。
+		 * 现在 CSS 那边是 `max-width: min(var(--md-img-cap, 100%), 100%)`：上限再大也过不了容器宽。
+		 * 这里再按**实测**列宽夹一道：百分比在「宽度由内容决定」的按钮里是循环依赖，
+		 * 各引擎对它的处理不完全一致 —— 算出来的像素值是硬上限，谁都绕不过去。
+		 */
+		if (width === null) image.style.removeProperty("--md-img-cap");
+		else image.style.setProperty("--md-img-cap", `${width}px`);
 	}, [cap, src]);
 	useEffect(apply, [apply]);
+	// 正文列宽会变（手机转屏、抽屉开合、字号 / 内容宽度档位）：跟着重新夹一次，
+	// 否则转横屏后仍按竖屏那次的硬上限排，右侧白白空一截。
+	useEffect(() => {
+		const image = ref.current;
+		const box = image ? imageBoxOf(image) : null;
+		if (!box || typeof ResizeObserver === "undefined") return;
+		const observer = new ResizeObserver(() => apply());
+		observer.observe(box);
+		return () => observer.disconnect();
+	}, [apply]);
 	if (broken)
 		return (
 			<button

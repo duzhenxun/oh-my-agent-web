@@ -585,7 +585,7 @@ function SidebarInner({
 			selected={selectedIds.includes(session.id)}
 			running={runningIds.includes(session.id)}
 			unseen={unseen[session.id] !== undefined}
-			title={titleOf(session) || "（无标题）"}
+			title={titleOf(session) || t("（无标题）", "(untitled)")}
 			pinned={sessionPrefs.pinned.includes(session.id)}
 			menuPoint={sessionMenu?.id === session.id ? sessionMenu.point : null}
 			onOpenMenu={(point) => {
@@ -698,7 +698,7 @@ function SidebarInner({
 					<button
 						type="button"
 						className="pin-group-head sidebar-title"
-						title={pinnedOpen ? "收起置顶" : "展开置顶"}
+						title={pinnedOpen ? t("收起置顶", "Collapse pinned") : t("展开置顶", "Expand pinned")}
 						aria-expanded={pinnedOpen}
 						onClick={() => setPinnedOpen((open) => !open)}
 					>
@@ -711,7 +711,7 @@ function SidebarInner({
 							className={`sidebar-title-caret${pinnedOpen ? " sidebar-title-caret-open" : ""}`}
 							aria-hidden="true"
 						/>
-						<span className="sidebar-title-label">置顶</span>
+						<span className="sidebar-title-label">{t("置顶", "Pinned")}</span>
 					</button>
 					{pinnedOpen ? (
 						<div className="pin-group-body">
@@ -945,7 +945,7 @@ function SidebarInner({
 						>
 							<summary
 								className="proj-head"
-								title={`${project.cwd || t("未分组", "Ungrouped")}\n拖动可换项目顺序　右键：项目菜单`}
+								title={`${project.cwd || t("未分组", "Ungrouped")}\n${t("拖动可换项目顺序　右键：项目菜单", "Drag to reorder projects · Right-click for the project menu")}`}
 								/* 拖这一行 = 改项目顺序（会话拖动那套在行里，两套互不干扰）。
 								   改名时关掉：不然在输入框里选字会变成「拖着整行跑」。 */
 								draggable={renaming?.cwd !== project.cwd}
@@ -1116,7 +1116,14 @@ function SidebarInner({
 									<button
 										type="button"
 										className="pi-row pi-row-more"
-										title={expanded ? "收起，只显示前几个" : `展开，显示全部 ${visibleSessions.length} 个会话`}
+										title={
+											expanded
+												? t("收起，只显示前几个", "Collapse back to the first few")
+												: t(
+														`展开，显示全部 ${visibleSessions.length} 个会话`,
+														`Expand to show all ${visibleSessions.length} sessions`,
+													)
+										}
 										onClick={() => setShowAll((current) => ({ ...current, [project.cwd]: !expanded }))}
 									>
 										{expanded ? t("收起", "Collapse") : t(`还有 ${rest} 个…`, `and ${rest} more…`)}
@@ -1127,7 +1134,7 @@ function SidebarInner({
 										className="pi-row pi-row-more"
 										onClick={() => setShowAll((current) => ({ ...current, [project.cwd]: false }))}
 									>
-										收起
+										{t("收起", "Collapse")}
 									</button>
 								) : null}
 							</div>

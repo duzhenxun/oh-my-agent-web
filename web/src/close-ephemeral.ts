@@ -7,13 +7,19 @@
  */
 import { forgetCachedMessages } from "./session-cache.ts";
 import { forgetDraft } from "./store.ts";
+import { tNow } from "./use-language.ts";
 import { closeEphemeral } from "./ws.ts";
 
 export function closeEphemeralChat(conversationId: string, title: string): void {
 	const ok = window.confirm(
-		`关闭临时对话「${title || "未命名会话"}」？\n\n` +
-			"它只活在内存里（没有会话文件），关闭后内容直接丢弃，无法恢复。\n" +
-			"想留下去历史里找，请先点「保存为正式对话」。",
+		tNow(
+			`关闭临时对话「${title || "未命名会话"}」？\n\n` +
+				"它只活在内存里（没有会话文件），关闭后内容直接丢弃，无法恢复。\n" +
+				"想留下去历史里找，请先点「保存为正式对话」。",
+			`Close the temporary chat “${title || "Untitled session"}”?\n\n` +
+				"It lives in memory only (there is no session file); closing it discards the content for good.\n" +
+				"To keep it in history, click “Save as a regular chat” first.",
+		),
 	);
 	if (!ok) return;
 	void forgetCachedMessages(conversationId); // 本地缓存的正文也一并删掉

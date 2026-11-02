@@ -3,7 +3,7 @@ import { LANGUAGE_KEY, applyDocumentLang, readLanguage, writeLanguage, type Lang
 
 /**
  * 英文词条表**按需下载**：`i18n-en.ts` 有 400 多条词条、打包后约 13KB，
- * 而中文用户（默认语言）一条都用不上 —— 静态 import 等于给所有人的入口白加 13KB。
+ * 而中文用户（浏览器是中文的那部分）一条都用不上 —— 静态 import 等于给所有人的入口白加 13KB。
  * 所以它只在这里被 `import()`，成一个独立 chunk（见 main.tsx 的启动顺序）。
  *
  * 代价是「表可能不在手上」：那期间 `translate` 回落中文（这本来就是没翻译时的既有行为），
@@ -37,8 +37,8 @@ export function useLanguage(): { language: Language; setLanguage: (next: Languag
 	const [language, setCurrent] = useState<Language>(() => readLanguage());
 
 	useEffect(() => {
-		// 切到英文之前先把表拿下来：表没到位就切，界面会整屏中文再跳一遍（默认语言是中文，
-		// 所以「切英文」是唯一需要等的方向；切回中文永远同步生效）
+		// 切到英文之前先把表拿下来：表没到位就切，界面会整屏中文再跳一遍
+		// （英文本来就是默认，所以「切英文」是唯一需要等的方向；切回中文永远同步生效）
 		const apply = (next: Language) => {
 			if (next !== "en") {
 				setCurrent(next);

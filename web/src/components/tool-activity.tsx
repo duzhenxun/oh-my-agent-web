@@ -129,6 +129,24 @@ const GIT_VERB: Record<string, [string, string]> = {
 	clone: ["正在克隆仓库", "已克隆仓库"],
 };
 
+/** `GIT_VERB` 的英文影子表（同样的键，同样的 `[now, done]` 两时态） */
+const GIT_VERB_EN: Record<string, [string, string]> = {
+	commit: ["Committing changes", "Committed changes"],
+	push: ["Pushing", "Pushed"],
+	pull: ["Pulling", "Pulled"],
+	fetch: ["Fetching from the remote", "Fetched from the remote"],
+	status: ["Checking the working tree", "Checked the working tree"],
+	diff: ["Reviewing the diff", "Reviewed the diff"],
+	log: ["Reading the commit history", "Read the commit history"],
+	checkout: ["Switching branches", "Switched branches"],
+	switch: ["Switching branches", "Switched branches"],
+	merge: ["Merging", "Merged"],
+	rebase: ["Rebasing", "Rebased"],
+	stash: ["Stashing changes", "Stashed changes"],
+	add: ["Staging files", "Staged files"],
+	clone: ["Cloning the repository", "Cloned the repository"],
+};
+
 /** 一条命令在干什么（认不出来返回 null，调用方退回「正在跑命令」） */
 function runVerbOf(command: string): { now: [string, string]; done: [string, string] } | null {
 	if (TEST_COMMAND.test(command))
@@ -138,7 +156,10 @@ function runVerbOf(command: string): { now: [string, string]; done: [string, str
 		return { now: ["正在安装依赖", "Installing dependencies"], done: ["已安装依赖", "Installed dependencies"] };
 	const git = GIT_COMMAND.exec(command)?.[1];
 	const verb = git ? GIT_VERB[git] : undefined;
-	if (verb) return { now: [verb[0], `Running git ${git}`], done: [verb[1], `Ran git ${git}`] };
+	if (git && verb) {
+		const en = GIT_VERB_EN[git] ?? [`Running git ${git}`, `Ran git ${git}`];
+		return { now: [verb[0], en[0]], done: [verb[1], en[1]] };
+	}
 	return null;
 }
 

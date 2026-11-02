@@ -176,4 +176,6 @@ export type RuntimeOptions = {
 	noticeDedupeMs?: number;
 	maxNotices?: number;
 	titleChars?: number;
+	/** 诊断日志（切会话分段耗时）；不给就什么都不记 */
+	log?: (message: string, ctx?: Record<string, unknown>) => void;
 };

@@ -332,6 +332,11 @@ export type SubagentRunView = {
 	toolCalls?: number;
 	/** 完成时的最终文本（面板里可展开） */
 	result?: string;
+	/**
+	 * **正在跑的那个工具**（跑完 / 还没开始就没有）：卡片里回答「它此刻在干什么」。
+	 * 只有一行摘要，完整参数不给 —— 快照每 300ms 推一次，不能跟着膨胀。
+	 */
+	activeTool?: { name: string; argsSummary: string; startedAt: number };
 	error?: string;
 };
 
@@ -340,6 +345,8 @@ export type SubagentProfileView = {
 	id: string;
 	label: string;
 	description: string;
+	/** 内置模板的英文描述（仅当描述还是内置原句时下发；界面用它 `t(description, descriptionEn)`） */
+	descriptionEn?: string;
 	systemPrompt: string;
 	tools: string[];
 	model?: string;

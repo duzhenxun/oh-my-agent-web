@@ -229,7 +229,7 @@ export function ProviderForm({
 			</label>
 			<label className="side-field">
 				<span>
-					API Key（
+					API Key{t("（", " (")}
 					{initial?.hasKey
 						? t(
 								`已有 ${initial.keyHint ?? ""}，留空即不修改`,
@@ -243,7 +243,7 @@ export function ProviderForm({
 							: keyOnly
 								? t("填一把就能用", "just add a key")
 								: t("新增 provider 必填", "required for a new provider")}
-					）
+					{t("）", ")")}
 				</span>
 				<input
 					type="password"

@@ -19,7 +19,6 @@ import {
 } from "../sound.ts";
 import {
 	DEFAULT_TTS_SETTINGS,
-	TTS_LINE,
 	describeSpeechError,
 	diagnoseSpeech,
 	isTtsAvailable,
@@ -29,10 +28,13 @@ import {
 	speak,
 	stopSpeaking,
 	subscribeVoices,
+	ttsSampleLine,
 	wakeSpeechService,
 	type TtsSettings,
 	type VoiceOption,
 } from "../tts.ts";
+import { playVoiceClip } from "../voice-clips.ts";
+import { voiceChannelOf } from "../voice-cue-logic.ts";
 import { useT } from "../use-language.ts";
 
 const SOUND_KINDS: SoundKind[] = ["start", "done", "error", "approval"];
@@ -93,8 +95,40 @@ export function VoicePanel() {
 	const patchAllowOnline = (allowOnline: boolean) => patchTts({ allowOnline });
 	/** 只列在线音色，却一条都没捞到（Chrome 的 Google 音色要联网才加载） */
 	const noOnlineVoice = tts.allowOnline && voices.length === 0;
-	/** 试听：跳过「总开关关着」「这一项关着」的判断 —— 试听本来就是显式意图 */
-	const preview = (kind: SoundKind) => playSound(kind, { ...sound, enabled: true, [kind]: true, volume: sound.volume });
+	/**
+	 * 试听：跳过「总开关关着」「这一项关着」的判断 —— 试听本来就是显式意图。
+	 *
+	 * 走的是**真实链路**（`voiceChannelOf`）：语音开着就播对应事件的本地片段，关着就只响提示音。
+	 * 真机上要听「出错 / 审批」的语音，现实里很难现场造出来，这三颗按钮就是唯一方便的人口。
+	 * （「开始」没有片段，永远只是轻响一声。）
+	 */
+	const preview = (kind: SoundKind) => {
+		const enabled = loadTtsSettings().enabled;
+		const channel = voiceChannelOf({ kind, voiceEnabled: enabled, readReplies: false, hasReply: false });
+		if (channel === "clip" && kind !== "start") {
+			playVoiceClip(kind, { force: true, volume: Math.max(0.05, sound.volume / 100) });
+			return;
+		}
+		playSound(kind, { ...sound, enabled: true, [kind]: true, volume: sound.volume });
+	};
+	/**
+	 * 试听**本地片段**（状态语音的主路）：走的就是真实播报那条代码，成功与否不看系统音色。
+	 * 用 `force`：用户可能先把声音关了再点试听 —— 那样也得有反馈，不然他会以为功能坏了。
+	 *
+	 * `language` 给了就播**那个语言**的片段（不切界面语言也能听英文版，方便核对两套音频）。
+	 */
+	const previewClip = (language?: "zh" | "en") => {
+		playVoiceClip("done", { force: true, language, volume: Math.max(0.05, sound.volume / 100) });
+		setVoiceIssue(null);
+		setVoiceStatus(
+			language === "en"
+				? t("已播放英文片段「Task complete.」", 'Played the English clip "Task complete."')
+				: language === "zh"
+					? t("已播放中文片段「任务已完成」", 'Played the Chinese clip "任务已完成"')
+					: t("已播放本地语音片段（跟当前界面语言）", "Played the bundled clip (current UI language)"),
+		);
+		window.setTimeout(() => setVoiceStatus(null), 2400);
+	};
 	/**
 	 * 试听语音：**必须给反馈**。
 	 * 浏览器的合成失败是静默的（不报错、就是没声音），没有这条提示用户只能猜「是不是坏了」。
@@ -108,13 +142,13 @@ export function VoicePanel() {
 		let started = false;
 		const settle = () => setPreviewing(false);
 		speak(
-			TTS_LINE.done,
+			ttsSampleLine(),
 			{ ...tts, enabled: true },
 			{
 				onStart: () => {
 					started = true;
 					setVoiceIssue(null);
-					setVoiceStatus(t("正在念：任务已完成", "Speaking: task complete"));
+					setVoiceStatus(t("正在念：语音播报正常", "Speaking: speech is working"));
 				},
 				onEnd: () => {
 					settle();
@@ -221,8 +255,8 @@ export function VoicePanel() {
 				{SOUND_KINDS.map((kind) => (
 					<label className="voice-row" key={kind}>
 						<span className="voice-row-label">
-							{t(SOUND_LABEL[kind].title)}
-							<span className="voice-row-hint">{t(SOUND_LABEL[kind].hint)}</span>
+							{t(SOUND_LABEL[kind].title, SOUND_LABEL[kind].titleEn)}
+							<span className="voice-row-hint">{t(SOUND_LABEL[kind].hint, SOUND_LABEL[kind].hintEn)}</span>
 						</span>
 						<button
 							type="button"
@@ -249,9 +283,10 @@ export function VoicePanel() {
 					<span className="voice-row-label">
 						<span aria-hidden="true">🔊</span> {t("启用语音播报", "Enable speech")}
 						<span className="voice-row-hint">
-							{available
-								? t("使用浏览器内置语音合成，不联网", "Uses the browser's built-in speech synthesis, no network")
-								: t("当前浏览器不支持语音合成", "This browser does not support speech synthesis")}
+							{t(
+								"完成 / 出错 / 等待审批播本地音频（中文、英文各一套，不联网、不依赖系统音色）",
+								"Plays bundled audio clips on finish / error / approval (Chinese and English, no network, no system voices)",
+							)}
 						</span>
 					</span>
 					<input type="checkbox" checked={tts.enabled} onChange={() => patchTts({ enabled: !tts.enabled })} />
@@ -259,19 +294,12 @@ export function VoicePanel() {
 
 				<label className="voice-row">
 					<span className="voice-row-label">
-						{t("播报事件", "Announce events")}
-						<span className="voice-row-hint">
-							{t("完成 / 出错 / 等待审批时念一句短话", "Speaks a short line on finish / error / waiting for approval")}
-						</span>
-					</span>
-					<input type="checkbox" checked={tts.announce} onChange={() => patchTts({ announce: !tts.announce })} />
-				</label>
-
-				<label className="voice-row">
-					<span className="voice-row-label">
 						{t("朗读回复", "Read replies aloud")}
 						<span className="voice-row-hint">
-							{t("回答结束时朗读 AI 的最终回复", "Reads the AI's final reply when the answer ends")}
+							{t(
+								"回答结束时朗读 AI 的最终回复（内容每次不同，只能用系统语音合成；不开就只播本地片段）",
+								"Reads the AI's final reply when the answer ends (dynamic text, so it needs system speech synthesis; otherwise only the bundled clip plays)",
+							)}
 						</span>
 					</span>
 					<input
@@ -371,11 +399,30 @@ export function VoicePanel() {
 					<button
 						type="button"
 						className="btn btn-tiny"
+						onClick={() => previewClip()}
+						title={t("播一段本地语音片段（跟当前界面语言）", "Plays a bundled clip (current UI language)")}
+					>
+						{t("试听", "Preview")}
+					</button>
+					<button
+						type="button"
+						className="btn btn-tiny"
+						onClick={() => previewClip("en")}
+						title={t("播英文片段（不用先切界面语言）", "Plays the English clip without switching the UI language")}
+					>
+						{t("试听英文", "Preview (EN)")}
+					</button>
+					<button
+						type="button"
+						className="btn btn-tiny"
 						onClick={previewVoice}
 						disabled={!available || previewing}
-						title={t("点一下就会念一句，成功/失败都有提示", "Speaks a line; you always get a result")}
+						title={t(
+							"用系统语音合成念一句（测「朗读回复」那条路）",
+							"Speaks via system synthesis (tests the read-replies path)",
+						)}
 					>
-						{previewing ? t("试听中…", "Speaking…") : `${t("试听", "Preview")}「${t(TTS_LINE.done)}」`}
+						{t("测朗读", "Test reading")}
 					</button>
 					<button type="button" className="btn btn-tiny" onClick={stopSpeaking}>
 						{t("停止", "Stop")}

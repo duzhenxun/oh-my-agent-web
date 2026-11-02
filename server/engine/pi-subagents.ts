@@ -14,6 +14,8 @@ import { randomUUID } from "node:crypto";
 import { basename, dirname, join } from "node:path";
 import { DefaultResourceLoader, SessionManager, createAgentSession } from "@earendil-works/pi-coding-agent";
 import { mapSessionEvent } from "./pi-events.js";
+import { scheduledCost } from "../util/pricing-index.js";
+import { readSessionStats } from "../session/session-stats.js";
 import type { SubagentEnginePort, SubagentRequest } from "./port.js";
 import type { SubagentRunView } from "../protocol.js";
 
@@ -24,6 +26,8 @@ const asRecord = (value: unknown): AnyRecord =>
 
 /** 面板上能看的结果正文上限（子代理动辄几千字，快照不能跟着涨） */
 const RESULT_CHARS = 4000;
+/** 「正在跑的工具」那行摘要的上限：卡片里就一行，长了会撑破卡片 */
+const ACTIVE_TOOL_CHARS = 160;
 /** 存活记录上限：跑满一天的会话不该在内存里无限堆（面板只显示当前会话的，旧的其实是历史） */
 const MAX_RUNS = 60;
 /** 状态推进的节流：正文增量很频繁，面板只需要「大概每秒一次」的刷新 */
@@ -117,7 +121,8 @@ export function createPiSubagents(options: PiSubagentsOptions): SubagentEnginePo
 	function settle(state: RunState, patch: Partial<SubagentRunView>): void {
 		if (state.settled) return;
 		state.settled = true;
-		state.view = { ...state.view, ...patch, endedAt: patch.endedAt ?? now() };
+		// 结算了就不再「正在跑某个工具」（最后一个工具可能没来得及报 tool_end）
+		state.view = { ...state.view, ...patch, activeTool: undefined, endedAt: patch.endedAt ?? now() };
 		publish(state, true);
 	}
 
@@ -228,6 +233,19 @@ export function createPiSubagents(options: PiSubagentsOptions): SubagentEnginePo
 				}
 				if (mapped.type === "tool_start") {
 					view.toolCalls = (view.toolCalls ?? 0) + 1;
+					// 记下「现在在跑哪个工具」：卡片点开就能回答「它此刻在干什么」。
+					// 只留一行摘要（完整参数在主会话那边才有展开需求）—— 快照每 300ms 推一次，不能跟着膨胀。
+					view.activeTool = {
+						name: mapped.name,
+						argsSummary: (mapped.argsSummary ?? "").slice(0, ACTIVE_TOOL_CHARS),
+						startedAt: now(),
+					};
+					publish(state);
+					return;
+				}
+				if (mapped.type === "tool_end") {
+					// 跑完了：还挂着就是「上一个工具」，清掉（下一个 tool_start 会重新填）
+					view.activeTool = undefined;
 					publish(state);
 					return;
 				}
@@ -238,7 +256,10 @@ export function createPiSubagents(options: PiSubagentsOptions): SubagentEnginePo
 						output: current.output + mapped.output,
 						total: current.total + mapped.input + mapped.output + mapped.cacheRead + mapped.cacheWrite,
 					};
-					if (mapped.cost) view.cost = (view.cost ?? 0) + mapped.cost;
+					// 花费：和主会话的 turn-events 同一套顺序 —— 模型配了分时价就按那个算，否则用引擎给的。
+					// 两边都不给时，收尾的 `adoptSessionCost` 会从子会话文件里补上来。
+					const cost = scheduledCost(view.model, mapped, Date.now()) ?? mapped.cost;
+					if (cost) view.cost = (view.cost ?? 0) + cost;
 					publish(state);
 					return;
 				}
@@ -308,6 +329,21 @@ export function createPiSubagents(options: PiSubagentsOptions): SubagentEnginePo
 		return errorText;
 	}
 
+	/**
+	 * 收尾时用**子会话文件**校准花费（用户 2026-11-02：「子代理这块还缺一个总费用」）。
+	 *
+	 * 为什么不只靠过程中的 usage 事件：引擎不一定每条都带 `cost`
+	 * （provider 没配价、或者 SDK 只在写盘时才算钱），于是 token 有、金额永远是空的。
+	 * 但 pi 写进会话 JSONL 的那份 usage 是有的 —— 和顶部「会话信息」用同一份事实源，
+	 * 取大的那个（两边都是「这一次运行的总花费」，不存在相加关系）。
+	 */
+	async function adoptSessionCost(view: SubagentRunView): Promise<void> {
+		const stats = await readSessionStats(view.sessionPath ?? null).catch(() => null);
+		const fromFile = stats?.cost ?? 0;
+		const best = Math.max(view.cost ?? 0, fromFile);
+		view.cost = best > 0 ? best : undefined;
+	}
+
 	async function execute(state: RunState, request: SubagentRequest): Promise<void> {
 		const view = state.view;
 		view.status = "running";
@@ -323,6 +359,7 @@ export function createPiSubagents(options: PiSubagentsOptions): SubagentEnginePo
 				state.assistantTurns = 0;
 				error = await attempt(state, request, true);
 			}
+			await adoptSessionCost(view);
 			if (state.controller.signal.aborted) {
 				settle(state, { status: "aborted", error: "已停止", result: view.result });
 			} else if (error !== null) {

@@ -127,7 +127,7 @@ export function ModelPicker({
 					setOpen((value) => !value);
 				}}
 				disabled={disabled}
-				title={current ?? "选择模型"}
+				title={current ?? t("选择模型", "Choose a model")}
 			>
 				<span className="tool-icon" aria-hidden="true">
 					🤖
@@ -155,7 +155,7 @@ export function ModelPicker({
 					) : null}
 					{/* 手机上菜单是整宽的底部抽屉，需要一个明确可见的关闭入口 */}
 					<button type="button" className="model-sheet-close" onClick={() => setOpen(false)} title={t("关闭")}>
-						✕ 关闭
+						✕ {t("关闭", "Close")}
 					</button>
 					<div className="model-list">
 						{groups.length === 0 ? (
@@ -191,7 +191,14 @@ export function ModelPicker({
 													type="button"
 													className={`model-pin${isDefault ? " model-pin-on" : ""}`}
 													onClick={() => onSetDefault(isDefault ? null : model.id)}
-													title={isDefault ? "取消本项目的默认模型" : "设为本项目的默认模型（新会话用它起步）"}
+													title={
+														isDefault
+															? t("取消本项目的默认模型", "Clear this project's default model")
+															: t(
+																	"设为本项目的默认模型（新会话用它起步）",
+																	"Set as this project's default (new conversations start with it)",
+																)
+													}
 													aria-pressed={isDefault}
 												>
 													{isDefault ? "📌" : "📍"}

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { newChat } from "../ws.ts";
 import { isWindowsHost } from "../path-utils.ts";
-import { useT } from "../use-language.ts";
+import { tNow, useT } from "../use-language.ts";
 import { FolderIcon } from "./FolderIcon.tsx";
 
 type DirEntry = { name: string; path: string };
@@ -22,8 +22,14 @@ async function readJson<T>(response: Response): Promise<{ ok: true; body: T } | 
 		return {
 			ok: false,
 			message: looksLikeHtml
-				? `服务端上还没有这个接口（HTTP ${response.status}）—— 服务可能在跑旧版本，重启一下就好`
-				: `服务端返回的不是 JSON（HTTP ${response.status}）`,
+				? tNow(
+						`服务端上还没有这个接口（HTTP ${response.status}）—— 服务可能在跑旧版本，重启一下就好`,
+						`The server does not have this endpoint yet (HTTP ${response.status}) — it may be an older build, restart it`,
+					)
+				: tNow(
+						`服务端返回的不是 JSON（HTTP ${response.status}）`,
+						`The server did not return JSON (HTTP ${response.status})`,
+					),
 		};
 	}
 }
@@ -118,7 +124,13 @@ export function NewProjectDialog({ onClose, onPick }: { onClose: () => void; onP
 				return;
 			}
 			if (body.unsupported) {
-				setError(body.message ?? "这台机器上开不出目录选择框，请在下面直接浏览");
+				setError(
+					body.message ??
+						t(
+							"这台机器上开不出目录选择框，请在下面直接浏览",
+							"No folder picker on this machine — browse below instead",
+						),
+				);
 				return;
 			}
 			// 取消：什么都不做（不要清掉当前路径）
@@ -156,10 +168,10 @@ export function NewProjectDialog({ onClose, onPick }: { onClose: () => void; onP
 						onKeyDown={(event) => {
 							if (event.key === "Enter") void load(input.trim());
 						}}
-						placeholder={isWindowsHost() ? "C:\\绝对路径" : "/绝对路径"}
+						placeholder={isWindowsHost() ? t("C:\\绝对路径", "C:\\absolute\\path") : t("/绝对路径", "/absolute/path")}
 					/>
 					<button type="button" className="btn btn-tiny" onClick={() => void load(input.trim())} disabled={loading}>
-						跳转
+						{t("跳转", "Go")}
 					</button>
 				</div>
 				<div className="new-project-actions">
@@ -173,7 +185,7 @@ export function NewProjectDialog({ onClose, onPick }: { onClose: () => void; onP
 							"Open your computer's own folder picker (on the machine running the server)",
 						)}
 					>
-						{picking ? "📂 选择中…" : "📂 浏览电脑…"}
+						{picking ? t("📂 选择中…", "📂 Choosing…") : t("📂 浏览电脑…", "📂 Browse computer…")}
 					</button>
 					<button
 						type="button"
@@ -182,7 +194,7 @@ export function NewProjectDialog({ onClose, onPick }: { onClose: () => void; onP
 						disabled={!parent || loading}
 						title={t("回到上一级目录", "Go to the parent folder")}
 					>
-						↑ 上级目录
+						{t("↑ 上级目录", "↑ Up one level")}
 					</button>
 					<span className="topbar-spacer" />
 					<button
@@ -191,7 +203,7 @@ export function NewProjectDialog({ onClose, onPick }: { onClose: () => void; onP
 						onClick={() => choose(path || input.trim())}
 						disabled={loading || (path === "" && input.trim() === "")}
 					>
-						选择当前目录
+						{t("选择当前目录", "Use this folder")}
 					</button>
 				</div>
 
@@ -214,7 +226,7 @@ export function NewProjectDialog({ onClose, onPick }: { onClose: () => void; onP
 								{entry.name}
 							</button>
 							<button type="button" className="btn btn-tiny" onClick={() => choose(entry.path)}>
-								选择
+								{t("选择", "Choose")}
 							</button>
 						</div>
 					))}
@@ -222,7 +234,10 @@ export function NewProjectDialog({ onClose, onPick }: { onClose: () => void; onP
 
 				<div className="new-project-foot">
 					<span className="side-panel-hint">
-						「选择」= 在这个目录下新建一个会话（项目随之出现），不会创建或修改任何文件。
+						{t(
+							"「选择」= 在这个目录下新建一个会话（项目随之出现），不会创建或修改任何文件。",
+							"Choose = start a new conversation in this folder (the project appears with it); no files are created or changed.",
+						)}
 					</span>
 				</div>
 			</div>

@@ -33,6 +33,17 @@ export const TOOL_OPEN_KEY = "agent-web.chat.toolOpen";
 export const PROCESS_AUTO_COLLAPSE_KEY = "agent-web.chat.processAutoCollapse";
 
 /**
+ * 「跑时自动折叠过程」：这一轮**还在跑**的时候，就把思考和工具收成顶上那一行，
+ * 屏幕上只剩「N 段思考 · N 次工具 · 耗时」+ 底下的实时动作行（正在跑哪条命令）。
+ *
+ * 默认 **关** = 跑着的时候**完整铺开**（按发生顺序长；用户 2026-11-02：「没勾上这个，应展开才对吧」）。
+ * 勾上就只剩顶上那行秒表 + 底下的实时动作行，想安静盯着结果的人用这一档。
+ * 跟「跑完自动折叠」是两个时段、各自独立 —— 可以「跑时收 + 跑完也收」，
+ * 也可以「跑时看 + 跑完收」（默认）。
+ */
+export const PROCESS_AUTO_FOLD_RUNNING_KEY = "agent-web.chat.processAutoFoldRunning";
+
+/**
  * 「标注」：在对话里选中一段文字后浮出来的那颗小工具栏（添加到会话 / 标注 / 在临时会话中提问）。
  *
  * 默认开（这是这套 UI 的一个招牌动作）；关掉之后正文里选字就只是选字，不再弹东西 ——
@@ -123,6 +134,12 @@ export const APPBAR_PART_LABEL: Record<AppbarPart, string> = {
 	icon: "显示图标",
 };
 
+/** 上面那张表的英文（调用点：`t(APPBAR_PART_LABEL[part], APPBAR_PART_LABEL_EN[part])`） */
+export const APPBAR_PART_LABEL_EN: Record<AppbarPart, string> = {
+	label: "Show labels",
+	icon: "Show icons",
+};
+
 /** 勾选框上的名字（和顶栏按钮同一套叫法；SidebarMenu 里那份是弹窗 tab 用的，含「设置」） */
 export const APPBAR_ITEM_LABEL: Record<AppbarToggle, string> = {
 	models: "模型",
@@ -132,6 +149,17 @@ export const APPBAR_ITEM_LABEL: Record<AppbarToggle, string> = {
 	plugins: "插件",
 	mcp: "MCP",
 	agents: "子代理",
+};
+
+/** 上面那张表的英文（和顶栏按钮同一套叫法） */
+export const APPBAR_ITEM_LABEL_EN: Record<AppbarToggle, string> = {
+	models: "Models",
+	skills: "Skills",
+	push: "Push",
+	voice: "Voice",
+	plugins: "Plugins",
+	mcp: "MCP",
+	agents: "Subagents",
 };
 
 /**
@@ -168,6 +196,13 @@ export const COMPOSER_ITEM_LABEL: Record<ComposerToggle, string> = {
 	quick: "快捷指令",
 };
 
+/** 上面那张表的英文（`Templates` 是模板库那颗按钮的叫法，`Quick phrases` 同「快捷短语」） */
+export const COMPOSER_ITEM_LABEL_EN: Record<ComposerToggle, string> = {
+	templates: "Templates",
+	think: "Think",
+	quick: "Quick phrases",
+};
+
 /**
  * 「底部状态栏」里三块信息的显隐：排队 / 工作中 / 上下文用量。
  *
@@ -186,14 +221,12 @@ export const STATUSBAR_ITEM_LABEL: Record<StatusbarToggle, string> = {
 	context: "上下文用量",
 };
 
-/**
- * 「花费」（$）这一项的显隐：子代理卡片条 / 顶栏浮层 / 消息尾注上的那些金额。
- *
- * **默认值按设备给**（手机上默认不显示、桌面上默认显示），所以它不进上面那张
- * 「一个 group 全默认开」的表 —— 单个 key，默认值由 `use-show-cost.ts` 按当前是不是手机壳算。
- * 仍然是本机偏好：在手机上勾上只影响手机，桌面那份不受牵连。
- */
-export const COST_KEY = "agent-web.usage.cost";
+/** 上面那张表的英文 */
+export const STATUSBAR_ITEM_LABEL_EN: Record<StatusbarToggle, string> = {
+	queued: "Queued",
+	running: "Running",
+	context: "Context",
+};
 
 /**
  * 侧栏「每个项目默认显示几个会话」（其余折成一行「还有 N 个…」）。

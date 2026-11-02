@@ -10,6 +10,7 @@
  * 顶栏那颗图标最多显示 20px（新会话抬头 38px），所以裁到 192px 就完全够用，
  * 顺手做成正方形（cover 居中）：顶栏 / 抬头两处都是方框，非方图会被拉变形。
  */
+import { tNow } from "./use-language.ts";
 
 /** 存进去的边长：够 38px 抬头在两倍屏上清晰，又不至于撑爆 localStorage */
 const LOGO_MAX_PX = 192;
@@ -31,7 +32,11 @@ function loadImage(file: File): Promise<HTMLImageElement> {
 		image.onerror = () => {
 			URL.revokeObjectURL(url);
 			// 常见原因：拿扩展名骗人的文件、SVG 里带了外部引用、HEIC（Safari 之外解不了）
-			reject(new Error("这张图片打不开，换一张 PNG / JPG / WebP 试试"));
+			reject(
+				new Error(
+					tNow("这张图片打不开，换一张 PNG / JPG / WebP 试试", "This image cannot be opened — try a PNG / JPG / WebP"),
+				),
+			);
 		};
 		image.src = url;
 	});
@@ -44,17 +49,26 @@ function loadImage(file: File): Promise<HTMLImageElement> {
  * 不用在这里决定怎么提示（这里连 toast 都不该 import）。
  */
 export async function readLogoFile(file: File): Promise<string> {
-	if (!file.type.startsWith("image/")) throw new Error("这不是图片文件");
-	if (file.size > LOGO_MAX_BYTES) throw new Error("图片太大了（请选 8MB 以内的）");
+	if (!file.type.startsWith("image/")) throw new Error(tNow("这不是图片文件", "This is not an image file"));
+	if (file.size > LOGO_MAX_BYTES) {
+		throw new Error(tNow("图片太大了（请选 8MB 以内的）", "The image is too big (pick one under 8MB)"));
+	}
 	const image = await loadImage(file);
 	const side = Math.min(image.naturalWidth || image.width, image.naturalHeight || image.height);
-	if (!side) throw new Error("这张图片打不开，换一张 PNG / JPG / WebP 试试");
+	if (!side) {
+		throw new Error(
+			tNow("这张图片打不开，换一张 PNG / JPG / WebP 试试", "This image cannot be opened — try a PNG / JPG / WebP"),
+		);
+	}
 
 	const canvas = document.createElement("canvas");
 	canvas.width = LOGO_MAX_PX;
 	canvas.height = LOGO_MAX_PX;
 	const ctx = canvas.getContext("2d");
-	if (!ctx) throw new Error("这个浏览器画不了图（canvas 不可用）");
+	if (!ctx)
+		throw new Error(
+			tNow("这个浏览器画不了图（canvas 不可用）", "This browser cannot draw images (canvas is unavailable)"),
+		);
 	// 从原图正中取一块正方形（cover），再缩到 LOGO_MAX_PX
 	const sx = ((image.naturalWidth || image.width) - side) / 2;
 	const sy = ((image.naturalHeight || image.height) - side) / 2;
@@ -64,6 +78,13 @@ export async function readLogoFile(file: File): Promise<string> {
 	// WebP 优先（同画质体积约是 PNG 的 1/3）；浏览器不认就自动回落到 PNG
 	const webp = canvas.toDataURL("image/webp", 0.92);
 	const dataUrl = webp.startsWith("data:image/webp") ? webp : canvas.toDataURL("image/png");
-	if (dataUrl.length > LOGO_MAX_STORED) throw new Error("这张图压缩后还是太大，换一张简单点的图试试");
+	if (dataUrl.length > LOGO_MAX_STORED) {
+		throw new Error(
+			tNow(
+				"这张图压缩后还是太大，换一张简单点的图试试",
+				"This image is still too big after compression — try a simpler one",
+			),
+		);
+	}
 	return dataUrl;
 }

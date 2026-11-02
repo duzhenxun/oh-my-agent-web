@@ -93,7 +93,9 @@ export function FileLineMenu({
 							: blockState === "partial"
 								? t("展开里面全部", "Expand everything inside")
 								: t("展开这一块", "Expand this block")}
-						（{t(`第 ${block.start + 1}–${block.end + 1} 行`, `lines ${block.start + 1}–${block.end + 1}`)}）
+						{t("（", " (")}
+						{t(`第 ${block.start + 1}–${block.end + 1} 行`, `lines ${block.start + 1}–${block.end + 1}`)}
+						{t("）", ")")}
 					</button>
 					<div className="proj-menu-sep" aria-hidden="true" />
 				</>
@@ -123,9 +125,11 @@ export function FileLineMenu({
 						onClose();
 					}}
 				>
-					⧉ {t("复制这一块代码", "Copy this block")}（
+					⧉ {t("复制这一块代码", "Copy this block")}
+					{t("（", " (")}
 					{t(`第 ${block.start + 1}–${block.end + 1} 行`, `lines ${block.start + 1}–${block.end + 1}`)}
-					{blockFolded ? t("，含收起的部分", ", including the collapsed part") : ""}）
+					{blockFolded ? t("，含收起的部分", ", including the collapsed part") : ""}
+					{t("）", ")")}
 				</button>
 			) : null}
 			{block && blockState ? <div className="proj-menu-sep" aria-hidden="true" /> : null}
@@ -140,9 +144,11 @@ export function FileLineMenu({
 						onClose();
 					}}
 				>
-					⤴ {t("添加这一块代码到对话", "Add this block to the conversation")}（
+					⤴ {t("添加这一块代码到对话", "Add this block to the conversation")}
+					{t("（", " (")}
 					{t(`第 ${block.start + 1}–${block.end + 1} 行`, `lines ${block.start + 1}–${block.end + 1}`)}
-					{blockFolded ? t("，含收起的部分", ", including the collapsed part") : ""}）
+					{blockFolded ? t("，含收起的部分", ", including the collapsed part") : ""}
+					{t("）", ")")}
 				</button>
 			) : null}
 			{hasSelection ? (

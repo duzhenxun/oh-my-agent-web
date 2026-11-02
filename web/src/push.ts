@@ -4,6 +4,8 @@
  * 注意：Web Push 要求 **https 或 localhost**，远程用 http://192.168.x.x 打开时
  * 浏览器会直接拒绝订阅 —— 所以手机上要用域名（https）。
  */
+import { tNow } from "./use-language.ts";
+
 export type PushState = "unsupported" | "default" | "granted" | "denied" | "subscribed";
 
 /** 服务端 VAPID 状态（对应 `server/push/push.ts` 的 `PushConfigView`，私钥永远不会过来） */
@@ -43,7 +45,7 @@ function deviceName(): string {
 	if (/Macintosh/i.test(ua))
 		return `Mac${standalone} · ${/Firefox/.test(ua) ? "Firefox" : /Edg/.test(ua) ? "Edge" : "Chrome"}`;
 	if (/Windows/i.test(ua)) return `Windows · ${/Edg/.test(ua) ? "Edge" : "Chrome"}`;
-	return "未知设备";
+	return tNow("未知设备", "Unknown device");
 }
 
 /** 订阅里的 `applicationServerKey` 与「服务端现在这把公钥」是不是同一把 */
@@ -116,9 +118,17 @@ export async function currentPushState(): Promise<PushState> {
 export async function subscribePush(
 	customBrandName = "",
 ): Promise<{ ok: true; rekeyed?: boolean } | { ok: false; message: string }> {
-	if (!pushSupported()) return { ok: false, message: "这个浏览器不支持推送（需要 https 或 localhost）" };
+	if (!pushSupported())
+		return {
+			ok: false,
+			message: tNow(
+				"这个浏览器不支持推送（需要 https 或 localhost）",
+				"This browser does not support push (https or localhost required)",
+			),
+		};
 	const permission = await Notification.requestPermission();
-	if (permission !== "granted") return { ok: false, message: "通知权限被拒绝" };
+	if (permission !== "granted")
+		return { ok: false, message: tNow("通知权限被拒绝", "Notification permission was denied") };
 
 	const reg = await registration();
 	const keyResponse = await fetch("/api/push/key");
@@ -152,7 +162,11 @@ export async function subscribePush(
 		// 名字一起报上去：服务端拼推送标题时才知道这台设备叫什么（见 server/push/push.ts 的 brandName）
 		body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys, name: deviceName(), brandName: customBrandName }),
 	});
-	if (!response.ok) return { ok: false, message: `订阅保存失败：HTTP ${response.status}` };
+	if (!response.ok)
+		return {
+			ok: false,
+			message: tNow(`订阅保存失败：HTTP ${response.status}`, `Saving the subscription failed: HTTP ${response.status}`),
+		};
 	return rekeyed ? { ok: true, rekeyed } : { ok: true };
 }
 
@@ -180,7 +194,7 @@ export async function syncPushBrandName(customBrandName: string): Promise<void> 
 }
 
 export async function unsubscribePush(): Promise<{ ok: true } | { ok: false; message: string }> {
-	if (!pushSupported()) return { ok: false, message: "不支持推送" };
+	if (!pushSupported()) return { ok: false, message: tNow("不支持推送", "Push is not supported") };
 	const reg = await registration();
 	const sub = await reg.pushManager.getSubscription();
 	if (!sub) return { ok: true };

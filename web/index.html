@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -31,6 +31,20 @@
 				}
 			} catch (error) {
 				/* 隐私模式禁用 localStorage：用默认浅色，不抛错 */
+			}
+		</script>
+		<!-- 语言也内联在前：`<html lang>` 属读屏与浏览器行为（断词、翻译提示），
+		     默认英文，浏览器首选语言是中文才用中文（逻辑和 src/language.ts 的 detectLanguage 一致：
+		     存过的值优先，没存过才看 navigator）。
+		     放在这里只为了首帧就对，免得英文用户先被当成中文页。 -->
+		<script>
+			try {
+				var storedLang = localStorage.getItem("agent-web.language");
+				var primary = (navigator.languages && navigator.languages[0]) || navigator.language || "";
+				var lang = storedLang === "zh" || storedLang === "en" ? storedLang : /^zh/i.test(primary) ? "zh" : "en";
+				document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+			} catch (error) {
+				/* 隐私模式禁用 localStorage：保持默认的 lang="en" */
 			}
 		</script>
 	</head>

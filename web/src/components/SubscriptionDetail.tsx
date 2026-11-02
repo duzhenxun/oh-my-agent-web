@@ -297,7 +297,8 @@ export function SubscriptionDetail({
 				<div className="subs-block">
 					<div className="side-panel-hint">
 						{t("在验证页输入下面这串码", "Enter this code on the verification page")}
-						{device.seconds ? ` (${Math.round(device.seconds / 60)} ${t("分钟内有效", "min to enter")})` : ""}：
+						{device.seconds ? ` (${Math.round(device.seconds / 60)} ${t("分钟内有效", "min to enter")})` : ""}
+						{t("：", ":")}
 					</div>
 					<div className="subs-code mono">{device.userCode}</div>
 					<a className="subs-link" href={device.verificationUri} target="_blank" rel="noopener noreferrer">

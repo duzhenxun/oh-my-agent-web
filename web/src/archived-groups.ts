@@ -3,6 +3,7 @@
  * 归档只是从主列表隐藏，会话数据仍在 pi 的存储里。
  */
 import type { PiProject, SessionPrefs } from "./types.ts";
+import { tNow } from "./use-language.ts";
 
 type ArchivedGroup = { name: string; items: { id: string; title: string; time: string }[] };
 
@@ -14,8 +15,8 @@ export function groupArchived(projects: PiProject[], prefs: SessionPrefs): Archi
 				.filter((session) => prefs.archived.includes(session.id))
 				.map((session) => ({
 					id: session.id,
-					title: session.title || "（无标题）",
-					time: "已归档",
+					title: session.title || tNow("（无标题）", "(untitled)"),
+					time: tNow("已归档", "Archived"),
 				})),
 		}))
 		.filter((group) => group.items.length > 0);

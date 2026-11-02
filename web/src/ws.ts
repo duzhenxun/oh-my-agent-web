@@ -34,6 +34,7 @@ import { sessionUrlFor } from "./session-url.ts";
 import { reloadIfUnauthorized, reloadOnExpiredLogin } from "./auth-expiry.ts";
 import { promoteNewSession } from "./session-order.ts";
 import { newId } from "./lib/uid.ts";
+import { tNow } from "./use-language.ts";
 
 const MAX_BACKOFF_MS = 8000;
 const BASE_BACKOFF_MS = 500;
@@ -161,8 +162,11 @@ export function send(requestMessage: ClientRequest): Promise<void> {
 				setAppState({
 					lastError: {
 						text: backendDown
-							? `后端正在重启或还没起来（HTTP ${response.status}），稍等自动恢复`
-							: `请求失败：HTTP ${response.status}`,
+							? tNow(
+									`后端正在重启或还没起来（HTTP ${response.status}），稍等自动恢复`,
+									`The backend is restarting or not up yet (HTTP ${response.status}) — it recovers on its own in a moment`,
+								)
+							: tNow(`请求失败：HTTP ${response.status}`, `Request failed: HTTP ${response.status}`),
 						conversationId: null,
 					},
 				});
@@ -180,7 +184,12 @@ export function send(requestMessage: ClientRequest): Promise<void> {
 				}
 			}
 		} catch {
-			setAppState({ lastError: { text: "连接尚未就绪，稍后再试", conversationId: null } });
+			setAppState({
+				lastError: {
+					text: tNow("连接尚未就绪，稍后再试", "The connection is not ready yet — try again in a moment"),
+					conversationId: null,
+				},
+			});
 			resyncAfterFailure();
 		}
 	})();
@@ -406,7 +415,12 @@ export function suggestSessionTitle(conversationId: string): Promise<boolean> {
 			});
 			if (!response.ok) {
 				if (reloadIfUnauthorized(response.status)) return false;
-				setAppState({ lastError: { text: `起名失败：HTTP ${response.status}`, conversationId } });
+				setAppState({
+					lastError: {
+						text: tNow(`起名失败：HTTP ${response.status}`, `Could not generate a name: HTTP ${response.status}`),
+						conversationId,
+					},
+				});
 				return false;
 			}
 			const body = (await response.json()) as { frames?: string[] };
@@ -429,7 +443,13 @@ export function suggestSessionTitle(conversationId: string): Promise<boolean> {
 			return ok;
 		} catch (error) {
 			setAppState({
-				lastError: { text: `起名失败：${error instanceof Error ? error.message : String(error)}`, conversationId },
+				lastError: {
+					text: tNow(
+						`起名失败：${error instanceof Error ? error.message : String(error)}`,
+						`Could not generate a name: ${error instanceof Error ? error.message : String(error)}`,
+					),
+					conversationId,
+				},
 			});
 			return false;
 		}

@@ -441,4 +441,19 @@ export const EN: Record<string, string> = {
 	"内置模板：保存会生成一个同名用户文件（可再改回来）":
 		"Built-in template: saving creates a user file with the same name (you can revert later)",
 	加载更多: "Load more",
+
+	// ---- 补漏：界面上用单参 `t("…")` 调过、表里却没收录的 ----
+	// （没收录就会回落中文，英文界面里那几个字就一直是中文 —— 用脚本扫出来的）
+	再点一次确认: "Click again to confirm",
+	删除选中: "Delete selected",
+	在系统浏览器打开: "Open in your browser",
+	当前引擎不支持分叉: "The current engine does not support forking",
+	"这条会话还没有消息，没有可分叉的点": "This conversation has no messages yet, so there is nothing to fork from",
+	"临时会话不能派生分支，先「保存为正式对话」":
+		"A temporary session cannot be forked — save it as a formal conversation first",
+	"统计本轮全部子代理（含已完成的）": "Counts every subagent of this turn (including finished ones)",
+	"问一句就走：这条聊天不落盘，关掉即消失。":
+		"Ask and move on: this chat is never written to disk and disappears when closed.",
+	"流程，凭据写进": "flow — credentials are written into",
+	不在: "are not",
 };

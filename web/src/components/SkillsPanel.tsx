@@ -140,7 +140,7 @@ export function SkillsPanel() {
 			apply(body);
 			// 批量做完就把勾选清掉：留着会让下一眼以为「这两个还没处理」
 			setPicked(new Set());
-			setNotice(enabled ? "已启用" : "已停用");
+			setNotice(enabled ? t("已启用", "Enabled") : t("已停用", "Disabled"));
 		} catch (cause) {
 			setError(cause instanceof Error ? cause.message : String(cause));
 		} finally {
@@ -209,7 +209,7 @@ export function SkillsPanel() {
 			path,
 			preview: response.ok
 				? { text: body.text ?? "", bytes: body.bytes ?? 0, binary: body.binary === true }
-				: { text: body.error?.message ?? "读取失败", bytes: 0, binary: false },
+				: { text: body.error?.message ?? t("读取失败", "Failed to read"), bytes: 0, binary: false },
 		});
 	};
 

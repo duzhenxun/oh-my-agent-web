@@ -15,6 +15,7 @@
 import type { AttachmentRef, Snapshot } from "./types.ts";
 import { appendTextToMessage } from "./lib/delta.ts";
 import { newId } from "./lib/uid.ts";
+import { tNow } from "./use-language.ts";
 
 export type SideState = {
 	snapshot: Snapshot | null;
@@ -42,7 +43,10 @@ export function applySideFrame(state: SideState, frame: unknown): SideState {
 	const raw = frame as Record<string, unknown>;
 	if (raw.type === "reply" && raw.ok === false) {
 		const error = raw.error as { code?: string; message?: string } | undefined;
-		return { ...state, error: error ? `${error.code ?? "error"}: ${error.message ?? ""}` : "请求失败" };
+		return {
+			...state,
+			error: error ? `${error.code ?? "error"}: ${error.message ?? ""}` : tNow("请求失败", "Request failed"),
+		};
 	}
 	if (raw.type !== "event") return state;
 	if (raw.event === "snapshot" && typeof raw.snapshot === "object" && raw.snapshot !== null) {
@@ -120,7 +124,10 @@ function createSideChannel(): SideChannel {
 					body: JSON.stringify({ id: `side-req-${++seq}`, ...body }),
 				});
 				if (!response.ok) {
-					emit({ ...state, error: `请求失败：HTTP ${response.status}` });
+					emit({
+						...state,
+						error: tNow(`请求失败：HTTP ${response.status}`, `Request failed: HTTP ${response.status}`),
+					});
 					return;
 				}
 				const payload = (await response.json()) as { frames?: string[] };

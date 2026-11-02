@@ -6,7 +6,7 @@ import { initTheme } from "./theme.ts";
 import { initChatDisplay } from "./chat-display.ts";
 import { initSidebarFonts } from "./sidebar-font.ts";
 import { initAppbarScale } from "./appbar-scale.ts";
-import { readLanguage } from "./language.ts";
+import { applyDocumentLang, readLanguage } from "./language.ts";
 import { watchMobileShell } from "./mobile-shell-dom.ts";
 import { loadEnTable } from "./use-language.ts";
 import "./styles.css";
@@ -42,7 +42,12 @@ const boot = () =>
 		</StrictMode>,
 	);
 
-// 英文词条表（`i18n-en.ts`，400+ 条 / 约 13KB）已经拆成按需 chunk：中文用户（默认）完全不下载。
+// 语言：首次进入跟着浏览器的首选语言走（见 language.ts 的 `detectLanguage`）。
+// 这里先把 `<html lang>` 对齐（index.html 里写死的是 zh-CN），
+// 否则英文用户等词条表下载的那几百毫秒里，读屏/浏览器仍以为这是中文页。
+applyDocumentLang(readLanguage());
+
+// 英文词条表（`i18n-en.ts`，400+ 条 / 约 13KB）已经拆成按需 chunk：中文用户完全不下载。
 // 代价是要在**首帧前**把它拿下来，否则英文用户会先看到一屏中文、再整页跳一遍 ——
 // 这 13KB 的下载只让英文用户付，而且只有一次（后续走 chunk 缓存）。
 // 加载失败不阻塞：loadEnTable 内部已经 catch，回落中文（见 use-language.ts）。

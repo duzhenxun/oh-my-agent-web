@@ -16,7 +16,6 @@ import { currentMobileShell } from "../mobile-shell-dom.ts";
 import { belowPopoverAnchor } from "../popover-anchor.ts";
 import {
 	batchesOf,
-	STATUS_LABEL,
 	StatusDot,
 	compact,
 	costText,
@@ -24,11 +23,12 @@ import {
 	durationMs,
 	isActive,
 	relativeTime,
+	runsForBadge,
 	runsOfCurrentTurn,
+	statusLabel,
 	totalsOf,
 } from "../subagent-view.tsx";
 import { useT } from "../use-language.ts";
-import { useShowCost } from "../use-show-cost.ts";
 
 export function AgentsLiveBadge({
 	onOpenPanel,
@@ -40,8 +40,6 @@ export function AgentsLiveBadge({
 }) {
 	const t = useT();
 	const snapshot = useAppSelector((state) => state.snapshot);
-	/** 金额显不显示跟着本机偏好（手机默认不显示，见 use-show-cost.ts） */
-	const showCost = useShowCost();
 	const [open, setOpen] = useState(false);
 	const [now, setNow] = useState(() => Date.now());
 	const box = useRef<HTMLDivElement | null>(null);
@@ -86,9 +84,23 @@ export function AgentsLiveBadge({
 	 * 起点就往前推，旧的自动退场（新一轮真的派了子代理再重新出现）。
 	 */
 	const runs = runsOfCurrentTurn(snapshot?.subagents ?? [], turnStartedAt);
+	/**
+	 * 这一页里**亲眼见过在跑**的运行（跑完后徽标继续挂着，但刷新后不再凭空冒出来）。
+	 * 记 id：快照里同一条记录每帧都是新对象，按引用记不住。
+	 */
+	const seenRunning = useRef(new Set<string>());
+	const runningKey = runs
+		.filter(isActive)
+		.map((run) => run.id)
+		.join(",");
+	useEffect(() => {
+		for (const run of runs) if (isActive(run)) seenRunning.current.add(run.id);
+	}, [runningKey, runs]);
 	const capable = snapshot?.engineCapabilities.subagents === true;
+	/** 徽标上真正摆出来的：在跑的 + 这一页看着它跑过的（见 `runsForBadge`） */
+	const shown = runsForBadge(runs, seenRunning.current);
 	// 只算最近一轮：历史记录是累积的（每会话 30 条），拿总数会让人以为并发开到了 8 个
-	const latest = batchesOf(runs)[0] ?? [];
+	const latest = batchesOf(shown)[0] ?? [];
 	const totals = totalsOf(latest, now);
 	/** 队列先进先出：按开始时间排就能给出「第几位」（与卡片条同一口径） */
 	const concurrency = snapshot?.subagentSettings?.concurrency ?? 4;
@@ -126,12 +138,15 @@ export function AgentsLiveBadge({
 		setOpen(false);
 	}, [snapshot?.active.conversationId]);
 
-	// 没有子代理（或引擎不提供）→ 不占位置
-	if (!capable || runs.length === 0) return null;
+	// 没有子代理（或引擎不提供、或这一页压根没看着谁在跑）→ 不占位置
+	if (!capable || shown.length === 0) return null;
 
 	const mainTitle = snapshot?.conversations.find((item) => item.id === snapshot.active.conversationId)?.title ?? "";
 	const active = latest.filter(isActive).length;
-	const label = active > 0 ? `${active} / ${latest.length} 个在跑` : `${latest.length} 个子代理（最近一轮）`;
+	const label =
+		active > 0
+			? t(`${active} / ${latest.length} 个在跑`, `${active} / ${latest.length} running`)
+			: t(`${latest.length} 个子代理（最近一轮）`, `${latest.length} subagents (latest turn)`);
 
 	return (
 		<div className="agents-live" ref={box}>
@@ -143,7 +158,7 @@ export function AgentsLiveBadge({
 				title={label}
 				aria-haspopup="dialog"
 				aria-expanded={open}
-				aria-label={`子代理：${label}`}
+				aria-label={t(`子代理：${label}`, `Subagents: ${label}`)}
 			>
 				<svg
 					viewBox="0 0 16 16"
@@ -164,6 +179,8 @@ export function AgentsLiveBadge({
 				</svg>
 				<span className="appbar-agents-count">{active > 0 ? `${active}` : `${latest.length}`}</span>
 				{active > 0 ? <span className="appbar-agents-total">/{latest.length}</span> : null}
+				{/* 总费用（本轮）：与大卡条 / 浮层同一份数字（金额一律显示，跟主会话尾注一致） */}
+				{totals.cost > 0 ? <span className="appbar-agents-cost">· {costText(totals.cost)}</span> : null}
 			</button>
 
 			{open ? (
@@ -196,9 +213,11 @@ export function AgentsLiveBadge({
 										{compact(totals.tokens)} tokens
 									</>
 								) : null}
-								{showCost && totals.cost > 0 ? <> · {costText(totals.cost)}</> : null}
+								{totals.cost > 0 ? <> · {costText(totals.cost)}</> : null}
 							</span>
-							{active > 0 ? <span className="agents-pop-running">{active} 个运行中</span> : null}
+							{active > 0 ? (
+								<span className="agents-pop-running">{t(`${active} 个运行中`, `${active} running`)}</span>
+							) : null}
 						</div>
 
 						<ul className="agents-pop-list">
@@ -221,7 +240,7 @@ export function AgentsLiveBadge({
 								<span className="agents-pop-main">
 									<span className="agents-pop-name">{t("主 Agent")}</span>
 									<span className="agents-pop-sub" title={mainTitle}>
-										{mainTitle || "当前会话"}
+										{mainTitle || t("当前会话", "Current conversation")}
 									</span>
 								</span>
 								<span className="agents-pop-status">{t("当前")}</span>
@@ -251,7 +270,10 @@ export function AgentsLiveBadge({
 										type="button"
 										className="agents-pop-main agents-pop-main-btn"
 										onClick={() => setOpen(false)}
-										title={`${run.task}\n\n结果与耗时详情看对话下方的子代理卡片`}
+										title={t(
+											`${run.task}\n\n结果与耗时详情看对话下方的子代理卡片`,
+											`${run.task}\n\nSee the subagent cards below the conversation for the result and timings`,
+										)}
 									>
 										<span className="agents-pop-name">{run.description || run.label}</span>
 										<span className="agents-pop-sub">
@@ -260,7 +282,7 @@ export function AgentsLiveBadge({
 										<span className="agents-pop-metrics">
 											<span>⏱ {duration(run, now)}</span>
 											{run.tokens?.total ? <span>{compact(run.tokens.total)} tokens</span> : null}
-											{showCost && run.cost ? <span>{costText(run.cost)}</span> : null}
+											{run.cost ? <span>{costText(run.cost)}</span> : null}
 										</span>
 									</button>
 									<span
@@ -272,7 +294,7 @@ export function AgentsLiveBadge({
 										}
 									>
 										<StatusDot status={run.status} />
-										{STATUS_LABEL[run.status]}
+										{statusLabel(run.status)}
 									</span>
 									{isActive(run) ? (
 										<button

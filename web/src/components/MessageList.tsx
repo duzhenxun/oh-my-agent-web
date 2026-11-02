@@ -1,12 +1,18 @@
-import { Fragment, memo, useEffect, useRef, useState } from "react";
+import { Fragment, memo, useEffect, useMemo, useRef, useState } from "react";
 import { compactTokens } from "../session-metrics.ts";
 import { formatRate, useLiveStats } from "../stream-speed.ts";
 import { setDraft } from "../store.ts";
-import { PROCESS_AUTO_COLLAPSE_KEY, SELECTION_TOOLBAR_KEY, THINKING_OPEN_KEY, TOOL_OPEN_KEY } from "../ui-prefs.ts";
+import { formatDuration, formatElapsedSeconds } from "../lib/duration-label.ts";
+import {
+	PROCESS_AUTO_COLLAPSE_KEY,
+	PROCESS_AUTO_FOLD_RUNNING_KEY,
+	SELECTION_TOOLBAR_KEY,
+	THINKING_OPEN_KEY,
+	TOOL_OPEN_KEY,
+} from "../ui-prefs.ts";
 import { useStoredBool } from "../use-stored-bool.ts";
 import { useSkillNames } from "../skill-names.ts";
-import { useShowCost } from "../use-show-cost.ts";
-import { foldLayout, isTurnRunning, lastGroupStart, processView, shouldForgetManual } from "../process-fold.ts";
+import { foldLayout, isNarrationText, isTurnRunning, processView, shouldForgetManual } from "../process-fold.ts";
 import type { ActionItem, SubagentRunView, UiMessage } from "../types.ts";
 import type { QueuedView } from "../pending-sends.ts";
 import { firstLine, readExpanded, toggleExpanded, writeExpanded } from "../steer-collapsed.ts";
@@ -21,7 +27,7 @@ import { AnnotationMarks } from "./AnnotationMarks.tsx";
 import type { Annotation } from "../annotations.ts";
 import { ToolCard } from "./ToolCard.tsx";
 import { AgentsRunStrip } from "./AgentsRunStrip.tsx";
-import { assignRunsToMessages, subagentUsageOf } from "../subagent-view.tsx";
+import { assignRunsToMessages, isActive, subagentUsageOf } from "../subagent-view.tsx";
 
 /** 消息里的纯文本（复制 / 从此处编辑都用它） */
 
@@ -146,15 +152,6 @@ function FootStamp({ ts, title }: { ts: number; title: string }) {
 			<span className="msg-foot-stamp-short">{stampOf(ts, false, english)}</span>
 		</span>
 	);
-}
-
-/** 耗时显示：`2s` / `1.4s` / `1m20s` */
-function formatDuration(ms: number): string {
-	if (ms < 1000) return `${Math.round(ms)}ms`;
-	if (ms < 60_000) return ms < 10_000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms / 1000)}s`;
-	const minutes = Math.floor(ms / 60_000);
-	const seconds = Math.round((ms % 60_000) / 1000);
-	return seconds > 0 ? `${minutes}m${seconds}s` : `${minutes}m`;
 }
 
 /**
@@ -393,17 +390,13 @@ function LiveActivity({
 					     对用户就是同一件事（模型还没回话），两个说法只会让人以为卡住了（用户 2026-11-02）。 */}
 					{info ? info.now : (retryLabel ?? t("正在思考", "Thinking"))}
 				</span>
-				{info?.detail ? (
-					<span className="msg-activity-args mono">
-						{info.detail}
-					</span>
-				) : null}
+				{info?.detail ? <span className="msg-activity-args mono">{info.detail}</span> : null}
 				{seconds >= 2 ? (
 					<span
 						className="msg-activity-time mono"
 						title={t("这个工具已经跑了多久", "How long this tool has been running")}
 					>
-						{seconds}s
+						{formatElapsedSeconds(seconds)}
 					</span>
 				) : null}
 			</button>
@@ -419,14 +412,18 @@ function LiveActivity({
 						<span className="msg-activity-pop-title">{info?.now}</span>
 						{tool ? (
 							<span className="msg-activity-pop-meta mono">
-								{seconds >= 1 ? `${seconds}s` : ""}
+								{seconds >= 1 ? formatElapsedSeconds(seconds) : ""}
 								<span className="msg-activity-pop-tool">{tool.name}</span>
 							</span>
 						) : null}
 					</div>
 					<div className="msg-activity-pop-foot">
 						{/* 复制整条命令：弹层里要能一眼看全，也要能直接拿走（用户 2026-11-02） */}
-						<CopyButton text={full} className="msg-action msg-activity-pop-copy" title={t("复制这条完整命令", "Copy this full command")} />
+						<CopyButton
+							text={full}
+							className="msg-action msg-activity-pop-copy"
+							title={t("复制这条完整命令", "Copy this full command")}
+						/>
 					</div>
 					<pre className="msg-activity-pop-body mono">{full}</pre>
 				</div>
@@ -485,8 +482,7 @@ function MessageViewInner({
 	 */
 	useSkillNames();
 	const text = textOfMessage(message);
-	/** 金额显不显示跟着本机偏好（手机默认不显示，见 use-show-cost.ts） */
-	const showCost = useShowCost();
+	/** 金额一律显示（主会话尾注的 $ 也从来不看开关，两边只能一致） */
 	/** 这一轮工具写过的文件：贴在尾注上方，点一下在右侧面板打开（见 changed-files.ts） */
 	const changed = message.role === "assistant" ? changedFilesIn(message, workspaceRoot) : [];
 	/**
@@ -507,7 +503,7 @@ function MessageViewInner({
 	 *   - `firstProcessAt` = 折叠按钮的落点：第一次动手的地方（按钮长在「过程」发生的位置）；
 	 *   - `lastAnswerAt` = 收到哪里为止：它之前的全部都能藏进折叠。
 	 */
-	const { firstProcessAt, lastAnswerAt, hasAnswer, insideFold } = foldLayout(segments);
+	const { firstProcessAt, lastAnswerAt, lastProcessAt, hasAnswer, insideFold } = foldLayout(segments);
 	const hasProcess = firstProcessAt >= 0;
 	/**
 	 * 这一轮加载过的技能（去重、保留先后）。
@@ -569,20 +565,21 @@ function MessageViewInner({
 	const [thinkingDefaultOpen] = useStoredBool(THINKING_OPEN_KEY, false);
 	const [toolsDefaultOpen] = useStoredBool(TOOL_OPEN_KEY, false);
 	const [autoCollapse] = useStoredBool(PROCESS_AUTO_COLLAPSE_KEY, true);
+	/** 跑着的时候就收起来（设置 → 过程 → 跑时自动折叠；默认关，铺着看是原来的行为） */
+	const [autoFoldRunning] = useStoredBool(PROCESS_AUTO_FOLD_RUNNING_KEY, false);
 	/**
-	 * 过程区怎么画：跑着只画最新一组（换组就地替换）↔ 点开看全部；跑完收成一行。
+	 * 过程区怎么画：要么完整时间线（`all`），要么收成一行（`collapsed`）。
 	 * 判断全在 process-fold.ts，这里只喂事实 + 把它翻译成“画到哪”。
 	 */
 	const view = processView({
 		running,
 		hasAnswer,
 		autoCollapse,
+		autoFoldRunning,
 		defaultOpen: thinkingDefaultOpen || toolsDefaultOpen,
 		manual: manualShowTools,
 	});
 	const showAll = view === "all";
-	/** 最新一组（跑着时只画它，换组就地替换）：{ 段下标, 组下标 } */
-	const tail = view === "tail" ? lastGroupStart(segments) : null;
 	/**
 	 * 跑完那一下把手动状态交回默认：跑着的时候点开/收起过的，不该阻止它跑完自己收起来。
 	 * 用 ref 盯「上一帧还在跑」而不是每帧都清 —— 否则跑完之后用户手动点开会被下一次重渲染抹掉。
@@ -599,77 +596,68 @@ function MessageViewInner({
 	 * 而且它就是「想看看前面那些组」的入口（点一下展开完整时间线）。
 	 */
 	const foldButton = (
-			<button
-				type="button"
-				className="msg-tools-toggle"
-				aria-expanded={showAll}
-				onClick={() => setManualShowTools(!showAll)}
-				title={t(
-					"思考、工具调用、以及中间那几段说明，按发生顺序排列（跑着时只留最新一句说明，跑完自动收起，点开看完整过程）",
-					"Thinking, tool calls and the narration in between, in the order they happened (while running only the newest group is shown, it folds away when the turn ends; click for the full timeline)",
-				)}
-			>
-				<span className={`msg-tools-caret${showAll ? " msg-tools-caret-open" : ""}`} aria-hidden="true" />
-				{/* 折叠行只报「几段思考 / 几次工具 / 什么技能 / 多久」（用户 2026-10-30：简化）。
-				 * 「过程 N 步」是和这两项重复的第三个数（N = 段 + 次），删掉；
-				 * 「（点击展开）」也删了 —— 左侧三角和行尾箭头已经在说这件事。 */}
-				{thinkingCount > 0 ? (
-					<span className="msg-process-meta">{t(`${thinkingCount} 段思考`, `${thinkingCount} thinking`)}</span>
-				) : null}
-				{toolCount > 0 ? (
-					<span className="msg-process-meta">{t(`${toolCount} 次工具`, `${toolCount} tools`)}</span>
-				) : null}
-				{/* 技能名：不点开也要看得见——“这一轮到底调了哪个 skill”是最常被问的一句 */}
-				{skillsUsed.length > 0 ? (
-					<span className="msg-process-meta msg-process-skills">
-						{t("技能", "Skills")} {skillsUsed.join(" · ")}
-					</span>
-				) : null}
-				{/* 耗时排最后：它是个「结果」，不是入口 —— 先给「做了什么」，最后才落时间。
+		<button
+			type="button"
+			className="msg-tools-toggle"
+			aria-expanded={showAll}
+			onClick={() => setManualShowTools(!showAll)}
+			title={t(
+				"思考、工具调用、以及中间那几段说明，按发生顺序排列（跑的时候铺着看，跑完自动收起；点这一行展开 / 收起）",
+				"Thinking, tool calls and the narration in between, in the order they happened (they stay open while the turn runs and fold away when it ends; click this line to expand/collapse)",
+			)}
+		>
+			<span className={`msg-tools-caret${showAll ? " msg-tools-caret-open" : ""}`} aria-hidden="true" />
+			{/* 折叠行只报「几段思考 / 几次工具 / 什么技能 / 多久」（用户 2026-10-30：简化）。
+			 * 「过程 N 步」是和这两项重复的第三个数（N = 段 + 次），删掉；
+			 * 「（点击展开）」也删了 —— 左侧三角和行尾箭头已经在说这件事。 */}
+			{thinkingCount > 0 ? (
+				<span className="msg-process-meta">{t(`${thinkingCount} 段思考`, `${thinkingCount} thinking`)}</span>
+			) : null}
+			{toolCount > 0 ? (
+				<span className="msg-process-meta">{t(`${toolCount} 次工具`, `${toolCount} tools`)}</span>
+			) : null}
+			{/* 技能名：不点开也要看得见——“这一轮到底调了哪个 skill”是最常被问的一句 */}
+			{skillsUsed.length > 0 ? (
+				<span className="msg-process-meta msg-process-skills">
+					{t("技能", "Skills")} {skillsUsed.join(" · ")}
+				</span>
+			) : null}
+			{/* 耗时排最后：它是个「结果」，不是入口 —— 先给「做了什么」，最后才落时间。
 				    跑着的时候它会每秒跳一次（秒表），跑完定格成总耗时。 */}
-				{durationMs > 0 ? (
-					<span
-						className="msg-process-meta msg-process-time"
-						title={
-							ticking
-								? t("这一轮从开始到现在的墙上时间（每秒刷新）", "Wall-clock time since this turn started (ticks every second)")
-								: t("这一轮的总耗时", "Total time this turn took")
-						}
-					>
-						{t("耗时", "took")} {durationLabel}
-					</span>
-				) : null}
-				{/* 行尾箭头放在**整条最后**：手风琴的惯例位置。原来它只在手机端顶替
+			{durationMs > 0 ? (
+				<span
+					className="msg-process-meta msg-process-time"
+					title={
+						ticking
+							? t(
+									"这一轮从开始到现在的墙上时间（每秒刷新）",
+									"Wall-clock time since this turn started (ticks every second)",
+								)
+							: t("这一轮的总耗时", "Total time this turn took")
+					}
+				>
+					{t("耗时", "took")} {durationLabel}
+				</span>
+			) : null}
+			{/* 行尾箭头放在**整条最后**：手风琴的惯例位置。原来它只在手机端顶替
 				    「（点击展开）」那行灰字，现在那行字没了，它就是唯一的「能点」提示。 */}
-				<span className={`msg-process-chevron${showAll ? " msg-process-chevron-open" : ""}`} aria-hidden="true" />
-			</button>
-		);
+			<span className={`msg-process-chevron${showAll ? " msg-process-chevron-open" : ""}`} aria-hidden="true" />
+		</button>
+	);
 	/**
 	 * 画一个渲染单元。
 	 *
 	 * 正文 / 错误块：**永远画**，永远在它发生的位置（见 buildTurnSegments）—— 折叠不再动它们。
 	 * 过程段（思考 + 工具）：
 	 *   - `all`：全部铺开（按钮长在**第一段**过程的位置）；
-	 *   - `tail`：只画**最新一组**（从 `tailFrom` 开始，按钮长在它头上），前面的组被替换掉；
 	 *   - `collapsed`：只剩按钮。
-	 * 中间那几段说明（text）与错误块同理：`tail` 先按组切，`collapsed` 再按折叠范围切。
+	 * 中间那几段说明（text）与错误块同理：收起时按折叠范围切（最后一个结论之前的进折叠）。
 	 */
 	const renderSegment = (segment: TurnSegment, index: number) => {
-		const inTail = tail !== null && index < tail.segmentIndex;
 		const folded = view === "collapsed" && insideFold(index);
 		if (segment.kind === "process") {
-			if (view === "collapsed") return index === firstProcessAt ? <Fragment key={`fold-${index}`}>{foldButton}</Fragment> : null;
-			if (inTail) return null;
-			/**
-			 * 跑着时：**只留最新一组的文案**（用户 2026-11-02：「只显示思考后的文案」）。
-			 *
-			 * 思考行和命令卡都不画 —— 思考是过程旁白，命令由末尾那行状态位实时报着（还带秒表），
-			 * 屏幕上就剩「它说它要干什么」+「现在跑到哪一步」，一眼能读。
-			 * 完整时间线一步没丢：点折叠行展开、或等跑完再看，全都在。
-			 */
-			if (view === "tail") {
-				return index === tail?.segmentIndex ? <Fragment key={`fold-${index}`}>{foldButton}</Fragment> : null;
-			}
+			if (view === "collapsed")
+				return index === firstProcessAt ? <Fragment key={`fold-${index}`}>{foldButton}</Fragment> : null;
 			/**
 			 * 正在跑的那一步**不画卡**（用户 2026-11-02）：末尾那行状态已经用同一句话 + 秒表报了
 			 * 「正在跑命令 … 7s」，再摆一张卡就是同一条命令连看两遍。等它跑完（status 变 ok/failed）
@@ -705,14 +693,15 @@ function MessageViewInner({
 			);
 		}
 		if (segment.kind === "text") {
-			// 跑着时：最新一组之前的说明被替换掉；收起时：最后一个结论之前的进折叠
-			// （只要有一句落在最后，它就是「最后的输出」，永远画）
-			if (inTail || folded) return null;
+			// 收起时：最后一个结论之前的进折叠（只要有一句落在最后，它就是「最后的输出」，永远画）
+			if (folded) return null;
 			// `live` = 这一条正在流式生成：markdown 降级渲染（节流 + 暂不高亮），
 			// 否则每个 delta 都要把整段正文重新解析一遍（越长越贵，末尾最卡）
 			// 中间那几段说明（结论之前的正文）字号大一号：夹在思考行与工具行之间时，
 			// 它才是「人说的话」，要一眼看得出比机器步骤重要（用户 2026-11-02）。
-			const narration = index < lastAnswerAt;
+			// 判定见 `isNarrationText`：同一片过程里的说明必须**全是**这一档，
+			// 不能「最新那句当结论、前面几句当叙述」——那样同一层里大小不一（用户 2026-11-02：「不统一呀」）。
+			const narration = isNarrationText({ index, lastAnswerAt, lastProcessAt, running });
 			return segment.text.trim() ? (
 				<Markdown
 					key={segment.index}
@@ -722,7 +711,7 @@ function MessageViewInner({
 				/>
 			) : null;
 		}
-		if (inTail || folded) return null;
+		if (folded) return null;
 		return (
 			<div key={segment.index} className="block-error">
 				<span className="block-error-code">{segment.block.code}</span>
@@ -879,7 +868,8 @@ function MessageViewInner({
 								{subUsage.input > 0 && subUsage.output > 0 ? " " : ""}
 								{subUsage.output > 0 ? `out ${compactTokens(subUsage.output)}` : ""}
 							</span>
-							{showCost && subUsage.cost > 0 ? (
+							{/* 子代理金额：一律显示（与左边的 in/out/cache/$ 同一口径，不再分两套开关） */}
+							{subUsage.cost > 0 ? (
 								<span className="msg-usage-item msg-usage-cost">{formatCost(subUsage.cost)}</span>
 							) : null}
 						</span>
@@ -913,10 +903,10 @@ function MessageViewInner({
 					<FootStamp
 						ts={finishedAt ?? message.ts}
 						title={
-								finishedAt !== null
-									? t("这条回复完成的时间", "When this reply finished")
-									: t("这条回复开始的时间", "When this reply started")
-							}
+							finishedAt !== null
+								? t("这条回复完成的时间", "When this reply finished")
+								: t("这条回复开始的时间", "When this reply started")
+						}
 					/>
 				</footer>
 			) : null}
@@ -1021,7 +1011,14 @@ function usageItemsOf(usage: NonNullable<UiMessage["usage"]>, t: (zh: string, en
 	}
 	// 花费自带 $ 符号，不再加徽标；pi 拿不到价格时就不出现（不编 0）
 	if (usage.cost)
-		items.push({ key: "cost", text: formatCost(usage.cost), title: t("这一轮的花费（pi 按 provider 配置的价格估算）", "Cost of this turn (estimated from the provider prices pi has)") });
+		items.push({
+			key: "cost",
+			text: formatCost(usage.cost),
+			title: t(
+				"这一轮的花费（pi 按 provider 配置的价格估算）",
+				"Cost of this turn (estimated from the provider prices pi has)",
+			),
+		});
 	return items;
 }
 
@@ -1033,6 +1030,14 @@ function usageItemsOf(usage: NonNullable<UiMessage["usage"]>, t: (zh: string, en
  * 内容没变的消息直接跳过。
  */
 const MessageView = memo(MessageViewInner);
+
+/**
+ * 缺省的空子代理列表。
+ *
+ * 写成解构默认值 `subagentRuns = []` 时，每次渲染都是一个新数组 —— 下面那两个
+ * `useMemo` 的依赖每帧都变，等于没 memo。手机 CPU 上这直接变成切会话时的卡顿。
+ */
+const NO_SUBAGENT_RUNS: readonly SubagentRunView[] = [];
 
 export function MessageList({
 	messages,
@@ -1048,7 +1053,7 @@ export function MessageList({
 	onRecallPending,
 	onCancelPending,
 	actions = [],
-	subagentRuns = [],
+	subagentRuns = NO_SUBAGENT_RUNS,
 	onFork,
 	onAddSelectionToSession,
 	onAskSelectionInSideChat,
@@ -1108,25 +1113,44 @@ export function MessageList({
 	rememberMessages(messages);
 	// Markdown 深在组件树里，拿不到 prop：把「点路径 → 预览」注册成模块级回调
 	setPathOpener(onOpenPath ?? null);
-	// 空会话（新会话）什么都不画：标题/引导在输入框上方那块（NewChatMeta），这里留白
-	if (messages.length === 0) return null;
 	/**
 	 * 插队消息先挪位再画：服务端只能把插队那句话追加到这一轮末尾，
 	 * 而它其实是插在中间的（后面那段助手正文说不定就是在回答它）——
 	 * 不挪的话看着像先答后问，气泡上却还挂着「插队」（见 `steer-order.ts`）。
 	 * 只改显示顺序，消息本身一个字不动。
+	 *
+	 * 两个 O(消息数) 的纯函数用 `useMemo` 记一份：本组件会因为输入框、悬停、选中这些
+	 * 与会话内容无关的状态频繁重渲染，每帧重算 + 重建 Map 在手机上可感。
+	 * **必须在下面那个早退之前调**（hooks 不能有条件地调用）。
 	 */
-	const shown = liftSteeredMessages(messages);
+	const shown = useMemo(() => liftSteeredMessages(messages), [messages]);
+	// 子代理卡片挂在哪条消息上：按「开始时间落在哪条助手消息」分配（见 assignRunsToMessages）
+	const runsByMessage = useMemo(() => assignRunsToMessages(subagentRuns, shown), [subagentRuns, shown]);
+	// 空会话（新会话）什么都不画：标题/引导在输入框上方那块（NewChatMeta），这里留白
+	if (messages.length === 0) return null;
 	// 实时数字挂在哪条消息上：最后一条**还没跑完**的助手消息（跑完 endedAt 才有值）
 	const liveId = running ? (lastOpenAssistant(shown)?.id ?? null) : null;
-	// 子代理卡片挂在哪条消息上：按「开始时间落在哪条助手消息」分配（见 assignRunsToMessages）
-	const runsByMessage = assignRunsToMessages(subagentRuns, shown);
+	/**
+	 * 找不到宿主消息、但**正在跑**的那几张：刷新进来时宿主消息可能还没进本页（分页 / 轮次刚开）。
+	 * 以前这种会直接不画（`assignRunsToMessages` 对配不上的直接 `continue`），于是
+	 * 「刷新后看不到正在跑的子代理」——用户 2026-11-02 报的就是这个。
+	 * 这些兜底顶在对话最上面；已经跑完的不享此待遇（那是历史，该留在它当时的位置）。
+	 */
+	const placed = new Set<string>();
+	for (const list of runsByMessage.values()) for (const run of list) placed.add(run.id);
+	const orphanRunning = subagentRuns.filter((run) => isActive(run) && !placed.has(run.id));
 
 	return (
 		<div className="messages" ref={listRef}>
 			{hasMoreBefore ? (
 				<div className="more-before">
 					{t("更早的消息未在本页（分页在 M6）", "Earlier messages are not on this page")}
+				</div>
+			) : null}
+			{/* 没宿主的「正在跑」卡片条：顶在对话最上面，免得刷新进来时凭空消失 */}
+			{orphanRunning.length > 0 ? (
+				<div className="agents-strip-orphan">
+					<AgentsRunStrip runs={orphanRunning} />
 				</div>
 			) : null}
 			{shown.map((message) => (
@@ -1150,11 +1174,7 @@ export function MessageList({
 					{pending.map((item) => (
 						// 排队 / 插队共用一种待发行：形状、两个按钮完全一样，只差标签与色调
 						// id 跟真消息同一套命名：滚动锚点靠 `msg-<id>` 找节点（点按钮发出去的那条先落在这里）
-						<article
-							className={`msg msg-user pending-item pending-${item.mode}`}
-							key={item.id}
-							id={`msg-${item.id}`}
-						>
+						<article className={`msg msg-user pending-item pending-${item.mode}`} key={item.id} id={`msg-${item.id}`}>
 							<header className="msg-head">
 								<span className="msg-role">{t("我", "Me")}</span>
 								<span className={`sent-tag sent-tag-${item.mode}`}>

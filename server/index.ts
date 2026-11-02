@@ -265,6 +265,8 @@ const runtime = createRuntime({
 	rules: createFileRuleStore(config.dataDir),
 	// 启动信息只进日志，不进对话流
 	onStartupInfo: (text) => logger.info(text),
+	// 切会话的分段耗时也进日志：手机上「切会话慢」只能靠这几行数字定位
+	log: (message, ctx) => logger.info(message, ctx),
 	workspace: config.workspace,
 	engineName: resolved.descriptor.name,
 	engineCapabilities: resolved.descriptor.capabilities,
@@ -293,8 +295,35 @@ runtimeRef.current = runtime;
 /** SSE 连接（纯 HTTP 通道）：clientId → 写入函数（每客户端一份快照，ADR-0033） */
 const sinks = new Map<string, Sink>();
 
-const fanOut = (snapshot: Parameters<typeof fanOutSnapshot>[0]) =>
-	fanOutSnapshot(snapshot, { sinks, snapshotFor: (id) => runtime.snapshotFor(id) });
+/**
+ * 快照体积/序列化耗时只在这些阈值之上才落一条日志（且 3 秒内最多一条）。
+ *
+ * 手机切会话卡不卡，一半取决于这一个数字：一帧 400KB 的 snapshot 要经过「深拷贝 100 条消息
+ * → JSON.stringify → gzip → 网络 → 手机端 JSON.parse → 100 条 Markdown 重新解析」。
+ * 流式期间每帧都会走这里，所以必须节流，否则日志比快照还重。
+ */
+const SLOW_SNAPSHOT_MS = 20;
+const BIG_SNAPSHOT_BYTES = 200 * 1024;
+const SNAPSHOT_LOG_GAP_MS = 3000;
+let lastSnapshotLogAt = 0;
+
+const fanOut = (snapshot: Parameters<typeof fanOutSnapshot>[0]) => {
+	const { clients, bytes, ms } = fanOutSnapshot(snapshot, {
+		sinks,
+		snapshotFor: (id) => runtime.snapshotFor(id),
+	});
+	if (ms < SLOW_SNAPSHOT_MS && bytes < BIG_SNAPSHOT_BYTES) return;
+	const now = Date.now();
+	if (now - lastSnapshotLogAt < SNAPSHOT_LOG_GAP_MS) return;
+	lastSnapshotLogAt = now;
+	logger.info("快照偏大/偏慢（切会话与流式卡顿的主要来源）", {
+		ms,
+		kb: Math.round(bytes / 1024),
+		clients,
+		messages: snapshot.active.messages.length,
+		conversationId: snapshot.active.conversationId,
+	});
+};
 
 /** 广播给所有 SSE 连接（WS 通道已移除，见文件头） */
 function broadcast(payload: string): void {

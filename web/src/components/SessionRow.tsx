@@ -2,22 +2,27 @@ import { useEffect, useRef, useState } from "react";
 import type { PiSessionSummary } from "../types.ts";
 import type { MenuPoint } from "./ProjectMenuPopover.tsx";
 import { SessionMenu } from "./SessionMenu.tsx";
-import { useT } from "../use-language.ts";
+import { tNow, useT } from "../use-language.ts";
 import { PLAIN_TEXT_INPUT } from "../plain-text-input.ts";
 
 /** 相对时间（与 Sidebar 里那份一致；抽出来避免循环依赖）。
  * **不再画在行尾**（用户：「会话后面的时间不要了吧，这样能多显示一些」）：
- * 那一格常年占着 30px 上下，标题被截得更短；现在只在行上的悬停提示里给。 */
+ * 那一格常年占着 30px 上下，标题被截得更短；现在只在行上的悬停提示里给。
+ *
+ * 不在组件里，所以走 `tNow`：中文是主语言（第一参），英文就地写在第二参。 */
 function relativeTime(ts: number, now = Date.now()): string {
 	const diff = Math.max(0, now - ts);
 	const minute = 60_000;
-	if (diff < minute) return "刚刚";
-	if (diff < 60 * minute) return `${Math.floor(diff / minute)}分`;
-	if (diff < 24 * 60 * minute) return `${Math.floor(diff / (60 * minute))}小时`;
+	if (diff < minute) return tNow("刚刚", "just now");
+	if (diff < 60 * minute) return tNow(`${Math.floor(diff / minute)}分`, `${Math.floor(diff / minute)}m`);
+	if (diff < 24 * 60 * minute)
+		return tNow(`${Math.floor(diff / (60 * minute))}小时`, `${Math.floor(diff / (60 * minute))}h`);
 	const days = Math.floor(diff / (24 * 60 * minute));
-	if (days < 30) return `${days}天`;
+	if (days < 30) return tNow(`${days}天`, `${days}d`);
 	const months = Math.floor(days / 30);
-	return months < 12 ? `${months}个月` : `${Math.floor(months / 12)}年`;
+	return months < 12
+		? tNow(`${months}个月`, `${months}mo`)
+		: tNow(`${Math.floor(months / 12)}年`, `${Math.floor(months / 12)}y`);
 }
 
 /**
@@ -225,7 +230,7 @@ export function SessionRow({
 				className={`pi-row${active ? " pi-row-active" : ""}${highlighted ? " pi-row-selected" : ""}${pinned ? " pi-row-pinned" : ""}`}
 				onClick={(event) => onSwitch({ shift: event.shiftKey, toggle: event.metaKey || event.ctrlKey })}
 				// 时间不进布局，只在这个悬停提示里（鼠标停一下照样能看到「3小时」）
-				title={`${session.cwd}\n${session.id}\n最后活动：${relativeTime(session.updatedAt)}`}
+				title={`${session.cwd}\n${session.id}\n${t("最后活动：", "Last activity: ")}${relativeTime(session.updatedAt)}`}
 			>
 				{editing ? (
 					<input

@@ -103,7 +103,7 @@ export function AgentsPanel() {
 						>
 							{[1, 2, 3, 4, 5, 6, 8, 10, 12].map((count) => (
 								<option key={count} value={count}>
-									{count} 个
+									{t(`${count} 个`, `${count}`)}
 								</option>
 							))}
 						</select>
@@ -114,8 +114,14 @@ export function AgentsPanel() {
 			{!capable ? (
 				<div className="agents-banner">
 					{snapshot?.engine === "pi" || snapshot?.engine === undefined
-						? "当前服务还没有子代理能力：更新后请重启一次服务（aw restart），面板里的模板不受影响。"
-						: `当前引擎（${snapshot?.engine}）不能跑子代理：切到 pi 原生引擎即可；模板可以先在这里配置。`}
+						? t(
+								"当前服务还没有子代理能力：更新后请重启一次服务（aw restart），面板里的模板不受影响。",
+								"This service cannot run subagents yet: restart it after updating (aw restart). The templates in this panel are unaffected.",
+							)
+						: t(
+								`当前引擎（${snapshot?.engine}）不能跑子代理：切到 pi 原生引擎即可；模板可以先在这里配置。`,
+								`The current engine (${snapshot?.engine}) cannot run subagents: switch to the native pi engine. Templates can still be configured here.`,
+							)}
 				</div>
 			) : whitelist === false ? (
 				<div className="agents-banner">
@@ -129,9 +135,7 @@ export function AgentsPanel() {
 			<div className="agents-body">
 				<section className="agents-col agents-col-profiles">
 					<div className="agents-col-head">
-						<span>
-							{t("模板", "Templates")}（{profiles.length}）
-						</span>
+						<span>{t(`模板（${profiles.length}）`, `Templates (${profiles.length})`)}</span>
 						<button
 							type="button"
 							className="btn btn-tiny"
@@ -171,15 +175,20 @@ export function AgentsPanel() {
 										type="button"
 										className="agents-profile-main"
 										onClick={() => setEditing(profile)}
-										title={profile.description || profile.id}
+										title={profile.description ? t(profile.description, profile.descriptionEn) : profile.id}
 									>
 										<span className="agents-profile-name">
 											{profile.label}
 											{profile.builtin ? <em className="agents-badge">{t("内置", "Built-in")}</em> : null}
 										</span>
-										<span className="agents-profile-desc">{profile.description || profile.id}</span>
+										<span className="agents-profile-desc">
+											{profile.description ? t(profile.description, profile.descriptionEn) : profile.id}
+										</span>
 									</button>
-									<label className="agents-profile-switch" title={profile.enabled ? "停用" : "启用"}>
+									<label
+										className="agents-profile-switch"
+										title={profile.enabled ? t("停用", "Disable") : t("启用", "Enable")}
+									>
 										<input
 											type="checkbox"
 											checked={profile.enabled}
@@ -232,8 +241,14 @@ export function AgentsPanel() {
 							</p>
 							<p className="agents-hint">
 								{whitelist === false
-									? "子代理跑起来之后，卡片会直接出现在对话下方（可就地看结果、可单独停掉）；这里只管「谁能被委派」，隔离由引擎的沙箱与审批决定。"
-									: "子代理跑起来之后，卡片会直接出现在对话下方（带耗时 / token / 花费，可就地看结果、可单独停掉）；这里只管「谁能被委派、用什么工具」。"}
+									? t(
+											"子代理跑起来之后，卡片会直接出现在对话下方（可就地看结果、可单独停掉）；这里只管「谁能被委派」，隔离由引擎的沙箱与审批决定。",
+											"Once a subagent runs, its card shows up right below the conversation (read the result in place, stop it on its own); this panel only decides who can be delegated — isolation comes from the engine's sandbox and approvals.",
+										)
+									: t(
+											"子代理跑起来之后，卡片会直接出现在对话下方（带耗时 / token / 花费，可就地看结果、可单独停掉）；这里只管「谁能被委派、用什么工具」。",
+											"Once a subagent runs, its card shows up right below the conversation (with duration / tokens / cost; read the result in place, stop it on its own); this panel only decides who can be delegated and with which tools.",
+										)}
 							</p>
 						</div>
 					)}

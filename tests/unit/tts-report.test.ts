@@ -76,7 +76,6 @@ function installSynthesis(mode: Mode): { spoken: number } {
 
 const SETTINGS = {
 	enabled: true,
-	announce: true,
 	readReplies: false,
 	rate: 1,
 	voiceURI: "google-zh",

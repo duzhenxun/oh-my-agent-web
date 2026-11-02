@@ -516,7 +516,7 @@ export function PushPanel() {
 									});
 								}}
 							>
-								重命名
+								{t("重命名", "Rename")}
 							</button>
 							<button
 								type="button"
@@ -535,7 +535,7 @@ export function PushPanel() {
 								className="msg-action"
 								onClick={() => void act("/api/push/delete", { body: JSON.stringify({ endpoint: device.endpoint }) })}
 							>
-								删除
+								{t("删除", "Delete")}
 							</button>
 						</div>
 					))}

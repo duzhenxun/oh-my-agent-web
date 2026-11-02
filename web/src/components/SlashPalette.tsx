@@ -102,7 +102,7 @@ export function SlashPalette({
 						<span className={`slash-kind${command.kind === "agent" ? " slash-kind-agent" : ""}`}>
 							{command.kind === "agent" ? t("发给 Agent", "Sent to agent") : t("本地", "Runs here")}
 						</span>
-						<span className="slash-desc">{t(command.description)}</span>
+						<span className="slash-desc">{t(command.description, command.descriptionEn)}</span>
 					</button>
 				))}
 			</div>

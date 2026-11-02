@@ -31,6 +31,13 @@ type SwitchDeps = {
 	 */
 	isTurnActive?: (conversationId: string) => boolean;
 	pushSnapshot: () => void;
+	/**
+	 * 诊断日志：切会话到底慢在哪一步。
+	 *
+	 * 没有这行数字时只能猜 —— 「打开会话 / 读整份转录」「模型与思考强度回读」「快照构建」
+	 * 三步的耗时量级完全不同（手机 + 长会话上前者动辄几百毫秒），但界面上都只是「点了没反应」。
+	 */
+	log?: (message: string, ctx?: Record<string, unknown>) => void;
 };
 
 type Result = { ok: true } | { ok: false; error: { code: string; message: string } };
@@ -39,6 +46,25 @@ export function createSwitchConversation(deps: SwitchDeps) {
 	const { state, clientView } = deps;
 
 	async function switchTo(conversationId: string, clientId?: string): Promise<Result> {
+		const startedAt = performance.now();
+		let cursor = startedAt;
+		const trace: Record<string, number> = {};
+		/** 记一段耗时并把游标挪到当下：纯观测，不改变任何行为 */
+		const lap = (name: string) => {
+			const now = performance.now();
+			trace[name] = Math.round(now - cursor);
+			cursor = now;
+		};
+		/** 失败分支也要落一行：否则「点了没反应」时只有一句 not_found，看不到时间花在哪 */
+		const logDone = (outcome: string, extra: Record<string, unknown> = {}) => {
+			deps.log?.("切换会话", {
+				conversationId,
+				outcome,
+				total: Math.round(performance.now() - startedAt),
+				...trace,
+				...extra,
+			});
+		};
 		const previous = state.activeId;
 		const mine = state.conversations.some((conversation) => conversation.id === conversationId);
 		const fromPi = deps.infoOf(conversationId);
@@ -46,6 +72,7 @@ export function createSwitchConversation(deps: SwitchDeps) {
 		// 点一条已删除的会话会把**当前**会话停泊掉（codex 放开写锁）、建议被清空，
 		// 而界面还停在错误提示上 —— 副作用全白做了。
 		if (!mine && !fromPi) {
+			logDone("not_found");
 			return { ok: false, error: { code: "session.not_found", message: `会话不存在：${conversationId}` } };
 		}
 		if (previous && previous !== conversationId) {
@@ -59,9 +86,13 @@ export function createSwitchConversation(deps: SwitchDeps) {
 		state.sessionStats = state.statsByConversation[conversationId] ?? null;
 
 		if (!mine && fromPi) {
-			if (state.activeId !== conversationId || !state.messages[conversationId]) {
+			// 「这次是不是真的重新打开了」——已经是当前会话且消息已在内存时不重读，是最快的一条路
+			const reopened = state.activeId !== conversationId || !state.messages[conversationId];
+			if (reopened) {
 				const messages = await deps.open(conversationId, (force) => deps.refreshSessions(force));
+				lap("open");
 				if (messages === null) {
+					logDone("open_failed");
 					return { ok: false, error: { code: "session.open_failed", message: `打开会话失败：${conversationId}` } };
 				}
 				/**
@@ -73,13 +104,21 @@ export function createSwitchConversation(deps: SwitchDeps) {
 				const current = state.messages[conversationId];
 				if (!inFlight || !current || current.length === 0) state.messages[conversationId] = messages;
 				await deps.refreshModels(conversationId);
+				lap("models");
 				await deps.refreshThinking(conversationId);
+				lap("thinking");
 				state.activeId = conversationId;
 				state.files = { root: fromPi.workspace, treeVersion: (state.files?.treeVersion ?? 0) + 1 };
 			}
 			// 无论有没有真的换（已是当前会话也推）：客户端靠这份快照把乐观高亮退掉，
 			// 否则点一下当前会话就变成「正在打开…」卡在那里 —— 看着就是「点了没反应」。
 			deps.pushSnapshot();
+			lap("build");
+			logDone("ok", {
+				mine: false,
+				reopened,
+				messages: state.messages[conversationId]?.length ?? 0,
+			});
 			return { ok: true };
 		}
 		if (state.activeId !== conversationId) {
@@ -92,12 +131,19 @@ export function createSwitchConversation(deps: SwitchDeps) {
 			// 模型选择器是全局一份，切会话必须把「这个会话当前用哪个模型」读回来，
 			// 否则会一直显示上一个会话的模型（看着就像「选的模型没生效」）。
 			await deps.refreshModels(conversationId);
+			lap("models");
 			// 思考强度也是「每个会话一份」：自建会话同样要读回来，否则切来切去显示的是上一个会话的
 			await deps.refreshThinking(conversationId);
+			lap("thinking");
 		}
+		// 这里只是**发起**统计重算（读整份 JSONL 是异步的），所以这一格只反映调用本身；
+		// 真正的解析耗时会在快照偏慢/偏大的那条日志里体现
 		deps.refreshStats();
+		lap("stats");
 		// 同一个理由：已经是当前会话也要推一份，客户端才知道「切到了」。
 		deps.pushSnapshot();
+		lap("build");
+		logDone("ok", { mine: true, messages: state.messages[conversationId]?.length ?? 0 });
 		return { ok: true };
 	}
 

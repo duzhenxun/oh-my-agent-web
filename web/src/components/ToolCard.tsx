@@ -139,7 +139,12 @@ function ToolImage({ block }: { block: ToolBlock }) {
 			title={t(`${imagePath}（点击放大预览）`, `${imagePath} (click to preview)`)}
 			onClick={() => openImageViewer(rawSrcOf(imagePath), basename(imagePath) || t("图片", "image"))}
 		>
-			<img className="tool-image" src={rawSrcOf(imagePath)} alt={basename(imagePath) || t("图片", "image")} loading="lazy" />
+			<img
+				className="tool-image"
+				src={rawSrcOf(imagePath)}
+				alt={basename(imagePath) || t("图片", "image")}
+				loading="lazy"
+			/>
 		</button>
 	);
 }

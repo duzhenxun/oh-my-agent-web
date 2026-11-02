@@ -18,6 +18,7 @@
  */
 import { basename, normalizeCwd } from "./path-utils.ts";
 import type { ConversationMeta, PiProject, PiSessionSummary } from "./types.ts";
+import { tNow } from "./use-language.ts";
 
 /** 合成输入只用到这几个字段（`ConversationMeta` 满足它，造数据也不用凑齐字段） */
 type LocalSession = Pick<ConversationMeta, "id" | "title" | "workspace" | "createdAt" | "updatedAt">;
@@ -88,7 +89,7 @@ export function buildProjectGroups(
 			);
 		const row: SessionRow = {
 			id: conversation.id,
-			title: conversation.title || "新对话",
+			title: conversation.title || tNow("新对话", "New chat"),
 			startedAt: conversation.createdAt,
 			updatedAt: conversation.updatedAt,
 			cwd: conversation.workspace,

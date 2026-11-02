@@ -263,7 +263,7 @@ export function MermaidDiagram({ code }: { code: string }) {
 					className={`mermaid-btn${!showGraph ? " mermaid-btn-on" : ""}`}
 					onClick={() => setShowSource(true)}
 				>
-					源代码
+					{t("源代码", "Source")}
 				</button>
 			</div>
 			{showGraph ? (

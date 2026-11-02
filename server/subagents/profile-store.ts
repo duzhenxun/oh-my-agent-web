@@ -21,6 +21,11 @@ type SubagentProfileSpec = {
 	id: string;
 	label: string;
 	description: string;
+	/**
+	 * 内置模板的英文描述。**只在 description 还是内置原句时才给下游**（见 `listSubagentProfileViews`）：
+	 * 用户改过描述后，英文就跟不上中文了，宁可回落用户自己写的那句。
+	 */
+	descriptionEn?: string;
 	systemPrompt: string;
 	tools: string[];
 	model?: string;
@@ -40,6 +45,7 @@ const DEFAULTS: SubagentProfileSpec[] = [
 		id: "explore",
 		label: "Explore",
 		description: "只读侦察：不改进仓库，把结论与文件路径带回来",
+		descriptionEn: "Read-only recon: leaves the repo untouched and brings back findings plus file paths",
 		systemPrompt:
 			"Explore the codebase to answer the delegated question. Do not modify files. Report concrete findings with file paths and relevant symbols.",
 		tools: ["read", "grep", "find", "ls"],
@@ -52,6 +58,7 @@ const DEFAULTS: SubagentProfileSpec[] = [
 		id: "general-purpose",
 		label: "General purpose",
 		description: "通用委派：窄而正确地改代码，验证后如实汇报",
+		descriptionEn: "General delegation: makes the narrowest correct change, verifies it, then reports honestly",
 		systemPrompt:
 			"Complete the delegated task end to end. Prefer the smallest correct change, verify it before reporting, and report what you changed with file paths. If you cannot finish, say exactly what is left.",
 		tools: [...SUBAGENT_TOOLS],
@@ -63,6 +70,7 @@ const DEFAULTS: SubagentProfileSpec[] = [
 		id: "plan",
 		label: "Plan",
 		description: "只出方案：读代码、给步骤与风险，不动文件",
+		descriptionEn: "Plan only: reads code, returns steps and risks, changes no files",
 		systemPrompt:
 			"Design an implementation plan for the delegated task. Read code as needed but do not modify it. Return ordered steps, files to touch, risks, and what to verify.",
 		tools: ["read", "grep", "find", "ls"],
@@ -228,6 +236,8 @@ export function listSubagentProfileViews(agentDir: string): SubagentProfileView[
 		id: profile.id,
 		label: profile.label,
 		description: profile.description,
+		// 英文描述只跟「没改过的内置原句」走：用户改成自己的说法后就不该再显示内置英文
+		...builtinDescriptionEn(profile),
 		systemPrompt: profile.systemPrompt,
 		tools: [...profile.tools],
 		...(profile.model ? { model: profile.model } : {}),
@@ -236,6 +246,16 @@ export function listSubagentProfileViews(agentDir: string): SubagentProfileView[
 		enabled: profile.enabled,
 		builtin: profile.builtin,
 	}));
+}
+
+/**
+ * 内置模板的英文描述（能对上才给）：比对的是**这一档内置模板的原始中文句**，
+ * 所以「复制内置模板后一个字没改」也能拿到英文，改过就自然没了。
+ */
+function builtinDescriptionEn(profile: SubagentProfileSpec): { descriptionEn: string } | null {
+	const builtin = DEFAULTS.find((item) => item.id === profile.id);
+	if (!builtin?.descriptionEn || builtin.description !== profile.description) return null;
+	return { descriptionEn: builtin.descriptionEn };
 }
 
 /** 引擎要的规格：只留启用的（停用的模板不会出现在 Agent 工具的描述里） */

@@ -112,9 +112,9 @@ export function ArchivedSessions({
 					className="btn btn-tiny"
 					disabled={allIds.length === 0}
 					onClick={() => setSelected(allSelected ? new Set() : new Set(allIds))}
-					title={allSelected ? "取消全选" : "全选"}
+					title={allSelected ? t("取消全选", "Unselect all") : t("全选", "Select all")}
 				>
-					{allSelected ? "全不选" : "全选"}
+					{allSelected ? t("全不选", "Select none") : t("全选", "Select all")}
 				</button>
 			</div>
 
@@ -125,7 +125,7 @@ export function ArchivedSessions({
 					</span>
 					<span className="topbar-spacer" />
 					<button type="button" className="btn btn-tiny" onClick={restoreSelected} title={t("把这些恢复回主列表")}>
-						恢复选中
+						{t("恢复选中", "Restore selected")}
 					</button>
 					<button
 						type="button"
@@ -150,7 +150,11 @@ export function ArchivedSessions({
 								className="archived-group-toggle"
 								onClick={() => toggleExpanded(group.name)}
 								aria-expanded={expanded.has(group.name)}
-								title={expanded.has(group.name) ? "收起这个项目的归档" : "展开这个项目的归档"}
+								title={
+									expanded.has(group.name)
+										? t("收起这个项目的归档", "Collapse this project's archive")
+										: t("展开这个项目的归档", "Expand this project's archive")
+								}
 							>
 								<span
 									className={`sidebar-title-caret${expanded.has(group.name) ? " sidebar-title-caret-open" : ""}`}
@@ -190,7 +194,7 @@ export function ArchivedSessions({
 									type="button"
 									className="archived-open"
 									onClick={() => onOpen(item.id)}
-									title={`打开这条会话\n${item.id}`}
+									title={t(`打开这条会话\n${item.id}`, `Open this session\n${item.id}`)}
 								>
 									<span className="archived-title">{item.title}</span>
 									<span className="archived-time">{item.time}</span>
@@ -201,7 +205,7 @@ export function ArchivedSessions({
 									title={t("恢复到主列表")}
 									onClick={() => onRestore(item.id)}
 								>
-									恢复
+									{t("恢复", "Restore")}
 								</button>
 							</div>
 						))}

@@ -41,7 +41,17 @@ class FakeUtterance {
  *   - `silent`：什么都不回（服务真卡死）；
  *   - `poisonOnCancel`：**每次 cancel 都让下一句死成 canceled**（就是上面说的余波）。
  */
-function installSynthesis(options: { coldOnce?: boolean; silent?: boolean } = {}) {
+/**
+ * 假合成器。四种现实表现：
+ *   - `coldOnce`：第一句被系统打断（服务冷启动），之后都能念；
+ *   - `silent`：什么都不回（服务真卡死）；
+ *   - `startAfterMs`：过这么久才开始念（网络音色冷启动，比 900ms 还慢的那种）；
+ *   - `noStartEvent`：真的在念，但 `onstart` 不回调（Chrome 对网络音色的老毛病）。
+ * `cancel()` 对已经排进去的句子**不一定有效**（网络音色停不下来）—— 那正是同一句会念两遍的根因。
+ */
+function installSynthesis(
+	options: { coldOnce?: boolean; silent?: boolean; startAfterMs?: number; noStartEvent?: boolean } = {},
+) {
 	const stats = {
 		/** 真正开念过几句 */
 		spoken: 0,
@@ -102,12 +112,13 @@ function installSynthesis(options: { coldOnce?: boolean; silent?: boolean } = {}
 				pending = false;
 				speaking = true;
 				stats.spoken += 1;
-				utter.onstart?.();
+				// 网络音色常常不回调 onstart：声音已经出来了，代码却以为「还没开始」
+				if (options.noStartEvent !== true) utter.onstart?.();
 				timer(() => {
 					speaking = false;
 					utter.onend?.();
 				}, 10);
-			}, 2);
+			}, options.startAfterMs ?? 2);
 		},
 	};
 
@@ -124,7 +135,6 @@ function installSynthesis(options: { coldOnce?: boolean; silent?: boolean } = {}
 
 const SETTINGS = {
 	enabled: true,
-	announce: true,
 	readReplies: false,
 	rate: 1,
 	voiceURI: "google-zh",
@@ -151,6 +161,34 @@ describe("语音播报：唤醒不能把正文顶掉", () => {
 		await wait(600);
 		assert.deepEqual(tape.events, ["start", "end"], `应自愈成一次正常播报，实际：${JSON.stringify(tape.events)}`);
 		assert.equal(stats.cancels, 0, "队列空着的时候一次 cancel 都不该发（那一下会把下一句顶掉）");
+	});
+});
+
+/**
+ * 用户 2026-11-02 的控制台现场：`Google 普通话（中国大陆）`（网络音色）冷启动慢，
+ * 旧的 900ms 看门狗判死 → 换成默认音色重排；紧接着的 `canceled` 又触发唤醒重排；
+ * 而网络音色的 `cancel()` 根本掐不断已经出声的那句 —— 于是「任务已完成」念了两遍。
+ * 现在：网络音色给 2500ms，而且在念（或念过）就绝不重排，每句最多排 2 次。
+ */
+describe("网络音色冷启动：同一句不能念两遍", () => {
+	it("比 900ms 还慢才开始（1200ms）时不能判死重排", async () => {
+		// 1200*SPEED ≈ 24ms；旧的 900ms 看门狗 ≈ 18ms —— 旧行为会先判死、再排一句 → 两句都念
+		const stats = installSynthesis({ startAfterMs: 1200 });
+		const tape = recorder();
+		speak("任务已完成", SETTINGS, tape.hooks);
+		await wait(600);
+		assert.equal(stats.spoken, 1, `只该念一次，实际念了 ${stats.spoken} 次（一共排了 ${stats.total} 句）`);
+		assert.deepEqual(tape.events, ["start", "end"], `实际事件：${JSON.stringify(tape.events)}`);
+	});
+
+	it("真的在念但 onstart 没回来：不 cancel、不重排", async () => {
+		const stats = installSynthesis({ startAfterMs: 400, noStartEvent: true });
+		const tape = recorder();
+		speak("任务已完成", SETTINGS, tape.hooks);
+		await wait(600);
+		assert.equal(stats.total, 1, `已经在念了，不该再排第二句（实际排了 ${stats.total} 句）`);
+		assert.equal(stats.spoken, 1);
+		assert.deepEqual(tape.issues(), [], "在念就不算失败，不该报错");
 	});
 });
 

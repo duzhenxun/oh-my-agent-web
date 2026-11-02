@@ -4,18 +4,18 @@
  * 为什么不用云 TTS：不需要 key、不联网、不出网 —— 这个工作台本来就是单机工具。
  * 代价是音色取决于系统装了哪些语音（macOS 自带婷婷/美佳等），所以面板里给一个下拉框选。
  *
- * 两个独立的开关（对应面板上的两行）：
- *   - announce：完成 / 出错 / 等待审批时念**一句短话**；
- *   - readReplies：回答结束时朗读 AI 的**最终回复**（剥掉 markdown、截断），
- *     开了它就代替那句短话（否则两个一起念会打架）。
+ * **只说真内容**：只有 `readReplies`（朗读 AI 的最终回复）会走到这里。
+ * 完成 / 出错 / 等待审批**不再念固定短句**（以前的「任务已完成」「出错了」已经删了）——
+ * 用户 2026-11-02：「任务已完成、系统出错这种声音（提示音）就行」，而且短句在真机上
+ * 被网络音色反复重排，听起来就是同一句播了两遍（现场见 `MAX_UTTERANCES` 的注释）。
+ * 状态类事件现在全交给 `sound.ts` 的提示音。
  */
+import { tNow } from "./use-language.ts";
 
 export type TtsSettings = {
 	/** 总开关（自动播报） */
 	enabled: boolean;
-	/** 播报事件：完成 / 出错 / 等待审批各念一句短话 */
-	announce: boolean;
-	/** 回答结束时朗读最终回复（代替那句短话） */
+	/** 回答结束时朗读最终回复 */
 	readReplies: boolean;
 	/** 语速 0.5–2（1 = 正常） */
 	rate: number;
@@ -33,10 +33,9 @@ export type TtsSettings = {
 };
 
 export const DEFAULT_TTS_SETTINGS: TtsSettings = {
-	// 默认就开：这个功能的重点就是「干完活说一声」（用户明确要的）。
-	// 真觉得吵的人在这个面板里一关，选择会记在本机。
 	enabled: true,
-	announce: true,
+	// 默认关：完成只说一声提示音就够了（用户 2026-11-02）。
+	// 想听内容的人自己开，选择会记在本机。
 	readReplies: false,
 	rate: 1,
 	voiceURI: "",
@@ -47,12 +46,15 @@ export const DEFAULT_TTS_SETTINGS: TtsSettings = {
 /** 朗读回复时的字数上限：谁也不想听五分钟的独白 */
 const MAX_TTS_CHARS = 400;
 
-/** 播报用的短句（跟着界面语言走：这个工作台是中文的） */
-export const TTS_LINE = {
-	done: "任务已完成",
-	error: "出错了，请查看对话",
-	approval: "有一条工具调用等待你的批准",
-} as const;
+/**
+ * 试听 / 诊断用的样例句（只给面板用，不再给自动播报用）。
+ *
+ * 以前试听点的是「任务已完成」—— 那句短话已经下线，但试听必须能证明「真的会出声」，
+ * 所以换成一句自带上下文的话，念出来就知道是试听而不是真的跑完了。
+ */
+export function ttsSampleLine(): string {
+	return tNow("语音播报正常，任务已完成", "Speech is working — the task is done");
+}
 
 const STORAGE_KEY = "agent-web.voice.tts";
 
@@ -62,7 +64,7 @@ export function loadTtsSettings(): TtsSettings {
 		if (!raw) return { ...DEFAULT_TTS_SETTINGS };
 		const parsed = JSON.parse(raw) as Partial<TtsSettings>;
 		const merged: TtsSettings = { ...DEFAULT_TTS_SETTINGS, ...parsed };
-		for (const key of ["enabled", "announce", "readReplies", "allowOnline"] as const) {
+		for (const key of ["enabled", "readReplies", "allowOnline"] as const) {
 			if (typeof merged[key] !== "boolean") merged[key] = DEFAULT_TTS_SETTINGS[key];
 		}
 		merged.rate =
@@ -195,25 +197,46 @@ export function stripMarkdownForSpeech(input: string): string {
 export function describeSpeechError(code: string): string {
 	switch (code) {
 		case "not-allowed":
-			return "浏览器拦了这次朗读：先在页面上点一下（任意按钮）再试";
+			return tNow(
+				"浏览器拦了这次朗读：先在页面上点一下（任意按钮）再试",
+				"The browser blocked this playback: click anywhere on the page, then try again",
+			);
 		case "voice-unavailable":
-			return "选中的音色在系统里不可用，换个「语音」或选「自动」";
+			return tNow(
+				"选中的音色在系统里不可用，换个「语音」或选「自动」",
+				"The selected voice is not available on this system — pick another voice or use Auto",
+			);
 		case "audio-busy":
-			return "音频输出被别的应用占着，关掉它再试";
+			return tNow(
+				"音频输出被别的应用占着，关掉它再试",
+				"Another app is holding the audio output — close it and try again",
+			);
 		case "audio-hardware":
-			return "没有可用的音频输出设备";
+			return tNow("没有可用的音频输出设备", "No audio output device is available");
 		case "network":
-			return "这个音色要联网（在线音色）才能念，换一个本机音色";
+			return tNow(
+				"这个音色要联网（在线音色）才能念，换一个本机音色",
+				"This voice is an online voice and needs a network connection — pick a local voice",
+			);
 		case "synthesis-unavailable":
-			return "系统语音服务不可用（macOS：系统设置 → 辅助功能 → 朗读内容）";
+			return tNow(
+				"系统语音服务不可用（macOS：系统设置 → 辅助功能 → 朗读内容）",
+				"The system speech service is unavailable (macOS: System Settings → Accessibility → Spoken Content)",
+			);
 		case "synthesis-failed":
-			return "系统语音服务合成失败，试试点「停止」再试听一次";
+			return tNow(
+				"系统语音服务合成失败，试试点「停止」再试听一次",
+				"The system speech service failed to synthesize — click Stop, then preview again",
+			);
 		case "text-too-long":
-			return "这段话太长，合成器拒了";
+			return tNow("这段话太长，合成器拒了", "This text is too long — the synthesizer refused it");
 		case "invalid-argument":
-			return "音色参数无效（换一个「语音」再试）";
+			return tNow(
+				"音色参数无效（换一个「语音」再试）",
+				"The voice setting is invalid (pick another voice and try again)",
+			);
 		default:
-			return `语音合成失败：${code}`;
+			return tNow(`语音合成失败：${code}`, `Speech synthesis failed: ${code}`);
 	}
 }
 
@@ -232,6 +255,26 @@ const RETRY_GAP_MS = 200;
 const MAX_WAKES = 2;
 /** 唤醒句等多久算「试过了」：一个空格的合成通常几十毫秒，700ms 还没回就是服务真卡着 */
 const WAKE_TIMEOUT_MS = 700;
+/**
+ * 一句话最多排几次合成（首句 + 一次重排）。
+ *
+ * 现场（用户 2026-11-02 的控制台）：同一句「任务已完成」在几秒内被排了 4~5 次 ——
+ * 看门狗换音色重试、`canceled` 唤醒重试、外层 `speakAuto` 再补念，三条链叠在一起。
+ * 而 **网络音色（Chrome 的 Google 普通话）停不下来**：`cancel()` 发了也照样把声音念完，
+ * 于是每多排一句就多一遍「任务已完成」。所以这里硬封顶：宁可报一次「没起来」，也不排第三句。
+ */
+const MAX_UTTERANCES = 2;
+/**
+ * 看门狗：多久没开始就当「没起来」。
+ *
+ * 网络音色（`localService === false`，如 Google 普通话）要联网合成，冷启动 1~2s 是常态，
+ * 900ms 判死就是**误杀**：于是立刻换默认音色重排，而原来的那句过一会儿又出声 —— 两句都念了。
+ * 本机音色是真的快，900ms 够用，不用为了网络音色把普通场景也拖慢。
+ */
+function watchdogMsOf(localService: boolean | null): number {
+	if (localService === null) return 1500; // 重试轮（无音色）：1500 维持原样
+	return localService ? 900 : 2500;
+}
 /**
  * 「唤醒一下服务再重试」对这些错误码有意义：合成器 / 系统服务那一层没起来。
  * 其余的码（换音色、联网、音频设备、文本太长）唤醒帮不上忙，会让人白点一场。
@@ -360,6 +403,19 @@ type SpeakHooks = {
 };
 
 /**
+ * 「一句都没念出来」的结论文案（唤醒次数用完、或撞上「最多排两句」的封顶时都用它）。
+ *
+ * 为什么封顶也要报：`MAX_UTTERANCES` 会把第三句直接拦下 —— 拦下之后就没有任何回调和看门狗了，
+ * 不在这里报一句，用户就只知道「点了没声、也不说为什么」（这条路径本来是修好的，不能再丢）。
+ */
+function stillSilentText(code: string): string {
+	return tNow(
+		`语音服务没起来（${code}）：已自动唤醒并重试 ${MAX_WAKES} 次仍然没出声。点「试听」再试一次；还是不行就重启浏览器（macOS 也可在终端执行 killall speechsynthesisd）`,
+		`The speech service did not start (${code}): woke it up and retried ${MAX_WAKES} times with no sound. Click Preview to try again; if that fails, restart the browser (on macOS you can also run killall speechsynthesisd)`,
+	);
+}
+
+/**
  * 念一段话。
  *
  * 「点了没声」的四个经典成因都在这一处堵（浏览器的合成失败是**静默**的，不堵就只能靠猜）：
@@ -382,7 +438,9 @@ export function speak(text: string, settings: TtsSettings = loadTtsSettings(), h
 	const body = text.trim();
 	if (body === "") return;
 	if (!isTtsAvailable()) {
-		hooks.onIssue?.("当前浏览器不支持语音合成", { wakeable: false });
+		hooks.onIssue?.(tNow("当前浏览器不支持语音合成", "This browser does not support speech synthesis"), {
+			wakeable: false,
+		});
 		return;
 	}
 	const synth = window.speechSynthesis;
@@ -399,6 +457,10 @@ export function speak(text: string, settings: TtsSettings = loadTtsSettings(), h
 	const stale = (): boolean => stopped || seq !== speakSeq;
 	/** 这次调用已经唤醒过几次（跨 first / retry 两轮累计） */
 	let wakes = 0;
+	/** 这次调用的文本已经出过声（任何一句 start 过）—— 出过就不再重排，否则就是“念两遍” */
+	let anyStarted = false;
+	/** 已经排进合成器的句数（对 `MAX_UTTERANCES` 封顶） */
+	let queued = 0;
 
 	/**
 	 * 排一句话。`stage: "retry"` = 上一次选了音色却没响，这次交给浏览器默认。
@@ -428,6 +490,24 @@ export function speak(text: string, settings: TtsSettings = loadTtsSettings(), h
 			let settled = false;
 			/** 这个句子真的开念了吗：没开就被 canceled 掉 = 没念出来，不是我们自己掐的 */
 			let didStart = false;
+			/**
+			 * 排这句话之前的两道门：
+			 *   1. 这次 `speak()` 的文本**已经出过声**了（`anyStarted`）就不再排 —— 网络音色停不下来，
+			 *      再排一句就是把同一句话再说一遍；
+			 *   2. 一共最多排 `MAX_UTTERANCES` 句（首句 + 一次重排）。
+			 * 第一句永远排得进去（这时 `anyStarted` 为 false、`queued` 为 0）。
+			 */
+			if (anyStarted) {
+				console.warn("[tts] 这一句已经出过声，不再重排", { stage, queued });
+				return;
+			}
+			if (queued >= MAX_UTTERANCES) {
+				console.warn("[tts] 已经排过两句，不再重排（重排只会让同一句多念一遍）", { stage, queued });
+				// 封顶之后不会再有任何回调：不在这里把结论交出去，就成了「点了没声也没原因」
+				hooks.onIssue?.(stillSilentText("canceled"), { code: "canceled", wakeable: true });
+				return;
+			}
+			queued += 1;
 			const stopWatchdog = (): void => {
 				if (watchdog) window.clearTimeout(watchdog);
 				watchdog = 0;
@@ -438,6 +518,8 @@ export function speak(text: string, settings: TtsSettings = loadTtsSettings(), h
 				liveUtterances.delete(utter);
 			};
 			utter.onstart = () => {
+				// 先记「这一句已经出过声」：即使这一拍被新的一句顶替了，重排也不该再来一遍
+				anyStarted = true;
 				if (stale()) return;
 				didStart = true;
 				settled = true;
@@ -469,6 +551,9 @@ export function speak(text: string, settings: TtsSettings = loadTtsSettings(), h
 				if (aborted) {
 					settled = true;
 					release();
+					// 这次 speak 的文本已经在念（或念过）了：这条 canceled 只是旧句子的残影，
+					// 再唤醒重排就是「同一句念两遍」——直接放手
+					if (anyStarted) return;
 					console.warn("[tts] 还没开始就被打断", {
 						code,
 						stage,
@@ -486,14 +571,11 @@ export function speak(text: string, settings: TtsSettings = loadTtsSettings(), h
 						}, RETRY_GAP_MS * wakes);
 						return;
 					}
-					hooks.onIssue?.(
-						`语音服务没起来（${code}）：已自动唤醒并重试 ${MAX_WAKES} 次仍然没出声。点「试听」再试一次；还是不行就重启浏览器（macOS 也可在终端执行 killall speechsynthesisd）`,
-						{ code, wakeable: true },
-					);
+					hooks.onIssue?.(stillSilentText(code), { code, wakeable: true });
 					return;
 				}
 				// 选中的音色念不出来 → 退回默认音色再试一次（最常救回「点了没声」）
-				if (stage === "first" && voice && code !== "not-allowed") {
+				if (stage === "first" && voice && code !== "not-allowed" && !anyStarted) {
 					settled = true;
 					release();
 					console.warn("[tts] 音色不可用，改用默认音色重试", { code, voice: voice.name });
@@ -522,13 +604,16 @@ export function speak(text: string, settings: TtsSettings = loadTtsSettings(), h
 			 */
 			watchdog = window.setTimeout(
 				() => {
-					if (settled || stale()) return;
+					if (settled || stale() || anyStarted) return;
+					// 队列里确实在出声（只是 onstart 没回来）：这一记 cancel 会把正在念的那句掐成两截，
+					// 后面再排一句——就是用户听到的「播了两遍」。在念就等于成功，放着别动。
+					if (synth.speaking) return;
 					settled = true;
 					release();
 					cancelIfBusy(synth); // 它其实也没在念：清掉那条卡住的（空着就什么都不做）
 					synth.resume();
 					if (stage === "first" && voice) {
-						console.warn("[tts] 音色 900ms 没有开始，改用默认音色重试", { voice: voice.name });
+						console.warn("[tts] 音色没有开始，改用默认音色重试", { voice: voice.name });
 						// 隔一小拍再排：cancel 的事件是异步投的，紧跟着 speak 会被它接走变成「被取消」
 						window.setTimeout(() => {
 							if (!stale()) speakNow(pool, "retry");
@@ -540,9 +625,15 @@ export function speak(text: string, settings: TtsSettings = loadTtsSettings(), h
 						voices: pool.length,
 						allVoices: synth.getVoices().length,
 					});
-					hooks.onIssue?.("系统语音服务没有响应（换个「语音」，或检查系统的语音合成设置）", { wakeable: true });
+					hooks.onIssue?.(
+						tNow(
+							"系统语音服务没有响应（换个「语音」，或检查系统的语音合成设置）",
+							"The system speech service is not responding (pick another voice, or check the system speech settings)",
+						),
+						{ wakeable: true },
+					);
 				},
-				stage === "first" && voice ? 900 : 1500,
+				watchdogMsOf(stage === "first" && voice ? voice.localService : null),
 			);
 
 			/**
@@ -562,7 +653,13 @@ export function speak(text: string, settings: TtsSettings = loadTtsSettings(), h
 					cancelIfBusy(synth);
 					synth.resume();
 					console.warn("[tts] 上一句没退干净，队列清不掉", { stage });
-					hooks.onIssue?.("语音服务卡住了（上一句没退干净）：点「停止」再试听一次", { wakeable: true });
+					hooks.onIssue?.(
+						tNow(
+							"语音服务卡住了（上一句没退干净）：点「停止」再试听一次",
+							"The speech service is stuck (the previous line never cleared): click Stop, then preview again",
+						),
+						{ wakeable: true },
+					);
 					return;
 				}
 				window.setTimeout(() => speakWhenIdle(attempt + 1), 120);
@@ -579,7 +676,13 @@ export function speak(text: string, settings: TtsSettings = loadTtsSettings(), h
 			synth.speak(utter);
 		} catch (error) {
 			if (watchdog) window.clearTimeout(watchdog);
-			hooks.onIssue?.(`语音合成出错：${error instanceof Error ? error.message : String(error)}`, { wakeable: false });
+			hooks.onIssue?.(
+				tNow(
+					`语音合成出错：${error instanceof Error ? error.message : String(error)}`,
+					`Speech synthesis error: ${error instanceof Error ? error.message : String(error)}`,
+				),
+				{ wakeable: false },
+			);
 		}
 	};
 
@@ -652,7 +755,7 @@ export function diagnoseSpeech(timeoutMs = 2500): Promise<SpeechDiagnosis> {
 		};
 		const timer = window.setTimeout(() => finish({}), timeoutMs);
 		try {
-			utter = new SpeechSynthesisUtterance("测试");
+			utter = new SpeechSynthesisUtterance(tNow("测试", "test"));
 			liveUtterances.add(utter);
 			utter.volume = 1;
 			// 故意不设 voice / lang / rate：要问的是「默认路径通不通」

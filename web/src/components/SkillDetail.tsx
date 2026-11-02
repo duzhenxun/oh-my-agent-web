@@ -47,7 +47,9 @@ export function SkillDetail({
 				<span className="skills-label">{t("目录", "Folder")}</span>
 				<span className="mono skill-slug">{skill.id}</span>
 				<span className="skills-label">{t("文件", "File")}</span>
-				<span className="side-panel-count">{files.length} 个</span>
+				<span className="side-panel-count">
+					{files.length} {t("个", "")}
+				</span>
 			</div>
 
 			{skill.description !== "" ? <p className="skills-desc">{skill.description}</p> : null}
@@ -78,7 +80,7 @@ export function SkillDetail({
 			) : (
 				<>
 					<span className="side-panel-count mono">
-						{detail.path} · {withThousands(detail.preview.bytes)} 字节
+						{detail.path} · {withThousands(detail.preview.bytes)} {t("字节", "bytes")}
 					</span>
 					<pre className="skills-preview mono">{detail.preview.text}</pre>
 				</>

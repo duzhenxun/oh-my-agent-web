@@ -58,6 +58,14 @@ const STATUS_LABEL: Record<PluginStatus, string> = {
 	disabled: "已停用",
 };
 
+/** 上面那张表的英文（键仍是中文原文，见 `t(zh, en)` 的用法） */
+const STATUS_LABEL_EN: Record<PluginStatus, string> = {
+	loaded: "loaded",
+	installed: "installed",
+	missing: "missing",
+	disabled: "disabled",
+};
+
 /** `package:<source>` 只能当 React key；作用域不同的同名包要分开 */
 function packageKey(item: { source: string; scope: PluginScope }): string {
 	return `${item.scope}:${item.source}`;
@@ -182,7 +190,9 @@ export function PluginsPanel() {
 						className="plugin-meta"
 						title={item.resources.length > 0 ? item.resources.map((one) => one.relativePath).join("\n") : undefined}
 					>
-						<span className={`plugin-status plugin-status-${item.status}`}>{t(STATUS_LABEL[item.status])}</span>
+						<span className={`plugin-status plugin-status-${item.status}`}>
+							{t(STATUS_LABEL[item.status], STATUS_LABEL_EN[item.status])}
+						</span>
 						{item.disabled ? "" : ` · ${describeCounts(item.counts)}`}
 						{item.description ? ` · ${item.description}` : ""}
 					</span>
@@ -220,7 +230,7 @@ export function PluginsPanel() {
 						type="button"
 						role="switch"
 						aria-checked={!item.disabled}
-						aria-label={`${item.disabled ? "启用" : "停用"} ${item.name ?? item.source}`}
+						aria-label={`${item.disabled ? t("启用", "Enable") : t("停用", "Disable")} ${item.name ?? item.source}`}
 						className={`plugin-switch${item.disabled ? "" : " plugin-switch-on"}`}
 						disabled={isBusy}
 						onClick={() => void run(item.disabled ? "enable" : "disable", item)}
@@ -286,7 +296,12 @@ export function PluginsPanel() {
 			<div className="plugins-body">
 				{groups.length === 0 && extensions.length === 0 ? (
 					<div className="side-panel-hint">
-						还没有插件。上面粘贴 npm / git / 本地目录装一个；也可以直接跑 <code>{t("pi install npm:包名")}</code>。
+						{t(
+							"还没有插件。上面粘贴 npm / git / 本地目录装一个；也可以直接跑",
+							"No plugins yet. Paste an npm / git / local folder above to install one — or just run",
+						)}{" "}
+						<code>{t("pi install npm:包名")}</code>
+						{t("。", ".")}
 					</div>
 				) : null}
 				{groups.map((group) => (
@@ -323,13 +338,15 @@ export function PluginsPanel() {
 									<div className="plugin-main">
 										<span className="plugin-name">
 											{item.name}
-											<span className="plugin-badge">{item.scope === "project" ? "项目" : "全局"}</span>
+											<span className="plugin-badge">
+												{item.scope === "project" ? t("项目", "Project") : t("全局", "Global")}
+											</span>
 										</span>
 										<span className="plugin-source mono" title={item.path}>
 											{item.path}
 										</span>
 									</div>
-									<span className="plugin-meta">{item.enabled ? "已启用" : "已停用"}</span>
+									<span className="plugin-meta">{item.enabled ? t("已启用", "Enabled") : t("已停用", "Disabled")}</span>
 								</div>
 							))}
 						</div>

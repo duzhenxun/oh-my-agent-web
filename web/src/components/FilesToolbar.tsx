@@ -62,6 +62,7 @@ function BranchIcon() {
 
 /** git 分支标签：放在项目下拉框右边，点开是分支菜单；不是仓库时不渲染 */
 export function GitBranchTag({ git }: { git: GitBranchControl }) {
+	const t = useT();
 	const [open, setOpen] = useState(false);
 	const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
 	if (!git.isRepo) return null;
@@ -72,7 +73,7 @@ export function GitBranchTag({ git }: { git: GitBranchControl }) {
 				type="button"
 				ref={setAnchor}
 				className={`files-branch${open ? " files-branch-open" : ""}`}
-				title={`当前 git 分支：${name}（点开切换）`}
+				title={t(`当前 git 分支：${name}（点开切换）`, `Current git branch: ${name} (click to switch)`)}
 				aria-haspopup="menu"
 				aria-expanded={open}
 				onClick={() => {
@@ -119,8 +120,10 @@ export function FilesToolbar({
 	 */
 	const [shortcuts] = useShortcuts();
 	const searchCombo = formatCombo(shortcuts.contentSearch, isMacPlatform());
-	const searchHint = searchCombo ? `（${searchCombo}）` : "";
-	const searchLabel = { zh: `搜索文件内容${searchHint}`, en: `Search file contents ${searchHint}` };
+	// 括号跟着语言走：中文用全角、英文用半角（以前共用一份 hint，英文提示里会露出「（⌘⇧F）」）
+	const searchLabel = searchCombo
+		? { zh: `搜索文件内容（${searchCombo}）`, en: `Search file contents (${searchCombo})` }
+		: { zh: "搜索文件内容", en: "Search file contents" };
 	return (
 		<div className="files-toolbar">
 			{/*

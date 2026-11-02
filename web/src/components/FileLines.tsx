@@ -106,7 +106,11 @@ export function FileLines({
 							<button
 								type="button"
 								className={`file-fold${isFolded ? " file-fold-collapsed" : ""}`}
-								title={isFolded ? "展开这一段（只展开一层）" : "折叠这一段"}
+								title={
+									isFolded
+										? t("展开这一段（只展开一层）", "Expand this block (one level)")
+										: t("折叠这一段", "Collapse this block")
+								}
 								onClick={(event) => {
 									event.stopPropagation();
 									onToggleFold(index);
@@ -134,7 +138,9 @@ export function FileLines({
 							<span className="file-preview-text">{line || " "}</span>
 						)}
 						{isFolded && foldEnd !== undefined ? (
-							<span className="file-fold-summary">⋯ {foldEnd - index} 行已折叠</span>
+							<span className="file-fold-summary">
+								{t(`⋯ ${foldEnd - index} 行已折叠`, `⋯ ${foldEnd - index} lines folded`)}
+							</span>
 						) : null}
 					</div>
 				);

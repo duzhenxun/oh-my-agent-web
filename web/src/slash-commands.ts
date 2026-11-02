@@ -15,6 +15,7 @@ import { textOfMessage } from "./message-text.ts";
 import { copyText } from "./clipboard.ts";
 import { newChat, renameSession, requestState, setModel, setThinkingLevel } from "./ws.ts";
 import { showToast } from "./toast.ts";
+import { tNow } from "./use-language.ts";
 
 type SlashCommandKind = "app" | "agent";
 
@@ -26,8 +27,10 @@ export type SlashCommand = {
 	args?: string;
 	/** 参数提示的英文写法（`<name>` / `[level]`）；不填就用 `args` */
 	argsEn?: string;
-	/** 中文说明（英文走 i18n 字典） */
+	/** 中文说明 */
 	description: string;
+	/** 英文说明（调用点：`t(description, descriptionEn)`）；按技能列表现拼出来的那几行没有 */
+	descriptionEn?: string;
 };
 
 /** 面板里列出来的全部命令（顺序 = 面板顺序，常用的排前面） */
@@ -38,29 +41,81 @@ const SLASH_COMMANDS: SlashCommand[] = [
 		args: "[首条消息]",
 		argsEn: "[first message]",
 		description: "新建对话，可带上第一条消息",
+		descriptionEn: "Start a new conversation, optionally with the first message",
 	},
-	{ name: "name", kind: "app", args: "<名称>", argsEn: "<name>", description: "重命名当前会话" },
-	{ name: "model", kind: "app", args: "<名称>", argsEn: "<name>", description: "切换模型（按 id 或显示名模糊匹配）" },
+	{
+		name: "name",
+		kind: "app",
+		args: "<名称>",
+		argsEn: "<name>",
+		description: "重命名当前会话",
+		descriptionEn: "Rename the current conversation",
+	},
+	{
+		name: "model",
+		kind: "app",
+		args: "<名称>",
+		argsEn: "<name>",
+		description: "切换模型（按 id 或显示名模糊匹配）",
+		descriptionEn: "Switch model (fuzzy match on id or display name)",
+	},
 	{
 		name: "thinking",
 		kind: "app",
 		args: "<档位>",
 		argsEn: "<level>",
 		description: "设置思考强度（off / low / … / max）",
+		descriptionEn: "Set the thinking level (off / low / … / max)",
 	},
-	{ name: "copy", kind: "app", description: "复制最后一条助手消息" },
-	{ name: "session", kind: "app", description: "显示会话消息数 / token / 费用统计" },
-	{ name: "resume", kind: "app", description: "刷新会话列表（别的终端里刚开的会话）" },
+	{
+		name: "copy",
+		kind: "app",
+		description: "复制最后一条助手消息",
+		descriptionEn: "Copy the last assistant message",
+	},
+	{
+		name: "session",
+		kind: "app",
+		description: "显示会话消息数 / token / 费用统计",
+		descriptionEn: "Show message counts, tokens and cost for this conversation",
+	},
+	{
+		name: "resume",
+		kind: "app",
+		description: "刷新会话列表（别的终端里刚开的会话）",
+		descriptionEn: "Refresh the conversation list (sessions just opened elsewhere)",
+	},
 	{
 		name: "skill",
 		kind: "agent",
 		args: "<技能名>",
 		argsEn: "<skill name>",
 		description: "用某个技能（下面会列出已安装的技能）",
+		descriptionEn: "Use a skill (installed skills are listed below)",
 	},
-	{ name: "compact", kind: "agent", args: "[说明]", argsEn: "[note]", description: "压缩上下文（交给引擎处理）" },
-	{ name: "plan", kind: "agent", args: "[on|off]", description: "开关计划模式（交给引擎处理）" },
-	{ name: "cwd", kind: "agent", args: "<路径>", argsEn: "<path>", description: "切换工作目录（交给引擎处理）" },
+	{
+		name: "compact",
+		kind: "agent",
+		args: "[说明]",
+		argsEn: "[note]",
+		description: "压缩上下文（交给引擎处理）",
+		descriptionEn: "Compact the context (handled by the engine)",
+	},
+	{
+		name: "plan",
+		kind: "agent",
+		args: "[on|off]",
+		description: "开关计划模式（交给引擎处理）",
+		descriptionEn: "Toggle plan mode (handled by the engine)",
+	},
+	{
+		name: "cwd",
+		kind: "agent",
+		args: "<路径>",
+		argsEn: "<path>",
+		description: "切换工作目录（交给引擎处理）",
+		descriptionEn: "Switch the working directory (handled by the engine)",
+	},
 ];
 
 /**
@@ -165,25 +220,27 @@ export async function runSlashCommand(text: string, snapshot: Snapshot | null): 
 		case "name": {
 			const conversationId = snapshot?.active.conversationId ?? null;
 			if (!conversationId) {
-				showToast({ text: "先打开一个会话再改名" });
+				showToast({ text: tNow("先打开一个会话再改名", "Open a session before renaming it") });
 				return { handled: true };
 			}
 			if (!args) {
-				showToast({ text: "用法：/name <名称>" });
+				showToast({ text: tNow("用法：/name <名称>", "Usage: /name <name>") });
 				return { handled: true };
 			}
 			renameSession(conversationId, args);
-			showToast({ text: `已把会话改名为「${args}」` });
+			showToast({ text: tNow(`已把会话改名为「${args}」`, `Renamed the session to “${args}”`) });
 			return { handled: true };
 		}
 		case "model": {
 			const models = snapshot?.models ?? [];
 			if (models.length === 0) {
-				showToast({ text: "模型列表还没就绪，等一下再试" });
+				showToast({
+					text: tNow("模型列表还没就绪，等一下再试", "The model list is not ready yet — try again in a moment"),
+				});
 				return { handled: true };
 			}
 			if (!args) {
-				showToast({ text: "用法：/model <模型名或 id>" });
+				showToast({ text: tNow("用法：/model <模型名或 id>", "Usage: /model <model name or id>") });
 				return { handled: true };
 			}
 			const key = args.toLowerCase();
@@ -192,25 +249,35 @@ export async function runSlashCommand(text: string, snapshot: Snapshot | null): 
 				models.find((model) => model.label.toLowerCase() === key) ??
 				models.find((model) => model.id.toLowerCase().includes(key) || model.label.toLowerCase().includes(key));
 			if (!hit) {
-				showToast({ text: `没找到模型「${args}」` });
+				showToast({ text: tNow(`没找到模型「${args}」`, `No model named “${args}”`) });
 				return { handled: true };
 			}
 			setModel(hit.id);
-			showToast({ text: `已切到 ${hit.label}` });
+			showToast({ text: tNow(`已切到 ${hit.label}`, `Switched to ${hit.label}`) });
 			return { handled: true };
 		}
 		case "thinking": {
 			const levels = snapshot?.thinkingLevels ?? [];
 			if (!args) {
-				showToast({ text: `用法：/thinking <${levels.join(" | ") || "off | low | medium | high | xhigh | max"}>` });
+				showToast({
+					text: tNow(
+						`用法：/thinking <${levels.join(" | ") || "off | low | medium | high | xhigh | max"}>`,
+						`Usage: /thinking <${levels.join(" | ") || "off | low | medium | high | xhigh | max"}>`,
+					),
+				});
 				return { handled: true };
 			}
 			if (levels.length > 0 && !levels.includes(args)) {
-				showToast({ text: `这个模型没有「${args}」档：${levels.join(" / ")}` });
+				showToast({
+					text: tNow(
+						`这个模型没有「${args}」档：${levels.join(" / ")}`,
+						`This model has no “${args}” level: ${levels.join(" / ")}`,
+					),
+				});
 				return { handled: true };
 			}
 			setThinkingLevel(args);
-			showToast({ text: `思考强度已设为 ${args}` });
+			showToast({ text: tNow(`思考强度已设为 ${args}`, `Thinking level set to ${args}`) });
 			return { handled: true };
 		}
 		case "copy": {
@@ -219,27 +286,36 @@ export async function runSlashCommand(text: string, snapshot: Snapshot | null): 
 			const last = [...messages].reverse().find((message) => message.role === "assistant");
 			const text_ = (last ? textOfMessage(last) : "").trim();
 			if (!text_) {
-				showToast({ text: "没有可复制的助手消息" });
+				showToast({ text: tNow("没有可复制的助手消息", "No assistant message to copy") });
 				return { handled: true };
 			}
 			const copied = await copyText(text_);
-			showToast({ text: copied ? "已复制最后一条回复" : "复制失败（浏览器不给权限）" });
+			showToast({
+				text: copied
+					? tNow("已复制最后一条回复", "Copied the last reply")
+					: tNow("复制失败（浏览器不给权限）", "Copy failed (the browser denied permission)"),
+			});
 			return { handled: true };
 		}
 		case "session": {
 			const stats = snapshot?.sessionStats ?? null;
 			if (!stats) {
-				showToast({ text: "还没有会话统计（跑一轮之后才有）" });
+				showToast({
+					text: tNow("还没有会话统计（跑一轮之后才有）", "No session stats yet (they appear after a turn)"),
+				});
 				return { handled: true };
 			}
 			showToast({
-				text: `消息 ${stats.userMessages}+${stats.assistantMessages} · 工具 ${stats.toolCalls} · 输入 ${stats.inputTokens} / 输出 ${stats.outputTokens} tokens`,
+				text: tNow(
+					`消息 ${stats.userMessages}+${stats.assistantMessages} · 工具 ${stats.toolCalls} · 输入 ${stats.inputTokens} / 输出 ${stats.outputTokens} tokens`,
+					`Messages ${stats.userMessages}+${stats.assistantMessages} · tools ${stats.toolCalls} · in ${stats.inputTokens} / out ${stats.outputTokens} tokens`,
+				),
 			});
 			return { handled: true };
 		}
 		case "resume": {
 			requestState();
-			showToast({ text: "已请求刷新会话列表" });
+			showToast({ text: tNow("已请求刷新会话列表", "Requested a conversation list refresh") });
 			return { handled: true };
 		}
 		default:

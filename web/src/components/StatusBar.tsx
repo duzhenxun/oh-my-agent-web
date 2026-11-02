@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Snapshot } from "../types.ts";
 import { currentMobileShell } from "../mobile-shell-dom.ts";
 import { setApprovalMode } from "../ws.ts";
-import { useT } from "../use-language.ts";
+import { useLanguage, useT } from "../use-language.ts";
 // 花费文案与子代理卡片 / 消息尾注共用一套（<$0.001 / $0.437 / $3.44）
 import { costText } from "../subagent-view.tsx";
 import { STATUSBAR_ITEM_KEY, STATUSBAR_TOGGLES } from "../ui-prefs.ts";
@@ -44,6 +44,7 @@ export function StatusBar({
 	onToggleAppbar: () => void;
 }) {
 	const t = useT();
+	const { language } = useLanguage();
 	/**
 	 * 「排队 / 工作中」按**整台服务端**算 —— 所有项目、所有会话加起来。
 	 *
@@ -217,7 +218,10 @@ export function StatusBar({
 						className="status-context"
 						title={
 							contextWindow
-								? `当前会话上下文：已用 ${contextUsed.toLocaleString()} / 窗口 ${contextWindow.toLocaleString()}（${contextPercent}%）· 点开看整段会话累计（每条回复底部的 I/O/C 只算那一轮）`
+								? t(
+										`当前会话上下文：已用 ${contextUsed.toLocaleString()} / 窗口 ${contextWindow.toLocaleString()}（${contextPercent}%）· 点开看整段会话累计（每条回复底部的 I/O/C 只算那一轮）`,
+										`Context of this session: ${contextUsed.toLocaleString()} used / ${contextWindow.toLocaleString()} window (${contextPercent}%) · click for the whole-session total (the I/O/C line under each reply covers that turn only)`,
+									)
 								: t("当前会话上下文（模型窗口未知）", "Context of this conversation (model window unknown)")
 						}
 						onClick={() => setUsageOpen((value) => !value)}
@@ -266,9 +270,9 @@ export function StatusBar({
 								[t("缓存读（命中）", "Cache read (hits)"), formatTokens(stats?.cacheRead ?? 0)],
 								[t("缓存写", "Cache write"), formatTokens(stats?.cacheWrite ?? 0)],
 								// 花费比「合计 tokens」有用：合计被缓存读主导（每轮重读整段前缀），看不出到底花了多少
-								["总花费", stats?.cost ? costText(stats.cost) : "—"],
+								[t("总花费", "Total cost"), stats?.cost ? costText(stats.cost) : "—"],
 								[
-									"上下文（最后一次）",
+									t("上下文（最后一次）", "Context (last call)"),
 									contextWindow
 										? `${formatTokens(contextUsed)} / ${formatTokens(contextWindow)}`
 										: formatTokens(contextUsed),
@@ -281,17 +285,33 @@ export function StatusBar({
 							))}
 							{/* 口径说明：这里和每条回复尾注的数字不是一回事，很容易被读成「同一个数怎么两样」 */}
 							<div className="status-usage-note">
-								上面这些是<b>{t("整段会话")}</b>
-								{t("的累计值；每条回复底部那行")} <b>I / O / C</b> {t("是")}
-								<b>{t("那一轮自己的")}</b>用量。 「输入」
-								<b>{t("不含")}</b>缓存命中部分（命中单列在缓存读里，每一轮都重新读一遍整个前缀，所以会很大）。
-								「上下文」只算
-								<b>{t("最后一次")}</b>调用：输入 + 缓存读 + 缓存写，所以它常比累计输入大得多。
-								<br />
-								{/* 口径必须说清楚：这些数是从**主会话的 JSONL** 里算的，子代理是独立会话、独立计费，
-								    压根不在这个文件里 —— 不写明的话，用户会拿它当「这一整轮到底花了多少」 */}
-								另外，<b>{t("子代理")}</b>是独立会话、单独计费，
-								<b>{t("不在")}</b>上面的统计里（去对话里的子代理卡片看它们各自的用量）。
+								{/* 英文不止是换个词，语序整段都得重写 —— 拆成碎片拼不出通顺的英文，所以按语言分两块 */}
+								{language === "en" ? (
+									<>
+										The numbers above are cumulative for <b>the whole session</b>; the I / O / C line under each reply
+										is <b>that turn's own</b> usage. “Input” <b>excludes</b> cache hits (hits are counted under cache
+										read — the whole prefix is re-read every turn, so that number is large). “Context” counts only{" "}
+										<b>the last</b> call: input + cache read + cache write, which is why it is usually much larger than
+										the cumulative input.
+										<br />
+										<b>Subagents</b> are separate sessions billed separately, so they are <b>not</b> part of the numbers
+										above (open the subagent cards in the conversation for their own usage).
+									</>
+								) : (
+									<>
+										上面这些是<b>{t("整段会话")}</b>
+										{t("的累计值；每条回复底部那行")} <b>I / O / C</b> {t("是")}
+										<b>{t("那一轮自己的")}</b>用量。 「输入」
+										<b>{t("不含")}</b>缓存命中部分（命中单列在缓存读里，每一轮都重新读一遍整个前缀，所以会很大）。
+										「上下文」只算
+										<b>{t("最后一次")}</b>调用：输入 + 缓存读 + 缓存写，所以它常比累计输入大得多。
+										<br />
+										{/* 口径必须说清楚：这些数是从**主会话的 JSONL** 里算的，子代理是独立会话、独立计费，
+										    压根不在这个文件里 —— 不写明的话，用户会拿它当「这一整轮到底花了多少」 */}
+										另外，<b>{t("子代理")}</b>是独立会话、单独计费，
+										<b>{t("不在")}</b>上面的统计里（去对话里的子代理卡片看它们各自的用量）。
+									</>
+								)}
 							</div>
 						</div>
 					) : null}

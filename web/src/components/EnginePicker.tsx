@@ -190,10 +190,17 @@ export function EnginePicker({ placement = "appbar" }: { placement?: "appbar" | 
 				type="button"
 				className={`side-foot-btn engine-picker-btn${open ? " side-foot-btn-on" : ""}`}
 				onClick={() => setOpen((value) => !value)}
-				title={running ? "切换智能体引擎（回合进行中，先等它结束）" : "切换智能体引擎"}
+				title={
+					running
+						? t(
+								"切换智能体引擎（回合进行中，先等它结束）",
+								"Switch agent engine (a turn is running — wait for it to end)",
+							)
+						: t("切换智能体引擎", "Switch agent engine")
+				}
 				aria-haspopup="listbox"
 				aria-expanded={open}
-				aria-label={`智能体引擎：${label}`}
+				aria-label={t(`智能体引擎：${label}`, `Agent engine: ${label}`)}
 			>
 				<span className="side-foot-icon" aria-hidden="true">
 					<EngineIcon />

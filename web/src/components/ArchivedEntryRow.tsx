@@ -26,7 +26,10 @@ export function ArchivedEntryRow({
 		<button
 			type="button"
 			className={`archived-row-entry${active ? " archived-row-entry-on" : ""}`}
-			title={`已归档 · ${total}（点一下查看，可批量恢复 / 删除）`}
+			title={t(
+				`已归档 · ${total}（点一下查看，可批量恢复 / 删除）`,
+				`Archived · ${total} (click to review; restore or delete in bulk)`,
+			)}
 			onClick={onOpen}
 		>
 			{/* 跟项目行的 📁 同一个尺寸/位置；图标与「归档」按钮共用一份（ArchiveIcon） */}

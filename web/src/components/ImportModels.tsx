@@ -78,7 +78,7 @@ export function ImportModels({
 				<span className="side-panel-count mono">{provider.provider}</span>
 				<span className="topbar-spacer" />
 				<button type="button" className="btn btn-tiny" onClick={onClose}>
-					关闭
+					{t("关闭", "Close")}
 				</button>
 			</div>
 
@@ -127,7 +127,7 @@ export function ImportModels({
 							onClick={() => setSelected(new Set(importable.map((model) => model.id)))}
 							disabled={importable.length === 0}
 						>
-							全选可导入（{importable.length}）
+							{t(`全选可导入（${importable.length}）`, `Select all importable (${importable.length})`)}
 						</button>
 						<button
 							type="button"
@@ -135,7 +135,7 @@ export function ImportModels({
 							onClick={() => setSelected(new Set())}
 							disabled={selected.size === 0}
 						>
-							清除选择
+							{t("清除选择", "Clear selection")}
 						</button>
 						<span className="topbar-spacer" />
 						<button
@@ -144,7 +144,7 @@ export function ImportModels({
 							onClick={() => void doImport()}
 							disabled={busy || selected.size === 0}
 						>
-							导入 {selected.size} 个
+							{t(`导入 ${selected.size} 个`, `Import ${selected.size}`)}
 						</button>
 					</div>
 				</>

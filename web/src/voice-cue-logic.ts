@@ -10,6 +10,10 @@
  *      后台会话用 `turnStartedAt`），而不是「看到一次状态跳变就响一次」；
  *   2. 隐藏回合（「想想」）不播 —— 它不新建助手消息，`isRealTurnEnd` 会把它挡掉；
  *   3. 切会话不算开始/结束 —— 状态按会话 id 分开记，切过去不会把旧状态当成新跳变。
+ *
+ * 外加一条**出口**的去重（见下面的 `DONE_ANNOUNCE_GAP_MS`）：上面三条保证「同一轮只发一条
+ * 完成 cue」，但并行 / 后台会话同时收尾仍然是**多个回合**、会各发一条。提示音没必要连响两声，
+ * 所以出口再合一次：同一拍的多条算一次，相同内容 1.5s 内不重复。
  */
 import type { Snapshot, UiMessage } from "./types.ts";
 
@@ -46,6 +50,68 @@ export function createCueMemory(): CueMemory {
 		seenErrors: new Set(),
 		lastApprovalId: null,
 	};
+}
+
+export type VoiceChannel = "reply" | "clip" | "beep";
+
+/**
+ * 这一次状态变化该走哪个声音通道（纯判定，可回归）：
+ *
+ *   - `reply`：开了「朗读回复」且这轮真有正文 → 走语音合成念回复（内容每次不同，只能合成）；
+ *   - `clip`：语音开着 → 播**预生成的本地片段**（固定句子，永不重试、永不排两次）；
+ *   - `beep`：语音关了 / 开始事件 → 只响提示音。
+ *
+ * 为什么固定句子不再走合成：合成在真机上会因网络音色冷启动、`cancel()` 拦不住已经出声的句子
+ * 而把同一句念两遍（2026-11-02）。固定句子用音频文件，合成只留给「内容不确定」的朗读回复。
+ */
+export function voiceChannelOf(input: {
+	kind: Cue["kind"];
+	voiceEnabled: boolean;
+	readReplies: boolean;
+	/** 这轮有没有可供朗读的正文 */
+	hasReply: boolean;
+}): VoiceChannel {
+	if (input.kind === "start") return "beep";
+	if (!input.voiceEnabled) return "beep";
+	if (input.kind === "done" && input.readReplies && input.hasReply) return "reply";
+	return "clip";
+}
+
+/**
+ * 「完成」声音那一层的去抖（与上面那份「该不该响」的记忆分开）。
+ *
+ * 为什么判定器去重了还要再压一道：判定器只能去「同一轮」，而用户听到的重复是
+ * **同一件事**在几秒内响两遍。两个来源：
+ *   1. 并行 / 后台会话一起收尾 —— 它们是**不同的回合**，判定器按规矩各发一条 done（正确），
+ *      但声音上没必要连响两声；
+ *   2. 开着「朗读回复」时，两条回复读得比 1.5s 还久，第二声「叮」只能叠在朗读里。
+ *
+ * 所以出口只放行一次：同一拍的多条合成一次，相同内容 1.5s 内不重复。
+ */
+export const DONE_ANNOUNCE_GAP_MS = 1500;
+
+export type AnnounceMemory = { lastText: string | null; lastAt: number };
+
+export function createAnnounceMemory(): AnnounceMemory {
+	return { lastText: null, lastAt: 0 };
+}
+
+/** 「只响提示音、不说话」那次去抖用的键（没开启朗读时也得能去重） */
+const SOUND_ONLY_KEY = "\u0000sound";
+
+/**
+ * 这一次到底要不要出声（提示音 + 可能的朗读）。
+ *
+ * `text === null` 表示「只响提示音」（语音关着 / 没开朗读 / 回复是空的）—— 也去抖，
+ * 否则并行收尾会听到两声「叮」。同一内容在 `DONE_ANNOUNCE_GAP_MS` 内只放行一次；被拦下的
+ * 那一拍**不动记忆**，所以窗口一过、下一拍照样能响。
+ */
+export function shouldAnnounceDone(memory: AnnounceMemory, text: string | null, now: number): boolean {
+	const key = text ?? SOUND_ONLY_KEY;
+	if (memory.lastText === key && now - memory.lastAt < DONE_ANNOUNCE_GAP_MS) return false;
+	memory.lastText = key;
+	memory.lastAt = now;
+	return true;
 }
 
 /** 最后一条助手消息（没有就 null） */

@@ -13,6 +13,21 @@ const LABELS: Record<string, string> = {
 };
 
 /**
+ * 档位的英文标签**写在这里、不进 `i18n-en.ts` 的通用表**：
+ * 「中 / 高 / 低」这些词在别处还有别的意思（字号「中」、音量「高」…），
+ * 撞到同一张表里就成了「High」字号 —— 所以按档位 id 就地给英文。
+ */
+const LABELS_EN: Record<string, string> = {
+	off: "Off",
+	minimal: "Minimal",
+	low: "Low",
+	medium: "Medium",
+	high: "High",
+	xhigh: "Very high",
+	max: "Max",
+};
+
+/**
  * 思考强度选择器（P4）：只有模型支持推理时才出现（档位列表为空就整个不渲染）。
  * ⚡ + 当前档位的短标签 + ▾，点开是完整列表。
  *
@@ -24,12 +39,17 @@ export function ThinkingPicker({ level, levels }: { level: string | null; levels
 	const t = useT();
 	if (levels.length === 0) return null;
 	const current = level ?? levels[0] ?? "";
+	/** 中文是主语言（第一参），英文按 pi 的档位 id 取第二参 */
+	const label = (item: string) => t(LABELS[item] ?? item, LABELS_EN[item] ?? item);
 	return (
-		<label className="tool-chip thinking-picker" title={t("思考强度（越高的档位越慢，推理也更细）")}>
+		<label
+			className="tool-chip thinking-picker"
+			title={t("思考强度（越高的档位越慢，推理也更细）", "Thinking level (higher is slower but reasons more finely)")}
+		>
 			<span className="tool-icon" aria-hidden="true">
 				⚡
 			</span>
-			<span className="thinking-value">{LABELS[current] ?? current}</span>
+			<span className="thinking-value">{label(current)}</span>
 			<span className="thinking-caret" aria-hidden="true">
 				▾
 			</span>
@@ -42,7 +62,7 @@ export function ThinkingPicker({ level, levels }: { level: string | null; levels
 			>
 				{levels.map((item) => (
 					<option key={item} value={item}>
-						{LABELS[item] ?? item}
+						{label(item)}
 					</option>
 				))}
 			</select>

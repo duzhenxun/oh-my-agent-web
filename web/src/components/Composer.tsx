@@ -466,8 +466,14 @@ export function Composer({
 				// 旧服务端没有这个接口会落到 SPA 的静态兜底，回一页 HTML —— 别把 `Unexpected token '<'` 甩给用户
 				showToast({
 					text: raw.trimStart().startsWith("<")
-						? `服务端还没有这个接口（HTTP ${response.status}）—— 服务可能在跑旧版本，重启一下就好`
-						: `服务端返回的不是 JSON（HTTP ${response.status}）`,
+						? t(
+								`服务端还没有这个接口（HTTP ${response.status}）—— 服务可能在跑旧版本，重启一下就好`,
+								`The server does not have this endpoint yet (HTTP ${response.status}) — it may be an older build, restart it`,
+							)
+						: t(
+								`服务端返回的不是 JSON（HTTP ${response.status}）`,
+								`The server did not return JSON (HTTP ${response.status})`,
+							),
 				});
 				return;
 			}
@@ -478,7 +484,14 @@ export function Composer({
 			}
 			if (body.canceled) return; // 取消：什么都不做（别把用户已经打的字改掉）
 			if (body.unsupported || !body.path) {
-				showToast({ text: body.message ?? "这台机器上开不出文件选择框：直接 @ 搜文件名也可以" });
+				showToast({
+					text:
+						body.message ??
+						t(
+							"这台机器上开不出文件选择框：直接 @ 搜文件名也可以",
+							"No file picker on this machine — type @ to search file names",
+						),
+				});
 				return;
 			}
 			applyReference(body.path, kind === "dir");
@@ -559,7 +572,7 @@ export function Composer({
 	const addFiles = async (files: File[]) => {
 		if (files.length === 0) return;
 		const { accepted, rejected } = pickUploadableFiles(files, pending.length);
-		if (rejected.length > 0) setUploadError(rejected.join("；"));
+		if (rejected.length > 0) setUploadError(rejected.join(t("；", "; ")));
 		if (accepted.length === 0) return;
 
 		// 上传开始时的会话快照：附件是**属于会话**的（会随会话文件落盘），
@@ -605,10 +618,21 @@ export function Composer({
 		const list = skills ?? (await loadSkills());
 		const hit = list.find((item) => item.name.toLowerCase() === name.toLowerCase());
 		if (!hit) {
-			showToast({ text: `没有叫「${name}」的技能：会当普通文本发出去。去「技能」面板核对名字` });
+			showToast({
+				text: t(
+					`没有叫「${name}」的技能：会当普通文本发出去。去「技能」面板核对名字`,
+					`No skill named "${name}": the text goes out as plain text. Check the name in the Skills panel`,
+				),
+			});
 			return;
 		}
-		if (!hit.enabled) showToast({ text: `技能「${name}」是停用状态：pi 不会加载它（去「技能」面板启用）` });
+		if (!hit.enabled)
+			showToast({
+				text: t(
+					`技能「${name}」是停用状态：pi 不会加载它（去「技能」面板启用）`,
+					`Skill "${name}" is disabled: pi will not load it (enable it in the Skills panel)`,
+				),
+			});
 	};
 
 	/**
@@ -740,7 +764,10 @@ export function Composer({
 									key={phrase}
 									className="quick-chip"
 									disabled={running}
-									title={`${phrase}（点击直接发送 · Shift+点击只填入）`}
+									title={t(
+										`${phrase}（点击直接发送 · Shift+点击只填入）`,
+										`${phrase} (click to send · Shift+click to fill in)`,
+									)}
 									onClick={(event) => {
 										if (event.shiftKey) {
 											setDraft(phrase);

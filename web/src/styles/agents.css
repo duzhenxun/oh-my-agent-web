@@ -289,6 +289,57 @@
 	white-space: nowrap;
 }
 
+/* 标题本身就是展开按钮：看起来还是那行粗体标题，但点哪儿都能开 */
+.agents-run-open {
+	border: none;
+	background: none;
+	padding: 0;
+	color: inherit;
+	font: inherit;
+	font-weight: 600;
+	text-align: left;
+	cursor: pointer;
+}
+
+.agents-run-open:hover {
+	color: var(--accent);
+}
+
+/* 「此刻在跑哪个工具」：一行，参数太长就省略（完整内容在 title 里） */
+.agents-run-now {
+	display: flex;
+	align-items: baseline;
+	gap: 5px;
+	min-width: 0;
+	color: var(--text-dim);
+	font-size: 12px;
+	line-height: 1.4;
+}
+
+.agents-run-now-name {
+	font-family: var(--mono);
+	color: var(--text);
+	flex: none;
+}
+
+.agents-run-now-args {
+	font-family: var(--mono);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* 展开后那一行「正在跑 X · 12s」：比标题暗一点，别抢正文 */
+.agents-run-tool {
+	color: var(--text-dim);
+	font-size: 12px;
+}
+
+.agents-run-body-empty {
+	color: var(--text-faint);
+	font-style: italic;
+}
+
 .agents-run-meta {
 	display: flex;
 	align-items: center;
@@ -539,6 +590,14 @@
 	line-height: 1;
 }
 
+/* 徽标上的总费用：跟「/N」一样是附属信息（数字对齐，不跟着变宽变窄） */
+.appbar-agents-cost {
+	color: var(--text-dim);
+	font-size: 11px;
+	line-height: 1;
+	font-variant-numeric: tabular-nums;
+}
+
 /* 浮层：从徽标下面展开，宽度跟面板同量级（420），不遮住整屏 */
 /* 坐标（left/top）由 JS 现算：**居中于徽标**并夹进视口（见 belowPopoverAnchor）。
    以前是 `position: absolute; right: 0` —— 手机上卡片比徽标宽得多，左边会溢出屏幕。 */
@@ -764,6 +823,12 @@
 	border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
 }
 
+/* 没宿主的「正在跑」卡片条：顶在对话最上面（刚刷新进来时宿主消息可能还没进本页）。
+   左右各留出一点，和下面的消息体对齐；它下面是整段对话，所以下边距比流内的多给一点。 */
+.agents-strip-orphan {
+	margin: 0 0 12px;
+}
+
 .agents-strip-bar {
 	display: flex;
 	align-items: center;
@@ -841,6 +906,11 @@
 @media (max-width: 720px) {
 	.appbar-agents {
 		padding: 0 6px;
+	}
+
+	/* 手机：徽标本来就窄，金额让位给「N/M」（想看金额就点开浮层，那里面照样有合计） */
+	.appbar-agents-cost {
+		display: none;
 	}
 
 	/* 手机：浮层贴右边缘，别超出屏幕 */

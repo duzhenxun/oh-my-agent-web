@@ -20,7 +20,11 @@ export function usePrefFlags<T extends string>(
 ): [Record<T, boolean>, (item: T, value: boolean) => void] {
 	const defaultOf = (item: T): boolean => (typeof fallback === "function" ? fallback(item) : fallback);
 	const [values, setValues] = useState<Record<T, boolean>>(
-		() => Object.fromEntries(items.map((item) => [item, readStoredBool(keyOf(item), defaultOf(item))])) as Record<T, boolean>,
+		() =>
+			Object.fromEntries(items.map((item) => [item, readStoredBool(keyOf(item), defaultOf(item))])) as Record<
+				T,
+				boolean
+			>,
 	);
 	useEffect(() => {
 		const offs = items.map((item) =>

@@ -2,7 +2,9 @@ import type { ReactNode } from "react";
 import { CopyButton } from "./CopyButton.tsx";
 import {
 	EXPOSURE_HINT,
+	EXPOSURE_HINT_EN,
 	EXPOSURE_LABEL,
+	EXPOSURE_LABEL_EN,
 	commandLine,
 	isCommandValue,
 	needsLogin,
@@ -45,45 +47,55 @@ export function McpDetailBody({
 	const authFailed = probe !== undefined && !probe.ok && needsLogin(probe.error);
 	const probeText = probe
 		? probe.ok
-			? `连接成功 · ${probe.tools.length} 个工具 · ${probe.ms}ms`
-			: `连接失败 · ${probe.error ?? "未知错误"}`
-		: "还没测过";
+			? t(
+					`连接成功 · ${probe.tools.length} 个工具 · ${probe.ms}ms`,
+					`Connected · ${probe.tools.length} tools · ${probe.ms}ms`,
+				)
+			: t(`连接失败 · ${probe.error ?? "未知错误"}`, `Failed · ${probe.error ?? "unknown error"}`)
+		: t("还没测过", "Not tested yet");
 	return (
 		<div className="mcp-body">
-			<Row label="状态">
+			<Row label={t("状态", "Status")}>
 				<span className={server.enabled ? "mcp-state-on" : "mcp-state-off"}>
-					{server.enabled ? "已启用" : "已停用"}
+					{server.enabled ? t("已启用", "Enabled") : t("已停用", "Disabled")}
 				</span>
 				<span className={probe && !probe.ok ? "side-error" : "side-panel-count"}> · {probeText}</span>
 			</Row>
 
 			{authFailed || (server.transport === "http" && (server.auth !== undefined || login !== undefined)) ? (
-				<Row label="授权">
+				<Row label={t("授权", "Authorization")}>
 					<span className="mcp-auth">
 						{login?.status === "waiting" ? (
 							<>
 								<span className="side-panel-count">
-									在浏览器里完成授权{login.url === undefined ? "（正在准备授权页…）" : "，完成后回来点「我已授权」"}：
+									{t("在浏览器里完成授权", "Finish authorization in the browser")}
+									{login.url === undefined
+										? t("（正在准备授权页…）", " (preparing the authorization page…)")
+										: t("，完成后回来点「我已授权」", ", then come back and click “I've authorized”")}
+									{t("：", ":")}
 								</span>
 								{login.url !== undefined ? (
 									<a className="mcp-catalog-link mcp-auth-url mono" href={login.url} target="_blank" rel="noreferrer">
-										打开授权页 ↗
+										{t("打开授权页 ↗", "Open the authorization page ↗")}
 									</a>
 								) : null}
 								<button type="button" className="btn btn-tiny" onClick={onRecheck}>
-									我已授权，重测
+									{t("我已授权，重测", "I've authorized — retest")}
 								</button>
 								<button type="button" className="btn btn-tiny" onClick={onLoginCancel}>
-									取消
+									{t("取消", "Cancel")}
 								</button>
 							</>
 						) : server.auth?.present && server.auth.expired ? (
 							<>
 								<span className="side-panel-count">
-									存过凭据但已过期（pi 会在真正调用时用 refresh token 续期；连不上就重新登录一次）
+									{t(
+										"存过凭据但已过期（pi 会在真正调用时用 refresh token 续期；连不上就重新登录一次）",
+										"Credentials saved but expired (pi renews them with the refresh token on real calls; sign in again if it cannot connect)",
+									)}
 								</span>
 								<button type="button" className="btn btn-tiny" disabled={busy} onClick={onLogin}>
-									重新登录
+									{t("重新登录", "Sign in again")}
 								</button>
 							</>
 						) : server.auth?.present ? (
@@ -93,26 +105,32 @@ export function McpDetailBody({
 									{server.auth.scope ? ` (${server.auth.scope})` : ""}
 								</span>
 								<button type="button" className="btn btn-tiny" disabled={busy} onClick={onLogin}>
-									重新登录
+									{t("重新登录", "Sign in again")}
 								</button>
 							</>
 						) : (
 							<>
 								<span className="side-panel-count">
-									这台是远程 HTTP 服务器，要 OAuth 授权才能用（对面回了 401 / requires authentication）。 登录用 pi
-									自己的 <code>pi mcp login</code> {t("流程，凭据写进")} <code>mcp-auth.json</code>，会话也跟着用。
+									{t(
+										"这台是远程 HTTP 服务器，要 OAuth 授权才能用（对面回了 401 / requires authentication）。 登录用 pi 自己的",
+										"This is a remote HTTP server; it needs OAuth authorization (the other side returned 401 / requires authentication). Sign in with pi's own",
+									)}{" "}
+									<code>pi mcp login</code> {t("流程，凭据写进")} <code>mcp-auth.json</code>
+									{t("，会话也跟着用。", ", and sessions use them too.")}
 								</span>
 								<button type="button" className="btn btn-tiny btn-primary-add" disabled={busy} onClick={onLogin}>
-									{busy ? "准备中…" : "登录"}
+									{busy ? t("准备中…", "Preparing…") : t("登录", "Sign in")}
 								</button>
 							</>
 						)}
-						{login?.status === "failed" ? <span className="side-error">{login.message ?? "登录失败"}</span> : null}
+						{login?.status === "failed" ? (
+							<span className="side-error">{login.message ?? t("登录失败", "Sign-in failed")}</span>
+						) : null}
 					</span>
 				</Row>
 			) : null}
 
-			<Row label="简介">
+			<Row label={t("简介", "About")}>
 				{server.description ?? (
 					<span className="side-panel-count">
 						{t(
@@ -125,26 +143,33 @@ export function McpDetailBody({
 
 			{server.transport === "stdio" ? (
 				<>
-					<Row label="命令">
+					<Row label={t("命令", "Command")}>
 						<span className="mcp-value mono">{commandLine(server)}</span>
 						<CopyButton text={commandLine(server)} className="btn btn-tiny" title={t("复制命令", "Copy command")} />
 					</Row>
-					{server.cwd ? <Row label="工作目录">{server.cwd}</Row> : null}
+					{server.cwd ? <Row label={t("工作目录", "Working directory")}>{server.cwd}</Row> : null}
 				</>
 			) : (
-				<Row label="地址">
+				<Row label={t("地址", "URL")}>
 					<span className="mcp-value mono">{server.url}</span>
 					<CopyButton text={server.url ?? ""} className="btn btn-tiny" title={t("复制地址", "Copy URL")} />
 				</Row>
 			)}
 
 			{Object.keys(server.env ?? {}).length > 0 ? (
-				<Row label="环境变量">
+				<Row label={t("环境变量", "Environment")}>
 					{Object.entries(server.env ?? {}).map(([key, value]) => (
 						<span
 							className="mcp-tool"
 							key={`env-${key}`}
-							title={isCommandValue(value) ? "整条值是一条命令：pi 会跑它，把 stdout 当值" : undefined}
+							title={
+								isCommandValue(value)
+									? t(
+											"整条值是一条命令：pi 会跑它，把 stdout 当值",
+											"The whole value is a command: pi runs it and uses stdout as the value",
+										)
+									: undefined
+							}
 						>
 							{key}={value}
 						</span>
@@ -153,7 +178,7 @@ export function McpDetailBody({
 			) : null}
 
 			{Object.keys(server.headers ?? {}).length > 0 ? (
-				<Row label="请求头">
+				<Row label={t("请求头", "Headers")}>
 					{Object.entries(server.headers ?? {}).map(([key, value]) => (
 						<span className="mcp-tool" key={`header-${key}`}>
 							{key}: {value}
@@ -163,25 +188,31 @@ export function McpDetailBody({
 			) : null}
 
 			{server.envRefs.length > 0 ? (
-				<Row label="主机环境变量">
+				<Row label={t("主机环境变量", "Host environment")}>
 					<span className="side-panel-count">
 						{server.transport === "http"
-							? "请求头里的变量取自运行 Pi Web 的这台机器："
-							: "启动它的命令会拿到运行 Pi Web 的这台机器上的变量："}
+							? t(
+									"请求头里的变量取自运行 Pi Web 的这台机器：",
+									"Header values are read from the machine running Pi Web:",
+								)
+							: t(
+									"启动它的命令会拿到运行 Pi Web 的这台机器上的变量：",
+									"The launch command gets the variables of the machine running Pi Web:",
+								)}
 						{server.envRefs.map((ref) => (
 							<span
 								className={`mcp-ref${ref.present ? " mcp-ref-ok" : " mcp-ref-missing"}`}
 								key={`${ref.key}-${ref.variable}`}
 							>
-								{ref.key} 里的 {ref.variable}
-								{ref.present ? " 已设置" : " 未设置"}
+								{t(`${ref.key} 里的 ${ref.variable}`, `${ref.variable} on ${ref.key}`)}
+								{ref.present ? t(" 已设置", " set") : t(" 未设置", " not set")}
 							</span>
 						))}
 					</span>
 				</Row>
 			) : null}
 
-			<Row label="工具">
+			<Row label={t("工具", "Tools")}>
 				<select
 					className="mcp-exposure"
 					value={server.exposure}
@@ -190,17 +221,17 @@ export function McpDetailBody({
 				>
 					{(Object.keys(EXPOSURE_LABEL) as Exposure[]).map((exposure) => (
 						<option value={exposure} key={exposure}>
-							{EXPOSURE_LABEL[exposure]}
+							{t(EXPOSURE_LABEL[exposure], EXPOSURE_LABEL_EN[exposure])}
 						</option>
 					))}
 				</select>
-				<span className="side-panel-count">{EXPOSURE_HINT[server.exposure]}</span>
+				<span className="side-panel-count">{t(EXPOSURE_HINT[server.exposure], EXPOSURE_HINT_EN[server.exposure])}</span>
 				{server.toolExposure ? (
 					<span className="side-panel-count">
-						单个工具另有设置：
+						{t("单个工具另有设置：", "Per-tool overrides:")}
 						{Object.entries(server.toolExposure).map(([tool, exposure]) => (
 							<span className="mcp-ref" key={tool}>
-								{tool} → {EXPOSURE_LABEL[exposure]}
+								{tool} → {t(EXPOSURE_LABEL[exposure], EXPOSURE_LABEL_EN[exposure])}
 							</span>
 						))}
 					</span>
@@ -208,7 +239,7 @@ export function McpDetailBody({
 			</Row>
 
 			{probe?.ok && probe.tools.length > 0 ? (
-				<Row label="工具清单">
+				<Row label={t("工具清单", "Tools found")}>
 					<div className="mcp-tools">
 						{probe.tools.map((tool) => (
 							<span className="mcp-tool" key={tool.name} title={tool.description}>
@@ -225,13 +256,22 @@ export function McpDetailBody({
 				</Row>
 			) : null}
 
-			<Row label="超时">
-				<span className="side-panel-count">{server.timeout} 秒（配置里的 timeout；不写就是 60）</span>
+			<Row label={t("超时", "Timeout")}>
+				<span className="side-panel-count">
+					{t(
+						`${server.timeout} 秒（配置里的 timeout；不写就是 60）`,
+						`${server.timeout}s (timeout from the config; 60 if unset)`,
+					)}
+				</span>
 			</Row>
 
-			<Row label="文件">
+			<Row label={t("文件", "File")}>
 				<span className="mcp-value mono">{server.source}</span>
-				{server.override ? <span className="side-panel-count">{server.override} 里有本项目的覆盖项</span> : null}
+				{server.override ? (
+					<span className="side-panel-count">
+						{t(`${server.override} 里有本项目的覆盖项`, `${server.override} has overrides for this project`)}
+					</span>
+				) : null}
 			</Row>
 		</div>
 	);

@@ -598,7 +598,14 @@ export function PreviewPanel({
 					type="button"
 					className={`btn btn-tiny preview-tool-btn${wide ? " btn-wide-on" : ""}`}
 					onClick={() => setWideMode(!wide)}
-					title={wide ? "收回右侧（恢复对话区）" : "铺开：占满对话 + 预览两块区域（左侧栏保留）"}
+					title={
+						wide
+							? t("收回右侧（恢复对话区）", "Collapse the right panel (brings the chat back)")
+							: t(
+									"铺开：占满对话 + 预览两块区域（左侧栏保留）",
+									"Spread out: fill the chat + preview area (left sidebar stays)",
+								)
+					}
 					aria-pressed={wide}
 				>
 					{/* 两侧箭头 + 竖线：表示「把中间两块铺满」。

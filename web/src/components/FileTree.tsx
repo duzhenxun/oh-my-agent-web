@@ -293,7 +293,7 @@ export function FileTree({
 							<button
 								type="button"
 								className="filetree-mention"
-								title={`把 @${node.entry.path} 加到对话`}
+								title={t(`把 @${node.entry.path} 加到对话`, `Add @${node.entry.path} to the conversation`)}
 								onClick={() => setDraft(`${referenceFor(node.entry.path, null)} `)}
 							>
 								@ {t("提及", "mention")}

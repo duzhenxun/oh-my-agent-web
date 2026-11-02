@@ -11,8 +11,24 @@ type FanOutTargets = {
 	snapshotFor: (clientId: string) => Snapshot;
 };
 
-export function fanOutSnapshot(snapshot: Snapshot, targets: FanOutTargets): void {
+export type FanOutStats = {
+	/** 这次扇出给了几个客户端（每个一份独立快照） */
+	clients: number;
+	/** 序列化后的总字符数（UTF-16 code unit）：手机上几百 KB 的快照就是卡顿的来源 */
+	bytes: number;
+	/** 扇出总耗时（包含每个客户端的 `buildSnapshot` + `JSON.stringify`） */
+	ms: number;
+};
+
+export function fanOutSnapshot(snapshot: Snapshot, targets: FanOutTargets): FanOutStats {
+	const startedAt = performance.now();
+	let bytes = 0;
+	let clients = 0;
 	for (const [clientId, sink] of targets.sinks) {
-		sink(JSON.stringify({ type: "event", event: "snapshot", snapshot: targets.snapshotFor(clientId) }));
+		const payload = JSON.stringify({ type: "event", event: "snapshot", snapshot: targets.snapshotFor(clientId) });
+		bytes += payload.length;
+		clients += 1;
+		sink(payload);
 	}
+	return { clients, bytes, ms: Math.round(performance.now() - startedAt) };
 }

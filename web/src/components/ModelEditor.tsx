@@ -473,7 +473,7 @@ export function ModelEditor({
 						<div className="side-field-row">
 							{PRICE_KEYS.map((key) => (
 								<label className="side-field" key={key}>
-									<span>{PRICE_TITLES[key]}</span>
+									<span>{t(PRICE_TITLES[key], PRICE_TITLES_EN[key])}</span>
 									<input
 										inputMode="decimal"
 										value={segment[key]}

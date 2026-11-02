@@ -70,7 +70,10 @@ export function McpList({
 								)}
 								className={`mcp-switch${group.items.some((server) => server.enabled) ? " mcp-switch-on" : ""}`}
 								disabled={group.items.length === 0 || busy}
-								title={`${group.label}这一份配置里的服务器一起开 / 关`}
+								title={t(
+									`${group.label}这一份配置里的服务器一起开 / 关`,
+									`Turn every server in this ${group.label} config on / off together`,
+								)}
 								onClick={() => onToggleScope(group.scope, !group.items.every((server) => server.enabled))}
 							>
 								{/* 文案写的是**下一步做什么**，不是当前状态（状态由左边的 n/N 和每个点的颜色回答） */}

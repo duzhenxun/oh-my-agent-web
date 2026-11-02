@@ -24,10 +24,20 @@ function message(id: string, role: "user" | "assistant", text: string): UiMessag
 	return { id, role, ts: 1_000, blocks: [{ kind: "text", text }] } as UiMessage;
 }
 
-function harness(options: { inFlight: boolean; opened: UiMessage[] }) {
+function harness(options: {
+	inFlight: boolean;
+	opened: UiMessage[];
+	mine?: boolean;
+	log?: (message: string, ctx?: Record<string, unknown>) => void;
+}) {
 	const state = createServerState(WORKSPACE);
 	// 这条会话只存在于引擎侧（pi 历史会话）：不在本进程的 conversations 里
 	state.activeId = null;
+	if (options.mine) {
+		state.conversations = [
+			{ id: CONV, workspace: WORKSPACE, title: "自建" } as unknown as (typeof state.conversations)[number],
+		];
+	}
 	const clientView = createClientView();
 	let snapshots = 0;
 	const switchTo = createSwitchConversation({
@@ -44,6 +54,7 @@ function harness(options: { inFlight: boolean; opened: UiMessage[] }) {
 		pushSnapshot: () => {
 			snapshots += 1;
 		},
+		...(options.log ? { log: options.log } : {}),
 	});
 	return { state, clientView, switchTo, snapshots: () => snapshots };
 }
@@ -85,5 +96,82 @@ describe("切到一条正在跑的历史会话", () => {
 		assert.equal(clientView.activeFor("client-1", null), CONV);
 		assert.equal(clientView.activeFor("client-2", null), null, "别的客户端不受影响");
 		assert.ok(snapshots() >= 1);
+	});
+});
+
+/**
+ * 切会话的分段计时（手机上「切会话慢」唯一可信的定位手段）。
+ *
+ * 只要这些字段还在，就能从日志直接读出「是打开会话贵、模型回读贵，还是快照构建贵」——
+ * 少了哪一格，就只能靠猜。所以这里把日志形状也当契约锁住。
+ */
+describe("切会话的分段计时日志", () => {
+	function collector() {
+		const lines: Record<string, unknown>[] = [];
+		return {
+			lines,
+			log: (_message: string, ctx?: Record<string, unknown>) => {
+				lines.push(ctx ?? {});
+			},
+		};
+	}
+
+	it("真的重新打开时，四段耗时都有数", async () => {
+		const sink = collector();
+		const { switchTo } = harness({ inFlight: false, opened: [message("m-1", "user", "你好")], log: sink.log });
+
+		await switchTo(CONV, "client-1");
+
+		assert.equal(sink.lines.length, 1, "一次切会话一行日志");
+		const ctx = sink.lines[0]!;
+		assert.equal(ctx.outcome, "ok");
+		assert.equal(ctx.reopened, true);
+		assert.equal(ctx.mine, false);
+		assert.equal(ctx.messages, 1);
+		for (const phase of ["open", "models", "thinking", "build", "total"]) {
+			assert.equal(typeof ctx[phase], "number", `${phase} 应该是一个毫秒数`);
+			assert.ok(Number(ctx[phase]) >= 0, `${phase} 不能是负数`);
+		}
+	});
+
+	it("已经是当前会话、消息也在内存里：不重读转录，open 那一格缺省", async () => {
+		const sink = collector();
+		const { state, switchTo } = harness({ inFlight: false, opened: [message("m-1", "user", "你好")], log: sink.log });
+		await switchTo(CONV, "client-1");
+
+		sink.lines.length = 0;
+		const result = await switchTo(CONV, "client-1");
+
+		assert.equal(result.ok, true);
+		assert.equal(sink.lines[0]?.reopened, false);
+		assert.equal(sink.lines[0]?.open, undefined, "没重新打开就不该有 open 耗时");
+		assert.equal(state.activeId, CONV);
+	});
+
+	it("自建会话走另一条路：mine=true，也有 stats/build 两格", async () => {
+		const sink = collector();
+		const { switchTo } = harness({ inFlight: false, opened: [], mine: true, log: sink.log });
+
+		await switchTo(CONV, "client-1");
+
+		const ctx = sink.lines[0]!;
+		assert.equal(ctx.outcome, "ok");
+		assert.equal(ctx.mine, true);
+		assert.equal(ctx.open, undefined, "自建会话不读转录");
+		for (const phase of ["models", "thinking", "stats", "build", "total"]) {
+			assert.equal(typeof ctx[phase], "number", `${phase} 应该是一个毫秒数`);
+		}
+	});
+
+	it("失败也要落一行（会话不存在）", async () => {
+		const sink = collector();
+		const { switchTo } = harness({ inFlight: false, opened: [], log: sink.log });
+
+		const result = await switchTo("pi:missing", "client-1");
+
+		assert.equal(result.ok, false);
+		assert.equal(sink.lines.length, 1);
+		assert.equal(sink.lines[0]?.outcome, "not_found");
+		assert.equal(typeof sink.lines[0]?.total, "number");
 	});
 });

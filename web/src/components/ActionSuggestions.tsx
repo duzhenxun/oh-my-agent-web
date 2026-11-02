@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { ActionItem } from "../types.ts";
 import { setDraft } from "../store.ts";
 import { sendMessage } from "../ws.ts";
+import { useT } from "../use-language.ts";
 
 /**
  * 模型给出的「下一步建议」（ADR-0022）：
@@ -11,6 +12,7 @@ import { sendMessage } from "../ws.ts";
  * 触发「再给一批」的按钮不在这里（在输入区工具行最左边，见 ThinkButton）。
  */
 export function ActionSuggestions({ actions, running }: { actions: ActionItem[]; running: boolean }) {
+	const t = useT();
 	/**
 	 * 已经点过一次的标记。
 	 *
@@ -36,7 +38,10 @@ export function ActionSuggestions({ actions, running }: { actions: ActionItem[];
 					key={action.id}
 					className="action-btn"
 					disabled={running}
-					title={`${action.label}\n发送：${action.prompt}\n（Shift+点击只填入输入框）`}
+					title={t(
+						`${action.label}\n发送：${action.prompt}\n（Shift+点击只填入输入框）`,
+						`${action.label}\nSend: ${action.prompt}\n(Shift+click to fill the input only)`,
+					)}
 					onClick={(event) => {
 						if (event.shiftKey) {
 							setDraft(action.prompt);

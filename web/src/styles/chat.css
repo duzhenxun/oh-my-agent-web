@@ -113,6 +113,13 @@
 	padding: 8px 10px;
 	overflow-x: auto;
 	max-width: 100%;
+	/**
+	 * 横滑**到自己为止**：不加这条，手机上把代码滑到尽头会「链」给上一级 ——
+	 * iOS 触发侧滑返回（整页往右一弹）、安卓是回弹光晕，看起来又是「左右晃」
+	 * （用户 2026-11-02：「手机版不要跑版，不要出现左右晃动的感觉」）。
+	 * 只锁 x：纵向滚到头仍要能继续滚对话（y 上不锁，免得滚轮被黑洞吃掉）。
+	 */
+	overscroll-behavior-x: contain;
 }
 
 .md code {
@@ -170,9 +177,10 @@
  * 所以不用等宽、不用主色 —— 主色留给正文里的链接和强调，这里只是个过程提示 */
 .tool-name {
 	flex: none;
-	/* 和「思考」行同一档淡色（用户 2026-11-02：过程行统一再淡一档，别抢正文的注意力） */
+	/* 和「思考」行同一档淡色、同一档字号（用户 2026-11-02：过程行统一再淡一档 / 工序行再压小一档） */
 	color: var(--text-whisper);
-	font-size: calc(var(--chat-ui-font-size, 12px) * 1);
+	/* 0.931 ≈ 13px：与 .thinking-head 同档，比过程里的说明段（1.2 ≈ 16.8px）低近 30% */
+	font-size: calc(var(--chat-ui-font-size, 12px) * 0.931);
 }
 
 .tool-args {
@@ -183,13 +191,15 @@
 	white-space: nowrap;
 	color: var(--text-whisper);
 	font-family: var(--mono);
-	font-size: calc(var(--chat-ui-font-size, 12px) * 1);
+	/* 跟抬头（.tool-name）同档：一条工序行里的两截字不能一大一小 */
+	font-size: calc(var(--chat-ui-font-size, 12px) * 0.931);
 }
 
 .tool-status {
 	flex: none;
 	margin-left: auto;
-	font-size: calc(var(--chat-ui-font-size, 12px) * 0.9655);
+	/* 比工序行再小一档（0.8966 ≈ 12.5px）：「完成 / 进行中」是行尾的小尾巴 */
+	font-size: calc(var(--chat-ui-font-size, 12px) * 0.8966);
 	color: var(--text-faint);
 }
 

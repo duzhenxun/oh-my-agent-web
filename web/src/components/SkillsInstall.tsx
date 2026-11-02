@@ -2,6 +2,11 @@ import { useState } from "react";
 import type { InstallResponse, Skill } from "../skills-view.ts";
 import { useT } from "../use-language.ts";
 
+/** 手动创建页签的 SKILL.md 示例（placeholder）：分行与中文版一一对应 */
+const MANUAL_PLACEHOLDER = "---\nname: my-skill\ndescription: 什么时候用这个技能\n---\n\n# my-skill\n\n怎么做…";
+const MANUAL_PLACEHOLDER_EN =
+	"---\nname: my-skill\ndescription: when to use this skill\n---\n\n# my-skill\n\nhow to do it…";
+
 /**
  * 「Git 仓库」与「手动创建」两个页签（技能库在 SkillsHub.tsx）。
  *
@@ -150,10 +155,15 @@ export function SkillsInstall({
 						</button>
 					</div>
 					<span className="side-panel-hint">
-						会把仓库浅克隆一份（<code>--depth 1</code>
-						{t("）到临时目录，列出根目录与")} <code>skills/</code> 下带 <code>SKILL.md</code>{" "}
-						{t("的目录，装完即删。安装是")}
-						<strong>{t("整目录")}</strong>复制（脚本、references 都带上）。
+						{t("会把仓库浅克隆一份（", "Shallow-clones the repo (")}
+						<code>--depth 1</code>
+						{t("）到临时目录，列出根目录与", ") into a temp folder and lists the folders in the root and in")}{" "}
+						<code>skills/</code>
+						{t(" 下带 ", " subfolders with ")}
+						<code>SKILL.md</code>
+						{t("的目录，装完即删。安装是", " — the clone is deleted afterwards. Installing copies")}
+						<strong>{t("整目录")}</strong>
+						{t("复制（脚本、references 都带上）。", " (scripts and references included).")}
 					</span>
 
 					{repoSkills === null ? null : (
@@ -198,7 +208,7 @@ export function SkillsInstall({
 						id="skill-manual-raw"
 						className="skills-input skills-textarea mono"
 						value={raw}
-						placeholder={"---\nname: my-skill\ndescription: 什么时候用这个技能\n---\n\n# my-skill\n\n怎么做…"}
+						placeholder={t(MANUAL_PLACEHOLDER, MANUAL_PLACEHOLDER_EN)}
 						onChange={(event) => setRaw(event.target.value)}
 					/>
 					<div className="skills-row">

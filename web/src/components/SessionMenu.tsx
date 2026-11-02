@@ -144,8 +144,14 @@ export function SessionMenu({
 				className={`proj-menu-item proj-menu-danger${del.armed ? " proj-menu-item-armed" : ""}`}
 				title={
 					del.armed
-						? `再点一次就真删「${title}」的会话文件：不可恢复`
-						: `把「${title}」连同磁盘上的会话文件一起删掉（不可恢复）；第一下只是确认`
+						? t(
+								`再点一次就真删「${title}」的会话文件：不可恢复`,
+								`Click again to permanently delete the session file for "${title}"`,
+							)
+						: t(
+								`把「${title}」连同磁盘上的会话文件一起删掉（不可恢复）；第一下只是确认`,
+								`Delete "${title}" together with its session file on disk (cannot be undone); the first click only arms it`,
+							)
 				}
 				onClick={() =>
 					del.run(() => {

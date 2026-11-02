@@ -9,3 +9,8 @@ declare module "*.svg" {
 	const src: string;
 	export default src;
 }
+/** 预生成的状态语音片段，按 `?url` 当静态资源引入（见 assets/cues 与 scripts/make-voice-cues.mjs） */
+declare module "*.mp3?url" {
+	const src: string;
+	export default src;
+}

@@ -50,7 +50,7 @@ export function TemplateGallery({
 								<span className="tpl-name">{template.name}</span>
 								<span className="tpl-desc">{template.description}</span>
 							</button>
-							<button type="button" className="tpl-edit" onClick={() => onEdit(template)} title="编辑">
+							<button type="button" className="tpl-edit" onClick={() => onEdit(template)} title={t("编辑", "Edit")}>
 								✏️
 							</button>
 						</div>
@@ -59,8 +59,8 @@ export function TemplateGallery({
 						<span className="tpl-icon" aria-hidden="true">
 							＋
 						</span>
-						<span className="tpl-name">{t("新建模板")}</span>
-						<span className="tpl-desc">{t("把常用工作流存成模板")}</span>
+						<span className="tpl-name">{t("新建模板", "New template")}</span>
+						<span className="tpl-desc">{t("把常用工作流存成模板", "Save a repeated workflow as a template")}</span>
 					</button>
 				</div>
 				<div className="tpl-foot">

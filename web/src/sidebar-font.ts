@@ -102,7 +102,8 @@ export function onSidebarFontChange(callback: (state: SidebarFontState) => void)
 		if (detail) callback(detail);
 	};
 	const onStorage = (event: StorageEvent) => {
-		if (event.key !== SIDEBAR_PROJECT_FONT_KEY && event.key !== SIDEBAR_SESSION_FONT_KEY) return;		const next = currentSidebarFonts();
+		if (event.key !== SIDEBAR_PROJECT_FONT_KEY && event.key !== SIDEBAR_SESSION_FONT_KEY) return;
+		const next = currentSidebarFonts();
 		applySidebarFonts(next);
 		callback(next);
 	};

@@ -1,6 +1,6 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { UiMessage } from "../types.ts";
-import { useT } from "../use-language.ts";
+import { tNow, useT } from "../use-language.ts";
 
 type Item = { id: string; index: number; question: string; answer: string };
 
@@ -20,7 +20,7 @@ function buildItems(messages: UiMessage[]): Item[] {
 		items.push({
 			id: message.id,
 			index: items.length + 1,
-			question: text(message).slice(0, 120) || "（空消息）",
+			question: text(message).slice(0, 120) || tNow("（空消息）", "(empty message)"),
 			answer: answer ? text(answer).slice(0, 160) : "",
 		});
 	});
@@ -50,7 +50,12 @@ export function ConversationOutline({ messages }: { messages: UiMessage[] }) {
 		keepOpen();
 		closeTimer.current = setTimeout(() => setHoverIndex(null), 160);
 	};
-	const items = buildItems(messages);
+	/**
+	 * O(消息数) 的抽取只跑一遍：本组件会因为 hoverIndex 每秒重渲染，而手机上它虽然被 CSS
+	 * 隐藏，计算照样会发生 —— 长会话里每帧重建一整套大纲纯属白烧 CPU。
+	 * 依赖里带上 `t`：条目文本里有 `tNow` 的空消息文案，切语言要跟着重算。
+	 */
+	const items = useMemo(() => buildItems(messages), [messages, t]);
 	if (items.length === 0) return null;
 
 	const jump = (id: string) => {
@@ -72,7 +77,7 @@ export function ConversationOutline({ messages }: { messages: UiMessage[] }) {
 						onMouseEnter={() => setHoverIndex(index)}
 						onFocus={() => setHoverIndex(index)}
 						onClick={() => jump(item.id)}
-						title={`第 ${item.index} 问`}
+						title={t(`第 ${item.index} 问`, `Question ${item.index}`)}
 					/>
 				))}
 			</div>

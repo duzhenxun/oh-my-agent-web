@@ -1,5 +1,5 @@
 import type { ChangedFile } from "../changed-files.ts";
-import { useT } from "../use-language.ts";
+import { tNow, useT } from "../use-language.ts";
 
 /**
  * 「这一轮改动的文件」那一排 chip，挂在助手消息尾注**上方**。
@@ -22,7 +22,7 @@ function kindOf(ext: string): "code" | "style" | "text" {
 
 /** 徽标上的字：太长的扩展名截成 3 个字，没扩展名就写「文件」 */
 function badgeOf(ext: string): string {
-	if (ext === "") return "文件";
+	if (ext === "") return tNow("文件", "FILE");
 	return ext.length <= 4 ? ext.toUpperCase() : ext.slice(0, 3).toUpperCase();
 }
 
@@ -31,8 +31,14 @@ export function ChangedFiles({ files, onOpen }: { files: ChangedFile[]; onOpen?:
 	if (files.length === 0) return null;
 	return (
 		<div className="msg-files">
-			<span className="msg-files-label" title={t("这一轮工具写过的文件（按第一次出现的顺序）")}>
-				改动 {files.length} 个文件
+			<span
+				className="msg-files-label"
+				title={t(
+					"这一轮工具写过的文件（按第一次出现的顺序）",
+					"Files the tools wrote this turn (in order of first appearance)",
+				)}
+			>
+				{t(`改动 ${files.length} 个文件`, `${files.length} file(s) changed`)}
 			</span>
 			{files.map((file) => (
 				<button
@@ -40,7 +46,14 @@ export function ChangedFiles({ files, onOpen }: { files: ChangedFile[]; onOpen?:
 					key={file.path}
 					className={`msg-file${file.outside ? " msg-file-off" : ""}`}
 					disabled={file.outside || !onOpen}
-					title={file.outside ? `${file.path}（在工作区之外，右侧预览读不了）` : `${file.path} · 点一下在右侧打开`}
+					title={
+						file.outside
+							? t(
+									`${file.path}（在工作区之外，右侧预览读不了）`,
+									`${file.path} (outside the workspace — the preview cannot read it)`,
+								)
+							: t(`${file.path} · 点一下在右侧打开`, `${file.path} · click to open it on the right`)
+					}
 					onClick={() => onOpen?.(file)}
 				>
 					<span className={`msg-file-badge msg-file-badge-${kindOf(file.ext)}`}>{badgeOf(file.ext)}</span>

@@ -43,9 +43,17 @@
 	cursor: zoom-in;
 }
 
+/* 显示宽度上限 = **min(用户设的上限, 容器宽度)**。
+ *
+ * 以前 JS 直接写内联 `max-width: 400px`，它把这条 `max-width: 100%` 盖掉了 —— 手机上
+ * 气泡只有 ~330px 时图片仍然 400px，整块溢到屏幕外，`.main` 于是冒出一条横向滚动条，
+ * 内容跟着一左一右地置（用户 2026-11-02：「手机版不要跑版，不要出现左右晃动的感觉」）。
+ * 改成把上限当**变量**传进来，真正的 max-width 仍然写在这张表里，永远带 100% 这一道。 */
 .md-img {
 	display: block;
+	/* 老浏览器（不认 min()）先落在这条上：丢掉「用户上限」但**不会溢出** */
 	max-width: 100%;
+	max-width: min(var(--md-img-cap, 100%), 100%);
 	max-height: 520px;
 	margin: 0;
 	border: 1px solid var(--border);
@@ -132,6 +140,8 @@
 	align-items: flex-start;
 	padding: 12px 10px;
 	overflow: auto;
+	/* 同 `.md pre`：横滑到自己为止，别把手机的侧滑返回手势勾出来 */
+	overscroll-behavior-x: contain;
 	/* 高图（一图技术图谱那种）别把整页撑到底，图内自己滚 */
 	max-height: min(70vh, 720px);
 	background: var(--bg);
@@ -180,6 +190,8 @@
 	width: max-content;
 	max-width: 100%;
 	overflow-x: auto; /* 宽表格自己横向滚动，不撑破消息气泡 */
+	/* 同 `.md pre`：横滑到自己为止（否则手机上滑到表尾会触发侧滑返回 / 回弹） */
+	overscroll-behavior-x: contain;
 	border-collapse: collapse;
 	margin: 10px 0;
 	font-size: 1em; /* 跟正文一起缩放 */

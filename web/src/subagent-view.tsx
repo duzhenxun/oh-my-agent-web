@@ -5,6 +5,7 @@
  * 「面板」里显示的耗时 / token / 花费必须是同一份计算。
  */
 import type { SubagentRunView, SubagentStatus } from "./types.ts";
+import { tNow } from "./use-language.ts";
 
 export const STATUS_LABEL: Record<SubagentStatus, string> = {
 	queued: "排队中",
@@ -14,6 +15,20 @@ export const STATUS_LABEL: Record<SubagentStatus, string> = {
 	aborted: "已停止",
 };
 
+/** 状态词的英文（`tNow` 只做中英两栅，所以按状态 id 单独一份，不塞进通用词条表） */
+const STATUS_LABEL_EN: Record<SubagentStatus, string> = {
+	queued: "queued",
+	running: "running",
+	completed: "done",
+	failed: "failed",
+	aborted: "stopped",
+};
+
+/** 界面上的状态词（纯函数、不在组件里，所以走 `tNow` 读当前语言） */
+export function statusLabel(status: SubagentStatus): string {
+	return tNow(STATUS_LABEL[status], STATUS_LABEL_EN[status]);
+}
+
 const ACTIVE_STATUSES: SubagentStatus[] = ["queued", "running"];
 export function isActive(run: SubagentRunView): boolean {
 	return ACTIVE_STATUSES.includes(run.status);
@@ -21,12 +36,12 @@ export function isActive(run: SubagentRunView): boolean {
 
 export function relativeTime(at: number, now: number): string {
 	const seconds = Math.max(0, Math.round((now - at) / 1000));
-	if (seconds < 60) return `${seconds} 秒前`;
+	if (seconds < 60) return tNow(`${seconds} 秒前`, `${seconds}s ago`);
 	const minutes = Math.round(seconds / 60);
-	if (minutes < 60) return `${minutes} 分钟前`;
+	if (minutes < 60) return tNow(`${minutes} 分钟前`, `${minutes}m ago`);
 	const hours = Math.round(minutes / 60);
-	if (hours < 24) return `${hours} 小时前`;
-	return `${Math.round(hours / 24)} 天前`;
+	if (hours < 24) return tNow(`${hours} 小时前`, `${hours}h ago`);
+	return tNow(`${Math.round(hours / 24)} 天前`, `${Math.round(hours / 24)}d ago`);
 }
 
 /** 一次运行的耗时（没结束就算到现在）：`12s` / `1m57s` / `1h03m` */
@@ -120,16 +135,21 @@ export function batchesOf(runs: readonly SubagentRunView[], gapMs = BATCH_GAP_MS
 }
 
 /**
- * 本轮的开始时间 = **最后一条用户消息**的时间。
+ * 本轮的开始时间 = **最后一条（不是插队的）用户消息**的时间。
  *
  * 子代理记录在快照里是**跨轮次累积**的（每会话留最近 30 条）。以前顶栏徽标与卡片条
  * 都直接铺「最近一批」，于是发完新问题之后，上一问的子代理还挂在那儿 ——
  * 看起来像是「这一问又跑了一遍」。按「用户消息之后」切，问题一换它们就自然退场。
+ *
+ * **插队消息不算起点**（用户 2026-11-02：「子代理在跑时刷新，顶栏的徽标就没了」）：
+ * 插队是在**这一轮内部**补一句话，它会作为一条 `steer: true` 的用户消息落在本轮子代理
+ * 开始时间**之后**。拿它当起点，这一轮已经派出去、还在跑的子代理就全被切掉了 ——
+ * 徽标凭空消失，而卡片条（按消息分配，不走这个口径）还在，看着像两份数据打架。
  */
-export function turnStartedAtOf(messages: readonly { role: string; ts: number }[]): number | null {
+export function turnStartedAtOf(messages: readonly { role: string; ts: number; steer?: boolean }[]): number | null {
 	for (let index = messages.length - 1; index >= 0; index -= 1) {
 		const item = messages[index];
-		if (item && item.role === "user") return Number.isFinite(item.ts) ? item.ts : null;
+		if (item && item.role === "user" && item.steer !== true) return Number.isFinite(item.ts) ? item.ts : null;
 	}
 	return null;
 }
@@ -203,8 +223,22 @@ export function assignRunsToMessages(
 
 /** 只留**本轮**派出去的：顶栏徽标、卡片条、消息内嵌卡片全都用这一口径 */
 export function runsOfCurrentTurn(runs: readonly SubagentRunView[], turnStartedAt: number | null): SubagentRunView[] {
-	if (turnStartedAt === null) return [];
+	// 还算不出本轮从哪开始（刚刷新、消息还没到、或者这会话压根没发过言）：
+	// 只留**正在跑/排队中**的那几条 —— 它们无论如何都属于“现在”。
+	// 已经跑完的不要漏出去：那些很可能是上一轮的，摆出来会让人以为又跑了一遍。
+	if (turnStartedAt === null) return runs.filter((run) => isActive(run));
 	return runs.filter((run) => run.startedAt >= turnStartedAt);
+}
+
+/**
+ * 顶栏徽标到底摆哪几条：**现在真在跑的** + **这一页里亲眼见过在跑的**。
+ *
+ * 为什么还要记一份「见过」：刷新之后服务端照样把「最近一轮」的记录（含已结束的）给过来，
+ * 徽标就会在刷新后凭空冒出来 —— 用户 2026-11-02：「这个会话结束了，再刷新时才该不见」。
+ * 所以已经跑完的那些只在「这一页看着它跑过」时才继续挂着（结果 / 耗时 / 费用还能顺手看一眼）。
+ */
+export function runsForBadge(runs: readonly SubagentRunView[], seenRunning: ReadonlySet<string>): SubagentRunView[] {
+	return runs.filter((run) => isActive(run) || seenRunning.has(run.id));
 }
 
 /**
@@ -214,8 +248,8 @@ export function runsOfCurrentTurn(runs: readonly SubagentRunView[], turnStartedA
  * 把总数写进标题会被读成「一次开了 8 个」。旧轮次不在这条横条上翻，去「子代理」面板里看。
  */
 export function countsLabel(active: number, latest: number): string {
-	if (active > 0) return `${active} 个在跑`;
-	return `${latest} 个已结束`;
+	if (active > 0) return tNow(`${active} 个在跑`, `${active} running`);
+	return tNow(`${latest} 个已结束`, `${latest} finished`);
 }
 
 /** 毫秒 → `1m57s`（合计行用，和单条同样的读法） */

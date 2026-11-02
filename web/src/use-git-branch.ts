@@ -6,6 +6,7 @@
  * （不再多跑一次 GET）；失败返回一句人话错误，菜单里显示、不关。
  */
 import { useCallback, useEffect, useState } from "react";
+import { tNow } from "./use-language.ts";
 
 type GitBranch = {
 	isRepo: boolean;
@@ -58,7 +59,7 @@ export function useGitBranch(root: string | null): GitBranch & {
 
 	const checkout = useCallback(
 		async (name: string, options: { force?: boolean } = {}): Promise<CheckoutOutcome> => {
-			if (!root) return { ok: false, message: "还没有打开项目" };
+			if (!root) return { ok: false, message: tNow("还没有打开项目", "No project is open") };
 			try {
 				const response = await fetch("/api/files/git/checkout", {
 					method: "POST",
@@ -72,7 +73,7 @@ export function useGitBranch(root: string | null): GitBranch & {
 					if (body.error?.code === "files.dirty_worktree") {
 						return {
 							ok: false,
-							message: body.error.message ?? "工作区有未提交改动",
+							message: body.error.message ?? tNow("工作区有未提交改动", "The working tree has uncommitted changes"),
 							dirty: {
 								files: Array.isArray(body.error.files)
 									? body.error.files.filter((f): f is string => typeof f === "string")
@@ -81,7 +82,10 @@ export function useGitBranch(root: string | null): GitBranch & {
 							},
 						};
 					}
-					return { ok: false, message: body.error?.message ?? `切换到 ${name} 失败` };
+					return {
+						ok: false,
+						message: body.error?.message ?? tNow(`切换到 ${name} 失败`, `Could not switch to ${name}`),
+					};
 				}
 				setState({
 					isRepo: body.isRepo === true,
@@ -91,7 +95,13 @@ export function useGitBranch(root: string | null): GitBranch & {
 				});
 				return { ok: true };
 			} catch {
-				return { ok: false, message: "切分支的请求没发出去（服务端没响应）" };
+				return {
+					ok: false,
+					message: tNow(
+						"切分支的请求没发出去（服务端没响应）",
+						"The switch request did not go through (no response from the server)",
+					),
+				};
 			}
 		},
 		[root],

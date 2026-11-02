@@ -27,6 +27,8 @@ export type ProcessFold = {
 	hasAnswer: boolean;
 	/** 设置里「跑完自动折叠思考与工具调用」 */
 	autoCollapse: boolean;
+	/** 设置里「跑时自动折叠过程」：跑着的时候就收成那行秒表 */
+	autoFoldRunning: boolean;
 	/** 「默认展开思考块」「默认展开工具卡」任一为开 */
 	defaultOpen: boolean;
 	/** 用户对**这条消息**的手动选择；null = 没点过 */
@@ -34,12 +36,15 @@ export type ProcessFold = {
 };
 
 /**
- * 过程区的三种展法：
- *   - `tail`：**只画最新一组**（跑着的时候，换组就地替换，不往上堆）；
- *   - `all`：完整时间线（手动点开 / 没结论 / 关掉自动折叠）；
- *   - `collapsed`：跑完收成一行。
+ * 过程区的两种展法（**只有两种**：要么铺开，要么收成一行）：
+ *   - `all`：完整时间线（按发生顺序铺着长）；
+ *   - `collapsed`：收成顶上那一行「N 段思考 · N 次工具 · 耗时」。
+ *
+ * 以前还有第三种 `tail`（跑着时只画最新一组、换组就地替换）。用户 2026-11-02 看到设置里
+ * 「跑时自动折叠」没勾、过程却还是收着的，直接说「应展开才对吧」—— 那条 `tail` 就是
+ * 「没勾也还是折着」的来源，删掉了：勾上=收，不勾=全铺开，没有第三种含糊状态。
  */
-export type ProcessView = "tail" | "all" | "collapsed";
+export type ProcessView = "all" | "collapsed";
 
 /** 这一轮还在跑吗：`live` 是这条消息还在流式，`endedAt` 一旦写上就表示回合结束 */
 export function isTurnRunning(input: { live: boolean; endedAt: number | undefined }): boolean {
@@ -58,6 +63,8 @@ export type FoldLayout = {
 	firstProcessAt: number;
 	/** 最后一段「结论」（非空正文或错误块）的下标；-1 = 只有过程、没有结论 */
 	lastAnswerAt: number;
+	/** 最后一段过程（思考/工具）的下标；-1 = 没动过手。判断「哪句正文是结论」要用它 */
+	lastProcessAt: number;
 	/** 折叠之后外面还留得下结论（= 结论在最后一次动手之后）；false 就不该收，收了只剩一行按钮 */
 	hasAnswer: boolean;
 	/** 收起时这个下标要不要跟过程一起进折叠（最后一个结论之前的全部） */
@@ -87,47 +94,49 @@ export function foldLayout(segments: readonly FoldSegment[]): FoldLayout {
 	return {
 		firstProcessAt,
 		lastAnswerAt,
+		lastProcessAt,
 		hasAnswer: hasProcess && lastAnswerAt > lastProcessAt,
 		insideFold: (index) => hasProcess && index < lastAnswerAt,
 	};
 }
 
 /**
- * 过程区怎么展（手动优先 → 跑着只画最新一组 → 没结论就摊开 → 关掉自动折叠才看两个默认开关）。
+ * 这一段正文该不该用「叙述」字号（比正文大一档，见 `.md-narration`）？
  *
- * 「跑着只画最新一组」是用户 2026-11-02 的要求：长任务里十几个组一路往上堆，
- * 正在干的那一组反而被挤在屏幕外；只画最新的那一组、换组时就地替换，看着才像个秒表。
- * 历史组没丢：点折叠行就展开完整时间线。
+ * 用户 2026-11-02：「不统一呀，有的大，有的小呢」—— 以前是「只要它是最后一段正文，就当结论」，
+ * 而过程里那些说明**轮到自己时都是“最后一段”**：于是同一片过程里，最新那句是 14px 正文，
+ * 前面几句是 16.8px 叙述，一眼看上去参差不齐（而且模型一说下一个动作，刚变小那句又变回去）。
+ *
+ * 现在按语义判：
+ *   - **跑着**：还没有「最终答案」这回事，过程里的每句说明都是叙述 → 全部一个字号（不来回跳）；
+ *   - **跑完**：只有整轮最后那段结论（且它之后没有又去动手）算正文，其余都是过程叙述。
+ * 这样「结论」永远是正文号，「过程里说的话」永远是叙述号，两档不会在同一层里混用。
  */
-export function processView(input: ProcessFold): ProcessView {
-	if (input.manual !== null) {
-		if (input.manual) return "all";
-		return input.running ? "tail" : "collapsed";
-	}
-	if (input.running) return "tail";
-	if (!input.hasAnswer) return "all";
-	return !input.autoCollapse && input.defaultOpen ? "all" : "collapsed";
+export function isNarrationText(input: {
+	index: number;
+	lastAnswerAt: number;
+	lastProcessAt: number;
+	running: boolean;
+}): boolean {
+	if (input.running) return true;
+	return !(input.index === input.lastAnswerAt && input.lastAnswerAt > input.lastProcessAt);
 }
 
 /**
- * 最新一组的起点（`tail` 模式从这里画到最后）。
+ * 过程区怎么展（手动优先 → 跑着：收 / 全铺开 → 跑完：收 / 交回两个默认开关）。
  *
- * 组的边界在「新开一段思考」：思考 + 它后面的说明 + 它引发的工具算一组。
- * 注意段和组不是一一对应：中间没有说话时，一个过程段里会挤好几组（想 → 工具 → 想 → 工具），
- * 所以返回的是 { 段下标, 组下标 }，不光是一个下标。
- * 一次思考都没有（直接调工具）时退到最后一个过程段的开头；再没有就 null（纯文字回复）。
+ * 两种时段各有一个开关，都只有「收 / 不收」两种结果：
+ *   - **跑着**：看设置里「跑时自动折叠」
+ *     - 勾上 → `collapsed`：只剩那一行秒表 + 底下的实时动作行（正在跑哪条命令）；
+ *     - 不勾（默认）→ `all`：完整时间线按发生顺序铺着长（用户 2026-11-02：「没勾上这个，应展开才对吧」）。
+ *   - **跑完**：看「跑完自动折叠」（没结论就摊开；关掉它才交回两个「默认展开」开关）。
+ * 手动点过那条消息时手动优先：点开 = 全铺开，收起 = 一行。
  */
-export function lastGroupStart(segments: readonly FoldSegment[]): { segmentIndex: number; groupIndex: number } | null {
-	let anchor: { segmentIndex: number; groupIndex: number } | null = null;
-	let lastProcess: { segmentIndex: number; groupIndex: number } | null = null;
-	segments.forEach((segment, segmentIndex) => {
-		if (segment.kind !== "process") return;
-		lastProcess = { segmentIndex, groupIndex: 0 };
-		(segment.groups ?? []).forEach((group, groupIndex) => {
-			if ((group.thinking ?? null) !== null) anchor = { segmentIndex, groupIndex };
-		});
-	});
-	return anchor ?? lastProcess;
+export function processView(input: ProcessFold): ProcessView {
+	if (input.manual !== null) return input.manual ? "all" : "collapsed";
+	if (input.running) return input.autoFoldRunning ? "collapsed" : "all";
+	if (!input.hasAnswer) return "all";
+	return !input.autoCollapse && input.defaultOpen ? "all" : "collapsed";
 }
 
 /**

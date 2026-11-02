@@ -294,15 +294,22 @@
 	background: color-mix(in srgb, var(--text) 5%, transparent);
 }
 
-/* 过程里的「说明段」（最后一段结论之前的正文）：字号比正文大一号。
+/* 过程里的「说明段」（最后一段结论之前的正文）：字号明显大一档。
  *
  * 为什么要它：以前它和思考行、工具行几乎同字号又同为深色，夹在中间读起来像又一条工具输出
  * （用户 2026-11-02：「红框里的文案看着不是很明显，字号大一些」）。工具行改成淡色之后，
- * 再把这一档抬到 1.08em，视觉上就成了「人说的话 > 机器步骤」两层。
+ * 再把这一档抬上去，视觉上就成了「人说的话 > 机器步骤」两层。
+ *
+ * 刻度（默认正文字号 14px 时）：
+ *   · 思考 / 工具行 = `--chat-ui-font-size × 0.9655` ≈ 13.5px（淡色）；
+ *   · 本行         = `--chat-font-size × 1.2` ≈ 16.8px → 比机器步骤大 ~1/4，
+ *     一眼能看出哪一段是「人在说话」（用户 2026-11-02 第二次：「再大一点，希望明显一些」）。
  * 基准用 `--chat-font-size`（设置里的正文字号），不用 em —— em 是相对**父级**算的，
  * 而父级不一定是正文字号（实测 1.08em 会算成 17.28px，跳太多）。 */
 .md.md-narration {
-	font-size: calc(var(--chat-font-size, 14px) * 1.08);
+	font-size: calc(var(--chat-font-size, 14px) * 1.2);
+	/* 字大了之后行距跟不上就会挤成一团：固定 1.6，跟正文的观感一致 */
+	line-height: 1.6;
 }
 
 /* 「过程」容器：这一轮的所有渲染单元（过程段与正文按发生顺序交错）。
@@ -427,7 +434,8 @@
 	text-align: left;
 	cursor: default;
 	color: var(--text-dim);
-	font-size: calc(var(--chat-ui-font-size, 12px) * 0.9655);
+	/* 和工序行同档（0.931 ≈ 13px）：它是「正在跑的那一步」，排在同一列里 */
+	font-size: calc(var(--chat-ui-font-size, 12px) * 0.931);
 }
 
 /* 有全文可看时才是能点的：悬停给一点反馈，不然没人知道点得动 */
@@ -622,7 +630,9 @@
 	/* 过程行统一再淡一档（用户 2026-11-02）：思考、工具卡都用 --text-whisper */
 	color: var(--text-whisper);
 	font: inherit;
-	font-size: calc(var(--chat-ui-font-size, 12px) * 0.9655);
+	/* 工序行再压一档（0.9655 → 0.931 ≈ 13px）：跟工序行（.tool-name / .tool-args）**同档**，
+	 * 比过程里的说明段（1.2 ≈ 16.8px）低近 30% —— 两层一眼分得开（用户 2026-11-02：「再压小一档」） */
+	font-size: calc(var(--chat-ui-font-size, 12px) * 0.931);
 	text-align: left;
 	padding: 3px 6px;
 	cursor: pointer;
@@ -669,7 +679,8 @@
 	padding: 6px 10px 8px;
 	border-top: 1px solid var(--border);
 	color: var(--text-dim);
-	font-size: calc(var(--chat-ui-font-size, 12px) * 0.9655);
+	/* 跟随钩子行（.thinking-head）同档：否则展开前小、展开后变大，一切换就跳字 */
+	font-size: calc(var(--chat-ui-font-size, 12px) * 0.931);
 	line-height: 1.6;
 	white-space: pre-wrap;
 	overflow-wrap: anywhere;

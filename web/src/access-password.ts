@@ -11,6 +11,7 @@
  *   - POST 落盘到 `<dataDir>/password`，立即生效，不用重启。
  * 远程（域名 / 局域网 IP / 隧道）来问只会拿到 403 —— 这里也就不显示表单。
  */
+import { tNow } from "./use-language.ts";
 
 type PasswordResult = { ok: true; set: boolean } | { ok: false; error: string };
 
@@ -25,7 +26,9 @@ async function readBody(response: Response): Promise<Record<string, unknown> | n
 }
 
 function errorOf(body: Record<string, unknown> | null, status: number): string {
-	return typeof body?.error === "string" && body.error !== "" ? body.error : `请求失败（HTTP ${status}）`;
+	return typeof body?.error === "string" && body.error !== ""
+		? body.error
+		: tNow(`请求失败（HTTP ${status}）`, `Request failed (HTTP ${status})`);
 }
 
 /** 现在有没有设访问密码（只回布尔值） */
@@ -36,7 +39,7 @@ export async function fetchAccessPasswordStatus(): Promise<PasswordResult> {
 		if (!response.ok || body?.ok !== true) return { ok: false, error: errorOf(body, response.status) };
 		return { ok: true, set: body.set === true };
 	} catch {
-		return { ok: false, error: "网络异常，请重试" };
+		return { ok: false, error: tNow("网络异常，请重试", "Network error — try again") };
 	}
 }
 
@@ -57,6 +60,6 @@ export async function saveAccessPassword(password: string): Promise<PasswordResu
 		if (!response.ok || body?.ok !== true) return { ok: false, error: errorOf(body, response.status) };
 		return { ok: true, set: true };
 	} catch {
-		return { ok: false, error: "网络异常，请重试" };
+		return { ok: false, error: tNow("网络异常，请重试", "Network error — try again") };
 	}
 }

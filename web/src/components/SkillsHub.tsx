@@ -212,7 +212,11 @@ export function SkillsHub({
 								className="btn btn-tiny btn-primary-add"
 								disabled={installing !== null || skill.installed === true}
 								onClick={() => void install(skill)}
-								title={skill.installed ? "本机已有同名目录" : `装到 ${root}/${skill.slug}`}
+								title={
+									skill.installed
+										? t("本机已有同名目录", "A folder with this name already exists")
+										: t(`装到 ${root}/${skill.slug}`, `Installs to ${root}/${skill.slug}`)
+								}
 							>
 								{installing === skill.slug
 									? t("安装中…", "Installing…")

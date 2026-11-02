@@ -296,6 +296,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		},
 		isTurnActive: (id) => turns.has(id),
 		pushSnapshot,
+		log: options.log,
 	});
 
 	const refreshModels = createModelRefresher({ engine, state });

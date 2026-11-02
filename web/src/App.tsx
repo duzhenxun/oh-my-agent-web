@@ -91,6 +91,15 @@ import { StatusBar } from "./components/StatusBar.tsx";
 import { useT } from "./use-language.ts";
 import { useBrandName } from "./use-brand-name.ts";
 
+/**
+ * 两个「缺省空数组」常置。
+ *
+ * 写成内联 `[]` / `?? []` 时每次渲染都是**新引用**，会把下层 `useMemo`（MessageList 的消息渲染、
+ * 子代理卡片分配）的依赖打穿 —— 看起来 memo 了，实际每帧都在重算。
+ */
+const EMPTY_MESSAGES: UiMessage[] = [];
+const EMPTY_SUBAGENT_RUNS: [] = [];
+
 export function App() {
 	const t = useT();
 	// 顶栏自称（logo 后面那串）：设置 → 外观 里可以隐藏或改名（本机偏好）
@@ -727,13 +736,19 @@ export function App() {
 			const id = `term:upgrade:${Date.now().toString(36)}`;
 			setPanelItems((current) => [
 				...current,
-				{ id, kind: "terminal", cwd: workspaceRoot, label: "终端 · 升级", initialCommand: command },
+				{
+					id,
+					kind: "terminal",
+					cwd: workspaceRoot,
+					label: t("终端 · 升级", "Terminal · upgrade"),
+					initialCommand: command,
+				},
 			]);
 			setActiveItem(id);
 			setPreviewVisible(true);
 			setPanelLanding(false);
 		},
-		[workspaceRoot],
+		[workspaceRoot, t],
 	);
 	const preview = previewCache && previewCache.conversationId !== activeId ? previewCache : null;
 	/**
@@ -750,7 +765,8 @@ export function App() {
 	 * 「新会话第一次发文字的时候，屏幕上会闪现出来一些别的文字，好像串台」）。
 	 * 没 新会话屏 的建会话入口（斜杠 `/new`、新建项目对话框）也走这一位，效果一样：空对话。
 	 */
-	const messages = newSession || pendingNewChat ? [] : (preview?.messages ?? snapshot?.active.messages ?? []);
+	const messages =
+		newSession || pendingNewChat ? EMPTY_MESSAGES : (preview?.messages ?? snapshot?.active.messages ?? EMPTY_MESSAGES);
 	// 给「点消息里的文件链接」用（声明在它上面的那个 callback 通过 ref 取最新一份）
 	messagesRef.current = messages;
 	/**
@@ -975,6 +991,19 @@ export function App() {
 	/** 能不能从某条消息派生分支：引擎得有这能力，临时对话不行（没有会话文件可 fork） */
 	const canFork = (snapshot?.engineCapabilities.forkChat ?? false) && !ephemeralActive;
 	/**
+	 * 从某条消息派生分支。
+	 *
+	 * 必须 `useCallback`：这个函数会当作 prop 传给 `MessageView`，而它是 `memo` 的 ——
+	 * 每次渲染新建一个箭头函数会让 memo 全部失效，一个流式增量（甚至一次悬停）就把整屏消息
+	 * 连同 Markdown 一起重新解析。手机上就是「切会话、等回复时一顿一顿」。
+	 */
+	const forkActiveMessage = useCallback(
+		(messageId: string) => {
+			if (activeSessionId) forkSession(activeSessionId, messageId);
+		},
+		[activeSessionId],
+	);
+	/**
 	 * 临时对话能不能「转正」（保存为正式对话）：要引擎把内存会话落成真会话文件。
 	 *
 	 * 跟右侧那条临时聊天同一条判据（见 `SideChat.tsx`）：codex 这类引擎没有这一位，
@@ -982,10 +1011,22 @@ export function App() {
 	 */
 	const canPersistEphemeral = snapshot?.engineCapabilities.ephemeralChat === true;
 	/**
-	 * 本轮起点 = 最后一条用户消息的时间。
-	 * 顶栏的子代理徽标只认这一轮：发新消息之后，上一问的子代理（以及那个小图标）应当退场。
+	 * 本轮起点 = 这一轮真正从哪开始（顶栏的子代理徽标只认这一轮）。
+	 *
+	 * 优先用**服务端**给的那一份（`runningByConversation` 里的 `turnStartedAt`，在发消息那一刻定下、
+	 * 不会再改）：它是唯一不受「插队」影响的口径 —— 插队消息是这一轮**内部**补的话，
+	 * 时间晚于本轮子代理的开始时间，拿它当起点会把没跑完的子代理全切掉（用户 2026-11-02：
+	 * 「子代理在跑时刷新，顶栏的子代理图标就没了」）。没有在跑的回合时，回落到最后一条
+	 * **不是插队**的用户消息。
 	 */
-	const turnStartedAt = turnStartedAtOf(messages);
+	const runningTurnStart = (() => {
+		const conversation = snapshot?.active.conversationId ?? null;
+		if (!snapshot || !conversation) return null;
+		const own = snapshot.runningByConversation[conversation]?.turnStartedAt;
+		if (typeof own === "number") return own;
+		return snapshot.running.conversationId === conversation ? (snapshot.running.turnStartedAt ?? null) : null;
+	})();
+	const turnStartedAt = runningTurnStart ?? turnStartedAtOf(messages);
 	/** 归本会话（或与会话无关）的错误才显示 */
 	const visibleError =
 		lastError &&
@@ -1705,13 +1746,9 @@ export function App() {
 											actions={snapshot.actions ?? []}
 											// 子代理卡片：按「开始时间」分配给各自那条助手消息，嵌在消息流里
 											// （过程之后、正文之前）；新一轮派的会在下面新长一块，不复用旧的
-											subagentRuns={snapshot.subagents ?? []}
+											subagentRuns={snapshot.subagents ?? EMPTY_SUBAGENT_RUNS}
 											// 从这条消息派生新会话（分支）：服务端建好后自动切过去，原对话不动
-											onFork={
-												canFork && snapshot.active.conversationId
-													? (messageId: string) => forkSession(snapshot.active.conversationId as string, messageId)
-													: undefined
-											}
+											onFork={canFork && activeSessionId ? forkActiveMessage : undefined}
 											/* 选中文字后的动作：左边收进这条会话（引用 + 编号），右边带去临时聊天 */
 											onAddSelectionToSession={addSelectionToSession}
 											onAskSelectionInSideChat={askInSideChat}

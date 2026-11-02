@@ -249,6 +249,8 @@
 	flex: 1 1 auto;
 	min-height: 0;
 	overflow: auto;
+	/* 同 `.main`：面板里的临时聊天也不许横向滚动（图比面板宽时只该在自己里面缩） */
+	overflow-x: hidden;
 	display: flex;
 	flex-direction: column;
 	gap: 8px;

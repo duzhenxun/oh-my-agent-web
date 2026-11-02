@@ -18,19 +18,64 @@ export type ThemeId = "light" | "light-warm" | "light-cool" | "dark" | "dark-nig
 export type ThemeDef = {
 	id: ThemeId;
 	name: string;
+	/** 英文名 / 英文说明：主题名是固定短词，`t()` 的通用词条表里放不下（也不想让「暖纸」这种词污染那张表） */
+	nameEn: string;
 	hint: string;
+	hintEn: string;
 	/** 三色预览：[底, 卡片, 主色]，设置面板的色卡直接用 */
 	swatch: [string, string, string];
 };
 
 /** 3 浅 + 3 深。第一个浅色就是改版前的默认配色，所以老用户升级后视觉不变。 */
 export const THEMES: readonly ThemeDef[] = [
-	{ id: "light", name: "清亮白", hint: "白底蓝调，默认", swatch: ["#ffffff", "#eef1f5", "#1f6feb"] },
-	{ id: "light-warm", name: "暖纸", hint: "米白赭石，偏护眼", swatch: ["#fbf7f0", "#eee4d4", "#b4530a"] },
-	{ id: "light-cool", name: "雾青", hint: "冷灰墨绿，最冷静", swatch: ["#f6f9f9", "#e3ecec", "#0f766e"] },
-	{ id: "dark", name: "东京夜", hint: "蓝紫夜色，Tokyo Night", swatch: ["#1a1b26", "#292e42", "#7aa2f7"] },
-	{ id: "dark-night", name: "摩卡", hint: "低饱和紫灰，Catppuccin", swatch: ["#1e1e2e", "#313244", "#cba6f7"] },
-	{ id: "dark-warm", name: "北境", hint: "冷灰青，最冷静，Nord", swatch: ["#2e3440", "#434c5e", "#88c0d0"] },
+	{
+		id: "light",
+		name: "清亮白",
+		nameEn: "Bright",
+		hint: "白底蓝调，默认",
+		hintEn: "White with blue accents (default)",
+		swatch: ["#ffffff", "#eef1f5", "#1f6feb"],
+	},
+	{
+		id: "light-warm",
+		name: "暖纸",
+		nameEn: "Warm paper",
+		hint: "米白赭石，偏护眼",
+		hintEn: "Cream and ochre, easy on the eyes",
+		swatch: ["#fbf7f0", "#eee4d4", "#b4530a"],
+	},
+	{
+		id: "light-cool",
+		name: "雾青",
+		nameEn: "Misty teal",
+		hint: "冷灰墨绿，最冷静",
+		hintEn: "Cool grey and pine, the calmest",
+		swatch: ["#f6f9f9", "#e3ecec", "#0f766e"],
+	},
+	{
+		id: "dark",
+		name: "东京夜",
+		nameEn: "Tokyo night",
+		hint: "蓝紫夜色，Tokyo Night",
+		hintEn: "Blue-violet night, Tokyo Night",
+		swatch: ["#1a1b26", "#292e42", "#7aa2f7"],
+	},
+	{
+		id: "dark-night",
+		name: "摩卡",
+		nameEn: "Mocha",
+		hint: "低饱和紫灰，Catppuccin",
+		hintEn: "Muted purple-grey, Catppuccin",
+		swatch: ["#1e1e2e", "#313244", "#cba6f7"],
+	},
+	{
+		id: "dark-warm",
+		name: "北境",
+		nameEn: "Nord",
+		hint: "冷灰青，最冷静，Nord",
+		hintEn: "Cool grey-teal, the calmest, Nord",
+		swatch: ["#2e3440", "#434c5e", "#88c0d0"],
+	},
 ];
 
 const THEME_STORAGE_KEY = "agent-web.theme";

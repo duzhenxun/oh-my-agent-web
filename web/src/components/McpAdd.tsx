@@ -236,7 +236,8 @@ export function McpAdd({
 			</div>
 
 			<div className="side-panel-hint">
-				{t("写进 pi 自己的", "Written into pi's own")} <code>mcp.json</code>，
+				{t("写进 pi 自己的", "Written into pi's own")} <code>mcp.json</code>
+				{t("，", ", ")}
 				<strong>{t("对新会话生效", "effective for new sessions")}</strong>
 				{t(
 					"。同名不会覆盖：会自动加序号（预览里会写出来）。需要密钥的服务器，先把值写成",

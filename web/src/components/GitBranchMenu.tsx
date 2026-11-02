@@ -51,7 +51,9 @@ export function GitBranchMenu({
 	return (
 		<ProjectMenuPopover anchor={anchor} className="proj-menu files-branch-menu" align={align} onClose={onClose}>
 			<div className="files-branch-menu-head">
-				<span className="files-branch-menu-title">{confirm ? "确认切换分支" : "切换分支"}</span>
+				<span className="files-branch-menu-title">
+					{confirm ? t("确认切换分支", "Confirm branch switch") : t("切换分支")}
+				</span>
 				<button
 					type="button"
 					className="files-branch-refresh"
@@ -68,8 +70,12 @@ export function GitBranchMenu({
 			{confirm ? (
 				<div className="files-branch-confirm">
 					<div className="files-branch-confirm-text">
-						⚠️ 工作区有 <b>{confirm.total}</b> {t("个未提交改动。切到")} <b>{confirm.name}</b> 会把它们带过去 （git
-						不会丢弃，放不下的会拒绝切换）。
+						⚠️ {t("工作区有", "The working tree has")} <b>{confirm.total}</b>{" "}
+						{t("个未提交改动。切到", "uncommitted change(s). Switching to")} <b>{confirm.name}</b>{" "}
+						{t(
+							"会把它们带过去 （git 不会丢弃，放不下的会拒绝切换）。",
+							"carries them over (git never discards them; it refuses the switch if they do not fit).",
+						)}
 					</div>
 					{confirm.files.length > 0 ? (
 						<ul className="files-branch-confirm-files">
@@ -92,7 +98,7 @@ export function GitBranchMenu({
 							disabled={pending !== null}
 							onClick={() => void pick(confirm.name, true)}
 						>
-							{pending === confirm.name ? "切换中…" : "仍然切换"}
+							{pending === confirm.name ? t("切换中…") : t("仍然切换", "Switch anyway")}
 						</button>
 						<button
 							type="button"
@@ -100,12 +106,14 @@ export function GitBranchMenu({
 							disabled={pending !== null}
 							onClick={() => setConfirm(null)}
 						>
-							取消
+							{t("取消")}
 						</button>
 					</div>
 				</div>
 			) : git.branches.length === 0 ? (
-				<div className="files-branch-hint">{git.error ?? "这个仓库还没有别的分支"}</div>
+				<div className="files-branch-hint">
+					{git.error ?? t("这个仓库还没有别的分支", "This repo has no other branches yet")}
+				</div>
 			) : (
 				<div className="files-branch-list">
 					{git.branches.map((name) => {
@@ -117,7 +125,11 @@ export function GitBranchMenu({
 								role="menuitemradio"
 								aria-checked={current}
 								className={`proj-menu-item files-branch-item${current ? " files-branch-item-current" : ""}`}
-								title={current ? `${name}（当前分支）` : `切换到 ${name}`}
+								title={
+									current
+										? t(`${name}（当前分支）`, `${name} (current branch)`)
+										: t(`切换到 ${name}`, `Switch to ${name}`)
+								}
 								disabled={pending !== null}
 								onClick={() => void pick(name)}
 							>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { SCOPE_LABEL, commandLine, serverKey, type Server, type View } from "../mcp-view.ts";
+import { SCOPE_LABEL, SCOPE_LABEL_EN, commandLine, serverKey, type Server, type View } from "../mcp-view.ts";
 import { useT } from "../use-language.ts";
 
 /**
@@ -274,7 +274,7 @@ export function EngineMcpView(props: { engine: string; source?: string }) {
 					) : (
 						<>
 							<div className="mcp-detail-head">
-								<span className="mcp-badge">{SCOPE_LABEL[current.scope]}</span>
+								<span className="mcp-badge">{t(SCOPE_LABEL[current.scope], SCOPE_LABEL_EN[current.scope])}</span>
 								<span className="mcp-detail-name">{current.name}</span>
 								<span className="topbar-spacer" />
 								{can?.toggle ? (
@@ -325,7 +325,8 @@ export function EngineMcpView(props: { engine: string; source?: string }) {
 									</span>
 								</Row>
 								<Row label={t("作用域", "Scope")}>
-									{SCOPE_LABEL[current.scope]} · <code className="mono">{current.source}</code>
+									{t(SCOPE_LABEL[current.scope], SCOPE_LABEL_EN[current.scope])} ·{" "}
+									<code className="mono">{current.source}</code>
 								</Row>
 								<Row label={t("传输", "Transport")}>{current.transport}</Row>
 								<Row label={current.transport === "http" ? "URL" : t("命令", "Command")}>

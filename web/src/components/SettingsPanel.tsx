@@ -17,22 +17,26 @@ import { useAppbarScale } from "../use-appbar-scale.ts";
 import { useSidebarFonts } from "../use-sidebar-font.ts";
 import {
 	PROCESS_AUTO_COLLAPSE_KEY,
+	PROCESS_AUTO_FOLD_RUNNING_KEY,
 	THINKING_OPEN_KEY,
 	TOOL_OPEN_KEY,
 	SELECTION_TOOLBAR_KEY,
 	APPBAR_ITEM_LABEL,
+	APPBAR_ITEM_LABEL_EN,
 	APPBAR_PART_KEY,
 	APPBAR_PART_LABEL,
+	APPBAR_PART_LABEL_EN,
 	APPBAR_PARTS,
 	APPBAR_TEMPCHAT_DEFAULT,
 	APPBAR_TEMPCHAT_KEY,
 	APPBAR_TOGGLES,
 	COMPOSER_ITEM_KEY,
 	COMPOSER_ITEM_LABEL,
+	COMPOSER_ITEM_LABEL_EN,
 	COMPOSER_TOGGLES,
-	COST_KEY,
 	STATUSBAR_ITEM_KEY,
 	STATUSBAR_ITEM_LABEL,
+	STATUSBAR_ITEM_LABEL_EN,
 	STATUSBAR_TOGGLES,
 	SESSIONS_PER_PROJECT_DEFAULT,
 	SESSIONS_PER_PROJECT_KEY,
@@ -45,12 +49,10 @@ import {
 	TERMINAL_FONT_MIN,
 	TERMINAL_FONT_MAX,
 	type AppbarPart,
-	type AppbarToggle,
 	type ComposerToggle,
 	type StatusbarToggle,
 } from "../ui-prefs.ts";
 import { usePrefFlags } from "../use-pref-flags.ts";
-import { showCostDefault } from "../use-show-cost.ts";
 import { useStoredBool } from "../use-stored-bool.ts";
 import { useStoredNumber } from "../use-stored-number.ts";
 import { useAppbarItems } from "../use-appbar-items.ts";
@@ -72,34 +74,8 @@ import { fetchAccessPasswordStatus, saveAccessPassword } from "../access-passwor
 import { ShortcutsPane } from "./ShortcutsPane.tsx";
 
 const DEFAULT_PLACEHOLDER = "继续\n总结一下\n详细解释一下";
-
-/**
- * 设置里那几组勾选框的英文名（中文名在 ui-prefs.ts 里，跟顶栏 / 状态栏按钮共用同一份，
- * 那些位置还没接 i18n，所以这里单独给一张英文表，改动面限制在设置面板内）。
- */
-const APPBAR_ITEM_EN: Record<AppbarToggle, string> = {
-	models: "Models",
-	skills: "Skills",
-	push: "Push",
-	voice: "Voice",
-	plugins: "Plugins",
-	mcp: "MCP",
-	agents: "Subagents",
-};
-const COMPOSER_ITEM_EN: Record<ComposerToggle, string> = {
-	templates: "Templates",
-	think: "Think",
-	quick: "Quick phrases",
-};
-const STATUSBAR_ITEM_EN: Record<StatusbarToggle, string> = {
-	queued: "Queued",
-	running: "Running",
-	context: "Context",
-};
-const APPBAR_PART_EN: Record<AppbarPart, string> = {
-	label: "Show labels",
-	icon: "Show icons",
-};
+/** 上面那串占位示例的英文（三行示例，分行和中文那串一一对应） */
+const DEFAULT_PLACEHOLDER_EN = "Continue\nSummarize\nExplain in detail";
 
 type SettingsTab = "general" | "appearance" | "theme" | "language" | "ui" | "shortcuts" | "remote";
 
@@ -330,7 +306,7 @@ function RemoteSettings() {
 }
 
 /**
- * 语言：中文 / English（默认中文）。
+ * 语言：English / 中文（**英文是默认**；浏览器是中文的首次打开用中文）。
  *
  * 立刻生效、不用保存 —— 和主题同一类：只改这台机器上的显示。
  * 选项做成两张大卡而不是下拉：只有两种语言，看得见「现在选的是哪个」比少占一行更重要。
@@ -361,15 +337,17 @@ function LanguageSettings() {
 							/>
 							<span className="settings-lang-name">{item.label}</span>
 							<span className="settings-lang-hint">
-								{item.id === "zh" ? t("默认", "Default") : t("Beta · 逐块补齐中", "Beta · being filled in")}
+								{item.id === "en"
+									? t("默认", "Default")
+									: t("浏览器是中文时默认", "Default when your browser is Chinese")}
 							</span>
 						</label>
 					))}
 				</div>
 				<div className="settings-hint">
 					{t(
-						"点一下立即生效，不用保存。选择存在本机（localStorage），刷新后保持，不影响服务端和其它设备；首次使用是中文。",
-						"Takes effect immediately, nothing to save. The choice is stored on this machine (localStorage) and survives reloads; it does not touch the server or your other devices. Chinese is the default.",
+						"点一下立即生效，不用保存。选择存在本机（localStorage），刷新后保持，不影响服务端和其它设备；默认英文，浏览器语言是中文的首次打开用中文。",
+						"Takes effect immediately, nothing to save. The choice is stored on this machine (localStorage) and survives reloads; it does not touch the server or your other devices. English is the default — a Chinese browser gets Chinese on first launch.",
 					)}
 				</div>
 			</div>
@@ -439,7 +417,7 @@ function GeneralSettings() {
 				<textarea
 					className="settings-textarea"
 					value={text}
-					placeholder={DEFAULT_PLACEHOLDER}
+					placeholder={t(DEFAULT_PLACEHOLDER, DEFAULT_PLACEHOLDER_EN)}
 					onChange={(event) => {
 						setText(event.target.value);
 						setDirty(true);
@@ -522,7 +500,6 @@ function GeneralSettings() {
 			 * 「标注」排在它们前面：它管的是「选字之后那一小下」，比过程卡片更靠近正文。 */}
 			<AnnotationSettings />
 			<ProcessSettings />
-			<UsageSettings />
 		</>
 	);
 }
@@ -570,6 +547,7 @@ function ProcessSettings() {
 	const [thinkingOpen, setThinkingOpen] = useStoredBool(THINKING_OPEN_KEY, false);
 	const [toolOpen, setToolOpen] = useStoredBool(TOOL_OPEN_KEY, false);
 	const [autoCollapse, setAutoCollapse] = useStoredBool(PROCESS_AUTO_COLLAPSE_KEY, true);
+	const [autoFoldRunning, setAutoFoldRunning] = useStoredBool(PROCESS_AUTO_FOLD_RUNNING_KEY, false);
 	return (
 		<>
 			<div className="settings-panel">
@@ -577,6 +555,14 @@ function ProcessSettings() {
 					<span>{t("过程", "Process")}</span>
 					<span className="settings-sub">{t("思考块 + 工具卡", "Thinking blocks + tool cards")}</span>
 				</div>
+				<label className="settings-toggle">
+					<input
+						type="checkbox"
+						checked={autoFoldRunning}
+						onChange={(event) => setAutoFoldRunning(event.target.checked)}
+					/>
+					{t("跑时自动折叠思考与工具调用", "Collapse thinking and tool calls while a turn is running")}
+				</label>
 				<label className="settings-toggle">
 					<input type="checkbox" checked={autoCollapse} onChange={(event) => setAutoCollapse(event.target.checked)} />
 					{t("跑完自动折叠思考与工具调用", "Collapse thinking and tool calls when a turn ends")}
@@ -591,8 +577,8 @@ function ProcessSettings() {
 				</label>
 				<div className="settings-hint">
 					{t(
-						"思考与正文按发生的顺序排（说一句 → 调工具 → 再说一句）。第一条管整个「过程」：跑着的时候**只显示最新一组里的那句说明**（思考和命令卡都不画，正在跑的命令由最底下的状态行实时报、带秒表；顶上那行「N 段思考 · N 次工具 · 耗时」也是秒表），点它可以展开完整时间线；**跑完自动收起**（最后一段结论之前的一切都进折叠，外面只留最后的输出），再点开也是全部。下面两个开关决定单独某一块默认是不是展开的。",
-						'The first option covers the whole "process": while the turn runs **only the newest group is shown** (the last thinking block + its narration + the running command — groups swap in place instead of piling up, with the "N thinking · N tools · Xs" stopwatch on top), and clicking it expands the full timeline; when the turn ends it **folds away automatically** (everything before the final conclusion, leaving only the last answer), and clicking it again shows everything. The two switches below decide whether an individual block is expanded by default.',
+						"思考与正文按发生的顺序排（说一句 → 调工具 → 再说一句）。第一条管**跑着的时候**：不勾（默认）就把思考和工具按发生顺序完整铺开，勾上则只留顶上那行秒表 + 最底下的实时动作行（正在跑哪条命令）。第二条管**跑完那一刻**：勾上（默认）就把最后一段结论之前的一切收成一行，外面只留最后的输出；不勾就保持跑完时的样子。下面两个开关决定单独某一块默认是不是展开的。不管哪一条，点那一行都能立刻展开 / 收起。",
+						"The hints run in the order things happened. The first option controls **while the turn runs**: unticked (default), thinking and tool calls are laid out in full, in order; ticked, only the stopwatch line and the live activity row (the command being run) stay. The second controls **the moment the turn ends**: ticked (default), everything before the final conclusion folds into one line, leaving only the last answer; unticked, it stays as it was. The two switches below decide whether an individual block is expanded by default. Either way, clicking the line expands or collapses it immediately.",
 					)}
 				</div>
 			</div>
@@ -749,7 +735,7 @@ function AppbarSettings() {
 						<span className="settings-check-icon" aria-hidden="true">
 							<PanelIcon name={item} />
 						</span>
-						{t(APPBAR_ITEM_LABEL[item], APPBAR_ITEM_EN[item])}
+						{t(APPBAR_ITEM_LABEL[item], APPBAR_ITEM_LABEL_EN[item])}
 					</label>
 				))}
 				{/* 「临时会话」排在这一排的最后：它不属于「打开哪个面板」那一类，
@@ -776,7 +762,8 @@ function AppbarSettings() {
 function AppbarPartsSettings() {
 	const t = useT();
 	const [shown, setShown] = usePrefFlags(APPBAR_PARTS, APPBAR_PART_KEY);
-	const icons: Record<AppbarPart, string> = { label: "文", icon: "图" };
+	// 图标位里的那个单字：中文是「文 / 图」，英文换成同样一眼能认出的字形
+	const icons: Record<AppbarPart, string> = { label: t("文", "T"), icon: t("图", "▣") };
 	return (
 		<div className="settings-panel">
 			<div className="settings-head">
@@ -790,7 +777,7 @@ function AppbarPartsSettings() {
 						<span className="settings-check-icon" aria-hidden="true">
 							{icons[part]}
 						</span>
-						{t(APPBAR_PART_LABEL[part], APPBAR_PART_EN[part])}
+						{t(APPBAR_PART_LABEL[part], APPBAR_PART_LABEL_EN[part])}
 					</label>
 				))}
 			</div>
@@ -826,7 +813,7 @@ function StatusbarSettings() {
 						<span className="settings-check-icon" aria-hidden="true">
 							{icons[item]}
 						</span>
-						{t(STATUSBAR_ITEM_LABEL[item], STATUSBAR_ITEM_EN[item])}
+						{t(STATUSBAR_ITEM_LABEL[item], STATUSBAR_ITEM_LABEL_EN[item])}
 					</label>
 				))}
 			</div>
@@ -834,40 +821,6 @@ function StatusbarSettings() {
 				{t(
 					"「审批模式」和右边的「顶部」开关始终留着 —— 它们是操作入口，不是一块信息。",
 					"Approval mode and the “Top” toggle on the right always stay: they are controls, not readouts.",
-				)}
-			</div>
-		</div>
-	);
-}
-
-/**
- * 用量：金额（$）显不显示 —— 子代理卡片条 / 顶栏浮层 / 消息尾注上的那些数字。
- *
- * 默认值按设备给：**手机默认不显示**（那一行本来就挤），桌面上默认显示。
- * 仍然是本机偏好，手机勾上只影响手机。
- */
-function UsageSettings() {
-	const t = useT();
-	const [showCost, setShowCost] = useStoredBool(COST_KEY, showCostDefault());
-	return (
-		<div className="settings-panel">
-			<div className="settings-head">
-				<span>{t("用量", "Usage")}</span>
-				<span className="settings-sub">{t("对话里那几处统计", "The readouts inside the conversation")}</span>
-			</div>
-			<div className="settings-checks">
-				<label className="settings-toggle settings-check">
-					<input type="checkbox" checked={showCost} onChange={(event) => setShowCost(event.target.checked)} />
-					<span className="settings-check-icon" aria-hidden="true">
-						💲
-					</span>
-					{t("花费", "Cost")}
-				</label>
-			</div>
-			<div className="settings-hint">
-				{t(
-					"手机上默认不勾（一行放不下的那点宽度留给 token 和耗时）；桌面上默认勾上。手机和桌面各记各的。",
-					"Off by default on phones (that width goes to tokens and duration), on by default on desktop. Stored per device.",
 				)}
 			</div>
 		</div>
@@ -896,7 +849,7 @@ function ComposerSettings() {
 						<span className="settings-check-icon" aria-hidden="true">
 							{icons[item]}
 						</span>
-						{t(COMPOSER_ITEM_LABEL[item], COMPOSER_ITEM_EN[item])}
+						{t(COMPOSER_ITEM_LABEL[item], COMPOSER_ITEM_LABEL_EN[item])}
 					</label>
 				))}
 			</div>
@@ -1238,12 +1191,13 @@ function AppbarScaleControl() {
 
 /** 一张主题卡：三色预览 + 名字 + 一句说明。点一下立刻切换（没有「保存」） */
 function ThemeCard({ theme, active, onPick }: { theme: ThemeDef; active: boolean; onPick: () => void }) {
+	const t = useT();
 	return (
 		<button
 			type="button"
 			className={`theme-card${active ? " theme-card-on" : ""}`}
 			aria-pressed={active}
-			title={`${theme.name} — ${theme.hint}`}
+			title={`${t(theme.name, theme.nameEn)} — ${t(theme.hint, theme.hintEn)}`}
 			onClick={onPick}
 		>
 			{/* 预览块直接用色板里的三种颜色画，不额外维护一套缩略图 */}
@@ -1253,14 +1207,14 @@ function ThemeCard({ theme, active, onPick }: { theme: ThemeDef; active: boolean
 				<span className="theme-preview-dot" style={{ background: theme.swatch[2] }} />
 			</span>
 			<span className="theme-name">
-				{theme.name}
+				{t(theme.name, theme.nameEn)}
 				{active ? (
 					<span className="theme-check" aria-hidden="true">
 						✓
 					</span>
 				) : null}
 			</span>
-			<span className="theme-hint">{theme.hint}</span>
+			<span className="theme-hint">{t(theme.hint, theme.hintEn)}</span>
 		</button>
 	);
 }

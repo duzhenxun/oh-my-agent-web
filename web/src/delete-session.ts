@@ -20,6 +20,7 @@
 import { forgetCachedMessages } from "./session-cache.ts";
 import { forgetDraft } from "./store.ts";
 import { showToast } from "./toast.ts";
+import { tNow } from "./use-language.ts";
 import { requestState } from "./ws.ts";
 
 type RemoveOutcome = { ok: true; mode?: string } | { ok: false; message: string };
@@ -60,18 +61,31 @@ async function removeOne(id: string): Promise<RemoveOutcome> {
  * 一句话把真相说出来，别让人以为真删了（重启服务端之后就没了）。
  */
 const STALE_SERVER = "服务端还是旧版本：只改了名、没真删（重启服务后重试，或先把控制台里的服务端重构一下）";
+const STALE_SERVER_EN =
+	"The server is an old build: the file was only renamed, not deleted (restart the server and try again)";
 
 /** 删一条（确认已经在上层做过）：成功就刷新列表，失败把原因说出来 */
 export function deleteSession(id: string, label: string): void {
 	void (async () => {
 		const result = await removeOne(id);
 		if (!result.ok) {
-			showToast({ text: `彻底删除「${label}」失败：${result.message}`, ttl: 12_000 });
+			showToast({
+				text: tNow(
+					`彻底删除「${label}」失败：${result.message}`,
+					`Could not permanently delete “${label}”: ${result.message}`,
+				),
+				ttl: 12_000,
+			});
 			return;
 		}
 		// 会话没了，它那一格输入框草稿也别留着（否则 id 再被生成时会凭空顶出一句旧话，见 `forgetDraft`）
 		forgetDraft(id);
-		if (result.mode === "file") showToast({ text: `「${label}」${STALE_SERVER}`, ttl: 12_000 });
+		if (result.mode === "file") {
+			showToast({
+				text: tNow(`「${label}」${STALE_SERVER}`, `“${label}” ${STALE_SERVER_EN}`),
+				ttl: 12_000,
+			});
+		}
 		requestState();
 	})();
 }
@@ -80,7 +94,7 @@ export function deleteSession(id: string, label: string): void {
  * 批量删（归档视图的「删除选中」/ 项目菜单的「删除全部会话」）。
  * 服务端接口是单条的，所以顺序发；有一条失败不影响其它条，最后统一收口一条提示。
  */
-export function deleteSessions(ids: string[], label = "选中的会话"): void {
+export function deleteSessions(ids: string[], label = tNow("选中的会话", "the selected sessions")): void {
 	if (ids.length === 0) return;
 	void (async () => {
 		let done = 0;
@@ -95,10 +109,15 @@ export function deleteSessions(ids: string[], label = "选中的会话"): void {
 			} else failures.push(result.message);
 		}
 		requestState();
-		if (staleServer) showToast({ text: `${done} 条${STALE_SERVER}`, ttl: 12_000 });
+		if (staleServer) {
+			showToast({ text: tNow(`${done} 条${STALE_SERVER}`, `${done} session(s): ${STALE_SERVER_EN}`), ttl: 12_000 });
+		}
 		if (failures.length > 0) {
 			showToast({
-				text: `彻底删除${label}：成功 ${done} 条，失败 ${failures.length} 条（${failures[0]}）`,
+				text: tNow(
+					`彻底删除${label}：成功 ${done} 条，失败 ${failures.length} 条（${failures[0]}）`,
+					`Permanently delete ${label}: ${done} succeeded, ${failures.length} failed (${failures[0]})`,
+				),
 				ttl: 12_000,
 			});
 		}

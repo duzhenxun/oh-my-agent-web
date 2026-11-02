@@ -22,7 +22,6 @@ import { compact, costText, countsLabel, durationMs, isActive, totalsOf } from "
 import type { SubagentRunView } from "../types.ts";
 import { AgentsRunCard } from "./AgentsRunCard.tsx";
 import { useT } from "../use-language.ts";
-import { useShowCost } from "../use-show-cost.ts";
 
 /** 折叠状态记在本地：用户收起来了就别再自作主张弹开 */
 const OPEN_KEY = "agent-web:agents-strip-open";
@@ -31,8 +30,6 @@ export function AgentsRunStrip({ runs }: { runs: readonly SubagentRunView[] }) {
 	const t = useT();
 	const snapshot = useAppSelector((state) => state.snapshot);
 	const [now, setNow] = useState(() => Date.now());
-	/** 金额显不显示跟着本机偏好（手机默认不显示，见 use-show-cost.ts） */
-	const showCost = useShowCost();
 	const [open, setOpen] = useState(() => localStorage.getItem(OPEN_KEY) !== "0");
 
 	/**
@@ -54,7 +51,13 @@ export function AgentsRunStrip({ runs }: { runs: readonly SubagentRunView[] }) {
 		.filter((run) => run.status === "queued")
 		.sort((a, b) => a.startedAt - b.startedAt)
 		.forEach((run, index) => {
-			queuedHints.set(run.id, `排队第 ${index + 1} 位 · 等前面跑完自动开（最多同时 ${concurrency} 个）`);
+			queuedHints.set(
+				run.id,
+				t(
+					`排队第 ${index + 1} 位 · 等前面跑完自动开（最多同时 ${concurrency} 个）`,
+					`Queued #${index + 1} · starts when an earlier one finishes (max ${concurrency} at a time)`,
+				),
+			);
 		});
 	/** 有在跑的都要动：1 秒刷一次「多久了」，没有在跑的就不起定时器 */
 	const live = active > 0;
@@ -90,7 +93,9 @@ export function AgentsRunStrip({ runs }: { runs: readonly SubagentRunView[] }) {
 					className="agents-strip-toggle"
 					onClick={() => setOpen((value) => !value)}
 					aria-expanded={open}
-					title={open ? "收起子代理卡片" : "展开子代理卡片"}
+					title={
+						open ? t("收起子代理卡片", "Collapse the subagent cards") : t("展开子代理卡片", "Expand the subagent cards")
+					}
 				>
 					<svg
 						viewBox="0 0 16 16"
@@ -132,19 +137,13 @@ export function AgentsRunStrip({ runs }: { runs: readonly SubagentRunView[] }) {
 							{compact(totals.tokens)} tokens
 						</>
 					) : null}
-					{showCost && totals.cost > 0 ? <> · {costText(totals.cost)}</> : null}
+					{totals.cost > 0 ? <> · {costText(totals.cost)}</> : null}
 				</span>
 			</header>
 			{open ? (
 				<ul className="agents-strip-cards">
 					{ordered.map((run) => (
-						<AgentsRunCard
-							key={run.id}
-							run={run}
-							now={now}
-							queueHint={queuedHints.get(run.id)}
-							showCost={showCost}
-						/>
+						<AgentsRunCard key={run.id} run={run} now={now} queueHint={queuedHints.get(run.id)} />
 					))}
 				</ul>
 			) : null}

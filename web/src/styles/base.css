@@ -93,6 +93,21 @@ body {
 	overflow: hidden;
 	/* 顺带把触控板 / 触摸的「橡皮筋」也关掉：既然不滚了，就别再弹那一下 */
 	overscroll-behavior: none;
+	/**
+	 * 禁止手机浏览器的「文本自动放大」（iOS Safari / WKWebView 的 text autosizing、
+	 * Android Chrome 的 font boosting）。
+	 *
+	 * 它**按文本块**自己决定要不要把字撑大，而且判断规则跟排版没关系 —— 所以同一个会话列表里
+	 * 会出现「有的行变大、有的行不变」，被撑大的行行高也跟着变，整个列表看着参差不齐
+	 * （用户 2026-11-02 截图：两条中英混排的长标题比其它行大一圈）。
+	 * 触发形状是「中文 + 一长串英文混排、整行溢出被裁掉」，纯中文短标题不会。
+	 * 侧栏这几行在 CSS 里只有一条字号（`sidebar.css` 的 `.pi-row`），手机实测每行计算值都是 14px ——
+	 * 变大只可能发生在浏览器那一层，所以在这一层关掉它。
+	 *
+	 * `100%` 而不是 `none`：意思是「就按 CSS 写的 px 渲染」，不是让字变小。
+	 */
+	-webkit-text-size-adjust: 100%;
+	text-size-adjust: 100%;
 	background: var(--bg);
 	color: var(--text);
 	font:
@@ -151,6 +166,14 @@ body {
 .main {
 	flex: 1 1 auto;
 	overflow-y: auto;
+	/**
+	 * 对话区**永远不横向滚动**：内容再宽（图 / 表格 / 长命令）也只能在自己那块里滑。
+	 *
+	 * 没有这一条时，一张比气泡宽的图就能把 `.main` 顶出横向滚动条 —— 那条横滑会带着整块
+	 * 对话一左一右地晃，手机上像「跑版」（用户 2026-11-02：「不要出现左右晃动的感觉」）。
+	 * 宽内容该滚的地方都在自己身上（`.md pre` / `.md table` / `.md-img` 的宽度上限）。
+	 */
+	overflow-x: hidden;
 	position: relative; /* 内部浮层的定位参照（滚动区本身就是那个祖先容器） */
 	min-height: 0;
 	min-width: 0;

@@ -54,7 +54,8 @@
 		"lint:fix": "oxlint --fix server web/src scripts",
 		"format": "prettier --write .",
 		"format:check": "prettier --check .",
-		"icons": "node scripts/make-icons.mjs"
+		"icons": "node scripts/make-icons.mjs",
+		"cues": "node scripts/make-voice-cues.mjs"
 	},
 	"devDependencies": {
 		"@types/express": "^5.0.0",
