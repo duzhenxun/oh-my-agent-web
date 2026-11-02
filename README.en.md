@@ -93,7 +93,7 @@ Two behavioural rules:
 
 - **Starting twice is detected first**: if an instance is already running it only prints the URL (and opens the page) instead of starting a second one — identical for `aw` / `agent-web` / `oh-my-agent-web`.
 - **The foreground run stays quiet**: the terminal only gets one `已启动：…` line plus warn / error; normal logs (session index loading, SSE connections) still go in full to `logs/agent-web.log`. Watch them with `AGENT_WEB_LOG=info aw`; in the background (`-d`) they land in `daemon.log`.
-- **It checks for a newer release**: on start (and on `aw status`) it asks npm once per 24 hours (cached in `update-check.json`) and prints `有新版本 vX（当前 vY）→ 升级：aw upgrade` when one exists. It never upgrades by itself, stays silent when the network is down, and `AGENT_WEB_UPDATE_CHECK=off` turns it off.
+- **It asks whether to upgrade**: on start (and on `aw status`) it asks npm once per six hours (cached in `update-check.json`) and, when a newer release exists, asks `现在升级吗？[Y/n]` — **plain Enter upgrades** and restarts into the new version (`agent-web -d` asks before detaching too); `n` skips and asks again next start. Non-interactive runs (CI / `aw > log`) never prompt, they just print `有新版本 vX（当前 vY）→ 升级：aw upgrade`. `AGENT_WEB_UPDATE_PROMPT=off` drops only the prompt, `AGENT_WEB_UPDATE_CHECK=off` turns the check off entirely.
 
 ### Flags
 
@@ -111,6 +111,7 @@ Two behavioural rules:
 | — | `AGENT_WEB_APPROVAL_MODE` | `allow` | Default approval mode for new sessions; `ask` confirms every tool call |
 | — | `AGENT_WEB_TURN_TIMEOUT_MS` | 20 minutes | Per-turn watchdog timeout |
 | — | `AGENT_WEB_LOG` | `info` (foreground terminal: warn / error only) | `debug` / `info` / `warn` / `error`; setting it explicitly also prints that level to the terminal |
+| — | `AGENT_WEB_UPDATE_PROMPT` | `on` | Whether to ask `现在升级吗？` in the terminal when a newer release exists (Enter = upgrade); `off` keeps only the passive notice line |
 | — | `AGENT_WEB_UPDATE_CHECK` | `on` | `off` disables the startup release check (offline / intranet / CI) |
 
 ### Common examples
@@ -153,7 +154,7 @@ Three hard rules:
 
 ## Conversation
 
-**Streaming text + collapsible thinking blocks + tool cards.** A tool card shows arguments, the full command (copyable), output, duration and pass/fail. Thinking and tool calls inside one turn are grouped into "process, N steps" blocks that expand when clicked.
+**Streaming text + collapsible thinking blocks + tool cards.** A tool card shows arguments, the full command (copyable), output, duration and pass/fail. While the turn runs, thinking and tool calls **show only the one line of narration from the newest group** (no thinking rows, no tool cards — the command that is actually running is reported by the status line at the very bottom; the "N thinking · N tools · Xs" stopwatch sits on top), then **fold into that row when the turn ends** (everything before the final conclusion) — click it to get the full timeline back, so only the final answer stays on screen.
 
 ![The footer of one reply: a markdown table, the changed-files chip, and this turn's tokens / cache / cost](docs/screenshots/02-answer.png)
 

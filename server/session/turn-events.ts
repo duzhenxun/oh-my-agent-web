@@ -205,9 +205,20 @@ export function applyEngineEvent(context: TurnEventContext, input: TurnEventInpu
 					startedAt: context.now(),
 				}),
 			);
-			state.running.activeTool = { name: event.name, argsSummary: event.argsSummary, startedAt: context.now() };
+			state.running.activeTool = {
+				name: event.name,
+				argsSummary: event.argsSummary,
+				...(event.argsFull ? { argsFull: event.argsFull } : {}),
+				startedAt: context.now(),
+			};
 			patchOwnRunning(
-				(own) => (own.activeTool = { name: event.name, argsSummary: event.argsSummary, startedAt: context.now() }),
+				(own) =>
+					(own.activeTool = {
+						name: event.name,
+						argsSummary: event.argsSummary,
+						...(event.argsFull ? { argsFull: event.argsFull } : {}),
+						startedAt: context.now(),
+					}),
 			);
 			context.pushSnapshot();
 			return;

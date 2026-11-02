@@ -307,13 +307,22 @@ const HIGHLIGHT_PLUGINS: RehypePlugins = [[rehypeHighlight, { detect: true, igno
 /** 流式中先不上色：这一条就能省掉约 40% 的单帧解析成本 */
 const NO_HIGHLIGHT: RehypePlugins = [];
 
-export const Markdown = memo(function Markdown({ text, live = false }: { text: string; live?: boolean }) {
+export const Markdown = memo(function Markdown({
+	text,
+	live = false,
+	className,
+}: {
+	text: string;
+	live?: boolean;
+	/** 附加在根 `.md` 上的 class（现在只用来区分「过程里的说明段」：字号大一号，见 .md-narration） */
+	className?: string;
+}) {
 	// 流式期间只在节拍上换文本：每换一次就是一次完整重解析（见上面 useStreamingText）
 	const shownText = useStreamingText(text, live);
 	// 图片路径 → 图片，再把相邻的纯图片段落并成一组（多张时才能多列并排）
 	const source = useMemo(() => groupImageBlocks(promoteImagePaths(shownText)), [shownText]);
 	return (
-		<div className="md">
+		<div className={className ? `md ${className}` : "md"}>
 			<ReactMarkdown
 				remarkPlugins={REMARK_PLUGINS}
 				rehypePlugins={live ? NO_HIGHLIGHT : HIGHLIGHT_PLUGINS}

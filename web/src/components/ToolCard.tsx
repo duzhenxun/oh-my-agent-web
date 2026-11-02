@@ -10,6 +10,8 @@ import { tNow, useT } from "../use-language.ts";
 import { describeTool, ToolKindIcon } from "./tool-activity.tsx";
 
 const STATUS_LABEL: Record<ToolBlock["status"], string> = { running: "运行中…", ok: "完成", failed: "失败" };
+/** 英文说法（`t()` 只做中英两栏，所以状态词单独一份，渲染时按语言取） */
+const STATUS_LABEL_EN: Record<ToolBlock["status"], string> = { running: "running…", ok: "done", failed: "failed" };
 
 /** 名字看起来是「跑命令」的工具：这些即使参数很短也把命令块摆出来（就为了能一键复制） */
 const SHELL_NAMES = /^(bash|sh|shell|shell_command|exec|run|run_command|terminal)$/i;
@@ -54,12 +56,13 @@ export function argsPreview(raw: string): string | null {
 	 *   - 多行命令（`python3 - <<'PY'` 那种 heredoc）只取第一行，后头的脚本体对「它在跑什么」没有帮助，
 	 *     摊在一行里还会被 CSS 省略号从中间切断，看着像乱码（用户 2026-10-30 的截图就是这个）；
 	 *   - 多余空白合并：换行/缩进在单行里只会变成一串突兀的空格。
-	 * 硬截 120 字：剩下的交给 CSS 省略号，但 DOM 里不必扛一整段脚本。
+	 * 只给一个宽松上限（240 字）：剩下交给 CSS 省略号按实际宽度决定 —— 固定字数截断会在
+	 * 还有余量时提前断掉（用户 2026-11-02：「应按宽度显示到能显示的位置」）。
 	 */
 	const oneLine = (text: string): string => {
 		const first = text.split(/\r?\n/, 1)[0] ?? "";
 		const flat = first.replace(/\s+/g, " ").trim();
-		return flat.length > 120 ? `${flat.slice(0, 120)}…` : flat;
+		return flat.length > 240 ? `${flat.slice(0, 240)}…` : flat;
 	};
 	try {
 		const parsed: unknown = JSON.parse(trimmed);
@@ -125,6 +128,7 @@ function rawSrcOf(path: string): string {
  * 但图片是**消息内容**，不该跟着藏起来（见 MessageList 里的用法）。
  */
 function ToolImage({ block }: { block: ToolBlock }) {
+	const t = useT();
 	const imagePath = imagePathOf(block.argsSummary);
 	if (!imagePath) return null;
 	return (
@@ -132,10 +136,10 @@ function ToolImage({ block }: { block: ToolBlock }) {
 		<button
 			type="button"
 			className="tool-image-wrap"
-			title={`${imagePath}（点击放大预览）`}
-			onClick={() => openImageViewer(rawSrcOf(imagePath), basename(imagePath) || "图片")}
+			title={t(`${imagePath}（点击放大预览）`, `${imagePath} (click to preview)`)}
+			onClick={() => openImageViewer(rawSrcOf(imagePath), basename(imagePath) || t("图片", "image"))}
 		>
-			<img className="tool-image" src={rawSrcOf(imagePath)} alt={basename(imagePath) || "图片"} loading="lazy" />
+			<img className="tool-image" src={rawSrcOf(imagePath)} alt={basename(imagePath) || t("图片", "image")} loading="lazy" />
 		</button>
 	);
 }
@@ -148,6 +152,7 @@ function ToolImage({ block }: { block: ToolBlock }) {
  * 所以这里拆成「可折叠的文字部分」+「常显的图片部分」。
  */
 export function ToolCard({ block }: { block: ToolBlock }) {
+	const t = useT();
 	/**
 	 * 默认展开的优先级：**本卡手动点过** → 「设置 → 界面 → 过程 → 默认展开工具卡」。
 	 *
@@ -166,11 +171,15 @@ export function ToolCard({ block }: { block: ToolBlock }) {
 	 */
 	const outputScroll = useStickToBottom(String(block.outputExcerpt.length), null, block.status === "running");
 	/**
-	 * 收起的那一行说人话：「已读取 weather.py」「已运行 python3 - <<'PY' …」—— 和实时那行同一套说法
+	 * 收起的那一行说人话：「正在读取 weather.py」「已运行 python3 - <<'PY' …」—— 和实时那行同一套说法
 	 * （tool-activity.tsx）、同一枚图标。以前这里摆的是引擎的工具名（`read` / `bash`）+ JSON 参数，
 	 * 回看旧记录时得先懂那套黑话才读得懂。
+	 *
+	 * 动词按状态取：**跑着用 `now`、其余用 `done`**。以前固定用 `done`，于是正在跑的那张卡
+	 * 标题写「已跑完命令」、右边却转圈「运行中…」—— 同一行里自己打自己（用户 2026-11-02 抓到）。
 	 */
 	const info = describeTool(block.name, block.argsSummary);
+	const headline = block.status === "running" ? info.now : info.done;
 	return (
 		<div className={`tool tool-${block.status}`}>
 			<details
@@ -184,20 +193,20 @@ export function ToolCard({ block }: { block: ToolBlock }) {
 				{/* 原始工具名留作 title：想确认到底调的是哪个工具时悬停就能看到，但不再占一行位置 */}
 				<summary className="tool-head" title={block.name}>
 					<ToolKindIcon kind={info.kind} className="tool-icon" />
-					<span className="tool-name">{info.done}</span>
+					<span className="tool-name">{headline}</span>
 					{/* 行尾那截参数（命令 / 查询词）单行省略。读文件这类 detail 为 null ——
 					     文件名已经在上面那句里了，再摆一遍全路径只是噪声；完整参数在点开后的「命令」块里 */}
 					{info.detail ? <span className="tool-args">{info.detail}</span> : null}
 					<span className={`tool-status tool-status-${block.status}`}>
 						{/* 转圈放在文字前面：一眼看到「还在动」，而不只是读到一个灰字 */}
 						{block.status === "running" ? <span className="tool-spinner" aria-hidden="true" /> : null}
-						{STATUS_LABEL[block.status]}
+						{t(STATUS_LABEL[block.status], STATUS_LABEL_EN[block.status])}
 						{block.exitCode === undefined ? "" : ` · exit ${block.exitCode}`}
 					</span>
 				</summary>
 				<ToolCommand block={block} />
 				<pre className="tool-output" ref={outputScroll.ref}>
-					{block.outputExcerpt || "（还没有输出）"}
+					{block.outputExcerpt || t("（还没有输出）", "(no output yet)")}
 				</pre>
 				{block.truncated ? (
 					<div className="tool-truncated">

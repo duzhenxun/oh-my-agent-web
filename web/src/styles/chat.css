@@ -170,7 +170,8 @@
  * 所以不用等宽、不用主色 —— 主色留给正文里的链接和强调，这里只是个过程提示 */
 .tool-name {
 	flex: none;
-	color: var(--text-dim);
+	/* 和「思考」行同一档淡色（用户 2026-11-02：过程行统一再淡一档，别抢正文的注意力） */
+	color: var(--text-whisper);
 	font-size: calc(var(--chat-ui-font-size, 12px) * 1);
 }
 
@@ -180,7 +181,7 @@
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
-	color: var(--text-dim);
+	color: var(--text-whisper);
 	font-family: var(--mono);
 	font-size: calc(var(--chat-ui-font-size, 12px) * 1);
 }

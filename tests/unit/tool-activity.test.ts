@@ -54,9 +54,9 @@ describe("describeTool", () => {
 		);
 		assert.equal(info.kind, "run");
 		assert.equal(info.now, "正在跑 Python 脚本");
-		// 行尾只留开头一截（脚本永远显示不全，全文交给 `full`）
+		// 行尾从脚本正文开头摆起（不是半截 `<<'PY'`），长度只受宽松上限管制，露几字看宽度
 		assert.match(info.detail ?? "", /^import json,urllib\.request/);
-		assert.ok((info.detail ?? "").length <= 49, `detail 太长：${info.detail}`);
+		assert.ok((info.detail ?? "").length <= 121, `detail 太长：${info.detail}`);
 		assert.match(info.full ?? "", /wttr\.in\/qingdao\?format=j1/);
 	});
 
@@ -104,10 +104,12 @@ describe("describeTool", () => {
 });
 
 /**
- * 用户 2026-10-30 的两句原话：
- *   - 「你的脚本显示不全就别显示这么长，你把正在干什么给我写清楚了」
- *   - 「需要有个可以点开，我想点开看的时候，可以点开看一眼到底在干嘛」
- * 对应到这一层：行尾（`detail`）压短一句能扫完的，全文放 `full` 交给弹层。
+ * 行尾（`detail`）与全文（`full`）的分工。
+ *
+ * 历史：2026-10-30 曾把行尾压到 64 字（当时抱怨「脚本显示不全就别显示这么长」）；
+ * 2026-11-02 用户改口「太短了，应按宽度显示到能显示的位置」——固定字数截断会在还有余量时
+ * 提前断掉。现在行尾只留一个**宽松上限**（命令 200 / 脚本 120），真正决定看到几字的是 CSS
+ * 省略号；全文照旧一个字不少地放在 `full` 里，点开弹层看。
  */
 describe("脚本类命令：行尾压短、全文留给弹层", () => {
 	it("`node -e '…'` 说「正在跑 Node 脚本」，不再把整条命令糊在行尾", () => {
@@ -115,8 +117,8 @@ describe("脚本类命令：行尾压短、全文留给弹层", () => {
 		const info = describeTool("bash", JSON.stringify({ command: `node -e '${code}'` }));
 		assert.equal(info.kind, "run");
 		assert.equal(info.now, "正在跑 Node 脚本");
-		// 行尾是压短过的：能扫一眼，不会长到占满一行
-		assert.ok((info.detail ?? "").length <= 65, `detail 太长：${info.detail}`);
+		// 行尾只是「截到一个宽松上限」，具体露几字由 CSS 省略号按宽度决定
+		assert.ok((info.detail ?? "").length <= 121, `detail 太长：${info.detail}`);
 		assert.match(info.detail ?? "", /^const fs=require/);
 		// 全文一个字不少（弹层里看）
 		assert.equal(info.full, code);
@@ -137,10 +139,28 @@ describe("脚本类命令：行尾压短、全文留给弹层", () => {
 		assert.equal(info.full, 'print("hi")');
 	});
 
-	it("长命令的行尾一律压到 64 字以内，全文照旧留好", () => {
+	it("超长命令只截到宽松上限（200 字），剩下的交给宽度；全文照旧留好", () => {
 		const command = `git commit -m "${"很长的提交说明".repeat(20)}"`;
 		const info = describeTool("bash", JSON.stringify({ command }));
-		assert.ok((info.detail ?? "").length <= 65, `detail 太长：${info.detail}`);
+		assert.ok((info.detail ?? "").length <= 201, `detail 太长：${info.detail}`);
+		// 没超过上限时不该被提前断掉（旧实现 64 字就断，用户 2026-11-02 报「太短」）
+		const short = `cd /repo && npm run build:web 2>&1 | grep -E "index-.*js" | tail -2`;
+		assert.equal(describeTool("bash", JSON.stringify({ command: short })).detail, short);
+		assert.equal(info.full, command);
+	});
+
+	it("给了 argsFull 就该看全：弹层用原文，行尾仍是一截", () => {
+		// 服务端把 argsSummary 截到 200 字（快照别被长命令撞大），argsFull 才是原始命令
+		const command = `cd /repo && ./bin/tool --flag=${"甲".repeat(300)}`;
+		const summary = JSON.stringify({ command: command.slice(0, 200) });
+		const info = describeTool("bash", summary, JSON.stringify({ command }));
+		assert.equal(info.full, command);
+		assert.ok((info.detail ?? "").length <= 201, `detail 太长：${(info.detail ?? "").length}`);
+	});
+
+	it("没有 argsFull 时退回摘要（老快照 / 摘要本来就够短）", () => {
+		const command = "cd /repo && npm test";
+		const info = describeTool("bash", JSON.stringify({ command }));
 		assert.equal(info.full, command);
 	});
 

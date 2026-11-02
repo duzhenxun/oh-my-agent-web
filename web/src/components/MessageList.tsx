@@ -6,6 +6,7 @@ import { PROCESS_AUTO_COLLAPSE_KEY, SELECTION_TOOLBAR_KEY, THINKING_OPEN_KEY, TO
 import { useStoredBool } from "../use-stored-bool.ts";
 import { useSkillNames } from "../skill-names.ts";
 import { useShowCost } from "../use-show-cost.ts";
+import { foldLayout, isTurnRunning, lastGroupStart, processView, shouldForgetManual } from "../process-fold.ts";
 import type { ActionItem, SubagentRunView, UiMessage } from "../types.ts";
 import type { QueuedView } from "../pending-sends.ts";
 import { firstLine, readExpanded, toggleExpanded, writeExpanded } from "../steer-collapsed.ts";
@@ -111,12 +112,20 @@ function withThousands(value: number): string {
 	return value.toLocaleString("en-US");
 }
 
-/** 绝对时间：10月20日 00:05:33；`withDate: false` 时只留时间 00:05:33（手机上用） */
-function stampOf(ts: number, withDate = true): string {
+/**
+ * 绝对时间：中文 `10月20日 00:05:33`、英文 `Oct 20 00:05:33`；
+ * `withDate: false` 时只留时间（窄屏那份备用写法）。
+ */
+function stampOf(ts: number, withDate: boolean, english: boolean): string {
 	const date = new Date(ts);
 	const pad = (value: number) => String(value).padStart(2, "0");
 	const time = `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
-	return withDate ? `${date.getMonth() + 1}月${date.getDate()}日 ${time}` : time;
+	if (!withDate) return time;
+	const day =
+		english === true
+			? `${date.toLocaleDateString("en-US", { month: "short" })} ${date.getDate()}`
+			: `${date.getMonth() + 1}月${date.getDate()}日`;
+	return `${day} ${time}`;
 }
 
 /**
@@ -129,10 +138,12 @@ function stampOf(ts: number, withDate = true): string {
  * `-short` 这一份**先留着**：哪天又要在窄屏上省地方，改一行 CSS 就能切回去，不用动 JSX。
  */
 function FootStamp({ ts, title }: { ts: number; title: string }) {
+	const { language } = useLanguage();
+	const english = language === "en";
 	return (
 		<span className="msg-foot-stamp" title={title}>
-			<span className="msg-foot-stamp-full">{stampOf(ts)}</span>
-			<span className="msg-foot-stamp-short">{stampOf(ts, false)}</span>
+			<span className="msg-foot-stamp-full">{stampOf(ts, true, english)}</span>
+			<span className="msg-foot-stamp-short">{stampOf(ts, false, english)}</span>
 		</span>
 	);
 }
@@ -179,7 +190,8 @@ function ThinkingSegment({ text }: { text: string }) {
 	const open = manualOpen ?? defaultOpen;
 	const joined = text.trim();
 	if (joined === "") return null;
-	const preview = joined.replace(/\s+/g, " ").trim().slice(0, 160);
+	// 预览同样交给 CSS 省略号：这里只留一个宽松上限，别在还有宽度时提前断（用户 2026-11-02）
+	const preview = joined.replace(/\s+/g, " ").trim().slice(0, 240);
 	return (
 		<div className="thinking-block">
 			<button type="button" className="thinking-head" onClick={() => setManualOpen(!open)}>
@@ -243,7 +255,7 @@ function LiveOutput({ message }: { message: UiMessage }) {
 }
 
 import { describeTool, skillOf, ToolKindIcon } from "./tool-activity.tsx";
-import { useT } from "../use-language.ts";
+import { useLanguage, useT } from "../use-language.ts";
 import { textOfMessage } from "../message-text.ts";
 import { rememberMessages } from "../store.ts";
 import { setPathOpener } from "../path-tokens.ts";
@@ -270,16 +282,17 @@ function useStalled(active: boolean, length: number, delayMs = 2500): boolean {
 }
 
 /**
- * 「这一刻在干什么」—— **整条回复只有这一行**（用户 2026-10-30，照 codex）。
+ * 「这一刻在干什么」—— 贴在消息末尾的那一行状态位。
  *
  * 以前这一行是「三颗跳动的点 + 正在运行 + bash + 参数」，而上面还铺着思考行和工具卡；
  * codex 那边跑的时候就是**一行**：图标告诉你这是在调 skill、读文件、列目录还是跑命令，
- * 文字人话（「正在读取 Weather Forecast 技能」），换动作时**就地替换**，不往上堆新行。
- * 所以现在跑的时候过程整段不铺（见 renderSegment），历史步骤等跑完再折进「过程 N 步」里。
+ * 文字人话（「正在读取 Weather Forecast 技能」），换动作时**就地替换**。
+ * 现在过程在跑的时候是铺开的（用户 2026-11-02），这一行不再代替时间线，只补它说不清的三件事：
+ * 正在重试、卡住了、以及「模型还在想/还没开口」（这时没有工具卡可看）。
  *
  * 这一行永远贴在消息末尾、折扇体外面：
  *   - 有工具在跑 → 图标 + 「正在运行 <命令>」/「正在读取 x.py」…（说法见 tool-activity.tsx）
- *   - 模型在想事 / 还没开口 → 星形图标 +「正在等待模型」
+ *   - 模型在想事 / 还没开口 → 星形图标 +「正在思考」（不再区分「等待模型」）
  *   - 正文正在流式吐字 → 不画（正文本身在动，再加一行只会让人以为卡住了）
  */
 function LiveActivity({
@@ -288,16 +301,14 @@ function LiveActivity({
 	retrying,
 }: {
 	message: UiMessage;
-	/** 正在跑的工具（来自快照 `running.activeTool`；没有就是 null） */
-	tool: { name: string; argsSummary: string; startedAt: number } | null;
+	/** 正在跑的工具（来自快照 `running.activeTool`；带 `argsFull`，弹层里能看完整命令） */
+	tool: { name: string; argsSummary: string; argsFull?: string; startedAt: number } | null;
 	/** 传输层被打断、引擎正在自动重试（来自快照 `running.retrying`） */
 	retrying?: { attempt: number; maxAttempts: number } | null;
 }) {
 	const t = useT();
 	const tail = message.blocks.at(-1);
 	const tailText = tail?.kind === "text" ? tail.text.trim() : "";
-	/** 最后一块是思考：模型正在想（还没调工具、也没开口）—— 说法要跟「在等它开口」分开 */
-	const thinkingNow = tail?.kind === "thinking" && tail.text.trim() !== "";
 	const stalled = useStalled(tailText !== "", tailText.length);
 	const now = useSecondTick(tool !== null);
 
@@ -308,7 +319,7 @@ function LiveActivity({
 			)
 		: null;
 	/** 工具名 + 参数 → 图标 + 一句人话（正在读取 X 技能 / 正在运行 <命令>…，见 tool-activity.tsx） */
-	const info = tool ? describeTool(tool.name, tool.argsSummary) : null;
+	const info = tool ? describeTool(tool.name, tool.argsSummary, tool.argsFull) : null;
 	const seconds = tool ? Math.max(0, Math.floor((now - tool.startedAt) / 1000)) : 0;
 	/**
 	 * 点开看全文（用户 2026-10-30：「需要有个可以点开，我想点开看的时候，可以点开看一眼
@@ -332,6 +343,26 @@ function LiveActivity({
 			document.removeEventListener("mousedown", onPointerDown);
 			document.removeEventListener("keydown", onKeyDown);
 		};
+	}, [open]);
+
+	/**
+	 * 弹层向上弹（锚在行底边），所以**能有多高取决于这行上面还剩多少空间**：
+	 * 行贴着屏幕底部时，固定高度会把顶部（标题 + 复制按钮）顶出视口 —— 手机上实测 y=-57px。
+	 * 高度按 `行顶 - 10px` 算，窗口尺寸变了再量一次。
+	 */
+	const [popMaxHeight, setPopMaxHeight] = useState<number | null>(null);
+	useEffect(() => {
+		if (!open) {
+			setPopMaxHeight(null);
+			return;
+		}
+		const fit = () => {
+			const rect = wrapRef.current?.getBoundingClientRect();
+			if (rect) setPopMaxHeight(Math.max(180, Math.floor(rect.top - 10)));
+		};
+		fit();
+		window.addEventListener("resize", fit);
+		return () => window.removeEventListener("resize", fit);
 	}, [open]);
 
 	// 正文还在长 → 让它自己说话。但「正在重试」期间正文本来就是停的，必须盖过这条规则。
@@ -358,10 +389,9 @@ function LiveActivity({
 				 * 星 = 没在调工具（在想 / 重试）。所以不再另加「正在运行 bash」这种工具名黑话 */}
 				<ToolKindIcon kind={info ? info.kind : "thinking"} className="msg-activity-icon" />
 				<span className="msg-activity-label" aria-live="polite">
-					{info
-						? info.now
-						: (retryLabel ??
-							(thinkingNow ? t("正在思考", "Thinking") : t("正在等待模型", "Waiting for the model")))}
+					{/* 没在调工具 = 模型还在想：不再区分「等待模型」和「正在思考」——
+					     对用户就是同一件事（模型还没回话），两个说法只会让人以为卡住了（用户 2026-11-02）。 */}
+					{info ? info.now : (retryLabel ?? t("正在思考", "Thinking"))}
 				</span>
 				{info?.detail ? (
 					<span className="msg-activity-args mono">
@@ -378,7 +408,12 @@ function LiveActivity({
 				) : null}
 			</button>
 			{open && openable ? (
-				<div className="msg-activity-pop" role="dialog" aria-label={info?.now ?? ""}>
+				<div
+					className="msg-activity-pop"
+					role="dialog"
+					aria-label={info?.now ?? ""}
+					style={popMaxHeight === null ? undefined : { maxHeight: `${popMaxHeight}px` }}
+				>
 					<div className="msg-activity-pop-head">
 						<ToolKindIcon kind={info?.kind ?? "thinking"} className="msg-activity-pop-icon" />
 						<span className="msg-activity-pop-title">{info?.now}</span>
@@ -388,6 +423,10 @@ function LiveActivity({
 								<span className="msg-activity-pop-tool">{tool.name}</span>
 							</span>
 						) : null}
+					</div>
+					<div className="msg-activity-pop-foot">
+						{/* 复制整条命令：弹层里要能一眼看全，也要能直接拿走（用户 2026-11-02） */}
+						<CopyButton text={full} className="msg-action msg-activity-pop-copy" title={t("复制这条完整命令", "Copy this full command")} />
 					</div>
 					<pre className="msg-activity-pop-body mono">{full}</pre>
 				</div>
@@ -428,7 +467,7 @@ function MessageViewInner({
 	/** 属于**这一条消息**的子代理运行记录（空/缺省 = 这一轮没派子代理） */
 	subagentRuns?: readonly SubagentRunView[];
 	/** 这一轮此刻在跑的工具（只在「当前会话 + 正在跑」的那条上给；用来画实时动作提示） */
-	activeTool?: { name: string; argsSummary: string; startedAt: number } | null;
+	activeTool?: { name: string; argsSummary: string; argsFull?: string; startedAt: number } | null;
 	/** 正在自动重试（快照的 `running.retrying`）：同样只给「当前会话 + 正在跑」的那条 */
 	retrying?: { attempt: number; maxAttempts: number } | null;
 	/** 当前会话的工作区（把工具参数里的绝对路径折成相对路径；没有就折不了） */
@@ -456,27 +495,20 @@ function MessageViewInner({
 	 */
 	const { segments, thinkingCount, toolCount } = buildTurnSegments(message.blocks);
 	/**
-	 * 折叠**只管思考与工具调用**，正文（包括过程之间那几段说明）一律留在正文流里
-	 * （用户 2026-10-30：「正文不参与折叠」）。
+	 * 折叠**收到哪里**：最后一个结论之前的一切 —— 思考、工具卡、**以及中间那几段说明文字**。
 	 *
-	 * 为什么必须这样：以前把「过程 + 中间那几段说明」一起收进折叠行，跑完只剩最后结论 ——
-	 * 而中间那几段恰恰是「我查了 A 不对、改用 B」这种**决策理由**，是可信度的来源；
-	 * 把它和工具卡归成一类，还顺带让「过程 N 步」这个词失真（点开发现有人的话混在里面）。
+	 * 这条路走过两次（判断全在 `foldLayout` 里）：
+	 *   - 2026-10-30：只收思考与工具，说明文字留在外面（当时的理由是「A 不行改用 B」是可信度来源）；
+	 *   - 2026-11-02：改回来了 —— 跑完屏幕上剩下「我先看一下…」「版本并不一致，我再确认…」
+	 *     这类过程话，最后的结论反而被麦在中间（用户给了截图）。现在**跑的时候照样铺着看，
+	 *     跑完只留最后的结果**，说明文字跟过程一起进折叠，点开就能看回完整时间线。
 	 *
-	 * 于是拆成两个位置：
-	 *   - `firstProcessAt` = 折叠按钮的落点：第一次动手的地方（按钮就长在「过程」发生的位置）；
-	 *   - `lastProcessAt` = 判断「这一轮有没有最终结论」，只用来决定跑完要不要自动展开。
+	 * 两个落点：
+	 *   - `firstProcessAt` = 折叠按钮的落点：第一次动手的地方（按钮长在「过程」发生的位置）；
+	 *   - `lastAnswerAt` = 收到哪里为止：它之前的全部都能藏进折叠。
 	 */
-	const firstProcessAt = segments.findIndex((segment) => segment.kind === "process");
-	const lastProcessAt = segments.reduce((at, segment, index) => (segment.kind === "process" ? index : at), -1);
+	const { firstProcessAt, lastAnswerAt, hasAnswer, insideFold } = foldLayout(segments);
 	const hasProcess = firstProcessAt >= 0;
-	/** 最后一次动手之后还有正文 / 错误块 = 这一轮有结论；没有（以工具收尾）时跑完不收，否则只剩一行按钮 */
-	const hasAnswer = segments.some(
-		(segment, index) =>
-			lastProcessAt >= 0 &&
-			index > lastProcessAt &&
-			((segment.kind === "text" && segment.text.trim() !== "") || segment.kind === "error"),
-	);
 	/**
 	 * 这一轮加载过的技能（去重、保留先后）。
 	 * 用户 2026-10-30：「你要调用什么 skill 时要说出来，我要看到」——
@@ -504,7 +536,9 @@ function MessageViewInner({
 	 *   - 跑完换成 endedAt - ts，和刚才跳到的数字对得上；
 	 *   - 拿不到时间戳（老历史）才回落到相加，总比不显示强。
 	 */
-	const ticking = live && message.endedAt === undefined;
+	/** 这一轮还在跑（没写 endedAt）：耗时在走秒、过程铺开，都是这一个事实 */
+	const running = isTurnRunning({ live, endedAt: message.endedAt });
+	const ticking = running;
 	const now = useSecondTick(ticking);
 	const startedAt = Number.isFinite(message.ts) ? message.ts : null;
 	const wallClockMs = startedAt === null ? null : (message.endedAt ?? now) - startedAt;
@@ -523,49 +557,68 @@ function MessageViewInner({
 			: formatDuration(wholeSeconds); // 过了一分钟改回「1m23s」
 	/**
 	 * 折叠条的展开状态：
-	 *   - **跑着的时候整段不铺**（用户 2026-10-30，照 codex）：屏幕上只留说话的那几段 +
-	 *     末尾一行「图标 + 正在读取 X 技能 / 正在运行 <命令>」，换动作就地替换；
-	 *     于是不再往上堆「思考一…工具卡一…思考两…工具卡两」。步骤仍是活的，跑完就能点开看。
-	 *   - **跑完之后收起**（默认）：中间那几段说明和工具卡一起收成一行，屏幕上只留最终结果；
+	 *   - **跑着的时候铺开**（用户 2026-11-02）：思考段、工具卡、以及中间那几段说明都按发生顺序排着，
+	 *     顶部那行「N 段思考 · N 次工具 · 耗时」的秒表跟着往上跳 —— 长任务能一眼看出它到底在干什么；
+	 *   - **跑完自动收起**（默认）：过程收成那一行，屏幕上只留最后的结果；
 	 *   - 没有最终结果（这一轮以工具调用收尾）或关掉了「跑完自动折叠过程」→ 不收起；
-	 *   - **手动点过**的那条消息以手动为准（否则用户点开看了一眼，一次重渲染又自己折叠回去）。
+	 *   - **手动点过**的那条消息以手动为准（否则用户点开看了一眼，一次重渲染又自己折叠回去），
+	 *     但「跑完那一下」会把这条手动状态作废 —— 要的就是跑完自动收起，不能因为中途点开过就不收。
 	 * 关掉自动折叠时回落到原来那两个「默认展开思考块 / 工具卡」开关。
 	 */
 	const [manualShowTools, setManualShowTools] = useState<boolean | null>(null);
 	const [thinkingDefaultOpen] = useStoredBool(THINKING_OPEN_KEY, false);
 	const [toolsDefaultOpen] = useStoredBool(TOOL_OPEN_KEY, false);
 	const [autoCollapse] = useStoredBool(PROCESS_AUTO_COLLAPSE_KEY, true);
-	/** 默认展开吗：跑着的时候不铺（只留实时行）；没有最终结果时不收；关掉自动折叠时看那两个开关 */
-	const defaultOpen = !hasAnswer || (!autoCollapse && (thinkingDefaultOpen || toolsDefaultOpen));
-	const showTools = manualShowTools ?? defaultOpen;
 	/**
-	 * 跑着的时候过程整段不铺，**除非**用户把「默认展开工具卡 / 思考块」打开了 ——
-	 * 那两个开关本来就是「我要一直看着过程」的意思，不能因为改成了 codex 那种单行就偷走它。
+	 * 过程区怎么画：跑着只画最新一组（换组就地替换）↔ 点开看全部；跑完收成一行。
+	 * 判断全在 process-fold.ts，这里只喂事实 + 把它翻译成“画到哪”。
 	 */
-	const liveProcessVisible = toolsDefaultOpen || thinkingDefaultOpen;
+	const view = processView({
+		running,
+		hasAnswer,
+		autoCollapse,
+		defaultOpen: thinkingDefaultOpen || toolsDefaultOpen,
+		manual: manualShowTools,
+	});
+	const showAll = view === "all";
+	/** 最新一组（跑着时只画它，换组就地替换）：{ 段下标, 组下标 } */
+	const tail = view === "tail" ? lastGroupStart(segments) : null;
+	/**
+	 * 跑完那一下把手动状态交回默认：跑着的时候点开/收起过的，不该阻止它跑完自己收起来。
+	 * 用 ref 盯「上一帧还在跑」而不是每帧都清 —— 否则跑完之后用户手动点开会被下一次重渲染抹掉。
+	 */
+	const wasRunning = useRef(running);
+	useEffect(() => {
+		if (shouldForgetManual(wasRunning.current, running)) setManualShowTools(null);
+		wasRunning.current = running;
+	}, [running]);
 	/**
 	 * 折叠按钮：思考与工具的目录。渲染在**第一次动手的位置**（过程是在那里发生的），
 	 * 而不是一直顶在正文上方 —— 结论应该先被看到，看细节才往下找这一行。
-	 * 跑着的时候不画：末尾那行实时动作已经在报「现在在干什么 + 走了几步」。
+	 * 跑着的时候照样画：那行「N 段思考 · 耗时」就是「到现在干了多少」的概览（带秒表），
+	 * 而且它就是「想看看前面那些组」的入口（点一下展开完整时间线）。
 	 */
-	const foldButton =
-		live && !liveProcessVisible ? null : (
+	const foldButton = (
 			<button
 				type="button"
 				className="msg-tools-toggle"
-				aria-expanded={showTools}
-				onClick={() => setManualShowTools(!showTools)}
+				aria-expanded={showAll}
+				onClick={() => setManualShowTools(!showAll)}
 				title={t(
-					"思考与工具调用，按发生顺序排列（跑完自动收起；正文与中间的说明不受影响）",
-					"Thinking and tool calls in the order they happened (auto-collapsed when the turn ends; the answer text is never hidden)",
+					"思考、工具调用、以及中间那几段说明，按发生顺序排列（跑着时只留最新一句说明，跑完自动收起，点开看完整过程）",
+					"Thinking, tool calls and the narration in between, in the order they happened (while running only the newest group is shown, it folds away when the turn ends; click for the full timeline)",
 				)}
 			>
-				<span className={`msg-tools-caret${showTools ? " msg-tools-caret-open" : ""}`} aria-hidden="true" />
+				<span className={`msg-tools-caret${showAll ? " msg-tools-caret-open" : ""}`} aria-hidden="true" />
 				{/* 折叠行只报「几段思考 / 几次工具 / 什么技能 / 多久」（用户 2026-10-30：简化）。
 				 * 「过程 N 步」是和这两项重复的第三个数（N = 段 + 次），删掉；
 				 * 「（点击展开）」也删了 —— 左侧三角和行尾箭头已经在说这件事。 */}
-				{thinkingCount > 0 ? <span className="msg-process-meta">{thinkingCount} 段思考</span> : null}
-				{toolCount > 0 ? <span className="msg-process-meta">{toolCount} 次工具</span> : null}
+				{thinkingCount > 0 ? (
+					<span className="msg-process-meta">{t(`${thinkingCount} 段思考`, `${thinkingCount} thinking`)}</span>
+				) : null}
+				{toolCount > 0 ? (
+					<span className="msg-process-meta">{t(`${toolCount} 次工具`, `${toolCount} tools`)}</span>
+				) : null}
 				{/* 技能名：不点开也要看得见——“这一轮到底调了哪个 skill”是最常被问的一句 */}
 				{skillsUsed.length > 0 ? (
 					<span className="msg-process-meta msg-process-skills">
@@ -577,53 +630,99 @@ function MessageViewInner({
 				{durationMs > 0 ? (
 					<span
 						className="msg-process-meta msg-process-time"
-						title={ticking ? "这一轮从开始到现在的墙上时间（每秒刷新）" : "这一轮的总耗时"}
+						title={
+							ticking
+								? t("这一轮从开始到现在的墙上时间（每秒刷新）", "Wall-clock time since this turn started (ticks every second)")
+								: t("这一轮的总耗时", "Total time this turn took")
+						}
 					>
-						耗时 {durationLabel}
+						{t("耗时", "took")} {durationLabel}
 					</span>
 				) : null}
 				{/* 行尾箭头放在**整条最后**：手风琴的惯例位置。原来它只在手机端顶替
 				    「（点击展开）」那行灰字，现在那行字没了，它就是唯一的「能点」提示。 */}
-				<span className={`msg-process-chevron${showTools ? " msg-process-chevron-open" : ""}`} aria-hidden="true" />
+				<span className={`msg-process-chevron${showAll ? " msg-process-chevron-open" : ""}`} aria-hidden="true" />
 			</button>
 		);
 	/**
 	 * 画一个渲染单元。
 	 *
 	 * 正文 / 错误块：**永远画**，永远在它发生的位置（见 buildTurnSegments）—— 折叠不再动它们。
-	 * 过程段（思考 + 工具）：展开时原地画；收起时只剩一行按钮，而按钮只画一次，
-	 * 落在第一个过程段的位置；跑着且没开「默认展开」时整段不铺。
+	 * 过程段（思考 + 工具）：
+	 *   - `all`：全部铺开（按钮长在**第一段**过程的位置）；
+	 *   - `tail`：只画**最新一组**（从 `tailFrom` 开始，按钮长在它头上），前面的组被替换掉；
+	 *   - `collapsed`：只剩按钮。
+	 * 中间那几段说明（text）与错误块同理：`tail` 先按组切，`collapsed` 再按折叠范围切。
 	 */
 	const renderSegment = (segment: TurnSegment, index: number) => {
+		const inTail = tail !== null && index < tail.segmentIndex;
+		const folded = view === "collapsed" && insideFold(index);
 		if (segment.kind === "process") {
-			// 跑着的时候一步一行地堆上去会把对话区刷成清单，回答反而找不到（见 LiveActivity）
-			if (live && !liveProcessVisible) return null;
-			const groups = (
-				<div className="process-segment">
-					{segment.groups.map((group) => (
-						<div className="process-group" key={group.key}>
-							{group.thinking ? <ThinkingSegment text={group.thinking.text} /> : null}
-							{group.tools.map((tool, toolIndex) => (
-								<ToolCard key={tool.toolCallId || `${group.key}-${toolIndex}`} block={tool} />
-							))}
-						</div>
-					))}
-				</div>
-			);
-			// 按钮跟第一段过程长在一起：折叠后正文照样连续，不会被一行按钮从中间劈开
-			if (index !== firstProcessAt) return showTools ? <Fragment key={`process-${index}`}>{groups}</Fragment> : null;
+			if (view === "collapsed") return index === firstProcessAt ? <Fragment key={`fold-${index}`}>{foldButton}</Fragment> : null;
+			if (inTail) return null;
+			/**
+			 * 跑着时：**只留最新一组的文案**（用户 2026-11-02：「只显示思考后的文案」）。
+			 *
+			 * 思考行和命令卡都不画 —— 思考是过程旁白，命令由末尾那行状态位实时报着（还带秒表），
+			 * 屏幕上就剩「它说它要干什么」+「现在跑到哪一步」，一眼能读。
+			 * 完整时间线一步没丢：点折叠行展开、或等跑完再看，全都在。
+			 */
+			if (view === "tail") {
+				return index === tail?.segmentIndex ? <Fragment key={`fold-${index}`}>{foldButton}</Fragment> : null;
+			}
+			/**
+			 * 正在跑的那一步**不画卡**（用户 2026-11-02）：末尾那行状态已经用同一句话 + 秒表报了
+			 * 「正在跑命令 … 7s」，再摆一张卡就是同一条命令连看两遍。等它跑完（status 变 ok/failed）
+			 * 卡会自然出现在它原来的位置上 —— 时间线里不缺任何一步。
+			 */
+			const visibleGroups = segment.groups
+				.map((group) => ({
+					key: group.key,
+					thinking: group.thinking,
+					tools: group.tools.filter((tool) => !(running && tool.status === "running")),
+				}))
+				.filter((group) => group.thinking !== null || group.tools.length > 0);
+			const groups =
+				visibleGroups.length === 0 ? null : (
+					<div className="process-segment">
+						{visibleGroups.map((group) => (
+							<div className="process-group" key={group.key}>
+								{group.thinking ? <ThinkingSegment text={group.thinking.text} /> : null}
+								{group.tools.map((tool, toolIndex) => (
+									<ToolCard key={tool.toolCallId || `${group.key}-${toolIndex}`} block={tool} />
+								))}
+							</div>
+						))}
+					</div>
+				);
+			// 按钮跟在第一段过程头上（展开 / 收起都只有这一个位置；跑着的分支上面已经返回了）
+			if (index !== firstProcessAt) return groups ? <Fragment key={`process-${index}`}>{groups}</Fragment> : null;
 			return (
 				<Fragment key={`fold-${index}`}>
 					{foldButton}
-					{showTools ? groups : null}
+					{groups}
 				</Fragment>
 			);
 		}
 		if (segment.kind === "text") {
+			// 跑着时：最新一组之前的说明被替换掉；收起时：最后一个结论之前的进折叠
+			// （只要有一句落在最后，它就是「最后的输出」，永远画）
+			if (inTail || folded) return null;
 			// `live` = 这一条正在流式生成：markdown 降级渲染（节流 + 暂不高亮），
 			// 否则每个 delta 都要把整段正文重新解析一遍（越长越贵，末尾最卡）
-			return segment.text.trim() ? <Markdown key={segment.index} text={segment.text} live={live} /> : null;
+			// 中间那几段说明（结论之前的正文）字号大一号：夹在思考行与工具行之间时，
+			// 它才是「人说的话」，要一眼看得出比机器步骤重要（用户 2026-11-02）。
+			const narration = index < lastAnswerAt;
+			return segment.text.trim() ? (
+				<Markdown
+					key={segment.index}
+					text={segment.text}
+					live={live}
+					className={narration ? "md-narration" : undefined}
+				/>
+			) : null;
 		}
+		if (inTail || folded) return null;
 		return (
 			<div key={segment.index} className="block-error">
 				<span className="block-error-code">{segment.block.code}</span>
@@ -631,6 +730,18 @@ function MessageViewInner({
 			</div>
 		);
 	};
+	/**
+	 * 正在跑的那一步（给末尾状态行 / 弹层用）。
+	 *
+	 * 优先用快照的 `activeTool`，但它**只有 200 字摘要**：老服务端不带 `argsFull`，弹层里就只剩
+	 * 一截（用户 2026-11-02：「怎么还是不能全部显示出来」）。而消息里那个 `status === "running"`
+	 * 的工具块本来就带 `argsFull`，所以这里把它补上 —— 不依赖服务端版本，刷新就能看全文。
+	 */
+	const runningBlock = [...message.blocks]
+		.reverse()
+		.find((block) => block.kind === "tool" && block.status === "running");
+	const runningArgsFull = runningBlock && runningBlock.kind === "tool" ? runningBlock.argsFull : undefined;
+	const liveTool = activeTool ? { ...activeTool, argsFull: activeTool.argsFull ?? runningArgsFull } : null;
 	/**
 	 * 时间只有尾注左下这一处：消息一出现就显示（开始时间），跑完再更新成完成时间。
 	 * 抬头不再放时间（打开历史时那串时分秒很吵）。
@@ -720,8 +831,8 @@ function MessageViewInner({
 				<div className="msg-body">
 					{/*
 					 * 过程与正文**按发生顺序**交错排（见 buildTurnSegments）。
-					 * 折叠只收思考与工具调用：正文（包括中间那几段说明）永远画在原位，
-					 * 折叠按钮也生在第一次动手的地方 —— 结论先被看到，想看细节再往下点那一行。
+					 * 折叠**收到最后一个结论之前**：思考、工具卡、以及中间那几段说明一起进折叠，
+					 * 跑完屏幕上只剩最后的输出；折叠按钮生在第一次动手的地方。
 					 * 没有过程（普通问答）时连按钮都不画，整条都是正文。
 					 */}
 					{hasProcess ? <div className="msg-process">{segments.map(renderSegment)}</div> : segments.map(renderSegment)}
@@ -729,9 +840,9 @@ function MessageViewInner({
 					     后一轮再派子代理时，这里会长出**新的一块**：分配按「开始时间落在哪条助手消息」
 					     做，所以上一轮的卡片留在它原来的位置上，不会被复用 / 顶掉。 */}
 					{subagentRuns && subagentRuns.length > 0 ? <AgentsRunStrip runs={subagentRuns} /> : null}
-					{/* 「正在读取 X 技能」/「正在运行 <命令>」/「正在等待模型」：跑着的时候整段回复就这一行状态位，
-					     收起也看得见（见 LiveActivity） */}
-					{live ? <LiveActivity message={message} tool={activeTool} retrying={retrying} /> : null}
+					{/* 「正在读取 X 技能」/「正在运行 <命令>」/「正在思考」：贴在末尾的状态位。
+					     过程铺开之后它不是时间线的替代品，只报「卡没卡、重试没重试、在想还是在等」 */}
+					{live ? <LiveActivity message={message} tool={liveTool} retrying={retrying} /> : null}
 				</div>
 				{/* 「插队」小标已经移到气泡内的抬头里（见上方 msg-steer-head），这里不再重复 */}
 			</div>
@@ -742,7 +853,7 @@ function MessageViewInner({
 					 * 和复制按钮挤在一行）。 */}
 					{message.usage ? (
 						<span className="msg-usage mono">
-							{usageItemsOf(message.usage).map((item) => (
+							{usageItemsOf(message.usage, t).map((item) => (
 								<span className="msg-usage-item" key={item.key} title={item.title}>
 									{item.tag ? <span className="msg-usage-tag">{item.tag}</span> : null}
 									{item.text}
@@ -801,7 +912,11 @@ function MessageViewInner({
 					{/* 时间：**一开始就显示**（先给开始时间），跑完再换成完成时间 —— 不再等结束才出现 */}
 					<FootStamp
 						ts={finishedAt ?? message.ts}
-						title={finishedAt !== null ? "这条回复完成的时间" : "这条回复开始的时间"}
+						title={
+								finishedAt !== null
+									? t("这条回复完成的时间", "When this reply finished")
+									: t("这条回复开始的时间", "When this reply started")
+							}
 					/>
 				</footer>
 			) : null}
@@ -817,7 +932,7 @@ function MessageViewInner({
 							onClick={() => setDraft(text)}
 							title={t("把这条消息放回输入框，改完再发", "Put this message back in the input, edit and send again")}
 						>
-							↳ {t("从此处编辑", "Edit from here")}
+							↳ {t("编辑", "Edit")}
 						</button>
 					)}
 					<CopyButton text={text} title={t("复制这条消息", "Copy this message")} />
@@ -861,19 +976,25 @@ function formatCost(cost: number): string {
  */
 type UsageItem = { key: string; tag?: string; text: string; title: string };
 
-function usageItemsOf(usage: NonNullable<UiMessage["usage"]>): UsageItem[] {
+function usageItemsOf(usage: NonNullable<UiMessage["usage"]>, t: (zh: string, en?: string) => string): UsageItem[] {
 	const items: UsageItem[] = [
 		{
 			key: "in",
 			tag: "in",
 			text: compactTokens(usage.input),
-			title: `输入 ${withThousands(usage.input)} tokens（这一轮发给模型的）`,
+			title: t(
+				`输入 ${withThousands(usage.input)} tokens（这一轮发给模型的）`,
+				`Input ${withThousands(usage.input)} tokens (sent to the model this turn)`,
+			),
 		},
 		{
 			key: "out",
 			tag: "out",
 			text: compactTokens(usage.output),
-			title: `输出 ${withThousands(usage.output)} tokens（模型写回来的）`,
+			title: t(
+				`输出 ${withThousands(usage.output)} tokens（模型写回来的）`,
+				`Output ${withThousands(usage.output)} tokens (written back by the model)`,
+			),
 		},
 	];
 	if (usage.cacheRead > 0) {
@@ -881,7 +1002,10 @@ function usageItemsOf(usage: NonNullable<UiMessage["usage"]>): UsageItem[] {
 			key: "cacheRead",
 			tag: "cache",
 			text: compactTokens(usage.cacheRead),
-			title: `缓存读 ${withThousands(usage.cacheRead)} tokens（命中提示词缓存，按折扣计价）`,
+			title: t(
+				`缓存读 ${withThousands(usage.cacheRead)} tokens（命中提示词缓存，按折扣计价）`,
+				`Cache read ${withThousands(usage.cacheRead)} tokens (prompt cache hit, billed at a discount)`,
+			),
 		});
 	}
 	if (usage.cacheWrite > 0) {
@@ -889,12 +1013,15 @@ function usageItemsOf(usage: NonNullable<UiMessage["usage"]>): UsageItem[] {
 			key: "cacheWrite",
 			tag: "cacheW",
 			text: compactTokens(usage.cacheWrite),
-			title: `缓存写 ${withThousands(usage.cacheWrite)} tokens（把前缀写进缓存，下次能命中）`,
+			title: t(
+				`缓存写 ${withThousands(usage.cacheWrite)} tokens（把前缀写进缓存，下次能命中）`,
+				`Cache write ${withThousands(usage.cacheWrite)} tokens (prefix stored for the next hit)`,
+			),
 		});
 	}
 	// 花费自带 $ 符号，不再加徽标；pi 拿不到价格时就不出现（不编 0）
 	if (usage.cost)
-		items.push({ key: "cost", text: formatCost(usage.cost), title: "这一轮的花费（pi 按 provider 配置的价格估算）" });
+		items.push({ key: "cost", text: formatCost(usage.cost), title: t("这一轮的花费（pi 按 provider 配置的价格估算）", "Cost of this turn (estimated from the provider prices pi has)") });
 	return items;
 }
 
@@ -943,8 +1070,8 @@ export function MessageList({
 	/** 当前会话这一轮是否在跑：只有它才会给最后一条助手消息挂实时数字 */
 	running?: boolean;
 	/** 这一轮正在跑的工具（快照的 `running.activeTool`）：画「正在运行 bash…」用 */
-	activeTool?: { name: string; argsSummary: string; startedAt: number } | null;
-	/** 这一轮正在自动重试（快照的 `running.retrying`）：把「正在等待模型…」换成「正在重试…」 */
+	activeTool?: { name: string; argsSummary: string; argsFull?: string; startedAt: number } | null;
+	/** 这一轮正在自动重试（快照的 `running.retrying`）：把「正在思考」换成「正在重试…」 */
 	retrying?: { attempt: number; maxAttempts: number } | null;
 	/** 「插队 / 排队」中、还没真正发出的消息 */
 	pending?: QueuedView[];

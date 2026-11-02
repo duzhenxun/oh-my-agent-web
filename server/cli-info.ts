@@ -9,7 +9,7 @@ import { spawn } from "node:child_process";
 import process from "node:process";
 import { defaultIsAlive, readLock } from "./session/lock.js";
 import { resolveCli } from "./util/spawn-cli.js";
-import { packageMeta } from "./util/version.js";
+import { packageMeta, resetPackageMetaCache } from "./util/version.js";
 
 type Health = {
 	ok: boolean;
@@ -93,7 +93,7 @@ export function showVersion(): void {
  *      别人的同名包（npm 上 `oh-my-agent-web` 确实已被别人占用，踩过一次）；
  *   3. 输出原样透传，成功/失败都给出下一步该做什么。
  */
-export async function upgrade(): Promise<number> {
+export async function upgrade(options: { quietTail?: boolean } = {}): Promise<number> {
 	const meta = packageMeta();
 	if (meta.private) {
 		console.error(`这个包是 private（${meta.name}@${meta.version}），没有发布到 npm，无法从 npm 升级。`);
@@ -116,6 +116,10 @@ export async function upgrade(): Promise<number> {
 		console.error("升级失败（网络 / 权限 / 包名不存在都可能）。");
 		return code;
 	}
-	console.log(`已升级到 v${packageMeta().version}（新进程才用新版：aw restart -d）`);
+	// 装完之后**重新读一次** package.json：packageMeta 是带缓存的，不清就会把升级前的版本号
+	// 当成结果报出来（「已升级到 v1.0.8」其实已经 1.0.9）—— 交互升级那边紧接着就要用新版重启。
+	resetPackageMetaCache();
+	// quietTail：调用方（update-prompt）自己会说「正在用新版重启」，这里就不用再教人敲 aw restart
+	if (!options.quietTail) console.log(`已升级到 v${packageMeta().version}（新进程才用新版：aw restart -d）`);
 	return 0;
 }

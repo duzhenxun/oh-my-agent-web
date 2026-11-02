@@ -92,7 +92,7 @@ powershell -c "irm https://raw.githubusercontent.com/duzhenxun/oh-my-agent-web/m
 
 - **重复启动会先检测**：已经在跑就只把地址打给你（并打开页面），不会再起第二个 —— `aw` / `agent-web` / `oh-my-agent-web` 三个名字完全一致。
 - **前台不刷日志**：终端只有一行「已启动：…」和 warn / error；装载会话索引、SSE 连接这类正常日志仍然全量写进 `logs/agent-web.log`。想盯着看就 `AGENT_WEB_LOG=info aw`，后台（`-d`）的输出在 `daemon.log`。
-- **会顺手查新版**：启动时（以及 `aw status`）看一眼 npm 上有没有新版本，24 小时内只问一次（缓存 `update-check.json`）；有新版就打一行 `有新版本 vX（当前 vY）→ 升级：aw upgrade`。不自动升级、网络不通就静默跳过，`AGENT_WEB_UPDATE_CHECK=off` 可彻底关掉。
+- **会问一句要不要升级**：启动时（`restart` 是先问再停）和 `aw status` 看一眼 npm 上有没有新版本，6 小时内只问一次 registry（缓存 `update-check.json`）。有新版就在终端里问 `现在升级吗？[Y/n]`：**直接回车 = 升级**，装完自动用新版重启（`agent-web -d` 也一样，先问再丢后台）；敲 `n` 跳过，下次启动还会问。非交互（CI / `aw > log`）不问，只打一行 `有新版本 vX（当前 vY）→ 升级：aw upgrade`。`AGENT_WEB_UPDATE_PROMPT=off` 只关提问、保留那行提示，`AGENT_WEB_UPDATE_CHECK=off` 连检查一起关掉。
 
 ### 参数
 
@@ -110,6 +110,7 @@ powershell -c "irm https://raw.githubusercontent.com/duzhenxun/oh-my-agent-web/m
 | — | `AGENT_WEB_APPROVAL_MODE` | `allow` | 新会话默认审批模式；`ask` 则逐次确认 |
 | — | `AGENT_WEB_TURN_TIMEOUT_MS` | 20 分钟 | 单回合看门狗超时 |
 | — | `AGENT_WEB_LOG` | `info`（前台终端只打 warn / error） | `debug` / `info` / `warn` / `error`；显式设了就按这个级别打到终端 |
+| — | `AGENT_WEB_UPDATE_PROMPT` | `on` | 发现新版时是否在终端里问「现在升级吗？」（回车 = 升级）；`off` 只保留那行被动提示 |
 | — | `AGENT_WEB_UPDATE_CHECK` | `on` | `off` 关掉启动时的升级检查（离线 / 内网 / CI 用） |
 
 ### 常用例子
@@ -153,7 +154,7 @@ oh-my-agent-web -H 0.0.0.0 -P 'my-pass'             # 直接带密码起，远�
 
 ## 对话
 
-**流式正文 + 可折叠思考块 + 工具卡**。工具卡上给参数、完整命令（可复制）、输出、耗时与成败；一次回合里的思考与工具调用按「过程 N 步」分块，点开才展开。
+**流式正文 + 可折叠思考块 + 工具卡**。工具卡上给参数、完整命令（可复制）、输出、耗时与成败；一次回合里的思考与工具调用**跑的时候只显示最新一组里的那句说明**（思考和命令卡都不画，正在跑的命令由最底下那行状态位实时报；顶上那行「N 段思考 · N 次工具 · 耗时」带秒表），**跑完自动收成那一行**（最后结论之前的一切都进折叠），点它看完整时间线。
 
 ![一条回复的尾注：markdown 表格、改动文件 chip、这一轮的 token / 缓存 / 花费](docs/screenshots/02-answer.png)
 

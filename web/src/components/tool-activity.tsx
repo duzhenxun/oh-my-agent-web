@@ -39,18 +39,21 @@ export type ToolActivity = {
  * 行尾那句话的长度上限。
  *
  * 以前给到 240（想把脚本正文尽量露出来），实跑下来是「一行里塞了半条命令 + 省略号」——
- * 用户 2026-10-30：「你的脚本显示不全就别显示这么长」。既然压短也看不全，就让这一行只做
- * 「扫一眼知道在跑什么」，全文交给点开后的弹层（`full`）。
+ * 用户 2026-10-30：「你的脚本显示不全就别显示这么长」，于是压到 64。
+ *
+ * 2026-11-02 又提上来了（用户：「太短了，应按宽度显示到能显示的位置」）：固定字数截断的毛病是
+ * **明明还有宽度也提前断**，同一条命令在旁边的工具卡里能看更多。现在只给一个宽松上限，
+ * 真正决定看到几字的是 CSS 省略号（按实际宽度），全文仍然在弹层里。
  */
-const DETAIL_CHARS = 64;
+const DETAIL_CHARS = 200;
 
 /**
- * 脚本正文在行尾只留这么点。
+ * 脚本正文在行尾的上限：同样只给宽宽一个帽子，“能看到几字” 交给 CSS 省略号按宽度决定。
  *
- * 比命令更短：脚本代码反正永远显示不全（半句 `fs.readdirSync(…)` 也看不出意图），
- * 那就不占位置 —— 抬头的「正在跑 Node 脚本」负责说清在干什么，全文留给弹层。
+ * 脚本代码扁成一行后很长，全部铺出来会把右边的时间/状态挤掉 —— 抬头的「正在跑 Node 脚本」
+ * 负责说清在干什么，全文留给弹层。
  */
-const SCRIPT_DETAIL_CHARS = 48;
+const SCRIPT_DETAIL_CHARS = 120;
 
 /** 跑命令的工具 */
 const RUN = /^(bash|sh|shell|shell_command|exec|run|run_command|terminal|powershell)$/i;
@@ -354,13 +357,19 @@ export function skillOf(name: string, argsSummary: string): string | null {
  *
  * 一律**不抛异常**：认不出来的工具（新引擎、MCP 工具）退到 `other`，照样有一行能看，只是没有彩色语义。
  */
-export function describeTool(name: string, argsSummary: string): ToolActivity {
-	const fields = fieldsOf(argsSummary);
+export function describeTool(name: string, argsSummary: string, argsFull?: string): ToolActivity {
+	/**
+	 * 解析用哪一份：`argsSummary` 被服务端截到 200 字，行尾预览够用，但**弹层要看全文**。
+	 * 有 `argsFull` 就用它解析（命令开头一样，所以「正在跑什么」的判断不受影响），
+	 * 没有（老快照 / 摘要本来就够短）就退回摘要。
+	 */
+	const source = argsFull && argsFull.trim() !== "" ? argsFull : argsSummary;
+	const fields = fieldsOf(source);
 	const path = fields.path;
 	const file = path ? basename(path) : null;
 	const fallback = (() => {
-		// parse 失败时：把摘要原文压成一行当参数，总比什么都不显示强
-		const raw = argsSummary.trim();
+		// parse 失败时：把原文压成一行当参数，总比什么都不显示强
+		const raw = source.trim();
 		return raw === "" ? null : flatText(raw);
 	})();
 
@@ -509,7 +518,7 @@ export function describeTool(name: string, argsSummary: string): ToolActivity {
 		now: tNow(`正在执行 ${name}`, `Running ${name}`),
 		done: tNow(`已执行 ${name}`, `Ran ${name}`),
 		detail: fallback,
-		full: argsSummary.trim() === "" ? null : argsSummary,
+		full: source.trim() === "" ? null : source,
 	};
 }
 

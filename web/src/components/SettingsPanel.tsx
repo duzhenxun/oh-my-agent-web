@@ -591,8 +591,8 @@ function ProcessSettings() {
 				</label>
 				<div className="settings-hint">
 					{t(
-						"思考与正文按发生的顺序排（说一句 → 调工具 → 再说一句）。第一条只管思考与工具卡：跑完把它们收成一行“过程 N 步 · 耗时 X”，点那行展开；**正文永远不折叠**，包括中间那几段说明（“A 不行，改用 B”这种理由不藏起来）。下面两个开关决定单独某一块默认是不是展开的；关掉第一条时它们同时决定整条消息跑完后展不展开。",
-						'Thinking and answer text are shown in the order they happened (say → call a tool → say again). The first option only covers thinking and tool cards: when the turn ends they fold into one "Process N steps · Xs" row — click to expand. The answer text is never collapsed, including the narration in between ("A did not work, switching to B"). The two switches below decide whether an individual block is expanded; with the first option off they also decide whether a finished message is expanded.',
+						"思考与正文按发生的顺序排（说一句 → 调工具 → 再说一句）。第一条管整个「过程」：跑着的时候**只显示最新一组里的那句说明**（思考和命令卡都不画，正在跑的命令由最底下的状态行实时报、带秒表；顶上那行「N 段思考 · N 次工具 · 耗时」也是秒表），点它可以展开完整时间线；**跑完自动收起**（最后一段结论之前的一切都进折叠，外面只留最后的输出），再点开也是全部。下面两个开关决定单独某一块默认是不是展开的。",
+						'The first option covers the whole "process": while the turn runs **only the newest group is shown** (the last thinking block + its narration + the running command — groups swap in place instead of piling up, with the "N thinking · N tools · Xs" stopwatch on top), and clicking it expands the full timeline; when the turn ends it **folds away automatically** (everything before the final conclusion, leaving only the last answer), and clicking it again shows everything. The two switches below decide whether an individual block is expanded by default.',
 					)}
 				</div>
 			</div>

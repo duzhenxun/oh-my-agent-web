@@ -294,6 +294,17 @@
 	background: color-mix(in srgb, var(--text) 5%, transparent);
 }
 
+/* 过程里的「说明段」（最后一段结论之前的正文）：字号比正文大一号。
+ *
+ * 为什么要它：以前它和思考行、工具行几乎同字号又同为深色，夹在中间读起来像又一条工具输出
+ * （用户 2026-11-02：「红框里的文案看着不是很明显，字号大一些」）。工具行改成淡色之后，
+ * 再把这一档抬到 1.08em，视觉上就成了「人说的话 > 机器步骤」两层。
+ * 基准用 `--chat-font-size`（设置里的正文字号），不用 em —— em 是相对**父级**算的，
+ * 而父级不一定是正文字号（实测 1.08em 会算成 17.28px，跳太多）。 */
+.md.md-narration {
+	font-size: calc(var(--chat-font-size, 14px) * 1.08);
+}
+
 /* 「过程」容器：这一轮的所有渲染单元（过程段与正文按发生顺序交错）。
    折叠**只收思考与工具卡**（收成一行“过程 N 步”，按钮长在第一次动手的位置）；
    正文与中间那几段说明永远留在原位 —— 它们不是“过程噪音”，是推理的理由。 */
@@ -404,9 +415,11 @@
 	align-items: center;
 	gap: 8px;
 	min-width: 0;
-	/* 现在这一行是 <button>（点开看完整命令）：把浏览器那套默认样式抹平 */
+	/* 	现在这一行是 <button>（点开看完整命令）：把浏览器那套默认样式抹平 */
 	width: 100%;
-	margin-top: 10px;
+	/* 和过程里的行一样紧贴上一行：父容器（.msg-body）给了 8px 间距，这里用 -4 抵成 4px，
+	   跟 .process-segment 内部的 4px 一致（用户 2026-11-02：「这三行距离应保持一致」） */
+	margin-top: -4px;
 	padding: 0;
 	border: 0;
 	background: none;
@@ -427,19 +440,28 @@
 	color: var(--text);
 }
 
-/* 「完整命令」弹层：行尾只塞得下 64 字，全文摆这里（等宽、保留换行、可滚动）。
- * 往上弹（实时行总在消息末尾，下方就是输入框），宽度压住不撑破气泡。 */
+/* 「完整命令」弹层：行尾只塞得下一行的一点开头（详情交给 CSS 省略号），全文摆这里
+ * （等宽、保留换行、可滚动）。
+ * 往上弹（实时行总在消息末尾，下方就是输入框），宽度压住不撑破气泡 ——
+ * 560 → 860：长命令（`cd … && node -e '…'`）在 560 里要横着滚，看全文的人是来读命令的，
+ * 给宽一点比给滚动条有用（用户 2026-11-02：「弹层可以再宽一些」）。 */
 .msg-activity-pop {
 	position: absolute;
 	left: 0;
 	bottom: calc(100% + 6px);
 	z-index: 30;
-	width: min(560px, 100%);
-	padding: 9px 11px;
+	width: min(860px, 100%);
+	padding: 9px 11px 11px;
 	border: 1px solid var(--border);
 	border-radius: 10px;
 	background: var(--bg-elev);
 	box-shadow: 0 10px 28px rgb(0 0 0 / 12%);
+	/* 它是**向上**弹的（anchor 在底边），所以整体高度必须留出「视口 + 140px」的余量，
+	   否则行本身贴着屏幕底部时，弹层顶部会被顶到视口外面 —— 手机上实测 y = -57px，
+	   标题和复制按钮全看不见（用户 2026-11-02 报「显示不全」）。用 flex 让正文自己收缩滚动。 */
+	max-height: calc(100vh - 140px);
+	display: flex;
+	flex-direction: column;
 }
 
 .msg-activity-pop-head {
@@ -482,9 +504,22 @@
 	border-radius: 4px;
 }
 
+/* 复制按钮：跟标题同一行、靠右；比正文小一号，不要压过命令本身 */
+.msg-activity-pop-foot {
+	display: flex;
+	justify-content: flex-end;
+	margin-top: 6px;
+	font-size: calc(var(--chat-ui-font-size, 12px) * 0.9);
+}
+
 .msg-activity-pop-body {
 	margin: 7px 0 0;
-	max-height: 220px;
+	/* 220 → 70vh / 720：用户要的是「整段都能看见」（heredoc / 脚本常见 600px 上下）；
+	 * 只在极端长（几千字）时才滚动。外层还有 `max-height: calc(100vh - 140px)`，
+	 * 所以这里用 flex 收缩（min-height: 0 是必需的，否则 flex 项不会缩）。 */
+	flex: 1 1 auto;
+	min-height: 0;
+	max-height: min(70vh, 720px);
 	overflow: auto;
 	white-space: pre-wrap;
 	word-break: break-word;
@@ -525,9 +560,12 @@
 	}
 }
 
-/* 「正在读取 X 技能」这句：不换行；万一是认不出的长工具名（MCP），宁可省略也不撑破这一行 */
+/* 「正在读取 X 技能」这句：**不跟着缩**（flex: none）——一缩就变成「正在…」，
+ * 而这句恰恰是这行最重要的信息；要省宽度就省后面的参数（用户 2026-11-02：
+ * 参数铺满后标签被挤成了「正在…」）。真遇上超长工具名（MCP）仍允许省略，不撑破行。 */
 .msg-activity-label {
-	flex: 0 1 auto;
+	flex: 0 0 auto;
+	max-width: 60%;
 	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -581,7 +619,8 @@
 	width: 100%;
 	border: none;
 	background: none;
-	color: var(--text-faint);
+	/* 过程行统一再淡一档（用户 2026-11-02）：思考、工具卡都用 --text-whisper */
+	color: var(--text-whisper);
 	font: inherit;
 	font-size: calc(var(--chat-ui-font-size, 12px) * 0.9655);
 	text-align: left;
@@ -615,7 +654,7 @@
 .thinking-label {
 	flex: none;
 	font-weight: 500;
-	color: var(--text-faint);
+	color: var(--text-whisper);
 }
 
 /* 「· 耗时 2s」：放在预览后面、三角之前，淡色小字 */

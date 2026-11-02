@@ -10,7 +10,8 @@
  *      但「缓存的 latest 比本机还旧」时**不信缓存**（换过源 / 镜像同步慢 / 刚发完版），
  *      重量一次 —— 不然一条过期记录能把「有新版」按到人看不见；
  *   3. **能关**：`AGENT_WEB_UPDATE_CHECK=off`（离线 / 内网 / CI）；
- *   4. **只报告，不替用户升级**：升级可能打断正在跑的回合，必须由人来按（`aw upgrade`）。
+ *   4. **不自己偷偷升**：这里只负责查和报告；真要不要升由人在终端里按（`aw upgrade`，
+ *      或启动时那次 `现在升级吗？[Y/n]` 确认 —— 见 update-prompt.ts）。升级会打断正在跑的回合。
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";

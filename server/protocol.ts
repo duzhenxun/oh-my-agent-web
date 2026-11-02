@@ -85,7 +85,11 @@ export type RunningState = {
 	turnStartedAt: number | null;
 	/** 当前助手文本（增量另走 message_delta 事件，避免每字全量重推） */
 	streamingText: string;
-	activeTool: { name: string; argsSummary: string; startedAt: number } | null;
+	/**
+	 * 正在跑的那一步。`argsFull` 跟 `ToolBlock.argsFull` 同一个用途：`argsSummary` 被截到 200 字，
+	 * 而实时行点开的弹层要看到**完整命令**（用户 2026-11-02：「正在跑的命令应可以点开看到全部」）。
+	 */
+	activeTool: { name: string; argsSummary: string; argsFull?: string; startedAt: number } | null;
 	/**
 	 * 正在**自动重试**（传输层被打断，引擎自己再试一次）：
 	 * 退避期间界面上什么都不会动，必须靠这一行说「还在，在重试」。

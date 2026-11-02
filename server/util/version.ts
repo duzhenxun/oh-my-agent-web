@@ -50,6 +50,16 @@ export function packageMeta(fromUrl: string = import.meta.url): PackageMeta {
 	return cached;
 }
 
+/**
+ * 把缓存清掉，强制下次重新读 package.json。
+ *
+ * 只有一件事需要它：`upgrade()` 刚用 npm 装完新版 —— 那时候缓存里还是旧版本号，
+ * 不清就会把「已升级到 vX」印成升级前的那个 X。
+ */
+export function resetPackageMetaCache(): void {
+	cached = null;
+}
+
 /** web 版本；找不到就回 `"unknown"` */
 export function webVersion(fromUrl: string = import.meta.url): string {
 	return packageMeta(fromUrl).version;

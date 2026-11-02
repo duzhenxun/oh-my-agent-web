@@ -40,6 +40,7 @@ import { DEFAULT_DATA_DIR_NAME } from "./util/env.js";
 import { prunePtyPrebuilds } from "./util/prune-pty.js";
 import { fetchHealth, showStatus, showVersion, upgrade } from "./cli-info.js";
 import { checkForUpdate, describeUpdate } from "./update-check.js";
+import { offerUpgrade } from "./update-prompt.js";
 import { defaultIsAlive, describeHolder, readLock } from "./session/lock.js";
 
 const USAGE = `用法: agent-web [命令] [选项]        （agent-web / aw / oh-my-agent-web 三个命令完全等价）
@@ -63,6 +64,10 @@ const USAGE = `用法: agent-web [命令] [选项]        （agent-web / aw / oh
   -d, --detach         后台运行（脱离终端；日志见 daemon.log）
   -f, --foreground     前台运行（就是默认，留着给老脚本）
       --no-open        不要在浏览器里打开页面
+
+发现新版会先问一句「现在升级吗？」：**直接回车 = 升级**（升完自动用新版重启），敲 n 跳过。
+  AGENT_WEB_UPDATE_PROMPT=off  不问（只保留那行被动提示）
+  AGENT_WEB_UPDATE_CHECK=off   连检查也关掉（离线 / 内网 / CI）
 
 密码只有一个来源：<dataDir>/password（给了 -P / AGENT_WEB_PASSWORD 会先写进去，之后只读它）
 （设一次就一直在，重启不必重复输入；也可以在本机页面的 设置 → 远程 里改）。
@@ -133,6 +138,11 @@ function parseArgs(argv: string[]): ParsedArgs {
 function dataDir(): string {
 	const fromEnv = process.env.AGENT_WEB_DATA_DIR;
 	return fromEnv && fromEnv !== "" ? resolve(fromEnv) : join(homedir(), DEFAULT_DATA_DIR_NAME);
+}
+
+/** 升级问答要用的「我是谁」：数据目录（查缓存）+ 入口脚本 + 原始参数（升完照原样重跑） */
+function upgradeTarget(): { dataDir: string; entry: string; argv: string[] } {
+	return { dataDir: dataDir(), entry: fileURLToPath(import.meta.url), argv: process.argv.slice(2) };
 }
 
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
@@ -475,6 +485,8 @@ async function main(): Promise<void> {
 		return;
 	}
 	if (parsed.command === "restart") {
+		// 升级问在「停」之前：问在停之后，用户就得先白等一次完整重启
+		if ((await offerUpgrade(upgradeTarget())).upgraded) return;
 		await stopServer();
 		// 等端口真正释放再起，否则会撞 EADDRINUSE
 		await sleep(400);
@@ -490,6 +502,11 @@ async function main(): Promise<void> {
 
 	// start / restart：先确认不是「已经在跑了」（三个命令名共用这一处检测）
 	if (await detectRunning(parsed.open)) return;
+
+	// 真的要起了，才问「要不要升级」（已经在跑的那一路上面就返回了，不该再打扰）。
+	// restart 路径刚刚问过：offerUpgrade 记住结果，这里不会第二次打断你。
+	const offer = await offerUpgrade(upgradeTarget());
+	if (offer.upgraded) return;
 
 	// 真的要起来了，才把「显式给的密码」落盘：已经在跑的时候不写，
 	// 否则文件里的新密码和当前进程里的旧密码对不上，只会让人下次重启时奇怪。
@@ -507,10 +524,11 @@ async function main(): Promise<void> {
 
 	// start / restart：默认**前台**跑（日志直接打在终端，Ctrl-C 退出），`-d` 才丢到后台
 	if (!parsed.foreground) {
-		// 后台启动：并发问一次，起来之后再打印（别让网络拖住启动）
-		const update = checkForUpdate({ dataDir: dataDir() }).catch(() => null);
+		// 后台启动：没被问过（非交互）才需要补那行被动提示；
+		// 并发问一次、起来之后再打印，别让网络拖住启动。
+		const update = offer.asked ? null : checkForUpdate({ dataDir: dataDir() }).catch(() => null);
 		await startDetached(process.argv.slice(2), parsed.open);
-		const line = describeUpdate(await update);
+		const line = describeUpdate(update ? await update : null);
 		if (line) console.log(line);
 		return;
 	}
@@ -518,10 +536,14 @@ async function main(): Promise<void> {
 	// 告诉服务层「终端在看着」：只留 warn / error，正常日志光进文件（见 index.ts 的 quietConsole）。
 	// 必须看 isTTY：后台子进程也走这个分支，但它的 stdout 是 daemon.log —— 那里要保留全部日志。
 	if (process.stdout.isTTY) process.env.AGENT_WEB_FOREGROUND = "1";
+	// 交互询问刚刚在终端里问过了（offerUpgrade）：别再让 index.ts 印一遍被动提示。
 	// 升级提示由 index.ts 印在启动那屏里（`aw > log` 这种不是 TTY 的也照样印）。
 	// 后台子进程（`AGENT_WEB_FOREGROUND=0`，见 startDetached）跳过：那一路的提示由父进程在
 	// 终端上印，子进程再印一份就只会在 daemon.log 里重复一遍（还白查一次 registry）。
-	if (process.env.AGENT_WEB_FOREGROUND !== "0") process.env.AGENT_WEB_UPDATE_NOTICE = "1";
+	// 这里不光是「设」，而是「定了算」：这个变量是**继承**来的（从 agent-web 起的终端里再敲
+	// agent-web，父进程环境里就带着一个 =1），不删就会在已经问过之后又补印一行。
+	if (offer.asked || process.env.AGENT_WEB_FOREGROUND === "0") delete process.env.AGENT_WEB_UPDATE_NOTICE;
+	else process.env.AGENT_WEB_UPDATE_NOTICE = "1";
 	// 启动提示里的命令名（aw / agent-web / oh-my-agent-web）由实际敲的那个决定
 	process.env.AGENT_WEB_CLI_NAME = invokedName();
 	await import("./index.js");
