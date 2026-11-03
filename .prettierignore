@@ -6,6 +6,15 @@ web/dist
 # Markdown 表格是手写的，不进 formatter
 *.md
 
+# Docker 相关：prettier 没有 Dockerfile / .dockerignore / 入口 sh 的 parser
+Dockerfile
+.dockerignore
+docker/
+
+# 落地页是手写的单文件 HTML（内联 CSS/JS），整页 prettier 会把 770 行全改一遍
+# （行内样式、紧凑的标签写法），改起来反而更难。og.svg 同理。
+docs/site
+
 # 锁文件由 npm 维护，不做 prettier 检查
 package-lock.json
 

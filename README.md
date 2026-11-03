@@ -1,6 +1,13 @@
 # oh-my-agent-web
 
-**中文** · [English](README.en.md)
+[![npm version](https://img.shields.io/npm/v/oh-my-agent-web?style=flat-square&label=npm&logo=npm&color=cb3837)](https://www.npmjs.com/package/oh-my-agent-web)
+[![npm downloads](https://img.shields.io/npm/dm/oh-my-agent-web?style=flat-square&label=downloads%2Fmonth&color=2f5fe0)](https://www.npmjs.com/package/oh-my-agent-web)
+[![GitHub stars](https://img.shields.io/github/stars/duzhenxun/oh-my-agent-web?style=flat-square&color=f5c542&label=stars)](https://github.com/duzhenxun/oh-my-agent-web/stargazers)
+[![node](https://img.shields.io/badge/node-%E2%89%A522.19-3c873a?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org)
+[![license](https://img.shields.io/badge/license-MIT-2f5fe0?style=flat-square)](LICENSE)
+[![site](https://img.shields.io/badge/site-live-7b5cf0?style=flat-square)](https://duzhenxun.github.io/oh-my-agent-web/zh.html)
+
+**中文** · [English](README.en.md) · [官网](https://duzhenxun.github.io/oh-my-agent-web/zh.html)
 
 一句话：**给你正在跑的那个 agent 配一个外部操作页。** 引擎照旧跑在自己电脑上，你在网页里看着它干活、管它的工具和模型、随时插话纠正，需要时直接翻文件、开终端、圈出一段话让它改。
 
@@ -70,6 +77,18 @@ powershell -c "irm https://raw.githubusercontent.com/duzhenxun/oh-my-agent-web/m
 | 不动 PATH | `OH_MY_AGENT_WEB_NO_PATH=1`（或 `--no-modify-path`） |
 | 装编译工具 | `OH_MY_AGENT_WEB_BUILD_TOOLS=1`（或 `--with-build-tools`） |
 | 卸载 | `… \| sh -s -- --uninstall`（只删装进去的包与命令，`settings.json` / 密码 / 上传 / 日志不动） |
+
+### Docker（只想先看看，不想碰本机环境）
+
+```bash
+docker build -t oh-my-agent-web:local .
+docker run -d --name aw -p 127.0.0.1:25257:25257 \
+  -e AGENT_WEB_PASSWORD='换成你自己的' \
+  -v aw-data:/data -v "$PWD":/workspace oh-my-agent-web:local
+```
+
+镜像里只带 pi 引擎（它的 SDK 是本包的依赖）；Codex / Claude Code / opencode 要各自装 CLI，
+数据在 `/data`、代码在 `/workspace`。细节与排错见 [`docs/docker.md`](docs/docker.md)。
 
 ---
 

@@ -1,0 +1,34 @@
+# docker compose 起一个工作台：`docker compose up -d`
+#
+# 密码用环境变量给，别写进这个文件（它是要提交的）：
+#   export AGENT_WEB_PASSWORD='换成你自己的'
+#   docker compose up -d
+# 或者放一个不提交的 .env：`AGENT_WEB_PASSWORD=...`
+#
+# `${VAR:?提示}` 的意思是「没设就带着这句话报错退出」，比默默起一个进不去的服务强。
+
+services:
+  aw:
+    build:
+      context: .
+      args:
+        # 钉版本：OH_MY_AGENT_WEB_VERSION=1.1.0
+        OH_MY_AGENT_WEB_VERSION: ${OH_MY_AGENT_WEB_VERSION:-latest}
+    # 已经构建过镜像时，把上面 build 换成 image: oh-my-agent-web:local
+    image: oh-my-agent-web:local
+    container_name: oh-my-agent-web
+    ports:
+      # 默认只绑本机：http://127.0.0.1:25257
+      # 要让局域网 / 手机访问，改成 "25257:25257"（密码这时候是硬门槛）
+      - "127.0.0.1:25257:25257"
+    environment:
+      AGENT_WEB_PASSWORD: ${AGENT_WEB_PASSWORD:?请先 export AGENT_WEB_PASSWORD=...}
+    volumes:
+      # 会话列表、设置、上传、日志都在这；容器删了也还在
+      - aw-data:/data
+      # 要给它干活的仓库：WORKSPACE=/path/to/repo docker compose up -d
+      - ${WORKSPACE:-.}:/workspace
+    restart: unless-stopped
+
+volumes:
+  aw-data:

@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>oh-my-agent-web · 给你正在跑的 agent 配一个外部操作页</title>
+<meta name="description" content="oh-my-agent-web 是一个多 Agent 统一 Web 工作台：引擎跑在本机，你在网页里看它干活、管模型与工具、随时插话纠正，还能翻文件、开终端、在网页上圈出要改的地方。" />
+<meta name="color-scheme" content="light dark" />
+<meta name="theme-color" content="#0a0e18" />
+
+<!-- 分享卡片：WhatsApp / Slack / X / 钉钉 / 微信里贴链接时的第一眼。
+     图片是 scripts/make-og.mjs 从 assets/og.svg 生成的，改文案去改那份 SVG。
+     og:image 必须是绝对地址（抓取方不解析相对路径），换域名时记得一起改。 -->
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="oh-my-agent-web" />
+<meta property="og:title" content="oh-my-agent-web · 给你正在跑的 agent 配一个外部操作页" />
+<meta property="og:description" content="引擎跑在本机，会话就是引擎的落盘文件。看过程、插话纠正、管模型与工具；支持 pi / Codex / Claude Code / opencode。不引数据库，不建账号体系。" />
+<meta property="og:url" content="https://duzhenxun.github.io/oh-my-agent-web/zh.html" />
+<meta property="og:image" content="https://duzhenxun.github.io/oh-my-agent-web/assets/og.png" />
+<meta property="og:image:width" content="1280" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="oh-my-agent-web：给你正在跑的 agent 配一个外部操作页" />
+<meta property="og:locale" content="zh_CN" />
+<meta property="og:locale:alternate" content="en_US" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="oh-my-agent-web" />
+<meta name="twitter:description" content="给你正在跑的 agent 配一个外部操作页。引擎跑在本机，会话就是引擎的落盘文件，不引数据库。" />
+<meta name="twitter:image" content="https://duzhenxun.github.io/oh-my-agent-web/assets/og.png" />
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232f5fe0'/%3E%3Cpath d='M9 11l6 5-6 5' stroke='white' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M18 21h5' stroke='white' stroke-width='2.6' stroke-linecap='round'/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="assets/site.css" />
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-in">
+    <a class="brand" href="#top" aria-label="oh-my-agent-web 首页">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#2f5fe0"/><path d="M9 11l6 5-6 5" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M18 21h5" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/></svg>
+      <span>oh-my-agent-web</span>
+    </a>
+    <button class="nav-toggle" aria-expanded="false" aria-controls="navlinks">菜单</button>
+    <nav class="nav-links" id="navlinks">
+      <a href="#rules">定位</a>
+      <a href="#features">功能</a>
+      <a href="#workspace">工作区</a>
+      <a href="#panels">面板</a>
+      <a href="#engines">引擎</a>
+      <a href="#install">安装</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <div class="nav-cta">
+      <a class="nav-lang" href="index.html" data-lang="en" title="Switch to English">English</a>
+      <a class="btn" href="https://github.com/duzhenxun/oh-my-agent-web" target="_blank" rel="noreferrer">GitHub</a>
+      <a class="btn btn-primary" href="#install">开始使用</a>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <span class="eyebrow">开源 · MIT · 单用户 · 本地优先</span>
+        <h1>给你正在跑的 agent，<br />配一个<em>外部操作页</em></h1>
+        <p class="lede">
+          引擎照旧跑在你自己的电脑上。你在网页里看它干活、管它的工具与模型、随时插话纠正；需要时直接翻文件、开终端、在网页上圈出那句要改的地方。
+          单用户、只听回环、<b>不引数据库</b> —— 会话的事实源永远是引擎自己的落盘文件。
+        </p>
+        <div class="hero-actions">
+          <div class="install-pill">
+            <code>npm -g install oh-my-agent-web</code>
+            <button class="icon-btn" data-copy="npm -g install oh-my-agent-web" title="复制安装命令" aria-label="复制安装命令">⧉</button>
+          </div>
+          <a class="btn" href="#tour">看看界面</a>
+        </div>
+        <div class="trust">
+          <span><i></i>pi / Codex / Claude Code / opencode / DeepSeek Harness</span>
+          <span><i></i>Windows · macOS · Linux</span>
+          <span><i></i>Node ≥ 22.19</span>
+        </div>
+      </div>
+      <div>
+        <div class="frame">
+          <div class="frame-bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="frame-url">127.0.0.1:25257 · demo-app</span></div>
+          <img src="assets/zh/hero.webp" width="1600" height="900" alt="一次真实会话：左侧项目与会话，中间过程里的思考段与工具卡，右侧同一个仓库的改动对比" data-zoom />
+        </div>
+        <p class="caption">一次真实会话：思考、工具、改动、用量，都在同一屏里。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 三条纪律 -->
+  <section id="rules">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <div class="kicker">它是什么</div>
+        <h2>不是新的 agent 引擎，<br />也不把会话搬到云上</h2>
+        <p>它不重写 prompt、不接管工具实现 —— 你装的是 pi、Codex、Claude Code、opencode，工作台只给它们配一套能看的界面、能点的按钮和能落盘的会话列表。三条硬纪律决定了它长什么样。</p>
+      </div>
+      <div class="rules">
+        <article class="rule reveal">
+          <div class="no">01 / NO DATABASE</div>
+          <h3>不引数据库</h3>
+          <p>会话就是引擎自己写的 <code>JSONL</code> / thread。网页只读它、改名字、必要时删它，从不复制一份到自己的库里。</p>
+        </article>
+        <article class="rule reveal">
+          <div class="no">02 / NO FAKING</div>
+          <h3>不假装</h3>
+          <p>引擎没有的能力就在界面上藏起来（能力矩阵）；面板拿不到数据就直说，不拿别的引擎的配置冒充。</p>
+        </article>
+        <article class="rule reveal">
+          <div class="no">03 / NO OVERREACH</div>
+          <h3>不越界</h3>
+          <p>默认只听 <code>127.0.0.1</code>。要远程就显式 <code>-H 0.0.0.0</code>，并且先在本机把密码设好。</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- 功能 -->
+  <section id="features">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <div class="kicker">一次对话</div>
+        <h2>过程是摊开的，不是一个转圈</h2>
+        <p>思考块、工具调用、改动文件、token 与花费都在对话流里；回合没跑完也能插话、排队、停下。</p>
+      </div>
+
+      <div class="cards">
+        <article class="card wide reveal">
+          <div class="copy">
+            <h3>看得见它怎么想、做了什么</h3>
+            <p>工具卡给参数、完整命令、输出、耗时与成败；跑完自动收成一行「N 段思考 · N 次工具 · 耗时」，点开就是完整时间线。</p>
+            <div class="list">
+              <div><span class="tick">✓</span><span><b>尾注是本轮用量</b>：in / out / cache / 花费，点「复制」整段带走。</span></div>
+              <div><span class="tick">✓</span><span><b>改动文件 chip</b>：这一轮改过哪些文件，点一下落到右栏 diff。</span></div>
+              <div><span class="tick">✓</span><span><b>路径可点</b>：正文里的 <code>src/App.tsx</code> 直接开预览。</span></div>
+            </div>
+          </div>
+          <div class="shot"><img src="assets/zh/answer.webp" width="1300" height="486" alt="一条回复的尾注：markdown 表格、改动文件 chip、这一轮的 token 与花费" loading="lazy" data-zoom /></div>
+        </article>
+
+        <article class="card reveal">
+          <h3>插队、排队、停止</h3>
+          <p>回合跑着的时候输入框不会锁死：插队立刻生效，排队等本回合结束，停止保留已经产出的内容。</p>
+          <div class="term" aria-label="回合控制示意">
+<span class="c"># 正在跑</span>
+<span class="p">›</span> 先看一下 store.ts 的写盘
+<span class="c"># 你插了一句</span>
+<span class="p">›</span> 顺便把 App 的订阅也改掉   <span class="c">已插队</span>
+<span class="c"># 又排了一条</span>
+<span class="p">›</span> 跑完补个测试              <span class="c">排队 1</span>
+          </div>
+          <div class="tagrow"><span class="tag">steer</span><span class="tag">queue</span><span class="tag">stop</span><span class="tag">非 pi 引擎自动降级为排队</span></div>
+        </article>
+
+        <article class="card reveal">
+          <h3>圈出重点再提意见</h3>
+          <p>选中一段回复，浮出小工具条：加进会话、写一条标注、或丢到临时会话里单独问。正文上会留 <b>①②③</b> 编号，输入框里多出一颗「N 条注释」。</p>
+          <div class="shot"><img src="assets/zh/annotations.webp" width="1400" height="788" alt="标注之后：正文里留下编号徽标，输入框里多出「1 条注释」" loading="lazy" data-zoom /></div>
+        </article>
+
+        <article class="card reveal">
+          <h3>@ 找文件，/ 发指令</h3>
+          <p>输入框里打 <b>@</b> 就在工作区里找文件，↑↓ 选中、回车插入 <code>@src/store.ts</code>；打 <b>/</b> 是本地指令（新建、改名、切模型、统计）与直接交给 agent 的指令（压缩上下文、计划模式）。</p>
+          <div class="shot"><img src="assets/zh/mention-crop.webp" width="1200" height="393" alt="输入 @ 后弹出的文件提及面板，分「添加」与「最近用过」两组" loading="lazy" data-zoom /></div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- 工作区 -->
+  <section id="workspace">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <div class="kicker">右栏工作区</div>
+        <h2>看文件、跑命令、<br />直接在网页上标「这里要改」</h2>
+        <p>右栏是一个多标签工作区：文件预览、改动对比、真终端、内置网页、临时会话。前三个用来复核，网页那个用来开发。</p>
+      </div>
+
+      <div class="spot reveal">
+        <div>
+          <h3>文件与改动</h3>
+          <p>目录树、按文件名搜、全文检索（支持 <code>web/src/**</code> 这样的路径掩码）；预览支持 markdown、mermaid、图片、PDF、音视频。顶到「改动」就是与 HEAD 的对比：<b>+10 −1</b> 概览、行级红绿、可只看改动。</p>
+          <div class="list">
+            <div><span class="tick">✓</span><span>选中行「追加到对话」，写进草稿的是 <code>@src/store.ts:120-138</code></span></div>
+            <div><span class="tick">✓</span><span>网页端只读：改文件交给 agent 或终端，这里用 diff 复核</span></div>
+          </div>
+        </div>
+        <div class="shot"><img src="assets/zh/diff.webp" width="1000" height="618" alt="改动视图：与 HEAD 对比，+10 −1 概览与行级红绿" loading="lazy" data-zoom /></div>
+      </div>
+
+      <div class="spot rev reveal">
+        <div>
+          <h3>真终端</h3>
+          <p>右栏的终端是<b>真 PTY</b>（node-pty + xterm.js）：vim、top、Ctrl-C、颜色、行编辑都正常，cwd 跟会话所在项目一致。刷新页面不会恢复终端会话，切标签则不会断。</p>
+          <div class="tagrow"><span class="tag">zsh</span><span class="tag">颜色</span><span class="tag">Ctrl-C</span><span class="tag">cwd 跟随会话</span></div>
+        </div>
+        <div class="term" aria-label="终端示例">
+<span class="c">demo-app on main</span>
+<span class="p">$</span> git status -s
+ M src/App.tsx
+ M src/store.ts
+<span class="p">$</span> git diff --stat
+ src/App.tsx  | 5 +++--
+ src/store.ts | 11 ++++++++++-
+<span class="p">$</span> npm test -- --run
+<span class="o"> ✓ src/store.test.ts (3 tests)</span>
+<span class="o"> Tests  5 passed (5)</span>
+        </div>
+      </div>
+
+      <div class="spot reveal">
+        <div>
+          <h3>网页开发闭环：打开、标注、发给 agent</h3>
+          <p>在右栏打开本地页面（请求走本机代理，不带 cookie），点刷新旁边的 <b>📍</b> 进入拾取模式：点页面上要改的那一处，就地写一句意见，页面上留下 <b>①②③</b> 标记；一次能连着标好几处，整批进输入框的「N 条注释」。</p>
+          <div class="list">
+            <div><span class="tick">✓</span><span><b>标记会复原</b>：刷新、跳转回来，按选择器重新画框。</span></div>
+            <div><span class="tick">✓</span><span><b>按页编号</b>：同一页 1、2、3 递增，不重号；Esc 退出拾取。</span></div>
+            <div><span class="tick">✓</span><span><b>与注释分开存</b>：页面标记留在本机，注释发出去就清空。</span></div>
+          </div>
+        </div>
+        <div class="shot"><img src="assets/zh/webmark.webp" width="1600" height="900" alt="右栏打开活动报名页，标题被标成 ①、输入框里出现「1 条注释」" loading="lazy" data-zoom /></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 面板 -->
+  <section id="panels">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <div class="kicker">配置面板</div>
+        <h2>模型、技能、MCP、插件、子代理，<br />都跟着当前引擎走</h2>
+        <p>切到 Codex，面板读的就是 Codex 自己的东西；没接的面板会直说，不拿 pi 的配置冒充。</p>
+      </div>
+      <div class="panels">
+        <article class="panel-card reveal">
+          <img src="assets/zh/models.webp" width="1400" height="788" alt="模型与供应商面板：服务商列表与端点、模型白名单" loading="lazy" data-zoom />
+          <div class="body"><h4>模型与供应商</h4><p>订阅 OAuth 登录、内置填 key、自定义端点与 API 形态；逐个勾选白名单。key 不出服务端，只回尾 4 位。</p></div>
+        </article>
+        <article class="panel-card reveal">
+          <img src="assets/zh/skills.webp" width="1400" height="788" alt="技能面板：已装、启用、禁用三档，右侧是 SKILL.md 摘要" loading="lazy" data-zoom />
+          <div class="body"><h4>技能</h4><p>读 <code>~/.agents/skills</code>；启停就是改文件名，没有第二份状态文件。Skill Hub 支持分类搜索与一键安装。</p></div>
+        </article>
+        <article class="panel-card reveal">
+          <img src="assets/zh/mcp.webp" width="1400" height="788" alt="MCP 面板：全局与项目两份配置、启停、暴露方式、测试连接" loading="lazy" data-zoom />
+          <div class="body"><h4>MCP</h4><p>全局与项目两份配置、项目同名覆盖；exposure 四档；「测试连接」真握手后即断，报工具数。</p></div>
+        </article>
+        <article class="panel-card reveal">
+          <img src="assets/zh/agents.webp" width="1400" height="788" alt="子代理面板：模板、默认并发与启用开关" loading="lazy" data-zoom />
+          <div class="body"><h4>子代理</h4><p>内置 explore / general-purpose / plan，可改可停；并发 1–12，超出的排队。每个子代理都是一个真实会话。</p></div>
+        </article>
+        <article class="panel-card reveal">
+          <img src="assets/zh/plugins.webp" width="1400" height="788" alt="插件面板：pi package 的加载状态与按包停用" loading="lazy" data-zoom />
+          <div class="body"><h4>插件</h4><p>插件就是 pi package：npm / git / 本地目录，四态 <code>loaded · installed · missing · disabled</code>，按包停用不删文件。</p></div>
+        </article>
+        <article class="panel-card reveal">
+          <img src="assets/zh/push.webp" width="1400" height="788" alt="推送面板：本机推送状态、目标设备与测试推送" loading="lazy" data-zoom />
+          <div class="body"><h4>推送与语音</h4><p>回合结束推一条（失败 ❌ / 中断 ⏹ 带前缀），点通知直达会话；四类事件提示音 + 本地 TTS，不联网。</p></div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- 巡览 -->
+  <section id="tour">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <div class="kicker">界面巡览</div>
+        <h2>五个区，各管一件事</h2>
+        <p>左栏是项目与会话，中间是对话，右栏是工作区，底栏是「这一句怎么跑」。所有入口都能在设置里逐项隐藏。</p>
+      </div>
+      <div class="tour">
+        <div class="tour-tabs" role="tablist">
+          <button class="tour-tab" role="tab" aria-selected="true" data-src="assets/zh/overview.webp" data-alt="界面全景：左栏项目与会话、中间对话、右栏源码、底栏状态" data-cap="左栏项目与会话 · 中间对话 · 右栏源码 · 底栏状态">全景</button>
+          <button class="tour-tab" role="tab" aria-selected="false" data-src="assets/zh/settings.webp" data-alt="设置面板：侧栏条数、顶栏入口、底部信息块" data-cap="设置 → 界面：侧栏条数、顶栏入口、底部信息块">设置</button>
+          <button class="tour-tab" role="tab" aria-selected="false" data-src="assets/zh/slash.webp" data-alt="斜杠指令面板：本地指令与发给 agent 的指令" data-cap="斜杠指令：本地 7 条，直接交给 agent 的 5 条">斜杠指令</button>
+          <button class="tour-tab" role="tab" aria-selected="false" data-src="assets/zh/mobile.webp" data-alt="手机单栏：顶栏入口只留图标、内容满宽" data-cap="手机单栏：输入框 18px，模型菜单变底部抽屉">手机</button>
+          <button class="tour-tab" role="tab" aria-selected="false" data-src="assets/zh/mobile-drawer.webp" data-alt="手机上的项目侧栏是覆盖式抽屉" data-cap="手机上的项目侧栏是覆盖式抽屉">手机抽屉</button>
+        </div>
+        <div class="tour-stage frame">
+          <div class="frame-bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="frame-url" id="tourUrl">127.0.0.1:25257</span></div>
+          <img id="tourImg" src="assets/zh/overview.webp" width="1500" height="844" alt="界面全景" data-zoom />
+        </div>
+        <p class="caption" id="tourCap">左栏项目与会话 · 中间对话 · 右栏源码 · 底栏状态</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 引擎 -->
+  <section id="engines">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <div class="kicker">多引擎</div>
+        <h2>各跑各的原生 loop</h2>
+        <p>引擎不是「同一个 prompt 换个皮」：每个都接自己的官方循环，能力差异在界面上按矩阵隐藏按钮。</p>
+      </div>
+      <div class="engines reveal">
+        <div class="engine"><b>pi</b><span>原生 SDK · 默认</span></div>
+        <div class="engine"><b>Codex</b><span>app-server · JSON-RPC</span></div>
+        <div class="engine"><b>DeepSeek Harness</b><span>ACP</span></div>
+        <div class="engine"><b>opencode</b><span>ACP</span></div>
+        <div class="engine"><b>Claude Code</b><span>ACP 适配器</span></div>
+      </div>
+      <div class="table-wrap reveal">
+        <table>
+          <thead><tr><th>能力</th><th>pi</th><th>codex</th><th>dsh</th><th>opencode</th><th>claude</th></tr></thead>
+          <tbody>
+            <tr><td>审批</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="n">看配置</td><td class="y">✓</td></tr>
+            <tr><td>模型 / 思考档</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="n">模型可切 / 无档位</td></tr>
+            <tr><td>恢复历史会话</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
+            <tr><td>插队（steer）</td><td class="y">✓</td><td class="n">—</td><td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>
+            <tr><td>子代理面板</td><td class="y">✓</td><td class="n">—</td><td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>
+            <tr><td>工作台管 provider</td><td class="y">✓</td><td class="n">—</td><td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>
+            <tr><td>临时会话（内存）</td><td class="y">✓</td><td class="n">—</td><td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- 安装 -->
+  <section id="install">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <div class="kicker">开始使用</div>
+        <h2>两条命令，打开就是工作台</h2>
+        <p>要求 Node ≥ 22.19。装完就有 <code>oh-my-agent-web</code> / <code>aw</code> / <code>agent-web</code> 三个等价命令。Linux 上内嵌终端需要就地编译 <code>node-pty</code>（make / g++ / python3）。</p>
+      </div>
+      <div class="install">
+        <div class="steps reveal">
+          <div class="step"><div><b>装</b><p><code>npm -g install oh-my-agent-web</code>，或一行脚本装到 <code>~/.oh-my-agent-web</code>，不碰系统全局目录。</p></div></div>
+          <div class="step"><div><b>起</b><p>进到你的项目目录敲 <code>aw</code>：前台运行并打开浏览器，默认只监听 <code>127.0.0.1:25257</code>。</p></div></div>
+          <div class="step"><div><b>用</b><p>点「新会话」发第一句。想从手机或别的电脑进，就 <code>-H 0.0.0.0</code>，并且先在本机「设置 → 远程」设好密码。</p></div></div>
+        </div>
+        <div class="reveal">
+          <div class="codebox">
+            <header><span>终端</span><button class="icon-btn" data-copy="npm -g install oh-my-agent-web&#10;cd ~/code/my-proj&#10;aw" title="复制" aria-label="复制命令">⧉</button></header>
+            <pre><span class="c"># 安装</span>
+npm -g install oh-my-agent-web
+
+<span class="c"># 在你的项目里启动（前台 + 打开浏览器）</span>
+cd ~/code/my-proj
+<span class="k">aw</span>
+
+<span class="c"># 后台跑、看状态、停掉</span>
+aw -d
+aw status
+aw stop
+
+<span class="c"># 换端口 / 指定工作区</span>
+aw -p 25258
+AGENT_WEB_CWD=~/code/my-proj aw</pre>
+          </div>
+          <div class="table-wrap cmd-table">
+            <table>
+              <tbody>
+                <tr><td>aw</td><td>前台启动 + 打开页面（Ctrl-C 退出）</td></tr>
+                <tr><td>aw -d</td><td>后台运行，日志进 daemon.log</td></tr>
+                <tr><td>aw status</td><td>pid / 端口 / 引擎 / 会话数 / 工作区</td></tr>
+                <tr><td>aw -H 0.0.0.0</td><td>允许远程访问（需先设密码）</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 安全 -->
+  <section id="security">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <div class="kicker">安全模型</div>
+        <h2>默认只活在回环里</h2>
+        <p>单用户工具的安全边界应该小到能讲清楚：谁能进、怎么进、失败会怎样。</p>
+      </div>
+      <div class="security">
+        <div class="seclist reveal">
+          <div><span class="tick">1</span><div><b>本机免密，其余一律要密码</b><p>对端是回环且 Host 是回环才放行；其它来源未设密码时全拒。</p></div></div>
+          <div><span class="tick">2</span><div><b>密码只能在本机设</b><p>远程不能设第一个密码 —— 否则端口一暴露，谁先扫到谁接管。密码落在数据目录，改完立即生效。</p></div></div>
+          <div><span class="tick">3</span><div><b>连续 3 次错误暂停 30 分钟</b><p>次数与时长可改（1–20 次 / 1–1440 分钟），锁会落盘，重启不解锁；设置里还能看到登录活动。</p></div></div>
+          <div><span class="tick">4</span><div><b>工具与命令走审批</b><p>只读工具自动放行，其余按「工具 + 目标」询问；「总是允许」写进 approval-rules.json。回合结束会清掉悬置审批。</p></div></div>
+          <div><span class="tick">5</span><div><b>内置网页代理不带 cookie</b><p>iframe 沙箱不含 allow-same-origin，远端 JS 摸不到工作台的存储与接口。</p></div></div>
+        </div>
+        <div class="reveal">
+          <div class="callout">
+            <h4>远程暴露 = 两件事</h4>
+            <p><code>-H 0.0.0.0</code> 让外面连得上，密码负责拦住人。域名、局域网 IP、外网 IP 一视同仁，不需要额外白名单。</p>
+          </div>
+          <div class="callout" style="margin-top:16px">
+            <h4>数据落在哪</h4>
+            <p>会话在引擎自己的目录（pi: <code>~/.pi/agent/sessions</code>）；工作台只存 <code>settings.json</code>、锁、日志、推送订阅与本机界面偏好。换台设备打开，看到的是同一批会话文件。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section id="faq">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <div class="kicker">FAQ</div>
+        <h2>常见问题</h2>
+      </div>
+      <div class="faq reveal">
+        <details><summary>它会把我正在用的 Claude Code / Codex 会话复制走吗？</summary><p>不会。工作台读的是引擎自己的会话文件或 thread，只做展示、改名和删除；不建第二份库，也不改引擎的 prompt 与工具实现。</p></details>
+        <details><summary>代码会不会被传到别的服务器？</summary><p>不会额外上传。只有你自己配置的模型 provider 会收到请求；工作台本身不经过任何中转服务。</p></details>
+        <details><summary>为什么默认只有本机能访问？</summary><p>因为它能直接跑命令、读写文件。默认只听 <code>127.0.0.1</code>，等于「能打开页面的人本来就已经能操作这台机器」。要远程必须显式开 <code>-H</code> 并设密码。</p></details>
+        <details><summary>手机上能用吗？</summary><p>能。窄屏自动切成单栏、侧栏变抽屉、输入框 18px 防缩放。远程访问用 <code>-H 0.0.0.0</code> + 密码；想收推送需要 https（添加到主屏的 PWA 也行）。</p></details>
+        <details><summary>支持哪些系统？</summary><p>macOS、Linux、Windows 都支持。Linux 的内嵌终端需要就地编译 <code>node-pty</code>：装好 make / g++ / python3，或让一行脚本带 <code>--with-build-tools</code>。</p></details>
+        <details><summary>子代理和临时会话有什么区别？</summary><p>临时会话是<b>人</b>开的另一条通道：不落盘、关掉就销毁，可以保存成正式对话。子代理是 <b>agent</b> 派出去的子任务：有自己的上下文与会话文件，跑完把结论带回来。</p></details>
+        <details><summary>面板里为什么有些功能是灰的？</summary><p>那是能力矩阵在起作用：当前引擎不支持的语义（比如非 pi 引擎的插队、子代理面板）就不显示按钮，而不是发一条注定失败的命令。</p></details>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <div class="brand" style="margin-bottom:10px">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#2f5fe0"/><path d="M9 11l6 5-6 5" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M18 21h5" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/></svg>
+          <span>oh-my-agent-web</span>
+        </div>
+        <p style="max-width:30em">给你正在跑的 agent 配一个外部操作页。单用户、只听回环、会话的事实源永远是引擎自己的落盘文件。</p>
+      </div>
+      <div>
+        <h5>产品</h5>
+        <a href="#features">功能</a>
+        <a href="#workspace">右栏工作区</a>
+        <a href="#panels">配置面板</a>
+        <a href="#engines">多引擎</a>
+      </div>
+      <div>
+        <h5>使用</h5>
+        <a href="#install">安装</a>
+        <a href="#security">安全模型</a>
+        <a href="#faq">FAQ</a>
+        <a href="https://github.com/duzhenxun/oh-my-agent-web#readme" target="_blank" rel="noreferrer">完整文档</a>
+      </div>
+      <div>
+        <h5>项目</h5>
+        <a href="https://github.com/duzhenxun/oh-my-agent-web" target="_blank" rel="noreferrer">GitHub</a>
+        <a href="https://github.com/duzhenxun/oh-my-agent-web/issues" target="_blank" rel="noreferrer">Issues</a>
+        <a href="https://github.com/duzhenxun/oh-my-agent-web/blob/main/LICENSE" target="_blank" rel="noreferrer">MIT License</a>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span>© 2026 oh-my-agent-web · MIT</span>
+      <span>截图来自 1.1.0 的真实运行实例（演示工作区），未做拼图。</span>
+    </div>
+  </div>
+</footer>
+
+<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="查看大图">
+  <button id="lightboxClose" aria-label="关闭">✕</button>
+  <img id="lightboxImg" alt="" />
+</div>
+
+<script>document.documentElement.classList.add("reveal-ready");</script>
+<script src="assets/site.js"></script>
+</body>
+</html>

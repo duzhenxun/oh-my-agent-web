@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1280" height="630" viewBox="0 0 1280 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0a0e18"/>
+      <stop offset="55%" stop-color="#101828"/>
+      <stop offset="100%" stop-color="#131b30"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.12" cy="0.1" r="0.75">
+      <stop offset="0" stop-color="#2f5fe0" stop-opacity="0.42"/>
+      <stop offset="0.55" stop-color="#2f5fe0" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#2f5fe0" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow2" cx="0.95" cy="0.95" r="0.6">
+      <stop offset="0" stop-color="#7b5cf0" stop-opacity="0.3"/>
+      <stop offset="1" stop-color="#7b5cf0" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="mark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2f5fe0"/>
+      <stop offset="1" stop-color="#7b5cf0"/>
+    </linearGradient>
+    <clipPath id="shot">
+      <rect x="640" y="118" width="608" height="380" rx="14"/>
+    </clipPath>
+  </defs>
+
+  <rect width="1280" height="630" fill="url(#bg)"/>
+  <rect width="1280" height="630" fill="url(#glow)"/>
+  <rect width="1280" height="630" fill="url(#glow2)"/>
+
+  <!-- 品牌标 -->
+  <rect x="64" y="104" width="60" height="60" rx="16" fill="url(#mark)"/>
+  <path d="M82 122l11 9-11 9" stroke="#ffffff" stroke-width="4.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M101 140h10" stroke="#ffffff" stroke-width="4.4" stroke-linecap="round"/>
+
+  <!-- 主标题 -->
+  <text x="62" y="238" font-family="PingFang SC,Hiragino Sans GB,Noto Sans CJK SC,system-ui,sans-serif" font-size="66" font-weight="700" fill="#f4f7fc" letter-spacing="-2">oh-my-agent-web</text>
+
+  <!-- 一句定位 -->
+  <text x="64" y="300" font-family="PingFang SC,Hiragino Sans GB,Noto Sans CJK SC,system-ui,sans-serif" font-size="32" font-weight="500" fill="#c9d5e8">给你正在跑的 agent 配一个外部操作页</text>
+
+  <!-- 三条差异 -->
+  <text x="64" y="356" font-family="PingFang SC,Hiragino Sans GB,Noto Sans CJK SC,system-ui,sans-serif" font-size="23" fill="#7aa0ff">引擎跑在本机 · 会话就是引擎的落盘文件 · 不引数据库</text>
+
+  <!-- 引擎 chip -->
+  <g font-family="PingFang SC,Hiragino Sans GB,Noto Sans CJK SC,system-ui,sans-serif" font-size="19" fill="#dbe4f4">
+    <rect x="64" y="396" width="74" height="40" rx="20" fill="#ffffff" fill-opacity="0.07" stroke="#ffffff" stroke-opacity="0.14"/>
+    <text x="101" y="423" text-anchor="middle">pi</text>
+    <rect x="148" y="396" width="106" height="40" rx="20" fill="#ffffff" fill-opacity="0.07" stroke="#ffffff" stroke-opacity="0.14"/>
+    <text x="201" y="423" text-anchor="middle">Codex</text>
+    <rect x="264" y="396" width="172" height="40" rx="20" fill="#ffffff" fill-opacity="0.07" stroke="#ffffff" stroke-opacity="0.14"/>
+    <text x="350" y="423" text-anchor="middle">Claude Code</text>
+    <rect x="446" y="396" width="140" height="40" rx="20" fill="#ffffff" fill-opacity="0.07" stroke="#ffffff" stroke-opacity="0.14"/>
+    <text x="516" y="423" text-anchor="middle">opencode</text>
+  </g>
+
+  <!-- 仓库地址 -->
+  <text x="64" y="556" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="20" fill="#8b98ad">github.com/duzhenxun/oh-my-agent-web</text>
+
+  <!-- 真实界面截图（本仓库跑起来的样子） -->
+  <rect x="640" y="118" width="608" height="380" rx="14" fill="#0d1220" stroke="#ffffff" stroke-opacity="0.16"/>
+  <g clip-path="url(#shot)">
+    <image x="640" y="118" width="608" height="380" preserveAspectRatio="xMidYMid slice" xlink:href="../../screenshots/01-chat.png"/>
+  </g>
+</svg>

@@ -1,0 +1,49 @@
+# 官网（落地页）发布：把 `docs/site` 原样推到 GitHub Pages。
+#
+# 为什么单独一个文件：`release.yml` 的 Trusted Publisher 白名单是**绑文件名**的，
+# 往里加东西会牵扯 npm 发布；官网跟发版没有关系，分开互不影响。
+#
+# 站点的 HTML/CSS 全是内联的，图片走 `docs/site/assets/*.webp` 相对路径，
+# 所以这里**没有构建步骤**——直接把目录上传。改页面 = 改 `docs/site/index.html` 后推到 main。
+#
+# 首次启用：仓库 Settings → Pages → Build and deployment → Source 选 **GitHub Actions**
+#（选错成 "Deploy from a branch" 时，这个工作流跑完也不会生效）。
+
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/site/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 官网发布不排队历史版本：后来的推送直接覆盖前面的（但不要取消正在跑的那次部署）
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/configure-pages@v5
+
+      # 站点根目录 = docs/site。`assets/` 在里面，路径就是相对的，不用改 HTML。
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

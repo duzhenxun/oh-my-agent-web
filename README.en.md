@@ -1,6 +1,13 @@
 # oh-my-agent-web
 
-[中文](README.md) · **English**
+[![npm version](https://img.shields.io/npm/v/oh-my-agent-web?style=flat-square&label=npm&logo=npm&color=cb3837)](https://www.npmjs.com/package/oh-my-agent-web)
+[![npm downloads](https://img.shields.io/npm/dm/oh-my-agent-web?style=flat-square&label=downloads%2Fmonth&color=2f5fe0)](https://www.npmjs.com/package/oh-my-agent-web)
+[![GitHub stars](https://img.shields.io/github/stars/duzhenxun/oh-my-agent-web?style=flat-square&color=f5c542&label=stars)](https://github.com/duzhenxun/oh-my-agent-web/stargazers)
+[![node](https://img.shields.io/badge/node-%E2%89%A522.19-3c873a?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org)
+[![license](https://img.shields.io/badge/license-MIT-2f5fe0?style=flat-square)](LICENSE)
+[![site](https://img.shields.io/badge/site-live-7b5cf0?style=flat-square)](https://duzhenxun.github.io/oh-my-agent-web/)
+
+[中文](README.md) · **English** · [Website](https://duzhenxun.github.io/oh-my-agent-web/)
 
 One line: **an external control surface for the agent you're already running.** The engine keeps running on your own machine; the web page is where you watch it work, manage its tools and models, cut in to correct it whenever you like, and — when the moment comes — read files, open a terminal, or highlight a passage and ask for a change.
 
@@ -71,6 +78,19 @@ That `~/.oh-my-agent-web` is also the **data directory**: what gets installed (`
 | Leave PATH alone | `OH_MY_AGENT_WEB_NO_PATH=1` (or `--no-modify-path`) |
 | Install build tools | `OH_MY_AGENT_WEB_BUILD_TOOLS=1` (or `--with-build-tools`) |
 | Uninstall | `… \| sh -s -- --uninstall` (removes only what was installed; `settings.json` / password / uploads / logs stay) |
+
+### Docker (just want to look, without touching your machine)
+
+```bash
+docker build -t oh-my-agent-web:local .
+docker run -d --name aw -p 127.0.0.1:25257:25257 \
+  -e AGENT_WEB_PASSWORD='pick-your-own' \
+  -v aw-data:/data -v "$PWD":/workspace oh-my-agent-web:local
+```
+
+The image ships the **pi** engine only (its SDK is a dependency of this package); Codex / Claude Code / opencode
+need their own CLIs installed on top. Data lives in `/data`, your code in `/workspace`.
+See [`docs/docker.md`](docs/docker.md) for details and troubleshooting (Chinese).
 
 ---
 
