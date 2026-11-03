@@ -36,14 +36,16 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
 
       # 站点根目录 = docs/site。`assets/` 在里面，路径就是相对的，不用改 HTML。
-      - uses: actions/upload-pages-artifact@v3
+      # 下面四个大版本都跑在 node24 上；旧的 checkout@v4 / deploy-pages@v4 目标是 node20，
+      # GitHub 弃用后会往每次运行的 annotations 里塞一条警告（不影响发布，但很吵）。
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: docs/site
 
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
