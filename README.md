@@ -5,566 +5,563 @@
 [![GitHub stars](https://img.shields.io/github/stars/duzhenxun/oh-my-agent-web?style=flat-square&color=f5c542&label=stars)](https://github.com/duzhenxun/oh-my-agent-web/stargazers)
 [![node](https://img.shields.io/badge/node-%E2%89%A522.19-3c873a?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org)
 [![license](https://img.shields.io/badge/license-MIT-2f5fe0?style=flat-square)](LICENSE)
-[![site](https://img.shields.io/badge/site-live-7b5cf0?style=flat-square)](https://duzhenxun.github.io/oh-my-agent-web/zh.html)
+[![site](https://img.shields.io/badge/site-live-7b5cf0?style=flat-square)](https://duzhenxun.github.io/oh-my-agent-web/)
 
-**中文** · [English](README.en.md) · [官网](https://duzhenxun.github.io/oh-my-agent-web/zh.html)
+[中文](README.zh.md) · **English** · [Website](https://duzhenxun.github.io/oh-my-agent-web/)
 
-一句话：**给你正在跑的那个 agent 配一个外部操作页。** 引擎照旧跑在自己电脑上，你在网页里看着它干活、管它的工具和模型、随时插话纠正，需要时直接翻文件、开终端、圈出一段话让它改。
+One line: **an external control surface for the agent you're already running.** The engine keeps running on your own machine; the web page is where you watch it work, manage its tools and models, cut in to correct it whenever you like, and — when the moment comes — read files, open a terminal, or highlight a passage and ask for a change.
 
-单用户、只听回环、**会话的事实源永远是引擎自己的落盘文件** —— 不引数据库、不建账号体系、不把会话复制一份到自己的库里。一个 `oh-my-agent-web` 进程就是一个人的工作台。
+Single user, loopback only, and **the engine's own on-disk files are always the source of truth for a conversation** — no database, no account system, no second copy of the session in our own store. One `oh-my-agent-web` process is one person's workbench.
 
-![一次真实会话：左侧项目与会话、中间过程里的思考段与工具卡、右侧同一个仓库的文件预览](docs/screenshots/01-chat.png)
+![A real session: projects and sessions on the left, thinking blocks and tool cards in the middle, a file preview of the same repo on the right](docs/site/assets/en/hero.webp)
 
-> 下面所有截图都是把本仓库（0.8.0 的构建）跑起来后的真实界面 —— pi 引擎 + DeepSeek，工作区是一个 `demo-app` 演示项目。
-> 目录、命令、`+6 −1` 的改动、token 与花费都是那次真实运行留下的，没有拼图也没有 mock。
-> 每张图的内容、拍法与压缩方式记在 [`docs/screenshots/README.md`](docs/screenshots/README.md)。
+> Every screenshot below is a real UI capture of this repo — pi engine + DeepSeek, on a small `demo-app` project.
+> Most are the 1.1.0 build (shared with the landing page under `docs/site/assets/en/`); the terminal and side-chat shots are from the 0.8.0 run under `docs/screenshots/`.
+> Directories, commands, diffs, tokens and cost all come from actual runs — no collages, no mockups.
+> How the 1.1.0 shots were taken: [`docs/site/README.md`](docs/site/README.md).
 
 ---
 
-## 安装
+## Install
 
-要求 **Node.js ≥ 22.19** 与 **npm ≥ 9**（macOS / Linux / Windows 都行）。装完就有 `oh-my-agent-web` 这个命令（短别名 `aw`、`agent-web`，完全等价）。
+Requires **Node.js ≥ 22.19** and **npm ≥ 9**; macOS / Linux / Windows all work. You end up with an `oh-my-agent-web` command (short aliases: `aw`, `agent-web` — all equivalent).
 
-### npm 全局安装（推荐）
+### Install globally with npm (recommended)
 
 ```bash
 npm -g install oh-my-agent-web
 ```
 
-不带版本号装的就是当前发行版。要钉版本或用镜像：
+No version tag means the current release. To pin a version or use a mirror:
 
 ```bash
 npm -g install oh-my-agent-web@latest
-npm -g install oh-my-agent-web@<版本号> --registry=https://registry.npmmirror.com
+npm -g install oh-my-agent-web@<version> --registry=https://registry.npmmirror.com
 ```
 
-装出来的三个命令指向同一个入口，完全等价：**`oh-my-agent-web`**（下面统一用它）、`aw`（短别名，打字省事）、`agent-web`。
+You get three commands that all point at the same entry point: **`oh-my-agent-web`** (used throughout this README),
+`aw` (the short alias you'll probably type), and `agent-web`.
 
-升级与卸载：
+Upgrade and uninstall:
 
 ```bash
-oh-my-agent-web upgrade               # 等于 npm -g install oh-my-agent-web@latest
-npm -g uninstall oh-my-agent-web      # 卸载；~/.oh-my-agent-web 里的数据不动
+oh-my-agent-web upgrade               # same as npm -g install oh-my-agent-web@latest
+npm -g uninstall oh-my-agent-web      # uninstall; data in ~/.oh-my-agent-web is left alone
 ```
 
-Linux 上 `node-pty`（内嵌终端）只给 macOS / Windows 带预编译产物，Linux 要就地编译：需要 `make` / `g++` / `python3`。缺工具时页面和安装脚本都会直说缺什么，装完终端才开得起来。
+On Linux, `node-pty` (the embedded terminal) ships prebuilds only for macOS / Windows, so Linux compiles it in place: you need `make`, `g++` and `python3`. When those are missing, both the page and the install script say exactly what's missing — the terminal won't open until then.
 
-> **npm 11.16+ 的 `allow-scripts` 提示**：新版 npm 会把「未经你批准的 install 脚本」逐条列出来（`npm warn allow-scripts ...`）。本包**自己没有 install 脚本**（以前那个只用来裁 node-pty 无关平台的预编译产物，现在改到启动时顺手做），所以列表里出现的只会是传递依赖，例如 `node-pty`（要编原生模块）、`protobufjs`、`@google/genai`。这只是一条**提示**，安装照常完成；想让它闭嘴就审一下并批准：`npm approve-scripts node-pty protobufjs @google/genai`（或 `npm approve-scripts --all`）。
+> **`allow-scripts` notices from npm 11.16+**: newer npm lists every dependency install script you haven't approved yet (`npm warn allow-scripts ...`). This package **ships no install scripts of its own** (the old one only pruned `node-pty` prebuilds for other platforms; that now happens lazily on startup), so anything listed is a transitive dependency such as `node-pty` (native build), `protobufjs`, or `@google/genai`. It is only a notice — the install still completes. To silence it after a review: `npm approve-scripts node-pty protobufjs @google/genai` (or `npm approve-scripts --all`).
 
-### 一行脚本（不想碰系统全局 npm）
+### One-line install (never touches global npm)
 
-macOS / Linux：
+macOS / Linux:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/duzhenxun/oh-my-agent-web/main/scripts/install.sh | sh
 ```
 
-Windows（PowerShell）：
+Windows (PowerShell):
 
 ```powershell
 powershell -c "irm https://raw.githubusercontent.com/duzhenxun/oh-my-agent-web/main/scripts/install.ps1 | iex"
 ```
 
-脚本做四件事：**找一个够新的 Node**（没有就下官方包到 `~/.oh-my-agent-web/node`，校验 sha256）、**`npm install -g --prefix ~/.oh-my-agent-web`**（不写系统全局目录、不要 sudo）、**把 `aw` / `agent-web` / `oh-my-agent-web` 挂到 `~/.local/bin`**（必要时补 PATH）、**冒烟一次**（版本号 + `node-pty` 能否 require，即终端能不能开）。
+The script does four things: **finds a new enough Node** (downloads an official build into `~/.oh-my-agent-web/node` and checks its sha256 if needed), **`npm install -g --prefix ~/.oh-my-agent-web`** (never the system-wide prefix, no sudo), **links `aw` / `agent-web` / `oh-my-agent-web` into `~/.local/bin`** (patching PATH if necessary), and **smoke-tests once** (version string + whether `node-pty` can be required, i.e. whether the terminal will open).
 
-装到的这个 `~/.oh-my-agent-web` 同时也是**数据目录**：装进去的 `node/`、`lib/`、`bin/` 和你的 `settings.json`、`password`、`uploads/`、`logs/` 并排放着。
+That `~/.oh-my-agent-web` is also the **data directory**: what gets installed (`node/`, `lib/`, `bin/`) sits next to your `settings.json`, `password`, `uploads/` and `logs/`.
 
-| 想改的东西 | 用法（`sh` 版；PowerShell 版用环境变量） |
+| What you want to change | How (`sh` version; PowerShell uses env vars) |
 |---|---|
-| 版本 | `OH_MY_AGENT_WEB_VERSION=<版本号>`（或 `--version <版本号>`） |
-| 装到别处 | `OH_MY_AGENT_WEB_HOME=/opt/oh-my-agent-web`（或 `--home /opt/oh-my-agent-web`） |
-| 镜像源 | `OH_MY_AGENT_WEB_REGISTRY=https://registry.npmmirror.com`（或 `--registry …`） |
-| 不动 PATH | `OH_MY_AGENT_WEB_NO_PATH=1`（或 `--no-modify-path`） |
-| 装编译工具 | `OH_MY_AGENT_WEB_BUILD_TOOLS=1`（或 `--with-build-tools`） |
-| 卸载 | `… \| sh -s -- --uninstall`（只删装进去的包与命令，`settings.json` / 密码 / 上传 / 日志不动） |
+| Version | `OH_MY_AGENT_WEB_VERSION=<version>` (or `--version <version>`) |
+| Install elsewhere | `OH_MY_AGENT_WEB_HOME=/opt/oh-my-agent-web` (or `--home /opt/oh-my-agent-web`) |
+| Registry mirror | `OH_MY_AGENT_WEB_REGISTRY=https://registry.npmmirror.com` (or `--registry …`) |
+| Leave PATH alone | `OH_MY_AGENT_WEB_NO_PATH=1` (or `--no-modify-path`) |
+| Install build tools | `OH_MY_AGENT_WEB_BUILD_TOOLS=1` (or `--with-build-tools`) |
+| Uninstall | `… \| sh -s -- --uninstall` (removes only what was installed; `settings.json` / password / uploads / logs stay) |
 
-### Docker（只想先看看，不想碰本机环境）
+### Docker (just want to look, without touching your machine)
 
 ```bash
 docker build -t oh-my-agent-web:local .
 docker run -d --name aw -p 127.0.0.1:25257:25257 \
-  -e AGENT_WEB_PASSWORD='换成你自己的' \
+  -e AGENT_WEB_PASSWORD='pick-your-own' \
   -v aw-data:/data -v "$PWD":/workspace oh-my-agent-web:local
 ```
 
-镜像里只带 pi 引擎（它的 SDK 是本包的依赖）；Codex / Claude Code / opencode 要各自装 CLI，
-数据在 `/data`、代码在 `/workspace`。细节与排错见 [`docs/docker.md`](docs/docker.md)。
+The image ships the **pi** engine only (its SDK is a dependency of this package); Codex / Claude Code / opencode
+need their own CLIs installed on top. Data lives in `/data`, your code in `/workspace`.
+See [`docs/docker.md`](docs/docker.md) for details and troubleshooting (Chinese).
 
 ---
 
-## 命令
+## Commands
 
-三个命令完全等价，下面统一写 `oh-my-agent-web`（`aw` 是它的短别名）。
+The three commands are completely equivalent; everything below is written as `oh-my-agent-web` (`aw` is its short alias).
 
-| 命令 | 作用 |
+| Command | What it does |
 |---|---|
-| `oh-my-agent-web` | **启动（默认）**：前台跑起来 + 打开浏览器，日志直接打在终端，`Ctrl-C` 退出；默认工作区 = 当前目录 |
-| `oh-my-agent-web start -d` | 后台运行（脱离终端，日志进 `daemon.log`），终端立刻还给你 |
-| `oh-my-agent-web status` | 看状态：pid / 端口 / 已运行多久 / 引擎 / 会话数 / 工作区 |
-| `oh-my-agent-web restart` | 先停再起（默认仍前台；带 `-d` 则后台） |
-| `oh-my-agent-web stop` | 停掉正在跑的实例（前台、后台都行 —— 读的是数据目录里的锁文件，不靠猜端口） |
-| `oh-my-agent-web version` | 版本号（`-v` / `--version` 同义） |
-| `oh-my-agent-web upgrade` | 升级到最新发行版（内部就是 `npm -g install oh-my-agent-web@latest`） |
-| `oh-my-agent-web help` | 显示帮助（`-h` / `--help` 同义） |
+| `oh-my-agent-web` | **Start (default)**: runs in the foreground and opens the browser, logs right in the terminal, `Ctrl-C` to quit; default workspace = current directory |
+| `oh-my-agent-web start -d` | Run in the background (detached, logs go to `daemon.log`), handing the terminal straight back |
+| `oh-my-agent-web status` | pid / port / uptime / engine / session count / workspace |
+| `oh-my-agent-web restart` | Stop then start (foreground by default; `-d` for background) |
+| `oh-my-agent-web stop` | Stop the running instance (foreground or background — it reads the lock file in the data dir instead of guessing a port) |
+| `oh-my-agent-web version` | Version string (`-v` / `--version` are synonyms) |
+| `oh-my-agent-web upgrade` | Upgrade to the latest release (it runs `npm -g install oh-my-agent-web@latest`) |
+| `oh-my-agent-web help` | Show help (`-h` / `--help` are synonyms) |
 
-两条行为约定：
+Two behavioural rules:
 
-- **重复启动会先检测**：已经在跑就只把地址打给你（并打开页面），不会再起第二个 —— `aw` / `agent-web` / `oh-my-agent-web` 三个名字完全一致。
-- **前台不刷日志**：终端只有一行「已启动：…」和 warn / error；装载会话索引、SSE 连接这类正常日志仍然全量写进 `logs/agent-web.log`。想盯着看就 `AGENT_WEB_LOG=info aw`，后台（`-d`）的输出在 `daemon.log`。
-- **会问一句要不要升级**：启动时（`restart` 是先问再停）和 `aw status` 看一眼 npm 上有没有新版本，6 小时内只问一次 registry（缓存 `update-check.json`）。有新版就在终端里问 `现在升级吗？[Y/n]`：**直接回车 = 升级**，装完自动用新版重启（`agent-web -d` 也一样，先问再丢后台）；敲 `n` 跳过，下次启动还会问。非交互（CI / `aw > log`）不问，只打一行 `有新版本 vX（当前 vY）→ 升级：aw upgrade`。`AGENT_WEB_UPDATE_PROMPT=off` 只关提问、保留那行提示，`AGENT_WEB_UPDATE_CHECK=off` 连检查一起关掉。
+- **Starting twice is detected first**: if an instance is already running it only prints the URL (and opens the page) instead of starting a second one — identical for `aw` / `agent-web` / `oh-my-agent-web`.
+- **The foreground run stays quiet**: the terminal only gets one `已启动：…` line plus warn / error; normal logs (session index loading, SSE connections) still go in full to `logs/agent-web.log`. Watch them with `AGENT_WEB_LOG=info aw`; in the background (`-d`) they land in `daemon.log`.
+- **It asks whether to upgrade**: on start (and on `aw status`) it asks npm once per six hours (cached in `update-check.json`) and, when a newer release exists, asks `现在升级吗？[Y/n]` — **plain Enter upgrades** and restarts into the new version (`agent-web -d` asks before detaching too); `n` skips and asks again next start. Non-interactive runs (CI / `aw > log`) never prompt, they just print `有新版本 vX（当前 vY）→ 升级：aw upgrade`. `AGENT_WEB_UPDATE_PROMPT=off` drops only the prompt, `AGENT_WEB_UPDATE_CHECK=off` turns the check off entirely.
 
-### 参数
+### Flags
 
-| 参数 | 环境变量 | 默认 | 说明 |
+| Flag | Env var | Default | Notes |
 |---|---|---|---|
-| `-p, --port` | `AGENT_WEB_PORT` | `25257` | 监听端口 |
-| `-H, --host` | `AGENT_WEB_HOST` | `127.0.0.1` | 监听地址；对外访问才需要改 |
-| `-P, --password` | `AGENT_WEB_PASSWORD` | 无 | 访问密码；不设 = 只允许本机（远程进不来）。给了就存进 `<dataDir>/password`，**之后一律以这份文件为准**（环境变量只在文件还没生成时用一次），「设置 → 远程」改的也是它 |
-| `-d, --detach` | — | 关（默认前台） | 后台运行，脱离终端，日志进 `~/.oh-my-agent-web/daemon.log`；`-f` / `--foreground` 是旧写法，现在等于默认 |
-| `--no-open` | — | 开 | 不在浏览器里打开页面 |
-| `--allow-host` | `AGENT_WEB_ALLOWED_HOSTS` | 空 | 一般用不到：只给「发给本机」的**跨源**请求额外放行（域名 / 局域网 IP） |
-| `--data-dir` | `AGENT_WEB_DATA_DIR` | `~/.oh-my-agent-web` | 设置、密码、上传、日志、锁文件都放这 |
-| — | `AGENT_WEB_CWD` | `process.cwd()` | 默认工作区（还没开会话时用） |
-| — | `AGENT_WEB_ENGINE` | `pi` | 默认引擎 |
-| — | `AGENT_WEB_APPROVAL_MODE` | `allow` | 新会话默认审批模式；`ask` 则逐次确认 |
-| — | `AGENT_WEB_TURN_TIMEOUT_MS` | 20 分钟 | 单回合看门狗超时 |
-| — | `AGENT_WEB_LOG` | `info`（前台终端只打 warn / error） | `debug` / `info` / `warn` / `error`；显式设了就按这个级别打到终端 |
-| — | `AGENT_WEB_UPDATE_PROMPT` | `on` | 发现新版时是否在终端里问「现在升级吗？」（回车 = 升级）；`off` 只保留那行被动提示 |
-| — | `AGENT_WEB_UPDATE_CHECK` | `on` | `off` 关掉启动时的升级检查（离线 / 内网 / CI 用） |
+| `-p, --port` | `AGENT_WEB_PORT` | `25257` | Listen port |
+| `-H, --host` | `AGENT_WEB_HOST` | `127.0.0.1` | Listen address; only change it for remote access |
+| `-P, --password` | `AGENT_WEB_PASSWORD` | none | Login password; unset = loopback only (remote cannot enter). A value given here is saved into `<dataDir>/password`, **and that file is the single source of truth afterwards** (the env var is only used when the file does not exist yet); Settings → Remote edits the same file |
+| `-d, --detach` | — | off (foreground by default) | Background run, detached, logs go to `~/.oh-my-agent-web/daemon.log`; `-f` / `--foreground` is the old spelling and now equals the default |
+| `--no-open` | — | on | Don't open the browser |
+| `--allow-host` | `AGENT_WEB_ALLOWED_HOSTS` | none | Rarely needed: extra cross-origin hosts for requests **addressed to this machine** only |
+| `--data-dir` | `AGENT_WEB_DATA_DIR` | `~/.oh-my-agent-web` | Settings, password, uploads, logs and the lock file live here |
+| — | `AGENT_WEB_CWD` | `process.cwd()` | Default workspace (before any session exists) |
+| — | `AGENT_WEB_ENGINE` | `pi` | Default engine |
+| — | `AGENT_WEB_APPROVAL_MODE` | `allow` | Default approval mode for new sessions; `ask` confirms every tool call |
+| — | `AGENT_WEB_TURN_TIMEOUT_MS` | 20 minutes | Per-turn watchdog timeout |
+| — | `AGENT_WEB_LOG` | `info` (foreground terminal: warn / error only) | `debug` / `info` / `warn` / `error`; setting it explicitly also prints that level to the terminal |
+| — | `AGENT_WEB_UPDATE_PROMPT` | `on` | Whether to ask `现在升级吗？` in the terminal when a newer release exists (Enter = upgrade); `off` keeps only the passive notice line |
+| — | `AGENT_WEB_UPDATE_CHECK` | `on` | `off` disables the startup release check (offline / intranet / CI) |
 
-### 常用例子
+### Common examples
 
 ```bash
-oh-my-agent-web                                    # 前台起 + 打开页面（最常用，Ctrl-C 退出）
-oh-my-agent-web -d                                 # 后台起，终端立刻还给你
-oh-my-agent-web -p 25258                           # 换端口（25257 被占时）
-oh-my-agent-web status && oh-my-agent-web restart  # 看完状态再重启
-oh-my-agent-web stop                               # 停掉（前台/后台都行）
-oh-my-agent-web --data-dir ~/agent-web-data             # 换数据目录
-AGENT_WEB_CWD=~/code/my-proj oh-my-agent-web       # 指定默认工作区
-oh-my-agent-web -H 0.0.0.0                           # 局域网/外网可达（前提：已经设过密码）
-oh-my-agent-web -H 0.0.0.0 -P 'my-pass'             # 直接带密码起，远程用 IP / 域名都能进
+oh-my-agent-web                                    # foreground + open the page (the usual one, Ctrl-C to quit)
+oh-my-agent-web -d                                 # background, terminal handed straight back
+oh-my-agent-web -p 25258                           # different port (when 25257 is taken)
+oh-my-agent-web status && oh-my-agent-web restart  # check, then restart
+oh-my-agent-web stop                               # stop it (works for foreground and background)
+oh-my-agent-web --data-dir ~/agent-web-data             # different data directory
+AGENT_WEB_CWD=~/code/my-proj oh-my-agent-web       # set the default workspace
+oh-my-agent-web -H 0.0.0.0                           # reachable outside (set the password locally first)
+oh-my-agent-web -H 0.0.0.0 -P 'my-pass'             # start with a password — saved, so restarts keep it
 ```
 
-> **想从手机 / 别的电脑访问**：`oh-my-agent-web -H 0.0.0.0`（让外面连得上），密码**先在本机设好**——在那台机器上打开 `http://127.0.0.1:25257/`，在 **设置 → 远程** 的密码框里设一个（也可以打开 `/setup`，或启动时 `-P`）。
-> 密码存在数据目录的 `password` 文件里（默认 `~/.oh-my-agent-web/password`），不用系统变量；之后不管用 **局域网 IP、外网 IP 还是域名**访问，输密码就能进 —— **不需要**再配 `--allow-host`。
-> 密码只能在本机定：远程访问时若还没设密码，只会看到「请先在本机设置」（`/setup`、`/api/auth/setup`、`/api/auth/password` 对远程一律 403），否则谁先扫到端口谁就接管了。
-> 反代 / 隧道请带上 `X-Forwarded-For`（来源校验会看它，否则分不清是本机还是外网）。
-> **登录保护**：同一个来源连续输错密码 **3 次**就暂停 **30 分钟**（锁定期内连密码都不比对），可在 **设置 → 远程** 里改次数 / 时长（1–20 次、1–1440 分钟）；策略和未过期的锁都存在 `<数据目录>/login-guard.json`，重启服务也不会解锁。「设置 → 远程」里还有一列**登录活动**（哪来的 IP、成功/错第几次/被暂停，最新在最前），存在 `<数据目录>/login-activity.json`（最近 200 条）。
+> **Reaching it from your phone**: `oh-my-agent-web -H 0.0.0.0`. Set the password **on the machine running it first**: open `http://127.0.0.1:25257/` and use the field in **Settings → Remote** (or open `/setup`, or start with `-P`).
+> The password lives in the data directory's `password` file (default `~/.oh-my-agent-web/password`) — no environment variable needed. Afterwards **a LAN IP, a public IP or a domain** all work by entering that password; **no `--allow-host` allowlist** is required.
+> It can only be set locally: while unset, remote visitors just see "set it on the host machine" (`/setup`, `/api/auth/setup` and `/api/auth/password` return 403 for remote). Otherwise whoever scanned the port first would take over. Reverse proxies / tunnels should pass `X-Forwarded-For` (origin checking looks at it).
+> **Login protection**: after **3** wrong passwords from the same source, sign-in is paused for **30 minutes** (the password is not even compared while locked). Change both numbers in **Settings → Remote** (1–20 tries, 1–1440 minutes); the policy and any live locks are stored in `<data dir>/login-guard.json`, so a restart does not unlock anyone. Settings → Remote also lists recent **login activity** (source IP, success, which wrong try, lockouts — newest first), kept in `<data dir>/login-activity.json` (last 200 events).
 >
-> **在家目录直接敲 `oh-my-agent-web`** 也能用，但家目录当工作区不安全（文件树 / 搜索 / agent 的 cwd 会是整个 home），这时会自动改用 `<数据目录>/workspace` 并打一行提示；想指定项目就用 `AGENT_WEB_CWD=/path/to/project`。
+> **Running `oh-my-agent-web` from your home directory** works, but home is an unsafe workspace (the file tree, search and the agent's cwd would be your whole home). In that case it falls back to `<data dir>/workspace` and prints a line about it; to point at a project use `AGENT_WEB_CWD=/path/to/project`.
 
-各引擎还有自己的逃生阀（都有默认值，通常不用配）：`AGENT_WEB_CODEX_BIN` / `_HOME`、`AGENT_WEB_DSH_BIN` / `_HOME` / `_MODEL` / `_PATCH`、`AGENT_WEB_OPENCODE_BIN` / `_ARGS` / `_MODEL`、`AGENT_WEB_CLAUDE_BIN` / `_ARGS` / `_MODEL`（默认自动探测 `claude-code-acp` / `claude-agent-acp`，没装就直说）。
-
----
-
-## 它是什么，不是什么
-
-**是**：一个把 agent 的「过程」摊开给你看的前端。思考块、工具调用、改动文件、token 与花费，都在对话流里；你能在回合中途插话、把某段话圈出来提意见、另开一条不落盘的临时对话问一句就走。
-
-**不是**：不是新的 agent 引擎，也不是把会话搬到云上的 SaaS。它不重写 prompt、不接管工具实现 —— 你装的是 pi / Codex / Claude Code / opencode / DeepSeek Harness，工作台只是给它们配了一套能看的界面、能点的按钮和能落盘的会话列表。
-
-三条硬纪律：
-
-1. **不引数据库**：会话就是引擎写的 JSONL / thread，网页只读它、改它的名字、必要时删它。
-2. **不假装**：引擎没有的能力就在界面上藏起来（能力矩阵），面板拿不到数据就说清楚，不拿别的引擎的配置冒充。
-3. **不越界**：默认只听 `127.0.0.1`；要远程就 `-H 0.0.0.0` + **先在本机设好密码**（或 `-P`）。
+Each engine also has its own escape hatches (all have defaults; you normally don't touch them): `AGENT_WEB_CODEX_BIN` / `_HOME`, `AGENT_WEB_DSH_BIN` / `_HOME` / `_MODEL` / `_PATCH`, `AGENT_WEB_OPENCODE_BIN` / `_ARGS` / `_MODEL`, `AGENT_WEB_CLAUDE_BIN` / `_ARGS` / `_MODEL` (it auto-detects `claude-code-acp` / `claude-agent-acp` and says so when neither is installed).
 
 ---
 
-## 对话
+## What it is, what it isn't
 
-**流式正文 + 可折叠思考块 + 工具卡**。工具卡上给参数、完整命令（可复制）、输出、耗时与成败；一次回合里的思考与工具调用**跑的时候只显示最新一组里的那句说明**（思考和命令卡都不画，正在跑的命令由最底下那行状态位实时报；顶上那行「N 段思考 · N 次工具 · 耗时」带秒表），**跑完自动收成那一行**（最后结论之前的一切都进折叠），点它看完整时间线。
+**It is**: a front end that spreads the agent's *process* out in front of you. Thinking blocks, tool calls, changed files, tokens and cost all live in the conversation stream. You can cut in mid-turn, highlight a passage to file a comment on it, or open a scratch chat that never touches disk just to ask one question.
 
-![一条回复的尾注：markdown 表格、改动文件 chip、这一轮的 token / 缓存 / 花费](docs/screenshots/02-answer.png)
+**It is not**: a new agent engine, and it is not a SaaS that moves your sessions into the cloud. It does not rewrite prompts and does not take over tool implementations — what you install is pi / Codex / Claude Code / opencode / DeepSeek Harness, and the workbench just gives them a readable UI, clickable buttons, and a session list that survives restarts.
 
-每条回复的尾注是**这一轮**的用量：输入（未命中缓存）/ 输出 / 缓存命中 / 花费，点「复制」可以整段带走；整段会话的累计在状态栏的上下文环里点开看（子代理是独立会话、单独计费，不算在里面）。
+Three hard rules:
 
-对话里还埋了几个能点的东西：
+1. **No database**: a conversation *is* the JSONL / thread the engine wrote. The web UI reads it, renames it, and deletes it when asked.
+2. **No pretending**: anything an engine can't do is hidden in the UI (the capability matrix); a panel that can't get data says so, and no other engine's config is passed off as this one's.
+3. **No overreach**: it listens on `127.0.0.1` only by default; exposing it remotely takes `-H` plus a password set locally (**Settings → Remote**, or `-P`).
 
-- **改动文件 chip**：这条回复改过哪些文件（上图底部的 `改动 1 个文件 / store.ts`），点一下直接落到右栏的 diff。
-- **分支图标**：从这条消息「创建分支」，原对话一字不动。
-- **文件路径**：正文里的 `web/src/App.tsx` 这类路径可直接点开预览。
+---
 
-### 插队、排队、停止
+## Conversation
 
-回合正在跑的时候，输入框不会锁死：
+**Streaming text + collapsible thinking blocks + tool cards.** A tool card shows arguments, the full command (copyable), output, duration and pass/fail. While the turn runs, thinking and tool calls **show only the one line of narration from the newest group** (no thinking rows, no tool cards — the command that is actually running is reported by the status line at the very bottom; the "N thinking · N tools · Xs" stopwatch sits on top), then **fold into that row when the turn ends** (everything before the final conclusion) — click it to get the full timeline back, so only the final answer stays on screen.
 
-| 动作 | 含义 |
+![The footer of one reply: a markdown table, the changed-files chip, and this turn's tokens / cache / cost](docs/site/assets/en/answer.webp)
+
+The footer of every reply is the usage **for that turn**: input (cache miss) / output / cache read / cost, with a "Copy" that takes the whole block. The running total for the session is behind the context ring in the status bar (subagents are separate sessions billed separately and are not counted there).
+
+A few things in the conversation are clickable:
+
+- **Changed-files chip**: which files this reply touched (the chip at the bottom of the screenshot above shows `store.ts`); one click lands you straight on the diff in the right pane.
+- **Branch icon**: "Branch from here", which starts a new conversation at this message; the original stays byte-for-byte unchanged.
+- **File paths**: a path like `web/src/App.tsx` in the body opens in the preview.
+
+### Cutting in, queueing, stopping
+
+While a turn is running, the composer does not lock up:
+
+| Action | Meaning |
 |---|---|
-| **插队（steer）** | 立刻生效，作为下一条指令插进当前回合 |
-| **排队** | 排在本回合结束之后，队首是谁一目了然，随时可撤回 |
-| **停止** | 中断当前回合，保留已经产出的内容 |
+| **Steer** | Takes effect immediately, inserted into the current turn as the next instruction |
+| **Queue** | Wait until this turn ends; you can see what's at the head of the queue and retract anything |
+| **Stop** | Interrupt the turn and keep whatever was already produced |
 
-插队只有 pi 引擎支持（它的 SDK 有 `streamingBehavior: "steer"`）；别的引擎没有这个语义，宿主会**降级成排队**，而不是硬发第二条把活跃回合冲掉。
+Steering is pi-only (its SDK has `streamingBehavior: "steer"`). Other engines have no such notion, so the host **degrades it to queueing** rather than firing a second message that would flush the active turn.
 
 ---
 
-## 注释：把一段话圈出来提意见
+## Notes: highlight a passage and comment on it
 
-在对话里**选中一段文字**，会浮出一个小工具条：`添加到会话` / `标注` / `在临时会话中提问`。
+**Select some text in the conversation** and a small toolbar floats up: `Add to session` / `Annotate` / `Ask in a temp session`.
 
 <table><tr>
-<td width="50%"><img src="docs/screenshots/14-selection-toolbar.png" alt="选中一段回复后浮出的工具条"></td>
-<td width="50%"><img src="docs/screenshots/15-annotations.png" alt="标注之后：正文里留下编号徽标，输入框里多出「1 条注释」"></td>
+<td width="50%"><img src="docs/site/assets/en/selection.webp" alt="The toolbar that floats up after you select a passage"></td>
+<td width="50%"><img src="docs/site/assets/en/annotations.webp" alt="After annotating: a numbered badge stays in the body, and a 1-note pill shows up in the composer"></td>
 </tr></table>
 
-「标注」给这段文字挂一条评论，正文上会留一个 **①②③ 编号徽标**，输入框里多出一个「N 条注释」的胶囊 —— 点开能逐条看、改评论、删掉，或者「放进输入框」。
+"Annotate" attaches a comment to that text. The body keeps a **①②③ numbered badge**, and an "N notes" pill appears in the composer — open it to read, edit or delete each comment, or `Quote it`.
 
-发送时会自动拼成这样的块（也可以手动「放进输入框」，那就只发你自己写的话）：
+On send it is assembled into a block like this (you can also hit `Quote it` yourself, in which case only your own words go out):
 
 ```
-标注 1：
-> 面板从 y=0 开始，但顶栏的 z-index 是 45
+Note 1:
+> The panel starts at y=0, but the top bar's z-index is 45
 
-这里要再压缩一句
+This needs to be one sentence shorter
 ```
 
-注释是**本地锚点**：按「原文 + 前后文」定位，所以正文重排、流式追加之后徽标仍能挂回原处；它存在当前浏览器的 `localStorage`（按会话隔离），不进服务端、不上云，换个设备看不到。
+Notes are **local anchors**: they locate themselves by "quoted text + surrounding context", so badges still find their place after the body reflows or a stream appends more text. They live in this browser's `localStorage`, isolated per session — never on the server, never in the cloud, invisible from another device.
 
-**文件的行引用**是另一条路：在预览里选中行（`Shift+点` 连选、`Ctrl/Cmd+点` 加选、右键出行菜单），「追加到对话」写进草稿的是 `@web/src/App.tsx:120-138` 这样的**路径 + 行号**，让 agent 自己去读。
+**Line references in files** are the other road: select lines in the preview (`Shift+click` for a range, `Ctrl/Cmd+click` to add, right-click for the line menu) and "Add to conversation" writes a **path plus line numbers** such as `@web/src/App.tsx:120-138`, leaving the agent to read it.
 
 ---
 
-## 临时对话：问一句就走
+## Side chat: ask one question and go
 
-![右边这条「临时聊天」是独立通道：不落盘，主对话照旧在跑](docs/screenshots/13-tempchat.png)
+![The "side chat" on the right is a channel of its own: never saved, while the main conversation keeps running](docs/screenshots/13-tempchat.png)
 
-顶栏那颗「临时会话」（或右栏工作区落地页的第一张卡）会在**右栏**另开一条聊天：
+The `Temp session` button in the top bar (or the first card on the right pane's landing page) opens another conversation **in the right pane**:
 
-- **不落盘**：会话只存在内存里，关掉标签就销毁，不进侧栏、不留文件；
-- 主对话照旧跑，两边互不打断；
-- 想留下就点 `保存为正式对话`，此时才写出会话文件（临时会话没有的历史也能保住）；
-- 可以同时开多条，每条一个独立通道、独立标签。
+- **Not persisted**: it lives in memory, dies with the tab, never enters the sidebar and leaves no file;
+- the main conversation keeps running; the two don't interrupt each other;
+- to keep it, hit `Save as a regular chat` — only then is a session file written (history the ephemeral chat never had is preserved too);
+- you can have several open at once, each on its own channel and its own tab.
 
-> 该能力依赖引擎的「内存会话」：pi 支持；Codex 的 thread 本身就在它自己的库里，所以没有「保存」按钮。它不是「换皮的新会话」，也不等于子代理 —— **临时对话是人开的窗口，子代理是 agent 派出去的子任务**。
+> This depends on the engine having an in-memory session: pi supports it; a Codex thread already lives in Codex's own store, so there is no "save" button. It is not "a new session in a different skin", and it is not a subagent — **an ephemeral chat is a window you opened, a subagent is a subtask the agent dispatched**.
 
 ---
 
-## 文件、改动、git、搜索
+## Files, diffs, git, search
 
-文件区在侧栏底部，也能在右栏当标签用。**网页端是只读的**：看、比、引用、搜，都能做；原地改文件并保存不在这一层 —— 改文件交给 agent 的工具或终端，这里用 diff 复核。
+The files area sits at the bottom of the sidebar and also works as a tab in the right pane. **The web side is read-only**: you can look, compare, reference and search; editing files in place and saving them is not this layer's job — give that to the agent's tools or the terminal, and use the diff here to review it.
 
-| 能力 | 说明 |
+| Capability | Notes |
 |---|---|
-| 目录树 | 可换根（跟随会话 / 指定项目）、懒加载、单目录最多 500 项、默认不列 `node_modules`/`.git`/`dist`，可「显示隐藏文件」看 `.env` 之类 |
-| 按文件名搜 | 只匹配名字，不读内容，防抖 250ms，最多 200 条 |
-| 预览 | markdown（表格 / 代码高亮 / mermaid）、源码带行号、图片、PDF、音视频流；多标签、拖拽换序、右键关闭左/右/全部、可铺开占满 |
-| 行引用 | 选中行 → 「追加到对话」写 `@path:行号`；拖选文字还能「复制选中的文字」 |
-| 在 Finder 中显示 | macOS `open -R`、Windows `explorer.exe /select,`、Linux 打开父目录 |
-| 未提交改动 | 文件树上的状态点、文件后面的 `M` / `U` / `D` |
+| Directory tree | Switchable root (follow the session / pick a project), lazy loaded, at most 500 entries per directory, `node_modules` / `.git` / `dist` hidden by default, "show hidden files" reveals `.env` and friends |
+| Search by file name | Matches names only, never reads contents, 250 ms debounce, at most 200 hits |
+| Preview | markdown (tables / code highlighting / mermaid), source with line numbers, images, PDF, audio and video streams; multiple tabs, drag to reorder, right-click to close left / right / all, and it can be spread over the full width |
+| Line references | Select lines → "Add to conversation" writes `@path:line`; a text selection can also be "copy selected text" |
+| Reveal in Finder | macOS `open -R`, Windows `explorer.exe /select,`, Linux opens the parent directory |
+| Uncommitted changes | Status dots in the file tree, plus `M` / `U` / `D` after the filename |
 
-### 改动（diff）
+### Diff
 
-![改动视图：与 HEAD 对比，`+6 −1` 概览 + 行级红绿](docs/screenshots/03-diff.png)
+![The diff view: against HEAD, a `+6 −1` summary plus line-level red/green](docs/site/assets/en/diff.webp)
 
-预览页顶部切「改动」就是与 `HEAD` 的对比：`+285 −78` 概览、行级红绿高亮、可「只看改动」也可回到全文。从回答里的「改动文件」chip 点进来会直接落在 diff。
+The "diff" toggle at the top of the preview is a comparison against `HEAD`: a `+285 −78` summary, line-level red/green, and a switch between "changes only" and the full file. Coming in from a changed-files chip lands directly on the diff.
 
 ### git
 
-文件区顶部有分支标签，点开切本地分支（工作区脏会先要确认）。它只调 `git` 命令做读与切分支，不做提交 —— 提交还是交给 agent 或你自己在终端里做。
+The branch chip at the top of the files area lists local branches and switches them (a dirty working tree asks first). It only shells out to `git` for reads and branch switches — it never commits. Committing stays with the agent, or with you in a terminal.
 
-### 内容搜索
+### Content search
 
-工具栏的「搜文件内容」是全文检索：可以加**路径掩码**（如 `web/src/**`）收窄范围，结果显示 `文件:行号` + 原文片段，点一下跳到那行；命中太多时按上限截断并明说。
-
----
-
-## 终端
-
-![右栏的终端是真 PTY：zsh、颜色、git 输出、cwd 与会话一致](docs/screenshots/04-terminal.png)
-
-右栏的终端是**真 PTY**（`node-pty` + xterm.js）：vim / top / Ctrl-C / 颜色 / 行编辑都正常，cwd 与会话所在项目一致，可带一条初始命令（升级流程就用它）。
-
-刷新页面不会恢复终端会话（PTY 随页面卸载退出），切标签则不会断。Linux 上 `node-pty` 需要就地编译，缺工具时界面会直接说装什么。
-
-### 内置网页
-
-右栏还能开网页：输入网址在 iframe 里看，请求走**本机代理**（`/web/p/<url>`）—— 把文档取回来、去掉 `X-Frame-Options` / CSP 的嵌入限制，所以百度这类站点也能开。代理有边界：只代理 HTML/CSS 文档、**不带 cookie 过去也不带回**、上游 12MB 上限、iframe 沙箱不含 `allow-same-origin`。需要登录或重 JS 的站点点 `⧉` 跳系统浏览器。
+"Search file contents" in the toolbar is a full-text search: add a **path mask** (such as `web/src/**`) to narrow it, results show `file:line` plus a snippet of the source, and clicking one jumps to that line. When there are too many hits it truncates at the cap and says so.
 
 ---
 
-## 多引擎：各跑各的原生 loop
+## Terminal
 
-引擎不是「同一个 prompt 换个皮」，每个都是官方 agent 自己的循环：
+![The right-pane terminal is a real PTY: zsh, colors, git output, and a cwd that matches the session](docs/screenshots/04-terminal.png)
 
-| 引擎 | 接入方式 | 说明 |
+The terminal in the right pane is a **real PTY** (`node-pty` + xterm.js): vim / top / Ctrl-C / colors / line editing all behave, the cwd matches the session's project, and you can pass one initial command (the upgrade flow uses exactly that).
+
+Reloading the page does not restore a terminal session (the PTY exits with the page); switching tabs does not break it. On Linux `node-pty` has to be compiled in place, and when the tools are missing the UI says exactly what to install.
+
+### Built-in web page
+
+The right pane also opens web pages: type a URL and view it in an iframe, with requests going through **a local proxy** (`/web/p/<url>`) — it fetches the document and strips the `X-Frame-Options` / CSP framing restrictions, so sites like Baidu open too. The proxy has boundaries: HTML/CSS documents only, **no cookies in and none out**, a 12 MB upstream cap, and an iframe sandbox without `allow-same-origin`. For sites that need a login or heavy JS, hit `⧉` to jump to the system browser.
+
+---
+
+## Engines: each runs its own native loop
+
+The engines are not "the same prompt in different costumes" — each is that vendor's own agent loop:
+
+| Engine | How it's wired | Notes |
 |---|---|---|
-| **pi**（默认） | 原生 SDK | 完整插件 / 技能生态、工具延迟加载、审批门禁、子代理、插队；模型与 provider 由本工作台管理 |
-| **Codex** | app-server（JSON-RPC） | 独立 loop 与沙箱，会话与 Codex Desktop / CLI 共用；审批是命令 / 文件级的 |
-| **DeepSeek Harness** | ACP | 模型与思考档可切，权限逐次确认 |
-| **opencode** | ACP | 自带工具 / MCP / 插件生态，会话与 opencode CLI / TUI 共用；审批取决于 opencode 自己的 `permission` 配置 |
-| **Claude Code** | ACP（`claude-code-acp` 适配器） | 模型可切、工具逐次确认，会话与 `claude` CLI 共用；这套 ACP 面不暴露思考档与子代理 |
-| **fake** | 内置脚本化引擎 | 零 token，只用来验证协议 / 工具 / 审批流程（默认不出现在切换面板） |
+| **pi** (default) | Native SDK | The full plugin / skill ecosystem, lazy tool loading, the approval gate, subagents, steering; models and providers are managed by this workbench |
+| **Codex** | app-server (JSON-RPC) | Its own loop and sandbox; sessions are shared with Codex Desktop / CLI; approvals are command- and file-level |
+| **DeepSeek Harness** | ACP | Model and thinking level are switchable; permissions confirmed one by one |
+| **opencode** | ACP | Its own tools / MCP / plugin ecosystem; sessions are shared with the opencode CLI / TUI; approvals follow opencode's own `permission` config |
+| **Claude Code** | ACP (the `claude-code-acp` adapter) | Switchable models, per-call tool confirmation; sessions are shared with the `claude` CLI; this ACP surface exposes neither thinking levels nor subagents |
+| **fake** | Built-in scripted engine | Zero tokens, only for exercising the protocol / tools / approval flow (not in the picker by default) |
 
-能力差异（`server/engine/registry.ts` 的能力矩阵，界面据此隐藏按钮）：
+The differences (the capability matrix in `server/engine/registry.ts`, which the UI uses to hide buttons):
 
-| 能力 | pi | codex | dsh | opencode | claude |
+| Capability | pi | codex | dsh | opencode | claude |
 |---|:-:|:-:|:-:|:-:|:-:|
-| 审批 | ✅ | ✅ | ✅ | 看配置 | ✅ |
-| 模型 / 思考档 | ✅ | ✅ | ✅ | ✅ | 模型可切 / 无档位 |
-| 恢复历史会话 | ✅ | ✅ | ✅ | ✅ | ✅ |
-| 插队（steer） | ✅ | — | — | — | — |
-| 子代理面板 | ✅ | — | — | — | — |
-| 本工作台管 provider | ✅ | — | — | — | — |
-| 临时会话（内存） | ✅ | — | — | — | — |
+| Approvals | ✅ | ✅ | ✅ | per config | ✅ |
+| Model / thinking level | ✅ | ✅ | ✅ | ✅ | model only / no levels |
+| Resume past sessions | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Steering | ✅ | — | — | — | — |
+| Subagent panel | ✅ | — | — | — | — |
+| Workbench-managed providers | ✅ | — | — | — | — |
+| Side chat (in memory) | ✅ | — | — | — | — |
 
-**模型 / 插件 / MCP 三块跟着当前引擎走**：切到 Codex，面板读的就是 Codex 自己的东西（`model/list`、`plugin/list`、`config/read`）；claude 读 `~/.claude.json` 与 `~/.claude/settings.json`；opencode 读 `opencode.json`。没接的面板会直说，不拿 pi 的配置冒充。
+**The models / plugins / MCP panels follow the active engine**: switch to Codex and the panels read Codex's own data (`model/list`, `plugin/list`, `config/read`); claude reads `~/.claude.json` and `~/.claude/settings.json`; opencode reads `opencode.json`. A panel that has nothing wired says so instead of borrowing pi's config.
 
-引擎在**底部状态栏**切换（不是顶栏），每个会话各自记住自己的引擎、模型与思考档。
-
----
-
-## 模型与供应商
-
-![模型面板：左边是当前有 key / 已登录的服务商，右边是该 provider 的端点、API 形态、模型白名单](docs/screenshots/05-models.png)
-
-- **订阅服务**：OAuth 登录（9 家），登录后直接能用，不用手抄 key。
-- **官方内置**：pi 目录里带模型的那批，**填一把 key 就能用**，端点与模型表由目录提供。
-- **自己输入**：可改 API 形态（openai-completions / responses / anthropic-messages / codex / typesafe）、base url、自定义 headers，逐个加模型。
-- 逐个勾选模型（只保存勾上的）、批量试连、从 `/models` 拉清单、按勾选保存白名单。
-
-**key 不出服务端**：接口只返回 `hasKey` 与尾 4 位；写操作在进程内串行化，避免并发写坏文件。
-
-配置真相分散在 `~/.pi/agent/models.json`（provider 目录）、`models-store.json`（历史位置）、`auth.json`（`api_key` 或 OAuth 凭据），白名单在 `settings.json.enabledModels`。
+Engines are switched in the **bottom status bar** (not the top bar), and every session remembers its own engine, model and thinking level.
 
 ---
 
-## 技能
+## Models and providers
 
-![技能面板：已装 / 启用 / 禁用三档，右边是这个技能的 SKILL.md 摘要与目录文件](docs/screenshots/06-skills.png)
+![The models panel: the providers with a key or a signed-in subscription on the left, and that provider's endpoint, API shape and model allowlist on the right](docs/site/assets/en/models.webp)
 
-读 `~/.agents/skills/<目录>/SKILL.md`，列表只解析 frontmatter（不引 yaml 依赖）。**启停 = 把 `SKILL.md` 改名成 `.SKILL.md.disabled`**，没有第二份状态文件 —— 所以在 CLI 里看到的一致。
+- **Subscriptions**: OAuth login (9 providers), usable right after signing in — no key to copy by hand.
+- **Official built-ins**: the ones pi's catalog carries models for — **paste one key and it works**; endpoints and model tables come from the catalog.
+- **Bring your own**: change the API shape (openai-completions / responses / anthropic-messages / codex / typesafe), the base URL and custom headers, and add models one by one.
+- Tick models individually (only ticked ones are saved), batch-test connectivity, pull the list from `/models`, and save the ticked set as the allowlist.
 
-**Skill Hub**：分类搜索 + 一键安装（索引 20 万+），也能从 Git 仓库装指定 `skills/<name>`，或手动建一个。
+**Keys never leave the server**: the API returns only `hasKey` and the last 4 digits; writes are serialized inside the process so concurrent edits can't corrupt a file.
+
+The truth is spread across `~/.pi/agent/models.json` (the provider catalog), `models-store.json` (the legacy location) and `auth.json` (`api_key` or OAuth credentials), with the allowlist in `settings.json.enabledModels`.
+
+---
+
+## Skills
+
+![The skills panel: installed / enabled / disabled on the left, this skill's SKILL.md summary and its directory files on the right](docs/site/assets/en/skills.webp)
+
+Reads `~/.agents/skills/<dir>/SKILL.md`; the list parses frontmatter only (no yaml dependency). **Enabling or disabling means renaming `SKILL.md` to `.SKILL.md.disabled`** — there is no second state file, so what you see in the CLI agrees with what you see here.
+
+**Skill Hub**: search by category plus one-click install (200k+ index); it can also install a specific `skills/<name>` from a Git repo, or create one by hand.
 
 ---
 
 ## MCP
 
-![MCP 面板：全局与项目两份配置、启停与暴露方式、测试连接、OAuth](docs/screenshots/07-mcp.png)
+![The MCP panel: global and project configs, enable/disable and exposure, test connection, OAuth](docs/site/assets/en/mcp.webp)
 
-读写两份配置：`~/.pi/agent/mcp.json`（全局）与 `<workspace>/.pi/mcp.json`（项目），**项目同名条目覆盖全局**，写回保留缩进与 CRLF。
+Reads and writes two config files: `~/.pi/agent/mcp.json` (global) and `<workspace>/.pi/mcp.json` (project), where **a project entry with the same name overrides the global one**, and writes preserve indentation and CRLF.
 
-- exposure 四档：**代码模式（默认）/ 搜索后声明 / 直接声明 / 不暴露**；
-- **测试连接**：真握手 + `tools/list` 后即断，报连接状态与工具数；
-- OAuth 登录、市场挑服务器、粘贴命令 / URL / JSON 自动解析；
-- **配置即真相**：pi 会话启动时自己连，改完对**新会话**生效。
-
----
-
-## 插件
-
-![插件面板：pi package 的四态与按包停用](docs/screenshots/09-plugins.png)
-
-插件就是 pi package：`settings.json` 里的 `packages`（npm / git / 本地目录）+ 散装 `~/.pi/agent/extensions/`、`<ws>/.pi/extensions/`。
-
-状态由 pi SDK 的 `resolve()` 决定（**查询不会触发 npm install**），四态 `loaded / installed / missing / disabled`；按包停用写 `autoload:false`，不删文件。
+- exposure has four levels: **codemode (default) / deferred / direct / hidden**;
+- **Test connection**: a real handshake plus `tools/list`, then disconnect; it reports the connection state and the tool count;
+- OAuth login, pick a server from a marketplace, paste a command / URL / JSON and let it be parsed;
+- **the config is the truth**: pi connects at session start, so edits apply to **new sessions**.
 
 ---
 
-## 子代理：并行开，逐个管
+## Plugins
 
-![子代理面板：内置模板、默认并发、启用开关](docs/screenshots/08-subagents.png)
+![The plugins panel: the four states of a pi package, and disabling per package](docs/site/assets/en/plugins.webp)
 
-主 agent 拿到 `Agent` 工具后，可以一次并行开好几个子代理，每个都是**一个真实的会话**（自己的上下文、会话文件、工具白名单）。
+Plugins are pi packages: the `packages` entry in `settings.json` (npm / git / local directory) plus the loose `~/.pi/agent/extensions/` and `<ws>/.pi/extensions/`.
 
-- **看**：输入框上方那条「子代理」卡片条 —— 状态、耗时、工具次数、token、花费，点「查看结果」原地展开结果原文与会话文件路径，可以单独停掉某一个；标题里给一眼概览（`2 个在跑` / `8 个已结束`）。
-- **管**：顶栏「子代理」面板管的是**模板**（内置 explore / general-purpose / plan，可停用；也能新建、编辑、删除）：`name / display_name / description / tools / model / thinking / max_turns`，落 `~/.pi/agent/agents/*.md`，与 pi 的 agent 文件同一套格式，可读可改可进 git。
-- **并发**：1–12（默认 4），超出的排队；关掉总开关后模型不再看到 `Agent` 工具。
-- **隔离**：子代理默认不加载技能 / 插件 / 主题 / 上下文文件（快、可预期）；模型不跟随父会话时沿用父会话的模型。
-
-子代理的会话文件紧挨着父会话归档（`<父会话目录>/<父会话名>/subagents/`），不进侧栏项目清单。
+State comes from the pi SDK's `resolve()` (**querying never triggers `npm install`**), with four states `loaded / installed / missing / disabled`; disabling per package writes `autoload:false` and deletes nothing.
 
 ---
 
-## 推送与语音
+## Subagents: run many, manage each
+
+![The subagents panel: built-in templates, default concurrency, the master switch](docs/site/assets/en/agents.webp)
+
+Once the main agent has the `Agent` tool it can run several subagents in parallel, and each one is **a real session** (its own context, session file and tool allowlist).
+
+- **Watch**: the subagent card strip above the composer — status, duration, tool count, tokens, cost. "View result" expands the raw result and the session file path in place, and any single run can be stopped. The heading gives the at-a-glance count (`2 running` / `8 finished`).
+- **Manage**: the top-bar "subagents" panel manages **templates** (built in: explore / general-purpose / plan, each disableable; you can also create, edit and delete your own): `name / display_name / description / tools / model / thinking / max_turns`. They land in `~/.pi/agent/agents/*.md`, in the same format as pi's agent files — readable, editable, git-friendly.
+- **Concurrency**: 1–12 (default 4); anything beyond that queues. Turn the master switch off and the model no longer sees the `Agent` tool.
+- **Isolation**: subagents load no skills / plugins / themes / context files by default (fast and predictable); a subagent that doesn't pin a model keeps using the parent session's model.
+
+A subagent's session file is archived next to the parent session (`<parent session dir>/<parent name>/subagents/`) and never shows up in the sidebar's project list.
+
+---
+
+## Push and voice
 
 <table><tr>
-<td width="50%"><img src="docs/screenshots/11-push.png" alt="推送：本机推送状态、目标设备、测试推送"></td>
-<td width="50%"><img src="docs/screenshots/10-voice.png" alt="语音：四类事件提示音 + 本地 TTS"></td>
+<td width="50%"><img src="docs/site/assets/en/push.webp" alt="Push: local push state, target devices, test push"></td>
+<td width="50%"><img src="docs/site/assets/en/voice.webp" alt="Voice: four event sounds plus local TTS"></td>
 </tr></table>
 
-**推送**：Web Push（VAPID）订阅，回合结束推一条 —— 标题=项目名、正文=会话名，失败 ❌ / 中断 ⏹ 带前缀；多设备管理、测试推送、一键清空。需要 https 或 localhost。
+**Push**: Web Push (VAPID) subscriptions, one notification per finished turn — title is the project, body is the session, with a ❌ / ⏹ prefix for failures and interrupts. Multiple devices, a test push, and a one-click clear-all. Needs https or localhost.
 
-VAPID 密钥与联系方式都在面板里管：密钥首次启动自动生成到 `<dataDir>/vapid-keys.json`（0600，可用 `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` 覆盖），联系方式（subject）存 `<dataDir>/push-config.json`（可用 `VAPID_SUBJECT` 覆盖）。
-**subject 得填真实邮箱或 https 站点**：默认值 `mailto:noreply@localhost` 会被 Apple 判 `403 BadJwtToken`（Chrome/FCM 不看这个，所以常见症状是「电脑能收、iPhone 收不到」）。换密钥会让所有已订阅设备失效（面板会顺手清空订阅，各设备重按一次「注册推送」）；改联系方式不影响任何订阅。
+The VAPID key pair and the contact (subject) are managed in the same panel: the pair is generated on first start into `<dataDir>/vapid-keys.json` (0600, overridable with `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`), the contact is stored in `<dataDir>/push-config.json` (overridable with `VAPID_SUBJECT`).
+**The subject must be a real email or an https site**: the default `mailto:noreply@localhost` is rejected by Apple with `403 BadJwtToken` (Chrome/FCM ignores it, so the usual symptom is “works on the desktop, silent on the iPhone”). Replacing the key pair invalidates every subscription (the panel clears them; re-register each device). Changing the contact invalidates nothing.
 
-**语音**：四类事件提示音（开始 / 结束 / 出错 / 等待审批）可试听、音量可调；本地 TTS 用浏览器内置语音播报最终回复，可调语速与音色，不联网。
+**Voice**: four event sounds (start / finish / error / waiting for approval) with preview and adjustable volume; local TTS reads the final reply using the browser's built-in voices, with adjustable rate and voice, and never touches the network.
 
 ---
 
-## 设置
+## Settings
 
-![设置 → 外观：三处字号、内容宽度 4 档、6 套色板](docs/screenshots/12-settings.png)
+![Settings → Appearance: three font sizes, content width in 4 steps, 6 palettes](docs/site/assets/en/settings.webp)
 
-顶栏那一排就是全部面板入口，**可以在「设置 → 界面」里逐项隐藏**（设置与分栏两颗不参与隐藏 —— 它们是恢复其它入口的唯一入口）；新装默认只勾**模型 / 技能 / 语音 / MCP**（推送、插件、子代理、临时会话按需自己勾回来）；侧栏、右栏也都能拖宽、收起，宽度记在本机 `localStorage`。
+The top bar is the entry point for every panel, and **each entry can be hidden in Settings → Interface** (settings and the split toggle are exempt — they're the only way back to the others). The sidebar and the right pane both drag wider and collapse, and their widths are remembered locally in `localStorage`.
 
-顶栏「设置」分五页：
+The "settings" button opens five pages:
 
-| 页 | 内容 |
+| Page | Contents |
 |---|---|
-| **界面** | 外框：顶栏显示哪些入口（文案 / 图标分开勾）、状态栏里显示哪些块（排队 / 工作中 / 上下文用量）、侧栏、对话里图片的最大宽度 |
-| **对话** | 对话区自己长什么样：输入框上方显示哪些块（模板 / 想想 / 快捷指令）、快捷短语的内容、想想（思考档）的默认值（这两项走服务端保存、多设备一致）、对话里是否显示花费、思考块与工具卡默认是否展开 |
-| **外观** | 只管尺寸：三处字号（聊天正文 / 侧栏项目名 / 侧栏会话名，滑杆 2–20px）、内容宽度 4 档（720 / 900 / 1100 / 满宽）、顶栏高度、顶栏名称与 logo（可隐藏、可改成自己的名字） |
-| **主题** | 6 套色板（清亮白、暖纸、雾青、东京夜、摩卡、北境），点一下立刻生效 |
-| **语言** | 中文 / English，点了立刻生效 |
-| **快捷键** | 11 个动作可改键、可清空、可恢复默认，另有速查表 |
+| **Interface** | Which top-bar entries show (text and icon ticked separately), which status-bar chunks show (queue / working / context usage), whether cost shows in the conversation, which blocks sit above the composer (templates / thinking / quick commands), and whether thinking blocks and tool cards start expanded |
+| **General** | The text of your quick phrases and the default thinking level — saved server-side, identical on every device |
+| **Appearance** | Three font sizes (chat body / sidebar project names / sidebar session names, slider 2–20px), content width in 4 steps (720 / 900 / 1100 / full), 6 palettes (bright white, warm paper, mist teal, Tokyo night, mocha, nord), and the top-bar name and logo (hideable, or replaced with your own) |
+| **Language** | Chinese / English, applied immediately |
+| **Shortcuts** | 11 actions, rebindable, clearable and restorable to defaults, plus a cheat sheet |
 
-外观、主题、界面、语言这些偏好只存本机（`localStorage`，`agent-web.` 前缀），手机、平板、桌面各一份；「通用」里的快捷短语才多设备一致。
+Appearance, interface and language preferences stay on the device only (`localStorage`, with the `agent-web.` prefix) — one copy per phone, tablet and desktop. Only the quick phrases in "General" are shared across devices.
 
 ---
 
-## 手机
+## Mobile
 
 <table><tr>
-<td width="34%"><img src="docs/screenshots/16-mobile.png" alt="手机单栏：顶栏入口只留图标、输入框 18px"></td>
-<td width="34%"><img src="docs/screenshots/17-mobile-drawer.png" alt="手机上的项目侧栏是覆盖式抽屉"></td>
+<td width="34%"><img src="docs/site/assets/en/mobile.webp" alt="Mobile single column: icon-only top-bar entries, 18px composer"></td>
+<td width="34%"><img src="docs/site/assets/en/mobile-drawer.webp" alt="On a phone the project sidebar is an overlay drawer"></td>
 </tr></table>
 
-窄屏（手机 UA 或 ≤400px）自动切成单栏：
+On narrow screens (mobile UA or ≤400px) the layout collapses to a single column:
 
-- 侧栏变覆盖式抽屉（宽度 `clamp(260px, 76vw, 340px)`，点遮罩关闭，点会话后自动收起）；
-- 顶栏允许换行、入口只留图标、可横向滑动；
-- 右栏工作区变成整屏第二页，用 `100dvh` 从顶栏下方开始（避开 iOS 工具栏）；
-- 输入框字号 18px，免得 iOS 聚焦时自动放大；模型菜单变底部抽屉；
-- 状态栏横向可滚，上下文用量浮层变整宽弹层。
+- the sidebar becomes an overlay drawer (`clamp(260px, 76vw, 340px)`, tap the scrim to close, closes on its own after you pick a session);
+- the top bar wraps, keeps icons only, and scrolls horizontally;
+- the right-pane workspace becomes a full-screen second page that starts below the top bar using `100dvh` (dodging the iOS toolbars);
+- the composer is 18px so iOS doesn't zoom on focus; the model menu becomes a bottom sheet;
+- the status bar scrolls horizontally, and the context-usage popover becomes a full-width sheet.
 
 ---
 
-## 会话：置顶、归档、分叉、换项目
+## Sessions: pin, archive, fork, move project
 
-侧栏按目录把会话分组「项目」：
+The sidebar groups sessions into "projects" by directory:
 
-| 动作 | 行为 |
+| Action | Behaviour |
 |---|---|
-| 置顶 | 会话或项目提到最上面 |
-| 重命名 | pi 会话 = 往 jsonl 末尾追加 `session_info.name` |
-| 归档 | 收进「已归档」，可撤销 |
-| 删除 | 改名成 `.deleted-<时间戳>`（引擎有原生删除接口时优先用它），**文件还在磁盘上** |
-| 分叉 | 从某条消息派生新会话（标题 `分支 · …`），原会话一字不动 |
-| 换项目 | 把会话行拖到另一个项目上，会话 id 与历史不变，只改文件头部的 `cwd` 并搬目录 |
+| Pin | Lifts a session or a project to the top |
+| Rename | For pi: append `session_info.name` to the end of the jsonl |
+| Archive | Into "archived", undoable |
+| Delete | Renames to `.deleted-<timestamp>` (the engine's native delete is preferred when it has one) — **the file is still on disk** |
+| Fork | Derive a new session from one message (the title becomes `Branch · …`), the original untouched |
+| Move project | Drag a session row onto another project; the id and history stay, only the `cwd` in the file header changes and the directory is moved |
 
-排序上有一个刻意的选择：**组内按创建时间倒序** —— 新会话在最上面，而更新一个旧会话不会让它跳位置（按最后活动排的话，在一个老会话里说一句话它就窜到顶，整个列表跟着挪）。
+Sorting is a deliberate choice: **newest-created first inside a group** — a new session lands on top, and updating an old one doesn't move it (sort by last activity instead and a single message in an old session shoots it to the top, dragging the whole list along).
 
 ---
 
-## 快捷键与斜杠指令
+## Shortcuts and slash commands
 
-**快捷键**都可以在「设置 → 快捷键」里改（必须带 `Mod`/`Alt`，不收裸字母）。macOS 上 `Mod` = ⌘，其它平台 = Ctrl。
+**Every shortcut** is rebindable in Settings → Shortcuts (a binding must include `Mod`/`Alt`; bare letters are rejected). On macOS `Mod` is ⌘, elsewhere it's Ctrl.
 
-| 动作 | 默认键 | 动作 | 默认键 |
+| Action | Default | Action | Default |
 |---|---|---|---|
-| 新会话 | `Mod+K` | 打开右侧边栏 | `Mod+Alt+O` |
-| 新项目 | `Mod+M` | 收起右侧边栏 | `Mod+Alt+W` |
-| 临时会话 | `Mod+Shift+K` | 收起 / 展开左侧栏 | `Mod+Alt+L` |
-| 设置 | `Mod+Alt+S` | 文件管理 | `Mod+Alt+F` |
-| 新建终端 | `Mod+Alt+T` | 搜索文件内容 | `Mod+Shift+F` |
-| 快捷键速查表 | `Mod+/` | | |
+| New session | `Mod+K` | Open right panel | `Mod+Alt+O` |
+| New project | `Mod+M` | Close right panel | `Mod+Alt+W` |
+| Temp session | `Mod+Shift+K` | Toggle left sidebar | `Mod+Alt+L` |
+| Settings | `Mod+Alt+S` | Files | `Mod+Alt+F` |
+| New terminal | `Mod+Alt+T` | Search file contents | `Mod+Shift+F` |
+| Shortcut cheat sheet | `Mod+/` | | |
 
-**斜杠指令**在输入框里打 `/` 弹出，分两类 —— `本地` 由工作台自己执行，`发给 Agent` 原样作为消息交给引擎：
+**Slash commands** pop up when you type `/` in the composer. There are two kinds — `local` ones the workbench runs itself, and `to the agent` ones handed to the engine verbatim as a message:
 
-| 指令 | 类型 | 作用 |
+| Command | Kind | What it does |
 |---|---|---|
-| `/new [首条消息]` | 本地 | 新建对话，可带上第一条消息 |
-| `/name <名称>` | 本地 | 重命名当前会话 |
-| `/model <名称>` | 本地 | 切模型（按 id 或显示名模糊匹配） |
-| `/thinking <档位>` | 本地 | 设思考强度（off / low / … / max） |
-| `/copy` | 本地 | 复制最后一条助手消息 |
-| `/session` | 本地 | 会话消息数 / token / 费用统计 |
-| `/resume` | 本地 | 刷新会话列表（别的终端刚开的会话） |
-| `/skill <技能名>` | 发给 Agent | 用某个技能（面板会列出已装的） |
-| `/compact [说明]` | 发给 Agent | 压缩上下文 |
-| `/plan [on\|off]` | 发给 Agent | 开关计划模式 |
-| `/cwd <路径>` | 发给 Agent | 切换工作目录 |
+| `/new [first message]` | local | New conversation, optionally with its first message |
+| `/name <name>` | local | Rename the current session |
+| `/model <name>` | local | Switch model (fuzzy match on id or display name) |
+| `/thinking <level>` | local | Set the thinking level (off / low / … / max) |
+| `/copy` | local | Copy the last assistant message |
+| `/session` | local | Message count / tokens / cost for the session |
+| `/resume` | local | Refresh the session list (sessions another terminal just opened) |
+| `/skill <skill name>` | to the agent | Use a skill (the panel lists the installed ones) |
+| `/compact [note]` | to the agent | Compact the context |
+| `/plan [on\|off]` | to the agent | Turn plan mode on or off |
+| `/cwd <path>` | to the agent | Change the working directory |
 
 ---
 
-## 架构：SSE + RPC，没有 WebSocket
+## Architecture: SSE + RPC, no WebSocket
 
 ```
-浏览器 ──GET  /api/events（SSE）──▶ 服务端    首帧快照 · 其后只推增量
-       ──POST /api/rpc  （JSON）──▶           ClientRequest → { reply } 就地消费
+browser ──GET  /api/events (SSE)──▶ server   one snapshot first, deltas afterwards
+        ──POST /api/rpc   (JSON)──▶         ClientRequest → { reply } consumed in place
 ```
 
-- **下行**：首帧一份完整快照，其后只推增量。正文走 `message_delta` 逐块追加；工具卡、错误、状态这类结构性变化推快照（60ms 窗口合并，快照可丢、事件不可丢）。SSE 25s 心跳。
-- **上行**：`send_message`、`interrupt`、`approve`、`new_chat`（可带 `ephemeral`）、`switch_conversation`、`set_engine` / `set_model` / `set_thinking_level` / `set_approval_mode`、`persist_conversation`、`close_ephemeral`、`fork_session`、`move_session`、`cancel_queued`、`rename_session` 等。
-- **协议单源**在 `server/protocol.ts`，前端复用类型，两端共用一份定义。
-- **快照是唯一事实源**：`store.ts` 用 `useSyncExternalStore`，快照一到整体替换；本地只留 `preview` / `draft` / `pendingActive` 这类乐观态。
-- **每个客户端各看各的会话**（ADR-0033）：同一个服务端，两台设备可以停在不同会话上；会话清单这类大块数据只在该客户端需要时下发。
+- **Downstream**: one complete snapshot first, then deltas only. Text arrives as `message_delta` chunks appended block by block; structural changes (tool cards, errors, state) push a fresh snapshot, coalesced in a 60 ms window — snapshots are droppable, events are not. SSE heartbeats every 25 s.
+- **Upstream**: `send_message`, `interrupt`, `approve`, `new_chat` (optionally with `ephemeral`), `switch_conversation`, `set_engine` / `set_model` / `set_thinking_level` / `set_approval_mode`, `persist_conversation`, `close_ephemeral`, `fork_session`, `move_session`, `cancel_queued`, `rename_session` and more.
+- **The protocol has a single source** in `server/protocol.ts`; the frontend reuses its types, so one definition serves both ends.
+- **The snapshot is the only source of truth**: `store.ts` uses `useSyncExternalStore` and replaces everything when a snapshot arrives. Locally only optimistic state survives (`preview` / `draft` / `pendingActive`).
+- **Each client sees its own session** (ADR-0033): one server, two devices, each parked on a different conversation; bulk data such as the session list is only sent to a client when that client needs it.
 
-进程模型：`cli.ts` 解析参数 → `session/lock.ts` 抢 `<dataDir>/server.lock`（pid 活则拒绝启动、pid 死则接管陈旧锁）→ `runtime.init()` → `listen`。`SIGINT` / `SIGTERM` / `/api/shutdown` 走同一个优雅退出（flush、断开引擎、释放锁）。
+Process model: `cli.ts` parses the flags → `session/lock.ts` grabs `<dataDir>/server.lock` (a live pid refuses to start, a dead pid means taking over a stale lock) → `runtime.init()` → `listen`. `SIGINT` / `SIGTERM` / `/api/shutdown` all go through the same graceful exit (flush, disconnect engines, release the lock).
 
 ---
 
-## 数据落在哪
+## Where data lives
 
-| 内容 | 位置 |
+| Content | Location |
 |---|---|
-| pi 会话 | `~/.pi/agent/sessions/<编码后的 cwd>/<ISO>_<uuid>.jsonl`（首行 `{type:"session",id,timestamp,cwd}`） |
-| Codex 会话 | Codex 自己的 thread 存储（`thread/list \| resume \| delete`） |
-| opencode / DSH / claude 会话 | 各自的数据目录（opencode 按 cwd `session/list`；DSH 读 `~/.dsh`；claude 读 `~/.claude`） |
-| 会话标题 | pi 取首条 user 消息（只读头 60 行）；改名 = 追加 `session_info.name` |
-| 工作台状态 | `<dataDir>/settings.json`、`approval-rules.json`、`server.lock`、`logs/`、`uploads/`、`push-subscriptions.json`、`vapid-keys.json`、`push-config.json` |
-| 技能 / 子代理模板 / MCP | `~/.agents/skills/`、`~/.pi/agent/agents/`、`~/.pi/agent/mcp.json` |
-| 本机界面偏好 | 浏览器 `localStorage`（`agent-web.` 前缀：主题、字号、宽度、快捷键、注释、标签页） |
+| pi sessions | `~/.pi/agent/sessions/<encoded cwd>/<ISO>_<uuid>.jsonl` (first line `{type:"session",id,timestamp,cwd}`) |
+| Codex sessions | Codex's own thread store (`thread/list \| resume \| delete`) |
+| opencode / DSH / claude sessions | Their own data dirs (opencode lists per cwd with `session/list`; DSH reads `~/.dsh`; claude reads `~/.claude`) |
+| Session titles | For pi, the first user message (reads only the first 60 lines); renaming appends `session_info.name` |
+| Workbench state | `<dataDir>/settings.json`, `approval-rules.json`, `server.lock`, `logs/`, `uploads/`, `push-subscriptions.json`, `vapid-keys.json`, `push-config.json` |
+| Skills / subagent templates / MCP | `~/.agents/skills/`, `~/.pi/agent/agents/`, `~/.pi/agent/mcp.json` |
+| Local UI preferences | Browser `localStorage` (`agent-web.` prefix: theme, font sizes, widths, shortcuts, notes, tabs) |
 
 ---
 
-## 安全模型
+## Security model
 
-- 默认只听 `127.0.0.1`；远程要显式 `-H 0.0.0.0`（或指定别的地址）。
-- 身份判定：对端是回环**且** Host 是回环 → 放行（本机不用密码）；其余一律要密码，未设密码时远程全拒。
-- **密码只能在本机设 / 改**（本机 **设置 → 远程** 的密码框、打开 `/setup`，或启动时 `-P`）：远程不能设第一个密码 —— 否则端口一暴露，谁先扫到谁接管。密码落盘在 `<数据目录>/password`（一行明文，0600），改完立即生效、不用重启；`-P` 给的也会写进去，下次重启不必再带。设了密码则走 cookie（`agent-web-auth`，7 天 HttpOnly）或 HTTP Basic；登录失败默认**连续 3 次就暂停 30 分钟**（次数与时长在 **设置 → 远程** 里改，范围 1–20 次 / 1–1440 分钟，锁会落盘、重启不解锁）。
-- **域名 / 局域网 IP / 外网 IP 都不需要白名单**：同源请求直接放行，远程来的请求一律交给密码那道门（`--allow-host` 一般用不上）。跨源门禁只保留给「**真的是从本机来**」的请求 —— 那才是 CSRF 的靶子（本机直连免密码）；判据用真实来源（`X-Forwarded-For` 已算过），所以反代把 `Host` 重写成 `127.0.0.1` 也不会误伤自己的域名。
-- 工具与命令走审批：**只读工具**（read / grep / find / ls）与只读命令自动放行，其余按 `scopeKey`（工具 + 可执行名或目标目录）询问；点「总是允许」把规则写进 `approval-rules.json`（原子写，坏文件当空）。
-- 回合结束时清掉该会话所有悬置审批，不会挂在那等下一个人点。
-- 上传的临时文件、会话缓存都在数据目录里，不写进你的项目。
-- 内置网页的代理不带 cookie、iframe 沙箱不含 `allow-same-origin`（否则远端 JS 能摸到 localStorage 与 RPC）。
+- Binds `127.0.0.1` by default and decides identity from the real peer address (`X-Forwarded-For` when a local proxy is in front) plus the `Host` header.
+- Identity: a loopback peer **and** a loopback Host → allowed. With no password set, remote requests always get 403. The password is stored in `<data dir>/password` (one plaintext line, 0600) and can be set/changed **only locally** (Settings → Remote, `/setup`, or `-P`); changes apply immediately without a restart. With a password, either the cookie (`agent-web-auth`, 7 days, HttpOnly) or HTTP Basic will do; failed logins are paused for 30 minutes after 3 wrong tries by default (change it in Settings → Remote: 1–20 tries, 1–1440 minutes; locks are persisted and survive a restart).
+- **No domain / IP allowlist**: any domain, public IP, LAN IP or tunnel works once the password is in. The cross-origin check only guards requests that genuinely come from **this machine** (loopback needs no password, so that is the CSRF target); remote requests are already behind the password gate.
+- Tools and commands go through approvals: **read-only tools** (read / grep / find / ls) and read-only commands pass automatically, everything else is asked per `scopeKey` (tool + executable name or target directory). Choosing "always allow" writes the rule into `approval-rules.json` (atomic write; a corrupt file counts as empty).
+- When a turn ends, every pending approval for that session is cleared, so nothing hangs waiting for a human.
+- Uploaded temp files and session caches live in the data directory, never in your project.
+- The built-in web page's proxy carries no cookies, and its iframe sandbox omits `allow-same-origin` (otherwise remote JS could reach `localStorage` and the RPC endpoint).
 
-> 远程暴露 = 两条：`-H`（让外面连得上）+ 密码（在本机 设置 → 远程 设一个，或 `-P`）。域名白名单不需要；域名 / 外网 IP / 局域网 IP 一视同仁。
+> Exposing it remotely is an explicit act: `-H` to be reachable plus a password set locally (Settings → Remote, or `-P`). Domain/IP allowlists are not needed.
 
 ---
 
-## 开发
+## Development
 
-在仓库根目录先 `npm install`，然后：
+From the repo root, run `npm install` first, then:
 
 ```bash
-npm run dev          # 一条命令起两个进程
+npm run dev          # starts both processes with one command
 ```
 
-- 对外仍然只有一个 **25257**（Vite 监听并反代），后端躲在内部 **25258**：开发和生产记同一个地址。
-- 前端热更新走 Vite，后端 `tsx --watch` 自动重启。
-- 手机调试：`npm run dev -- --host 0.0.0.0`。
+- Externally there is still a single port **25257** (Vite listens and proxies); the backend hides on internal **25258**, so dev and production use the same address.
+- Frontend HMR via Vite; the backend auto-restarts through `tsx --watch`.
+- Phone debugging: `npm run dev -- --host 0.0.0.0`.
 
-| 命令 | 作用 |
+| Command | Purpose |
 |---|---|
-| `npm run typecheck` | 服务端 + 前端两套 `tsc --noEmit` |
-| `npm run lint` | oxlint（`server` / `web/src` / `scripts`） |
-| `npm run format` | prettier 全仓格式化（`format:check` 只检查；`*.md` 故意跳过） |
-| `npm run build` | 服务端 `tsc` + 前端 `vite build` 到 `web/dist` |
-| `npm run icons` | 用 playwright-core 重新生成 PWA 图标 |
+| `npm run typecheck` | Two `tsc --noEmit` runs: server + web |
+| `npm run lint` | oxlint over `server` / `web/src` / `scripts` |
+| `npm run format` | Prettier across the repo (`format:check` only checks; `*.md` is deliberately skipped) |
+| `npm run build` | Server `tsc` + frontend `vite build` into `web/dist` |
+| `npm run icons` | Regenerate the PWA icons with playwright-core |
 
-CI（`.github/workflows/ci.yml`）：`npm ci` → typecheck → lint → test → build，跑在 ubuntu + Node 22。
+CI (`.github/workflows/ci.yml`): `npm ci` → typecheck → lint → test → build, on ubuntu + Node 22.
 
 ---
 
-## 排错
+## Troubleshooting
 
-> **为什么用 `npm ci` 而不是 `npm install`**：直接依赖普遍很新，`npm install` 会拿版本范围去 registry 重新解析，镜像源（公司 Nexus、npmmirror 等）没同步到那些版本就报 `npm error notarget`。`npm ci` 直接用锁文件里的精确版本。
+> **Why `npm ci` and not `npm install`**: the direct dependencies are all very new, and `npm install` re-resolves the version ranges against the registry — if your mirror (corporate Nexus, npmmirror, …) hasn't synced those versions you get `npm error notarget`. `npm ci` uses the exact versions from the lockfile.
 
-1. `npm error notarget No matching version found` → 镜像没同步。先 `npm config get registry`，再临时用官方源：`npm -g install oh-my-agent-web --registry=https://registry.npmjs.org/`。
-2. `EBADENGINE` / 启动即报 Node 版本 → 需要 Node ≥ 22.19（`node -v` 确认）。
-3. `node-pty` 编译失败（多见于 Linux）→ 先装 `python3` / `make` / `g++` 再 `npm -g install`，或用一行脚本的 `--with-build-tools` 让脚本代劳。
-4. 起不来但 `oh-my-agent-web status` 说「陈旧锁」→ 之前进程没退干净，下次 `start` 会自动接管；确实僵着就删 `<dataDir>/server.lock`。
-5. 端口被占 → `oh-my-agent-web -p 25258`，或先 `oh-my-agent-web stop`。
-6. 内置网页一片空白 → 该站点重登录 / 重脚本，代理不隧道 cookie；点 `⧉` 用系统浏览器。
-7. 界面报 `engine.provider_error: This operation was aborted`（偶发）→ 这是**传输层**被打断（模型刚连上、代理换了条连接、请求体被回收），不是模型真的拒绝。现在遇到这类瞬时错误会自动重试 2 次（1s / 3s 退避，界面上只留一条「正在重试」的提示），重试成功就不报错；如果还是失败，去 `<dataDir>/logs/agent-web.log` 里搜 `provider 报错` / `模型调用失败`，每条都带 `sessionId` / `attempt` / `code` / 原始 `message`（以前这类错误只变成界面上一根红条，日志里一个字都没有）。点「停止」导致的中断不会重试，也不会报红条。
-8. 想看引擎到底在干什么 → `AGENT_WEB_LOG=info aw`：`pi 自动重试`（SDK 自己那层）、`自动重试成功`、`这一轮被中断` 都记在日志里。
-9. 界面报 `请求失败：HTTP 502`（或「后端正在重启或还没起来（HTTP 502）」）→ 这是**前端到后端**那条链路，不是模型报错：开发态 `npm run dev` 是 Vite(25257) 反代后端(25258)，改 `server/` 下的文件就会重启后端，那一两秒的窗口里 `POST /api/rpc` 就会 502（终端里是 `http proxy error: connect ECONNREFUSED 127.0.0.1:25258`），正在跑的回合也会被抽掉（会话里最后一条是 `toolUse`、没有 `errorMessage` 就是这个特征）。现在开发态后端遇到端口没及时释放会在 6 秒内重试，红条也会在 SSE 重连后自动消失；**跑长回合请用 `aw`**（跑打包后的 `dist`，没有 watch 重启）。
+1. `npm error notarget No matching version found` → the mirror is behind. Check `npm config get registry`, then fall back to the official one: `npm -g install oh-my-agent-web --registry=https://registry.npmjs.org/`.
+2. `EBADENGINE` / a Node version complaint at startup → you need Node ≥ 22.19 (check with `node -v`).
+3. `node-pty` fails to build (mostly on Linux) → install `python3` / `make` / `g++` before `npm -g install`, or let the one-line installer handle it with `--with-build-tools`.
+4. It won't start but `oh-my-agent-web status` mentions a stale lock → a previous process didn't exit cleanly; the next `start` takes over automatically. If it's truly stuck, delete `<dataDir>/server.lock`.
+5. Port already in use → `oh-my-agent-web -p 25258`, or run `oh-my-agent-web stop` first.
+6. The built-in web page is blank → that site needs a login or heavy scripts, and the proxy does not tunnel cookies; hit `⧉` to use the system browser.
 
-Windows 上的 shell 解析、进程树回收、路径判断、权限与 CRLF 差异已全部收口在三个模块里：`server/util/spawn-cli.ts`（PATH/PATHEXT、`.cmd` 走 `cmd.exe`、`killTree`）、`server/util/paths.ts` 与 `web/src/path-utils.ts`（分隔符与绝对路径）、`server/util/file-mode.ts`（Windows 走 `icacls`）。改跨平台相关的代码先看这三个文件头。
+Windows differences in shell resolution, process-tree teardown, path handling, permissions and CRLF are all centralised in three modules: `server/util/spawn-cli.ts` (PATH/PATHEXT, `.cmd` via `cmd.exe`, `killTree`), `server/util/paths.ts` and `web/src/path-utils.ts` (separators and absolute paths), and `server/util/file-mode.ts` (`icacls` on Windows). Read those headers before touching cross-platform code.
 
 ---
 
