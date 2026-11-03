@@ -79,18 +79,6 @@ powershell -c "irm https://raw.githubusercontent.com/duzhenxun/oh-my-agent-web/m
 | 装编译工具 | `OH_MY_AGENT_WEB_BUILD_TOOLS=1`（或 `--with-build-tools`） |
 | 卸载 | `… \| sh -s -- --uninstall`（只删装进去的包与命令，`settings.json` / 密码 / 上传 / 日志不动） |
 
-### Docker（只想先看看，不想碰本机环境）
-
-```bash
-docker build -t oh-my-agent-web:local .
-docker run -d --name aw -p 127.0.0.1:25257:25257 \
-  -e AGENT_WEB_PASSWORD='换成你自己的' \
-  -v aw-data:/data -v "$PWD":/workspace oh-my-agent-web:local
-```
-
-镜像里只带 pi 引擎（它的 SDK 是本包的依赖）；Codex / Claude Code / opencode 要各自装 CLI，
-数据在 `/data`、代码在 `/workspace`。细节与排错见 [`docs/docker.md`](docs/docker.md)。
-
 ---
 
 ## 命令

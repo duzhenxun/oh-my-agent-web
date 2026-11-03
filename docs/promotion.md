@@ -87,7 +87,6 @@ https://duzhenxun.github.io/oh-my-agent-web/
 - [ ] About 里的 Website 打得开、且是**最新**落地页
 - [ ] topics 里没有拼错（GitHub 不会自动纠错，`selfhosted` ≠ `self-hosted`）
 - [ ] 落地页 `og:image` 是绝对地址且能直接打开
-- [ ] `docs/docker.md` 里那条 `docker run` 复制出来能跑（这是新用户最省事的入口）
 - [ ] Issues 模板在位；Discussions 已开
 
 ---

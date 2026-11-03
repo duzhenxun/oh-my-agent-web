@@ -80,19 +80,6 @@ That `~/.oh-my-agent-web` is also the **data directory**: what gets installed (`
 | Install build tools | `OH_MY_AGENT_WEB_BUILD_TOOLS=1` (or `--with-build-tools`) |
 | Uninstall | `… \| sh -s -- --uninstall` (removes only what was installed; `settings.json` / password / uploads / logs stay) |
 
-### Docker (just want to look, without touching your machine)
-
-```bash
-docker build -t oh-my-agent-web:local .
-docker run -d --name aw -p 127.0.0.1:25257:25257 \
-  -e AGENT_WEB_PASSWORD='pick-your-own' \
-  -v aw-data:/data -v "$PWD":/workspace oh-my-agent-web:local
-```
-
-The image ships the **pi** engine only (its SDK is a dependency of this package); Codex / Claude Code / opencode
-need their own CLIs installed on top. Data lives in `/data`, your code in `/workspace`.
-See [`docs/docker.md`](docs/docker.md) for details and troubleshooting (Chinese).
-
 ---
 
 ## Commands

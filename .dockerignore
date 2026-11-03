@@ -1,7 +1,0 @@
-# 构建上下文里只留镜像真正要用的东西。
-# 构建阶段只跑 `npm install -g oh-my-agent-web`（从 npm 装，不读仓库源码），
-# 所以除了 Dockerfile 与 docker/ 之外基本都是噪音 —— 尤其 node_modules 和 .git。
-*
-!Dockerfile
-!docker/
-!package.json
