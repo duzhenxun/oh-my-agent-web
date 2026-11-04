@@ -10,7 +10,7 @@
 
 | 事 | 现状 | 说明 |
 |---|---|---|
-| 包已存在于 npm | ✅ `oh-my-agent-web@1.1.1`（当前版本，见 `package.json`） | Trusted Publishing **不能用于包名从未发布过**的情况：那种必须先手动发一个版本，再回来配 |
+| 包已存在于 npm | ✅ `oh-my-agent-web@1.1.2`（当前版本，见 `package.json`） | Trusted Publishing **不能用于包名从未发布过**的情况：那种必须先手动发一个版本，再回来配 |
 | 工作流文件 | ✅ `.github/workflows/release.yml` | 配白名单时填的文件名就是 `release.yml` |
 | 仓库 | ✅ `duzhenxun/oh-my-agent-web` | 配白名单时填 `duzhenxun/oh-my-agent-web` |
 
