@@ -39,7 +39,7 @@ export function NewChatMeta({
 	return (
 		<div className="newchat-meta">
 			<div className="newchat-brand">
-				<img className="newchat-icon" src={brandLogo || "/favicon.svg"} alt="" aria-hidden="true" />
+				<img className="newchat-icon" src={brandLogo || "/favicon.svg?v=4"} alt="" aria-hidden="true" />
 				<div className="newchat-brand-text">
 					<span className="newchat-name">{brandName}</span>
 					<span className="newchat-versions mono">

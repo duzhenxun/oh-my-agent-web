@@ -116,6 +116,9 @@ export const PI_CAPABILITIES: EngineCapabilities = {
 	...ALL_ON,
 	subagents: true,
 	steer: true,
+	// 「完整历史」（pi 的会话导出页）与「系统提示词」（resourceLoader 拼完的那段）只有 pi 给得出
+	historyExport: true,
+	systemPrompt: true,
 	// 临时会话（`SessionManager.inMemory`）与派生分支（按 entry 剪历史另存）都是 pi 会话存储的能力
 	ephemeralChat: true,
 	forkChat: true,

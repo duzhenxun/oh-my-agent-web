@@ -1,13 +1,15 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App.tsx";
-import { connect } from "./ws.ts";
+import { connect, startOnEmptyScreen, watchVisibility } from "./ws.ts";
+import { sessionIdFromUrl } from "./session-url.ts";
 import { initTheme } from "./theme.ts";
 import { initChatDisplay } from "./chat-display.ts";
 import { initSidebarFonts } from "./sidebar-font.ts";
 import { initAppbarScale } from "./appbar-scale.ts";
 import { applyDocumentLang, readLanguage } from "./language.ts";
 import { watchMobileShell } from "./mobile-shell-dom.ts";
+import { watchVisualViewport } from "./visual-viewport.ts";
 import { loadEnTable } from "./use-language.ts";
 import "./styles.css";
 
@@ -30,6 +32,8 @@ initAppbarScale();
 // 单栏/双栏的开关挂在 <html class="is-mobile-shell"> 上：首帧前先同步一次，
 // 之后跟着窗口尺寸、方向变化刷新（手机 UA 即使在 900px 横屏也仍然是单栏）。
 watchMobileShell();
+// 键盘弹起时布局视口不变：把「真正看得见的那块」写进 --vvh / --vvtop，弹窗才不会被键盘盖住
+watchVisualViewport();
 
 const container = document.getElementById("root");
 if (!container) throw new Error("缺少 #root 容器");
@@ -54,4 +58,13 @@ applyDocumentLang(readLanguage());
 if (readLanguage() === "en") void loadEnTable().finally(boot);
 else boot();
 
+/**
+ * 地址栏没带 `?session=`（就是直接进 `http://127.0.0.1:25257`）→ **这一屏从「新会话」开始**：
+ * 不替人打开任何会话，也不恢复这个标签页上次看的那条（用户 2026-11-04 的要求）。
+ * 带 `?session=`（书签 / 通知 / 「在新标签页打开」）照旧直达那条会话。
+ */
+if (sessionIdFromUrl(window.location.search) === null) startOnEmptyScreen();
+
 connect();
+// 后台标签页断掉 SSE、回前台重连：浏览器对同一地址只有 6 条连接，长期占满就会「切会话卡死」
+watchVisibility();

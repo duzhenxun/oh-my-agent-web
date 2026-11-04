@@ -5,6 +5,17 @@
 	font-style: normal;
 }
 
+/* 灯泡图标：全局 .tool-icon 是 opacity .85 且没设行高，emoji 显得淡、还比文字偏下。
+   这里不透明、按行高居中，再往上挪 1px 跟文字基线对齐（busy 态的呼吸动画不受影响） */
+.action-think .tool-icon {
+	opacity: 1;
+	display: inline-flex;
+	align-items: center;
+	line-height: 1;
+	position: relative;
+	top: -1px;
+}
+
 .action-think:disabled {
 	opacity: 0.45;
 	cursor: not-allowed;

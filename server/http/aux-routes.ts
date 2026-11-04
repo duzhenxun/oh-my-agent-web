@@ -33,6 +33,14 @@ export function registerAuxRoutes(
 		projects: () => import("../protocol.js").PiProject[];
 		/** 删会话：引擎原生删除 or 文件改名（`purge` 为真时真删），由 runtime 决定 */
 		deleteSession: (id: string, options?: { purge?: boolean }) => Promise<SessionDeleteResult>;
+		/**
+		 * 「完整历史」/「系统提示词」（只有 pi 给得出）：路由不在这里拼逻辑，
+		 * 只把 runtime 的结果翻成 HTTP —— 会话文件、引擎句柄都只有 runtime 知道。
+		 */
+		sessionHistory?: (id: string) => Promise<{ ok: true; html: string } | { ok: false; code: string; message: string }>;
+		sessionSystemPrompt?: (
+			id: string,
+		) => Promise<{ ok: true; prompt: string } | { ok: false; code: string; message: string }>;
 		pushStore: PushStore;
 		/** 订阅服务（OAuth）：引擎不实现就不传，界面上那一块自然不出现 */
 		providerAuth?: ProviderAuthPort;
@@ -64,11 +72,35 @@ export function registerAuxRoutes(
 		engineModels?: () => { id: string }[];
 		log: (message: string, meta?: Record<string, unknown>) => void;
 	},
-): void {
-	registerSessionRoutes(app, { deleteSession: options.deleteSession });
+): {
+	/** 终端输出订阅（交给 WS 通道：与 SSE 共用同一份监听器表） */
+	watchTerminal: (id: string, listener: (chunk: string) => void) => (() => void) | null;
+} {
+	registerSessionRoutes(app, {
+		deleteSession: options.deleteSession,
+		...(options.sessionHistory
+			? {
+					sessionHistory: async (id: string) => {
+						const result = await options.sessionHistory?.(id);
+						if (!result) return { ok: false as const, error: { code: "engine.unsupported", message: "没有接入「完整历史」" } };
+						return result.ok ? { ok: true as const, value: result.html } : { ok: false as const, error: { code: result.code, message: result.message } };
+					},
+				}
+			: {}),
+		...(options.sessionSystemPrompt
+			? {
+					sessionSystemPrompt: async (id: string) => {
+						const result = await options.sessionSystemPrompt?.(id);
+						if (!result)
+							return { ok: false as const, error: { code: "engine.unsupported", message: "没有接入「系统提示词」" } };
+						return result.ok ? { ok: true as const, value: result.prompt } : { ok: false as const, error: { code: result.code, message: result.message } };
+					},
+				}
+			: {}),
+	});
 	registerPushRoutes(app, { store: options.pushStore });
 	registerFileRoutes(app, { workspaceOf: options.workspaceOf });
-	registerTerminalRoutes(app, { workspaceOf: options.workspaceOf });
+	const terminal = registerTerminalRoutes(app, { workspaceOf: options.workspaceOf });
 	registerProjectActions(app, { workspaceOf: options.workspaceOf });
 	registerDirRoutes(app, { workspaceOf: options.workspaceOf });
 	registerPickPathRoutes(app);
@@ -113,4 +145,6 @@ export function registerAuxRoutes(
 		...(options.probeModel ? { probeModel: options.probeModel } : {}),
 		...(options.engineModels ? { engineModels: options.engineModels } : {}),
 	});
+
+	return { watchTerminal: terminal.watchTerminal };
 }

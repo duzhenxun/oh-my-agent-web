@@ -1,6 +1,6 @@
 /**
  * 「文件管理」标题栏那排小按钮（紧跟标题，从左到右）：
- *   ↻ 刷新 · 👁 隐藏文件 · 🔍 按文件名搜 · ⌕̄ 搜文件内容 · `>_` 终端 · 📁 在 Finder 中显示
+ *   ↻ 刷新 · 👁 隐藏文件 · 🔍 按文件名搜 · ⌕̄ 搜文件内容 · ± 改动过的文件（有改动才出现）· `>_` 终端 · 📁 在 Finder 中显示
  * 刷新在最前：它是唯一直接对**这棵树**本身的操作；「终端 / 在 Finder 中显示」放最后：
  * 它们是把目录开到别处去，跟「看这棵树」不是一类动作。
  * 两把放大镜挨着（文件名 / 文件内容）：同一个问题「东西在哪」的两种问法，摆一起最好找。
@@ -100,6 +100,9 @@ export function FilesToolbar({
 	onRefresh,
 	onSearchContents,
 	search,
+	changesOnly = false,
+	changedCount = 0,
+	onShowChanges,
 }: {
 	root: string | null;
 	showHidden: boolean;
@@ -112,6 +115,12 @@ export function FilesToolbar({
 	onSearchContents: () => void;
 	/** 搜索框的开关与状态（搜索框本体在下拉框下面，不在这里） */
 	search: FileSearch;
+	/** 现在是不是「改动过的文件」模式（那颗 diff 图标据此点亮） */
+	changesOnly?: boolean;
+	/** 当前项目有多少个改动过的文件；0 = 不画那颗图标 */
+	changedCount?: number;
+	/** 点 diff 图标：进「改动过的文件」并**重新拉一次最新的**改动（已经在这个模式里时就是纯刷新） */
+	onShowChanges?: () => void;
 }) {
 	const t = useT();
 	/**
@@ -230,13 +239,63 @@ export function FilesToolbar({
 					</svg>
 				</button>
 			</Tip>
+			{/*
+			 * 「改动过的文件」（用户 2026-11-04）：**只有**当前项目是 git 仓库、且真的有改动时才多出来这一颗。
+			 * 点它是「看这棵树现在跟 HEAD 差在哪」，所以跟旁边那两颗放大镜排在一起（都是「找东西」）；
+			 * 每次点都会重新拉一次 `git status` —— 智能体刚改完 / 在终端里 checkout 过，点一下就是最新的。
+			 */}
+			{onShowChanges && changedCount > 0 ? (
+				<Tip
+					text={t(
+						`改动过的文件（${changedCount} 个）：点一下看最新的改动`,
+						`Changed files (${changedCount}): click to list the latest`,
+					)}
+				>
+					<button
+						type="button"
+						className={`files-tool files-tool-diff${changesOnly ? " files-tool-on" : ""}`}
+						aria-label={t("查看改动过的文件", "Show changed files")}
+						aria-pressed={changesOnly}
+						onClick={onShowChanges}
+						disabled={!root}
+					>
+						{/* 左右两栏 = 「旧 / 新」：左边两行（去掉的），右边一行加号一行减号，
+						    16px 下也一眼能跟放大镜、终端分开 */}
+						<svg viewBox="0 0 16 16" aria-hidden="true">
+							<rect
+								x="1.7"
+								y="2.7"
+								width="12.6"
+								height="10.6"
+								rx="1.7"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth="1.15"
+							/>
+							<path d="M8 3v10" stroke="currentColor" strokeWidth="1" opacity="0.45" />
+							<path
+								d="M3.4 6.1h3.1M3.4 9.3h2.2"
+								stroke="currentColor"
+								strokeWidth="1.2"
+								strokeLinecap="round"
+							/>
+							<path
+								d="M9.5 6.1h2.9M10.95 4.65v2.9M9.5 9.3h2.9"
+								stroke="currentColor"
+								strokeWidth="1.2"
+								strokeLinecap="round"
+							/>
+						</svg>
+					</button>
+				</Tip>
+			) : null}
 			{/* 终端 / Finder 这两个是「把目录开到别处去」的入口：手机上不要（见 styles/files-toolbar.css 的
 			   手机段 —— 抽屉只有 2/3 宽，六个图标排不下；这两个在项目行的「⋯」菜单里也都有） */}
-			<Tip text={t("在右侧打开终端", "Open a terminal on the right")}>
+			<Tip text={t("在底部终端中打开", "Open in the bottom terminal")}>
 				<button
 					type="button"
 					className="files-tool files-tool-terminal"
-					aria-label={t("在右侧打开终端", "Open a terminal on the right")}
+					aria-label={t("在底部终端中打开", "Open in the bottom terminal")}
 					onClick={onOpenTerminal}
 				>
 					&gt;_

@@ -34,6 +34,7 @@ import { sessionUrlFor } from "./session-url.ts";
 import { reloadIfUnauthorized, reloadOnExpiredLogin } from "./auth-expiry.ts";
 import { promoteNewSession } from "./session-order.ts";
 import { newId } from "./lib/uid.ts";
+import { openStream, type Stream } from "./stream.ts";
 import { tNow } from "./use-language.ts";
 
 const MAX_BACKOFF_MS = 8000;
@@ -55,7 +56,44 @@ function clientId(): string {
 	return value;
 }
 
-let source: EventSource | null = null;
+/** 见 `startOnEmptyScreen`：第一帧快照要不要把屏幕留在「新会话」 */
+let emptyFirstSnapshot = false;
+
+/**
+ * 「这次打开页面不恢复到任何会话」：地址栏**没有** `?session=` 时，由 `main.tsx` 在 `connect()` 之前调一次。
+ *
+ * 用户 2026-11-04：直接进 `http://127.0.0.1:25257` 时不必替人打开「默认会话」，空着就好，
+ * 长得跟点一下「新会话」一样。这里做两件事：
+ *
+ *   1. **忘掉这个标签页记住的「我在看哪条会话」**（`sessionStorage` 那份 id）。服务端给
+ *      「没见过的客户端」的默认视图本来就是**空**（ADR-0033 的 `clientView.activeFor`：
+ *      没记录 = 什么都不看），换个新 id 之后快照里 `active.conversationId` 就是 null ——
+ *      不会出现「没人点过、上一条会话却已铺满屏」的错位。
+ *      （不换 id 的话，刷新同一个标签页会让服务端把上次看的那条重新指回来。）
+ *   2. 打开 `emptyFirstSnapshot`：**第一帧**快照把屏幕停在「新会话」那一屏（`newSession`）。
+ *      不这么做的话，active=null 只是一块「什么都没有」的空白：标题空着、输入框也不认这一屏
+ *      （发第一条消息要先有 `newSession` 才知道该 `new_chat`）。
+ *
+ * 只影响「第一帧」：之后用户点哪条会话、发第一条消息，都按正常路径走。
+ */
+export function startOnEmptyScreen(): void {
+	emptyFirstSnapshot = true;
+	try {
+		sessionStorage.removeItem(CLIENT_KEY);
+	} catch {
+		// 隐私模式 / 非浏览器（单测）：拿不到 sessionStorage 就当它本来就没记住过
+	}
+}
+
+/**
+ * 当前的推送通道（WebSocket，代理挡了 Upgrade 时自动退回 SSE —— 见 `stream.ts`）。
+ *
+ * **为什么不再是 EventSource**：SSE 是长连接，会永久占住浏览器给同一个 `host:port` 的
+ * 6 条 HTTP/1.1 连接中的一条；开几个标签页 / 终端就占满，连页面本身都加载不出来
+ * （用户 2026-11-04 反复撞到，DevTools 里表现为 `Provisional headers are shown`）。
+ * WebSocket 不占这 6 条，所以主通道搬过去之后「切会话卡死」这个问题从根上没了。
+ */
+let source: Stream | null = null;
 let attempt = 0;
 let seq = 0;
 
@@ -85,44 +123,46 @@ function resyncAfterFailure(): void {
 }
 
 export function connect(): void {
-	if (source && source.readyState !== EventSource.CLOSED) return;
+	if (source) return;
 
 	setAppState({ connection: "connecting" });
-	// SSE 带不了自定义头，所以用查询参数把标签页标识带过去；
+	// WS 握手带不了自定义头，所以用查询参数把标签页标识带过去；
 	// `slim=1` 是客户端能力协商：告诉服务端「快照里可以省掉会话清单（变了再发）」——
 	// 那份清单上百 KB，而它几乎不变，每帧都发就是手机上切会话慢的主因。
-	const next = new EventSource(`/api/events?client=${encodeURIComponent(clientId())}&slim=1`);
-	source = next;
-
-	next.addEventListener("open", () => {
-		attempt = 0;
-		setAppState({ connection: "open", lastError: null });
-		request("get_state");
-	});
-
-	next.addEventListener("message", (event) => {
-		let parsed: ServerMessage;
-		try {
-			parsed = JSON.parse(String(event.data)) as ServerMessage;
-		} catch {
-			return;
-		}
-		handle(parsed);
-	});
-
-	next.addEventListener("error", () => {
-		setAppState({ connection: "closed" });
-		// EventSource 自己会重连，但间隔由浏览器定（可能很久）；这里再兜一层
-		if (next.readyState === EventSource.CLOSED) {
-			source = null;
-			// 401（登录态过期）时 SSE 不会重连：探一次健康接口，确认过期就整页刷新
-			void reloadOnExpiredLogin();
-			const delay = Math.min(BASE_BACKOFF_MS * 2 ** attempt, MAX_BACKOFF_MS);
-			attempt += 1;
-			setTimeout(connect, delay);
-		} else {
-			setAppState({ connection: "connecting" });
-		}
+	// `sseUrl` 是同一条流的退路：代理挡掉 Upgrade 时自动换成它（见 stream.ts）。
+	const query = `client=${encodeURIComponent(clientId())}&slim=1`;
+	source = openStream({
+		wsPath: `/ws?${query}`,
+		sseUrl: `/api/events?${query}`,
+		handlers: {
+			onOpen: () => {
+				attempt = 0;
+				setAppState({ connection: "open", lastError: null });
+				request("get_state");
+			},
+			onMessage: (data) => {
+				let parsed: ServerMessage;
+				try {
+					parsed = JSON.parse(data) as ServerMessage;
+				} catch {
+					return;
+				}
+				handle(parsed);
+			},
+			onError: () => {
+				// 401（登录态过期）/ 后端刚重启：探一次健康接口，确认过期就整页刷新
+				void reloadOnExpiredLogin();
+				setAppState({ connection: "connecting" });
+			},
+			onClose: () => {
+				source = null;
+				setAppState({ connection: "closed" });
+				// 服务重启 / 网络抖动：按退避重连（WS 不会自己重连）
+				const delay = Math.min(BASE_BACKOFF_MS * 2 ** attempt, MAX_BACKOFF_MS);
+				attempt += 1;
+				setTimeout(connect, delay);
+			},
+		},
 	});
 }
 
@@ -130,6 +170,38 @@ export function request(type: ClientRequestType): string {
 	const id = `req-${++seq}`;
 	send({ id, type } as ClientRequest);
 	return id;
+}
+
+/**
+ * 标签页被切到后台时**断掉推送通道**，回到前台再重连（用户 2026-11-04：「切会话又卡住」）。
+ *
+ * 换了 WebSocket 之后，这条已经不是「保住那 6 条连接」的必需品（WS 不占池），
+ * 但留着仍然划算：后台标签页没人看，快照又动辄几百 KB，白白占着 CPU 与流量。
+ * 回到前台重新连一条，首帧就是服务端现算的最新快照，会话、草稿、队列一个都不会错位。
+ *
+ * 只影响主通道：**终端的流不跟着断** —— 那条断了会丢输出（PTY 还在跑，但没缓冲回放），
+ * 而「后台跑构建、切回来接着看输出」正是终端的常用姿势。
+ */
+function disconnectForBackground(): void {
+	if (!source) return;
+	source.close();
+	source = null;
+	// 不装成「出错」：后台没有连接是正常状态，不用红字提醒
+	setAppState({ connection: "connecting" });
+}
+
+/**
+ * 装可见性监听（只在浏览器里装一次）。
+ *
+ * 回归到前台时调 `connect()`：它的 `open` 里会 `request("get_state")`，
+ * 所以断线期间错过的东西由**权威快照**一次性补齐，不靠客户端拼。
+ */
+export function watchVisibility(): void {
+	if (typeof document === "undefined") return;
+	document.addEventListener("visibilitychange", () => {
+		if (document.visibilityState === "hidden") disconnectForBackground();
+		else connect();
+	});
 }
 
 /**
@@ -790,6 +862,15 @@ function handle(message: ServerMessage): void {
 		const closesNewSessionScreen = newChatLanded && getAppState().newSession !== null;
 		if (newChatLanded) newChatInFlight = null;
 		/**
+		 * 「地址栏没带 `?session=`」的那一帧（见 `startOnEmptyScreen`）：把屏幕留成「新会话」。
+		 *
+		 * 判据只看**这一刻**：已经有乐观高亮（用户点了侧栏）或者正等着建会话，说明屏幕已经有主了，
+		 * 别再抢；也不会重复盖（`newSession` 已经在了就什么都不做）。
+		 */
+		const bootEmptyScreen =
+			emptyFirstSnapshot && pending === null && newChatInFlight === null && getAppState().newSession === null;
+		if (emptyFirstSnapshot) emptyFirstSnapshot = false;
+		/**
 		 * 草稿跟着「界面真正在看的那条会话」交接 —— 这是除 `switchConversation` 之外的**全部**来源：
 		 * 新会话建好（项目行「+」/ 斜杠命令 / 新会话界面发出第一条）、派生出来的分支、
 		 * 服务端自己把视图切走（终端 `aw resume` 之类）。那几条路客户端事先不知道新 id，只能等快照。
@@ -808,6 +889,8 @@ function handle(message: ServerMessage): void {
 			snapshot: nextSnapshot,
 			lastError: null,
 			creating: false,
+			// 直接进来（没带 ?session=）：这一屏就是「新会话」，项目跟服务端当前的工作目录一致
+			...(bootEmptyScreen ? { newSession: { workspace: message.snapshot.files?.root ?? null, ephemeral: false } } : {}),
 			// 新会话真切过来了：那一屏「新会话」到这里才结束（见 `newChat`）
 			...(newChatLanded ? { pendingNewChat: false } : {}),
 			...(closesNewSessionScreen ? { newSession: null } : {}),

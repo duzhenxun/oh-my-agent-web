@@ -37,11 +37,25 @@ export function StatusBar({
 	snapshot,
 	appbarHidden,
 	onToggleAppbar,
+	terminalOpen,
+	onToggleTerminal,
+	onOpenHistory,
+	onOpenPrompt,
 }: {
 	snapshot: Snapshot | null;
 	/** 顶部栏是否收起（状态由 App 持有并持久化） */
 	appbarHidden: boolean;
 	onToggleAppbar: () => void;
+	/** 对话框下面的底部终端是否显示 */
+	terminalOpen: boolean;
+	onToggleTerminal: () => void;
+	/**
+	 * 「完整历史」：把整份会话（pi 的导出页）在右侧面板里打开。
+	 * `undefined` = 当前引擎没有这个能力（`capabilities.historyExport`）→ 不画这颗按钮。
+	 */
+	onOpenHistory?: () => void;
+	/** 「系统提示词」：看这次运行实际拼出的那段（同样只有 pi 有） */
+	onOpenPrompt?: () => void;
 }) {
 	const t = useT();
 	const { language } = useLanguage();
@@ -147,7 +161,7 @@ export function StatusBar({
 			 * 而且窄屏上这一条本来就挤。状态栏只留「怎么跑」的开关与整机状态。
 			 */}
 			<span className="status-controls">
-				{/* 审批模式在最前面：它是「这一步会不会被拦住」的开关，最该一眼看到 */}
+				{/* 审批模式排在这组的最前面：它是「这一步会不会被拦住」的开关，最该一眼看到 */}
 				{snapshot?.engineCapabilities.approvals === false ? (
 					<span
 						className="tool-chip tool-static"
@@ -171,15 +185,20 @@ export function StatusBar({
 							)
 						}
 						title={t(
-							"审批模式（全局生效，重启回到默认：全放行）——点一下在「全放行 / 询问」之间切换",
+							"审批模式（全局生效，重启回到默认：全部放行）——点一下在「全部放行 / 询问」之间切换",
 							"Approval mode (global; resets to allow-all on restart) — click to switch between allow-all and ask",
 						)}
 					>
-						{/* 文案 2026-11-04 从「放行」改回三字「全放行」（用户：文案改成全放行）——
-						 * 「放行」读起来像一次性的单个动作，而这一档是**本会话全部不再拦**，
-						 * 加上「全」才不会跟审批弹窗里的「放行这一次」混。
-						 * （更早的 2026-10-29 曾从「全部放行」缩成「放行」，那次是为了手机窄栏。） */}
-						{snapshot?.approvalMode === "allow" ? t("🔓 全放行", "🔓 Allow all") : t("🔒 询问", "🔒 Ask")}
+						{/* 桌面：「全部放行」（2026-11-04 用户要求）。手机窄栏：只画「放行」两字（见 statusbar.css 的 .approval-label-short），
+						 * 两份文案都在 DOM 里，靠 .is-mobile-shell 切显示。 */}
+						{snapshot?.approvalMode === "allow" ? (
+							<>
+								<span className="approval-label-full">{t("🔓 全部放行", "🔓 Allow all")}</span>
+								<span className="approval-label-short">{t("🔓 放行", "🔓 Allow")}</span>
+							</>
+						) : (
+							t("🔒 询问", "🔒 Ask")
+						)}
 					</button>
 				)}
 				<EnginePicker placement="statusbar" />
@@ -319,19 +338,65 @@ export function StatusBar({
 					) : null}
 				</span>
 			) : null}
+			{/* 会话内部的两张卡片：紧跟「会话信息」（上下文胶囊）后面，见下面那段注释 */}
+			{/*
+			 * 「完整历史 / 系统提示词」：看**这条会话内部**的两张卡片（都只有 pi 给得出）。
+			 * 放在右端那组开关前面：它们和「终端 / 顶部」一样是「往哪儿看」的开关，
+			 * 不同的是它们要拖出一张标签 —— 所以引擎没这个能力时**整颗按钮不画**，
+			 * 而不是画一颗点下去报错的禁按钮。
+			 */}
+			{onOpenHistory ? (
+				<button
+					type="button"
+					className="status-toggle status-view"
+					onClick={onOpenHistory}
+					title={t(
+						"完整历史：整份会话（含工具调用、思考与分支）在右侧面板展开",
+						"Full history: the whole session (tools, thinking, branches) in the side panel",
+					)}
+				>
+					<span className="status-toggle-icon">📜</span>
+					<span className="status-toggle-label">{t("完整历史", "History")}</span>
+				</button>
+			) : null}
+			{onOpenPrompt ? (
+				<button
+					type="button"
+					className="status-toggle status-view"
+					onClick={onOpenPrompt}
+					title={t(
+						"系统提示词：这次运行实际在用的那段（AGENTS.md / 技能都拼好了）",
+						"System prompt: the text this run actually uses (context files and skills included)",
+					)}
+				>
+					<span className="status-toggle-icon">🧾</span>
+					<span className="status-toggle-label">{t("系统提示词", "Prompt")}</span>
+				</button>
+			) : null}
 			<span className="status-spacer" />
+			<button
+				type="button"
+				className="status-toggle"
+				aria-pressed={terminalOpen}
+				onClick={onToggleTerminal}
+				title={terminalOpen ? t("隐藏终端", "Hide terminal") : t("显示终端", "Show terminal")}
+			>
+				{/* 图标跟旁边「完整历史 / 系统提示词」同一套（emoji），不再用 `>_` 这种 ASCII 字 */}
+				<span className="status-toggle-icon">🖥️</span>
+				<span className="status-toggle-label">{t("终端", "Terminal")}</span>
+			</button>
 			<button
 				type="button"
 				className="status-toggle"
 				onClick={onToggleAppbar}
 				title={appbarHidden ? t("显示顶部栏", "Show the top bar") : t("隐藏顶部栏", "Hide the top bar")}
 			>
-				<span className="status-toggle-icon">{appbarHidden ? "▾" : "▴"}</span>
-				{/* 文案写「动作」而不是「东西」：以前只写「顶部」，看一眼不知道点下去会收起还是展开，
-				    得先猜一遍。现在顶上写着什么，它就写着「隐藏顶部」；收起后变成「显示顶部」。 */}
-				<span className="status-toggle-label">
-					{appbarHidden ? t("显示顶部", "Show top bar") : t("隐藏顶部", "Hide top bar")}
-				</span>
+				{/* 箭头表示「点下去顶部栏往哪儿走」：现在看得见 → 收起（⬆️）；已收起 → 放下来（⬇️） */}
+				<span className="status-toggle-icon">{appbarHidden ? "⬇️" : "⬆️"}</span>
+				{/* 文案回到「东西」（用户 2026-11-04：「改成顶部」）：这颗读作「顶部栏」这一个开关，
+				    动作交给左边那颗箭头（收起 ⬆️ / 放下 ⬇️）和悬停提示，不再让文字跟着状态变长变短 ——
+				    一栏里最右那颗字越短，前面那些读数能多留一点位置。 */}
+				<span className="status-toggle-label">{t("顶部", "Top")}</span>
 			</button>
 		</footer>
 	);

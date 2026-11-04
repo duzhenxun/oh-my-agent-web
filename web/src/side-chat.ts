@@ -15,6 +15,7 @@
 import type { AttachmentRef, Snapshot } from "./types.ts";
 import { appendTextToMessage } from "./lib/delta.ts";
 import { newId } from "./lib/uid.ts";
+import { openStream, type Stream } from "./stream.ts";
 import { tNow } from "./use-language.ts";
 
 export type SideState = {
@@ -103,7 +104,7 @@ function createSideChannel(): SideChannel {
 	const id = `side-${newId()}`;
 	let state: SideState = EMPTY;
 	const listeners = new Set<Listener>();
-	let source: EventSource | null = null;
+	let source: Stream | null = null;
 	let disposed = false;
 
 	const emit = (next: SideState) => {
@@ -146,16 +147,36 @@ function createSideChannel(): SideChannel {
 
 	const open = () => {
 		if (disposed || source) return;
-		// `slim=1`：会话清单（侧栏那一大坨）不用给这条通道，它只关心自己那条会话
-		const next = new EventSource(`/api/events?client=${encodeURIComponent(id)}&slim=1`);
-		source = next;
-		next.onmessage = (event) => {
-			try {
-				emit(applySideFrame(state, JSON.parse(event.data)));
-			} catch {
-				// 坏帧丢弃
-			}
+		// `slim=1`：会话清单（侧栏那一大坨）不用给这条通道，它只关心自己那条会话。
+		// 走 WebSocket（不占浏览器那 6 条 HTTP 连接），代理挡了 Upgrade 会自动退回 SSE。
+		const query = `client=${encodeURIComponent(id)}&slim=1`;
+		let retry = 0;
+		const start = () => {
+			source = openStream({
+				wsPath: `/ws?${query}`,
+				sseUrl: `/api/events?${query}`,
+				handlers: {
+					onOpen: () => {
+						retry = 0;
+					},
+					onMessage: (data) => {
+						try {
+							emit(applySideFrame(state, JSON.parse(data)));
+						} catch {
+							// 坏帧丢弃
+						}
+					},
+					// 临时聊天没有「手动重连」的入口：断了就自己按退避再连（最多 5 次）
+					onClose: () => {
+						source = null;
+						if (disposed || retry >= 5) return;
+						retry += 1;
+						setTimeout(start, Math.min(500 * 2 ** retry, 8000));
+					},
+				},
+			});
 		};
+		start();
 	};
 
 	return {

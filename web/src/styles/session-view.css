@@ -1,0 +1,81 @@
+/**
+ * 右侧面板里的两张「看会话内部」的卡片：完整历史（pi 导出页 iframe）与系统提示词。
+ *
+ * 两者都吃满整个槽位（跟终端 / 文件预览一样自己铺开），所以这里只负责
+ * 「撑满 + 把溢出收在自己身上」，不碰面板自己的边距。
+ */
+
+/* 完整历史：整页导出文档嵌进来，不留缝（那页自己有 padding 和主题底色） */
+.session-history {
+	flex: 1 1 auto;
+	min-width: 0;
+	min-height: 0;
+	display: flex;
+}
+
+.session-history-frame {
+	flex: 1 1 auto;
+	width: 100%;
+	height: 100%;
+	border: 0;
+	display: block;
+	background: var(--bg);
+}
+
+/* 系统提示词：抬头一行（行数 / 复制）+ 正文 */
+.session-prompt {
+	flex: 1 1 auto;
+	min-width: 0;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 8px 10px;
+}
+
+.session-prompt-head {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	color: var(--text-faint);
+	font-size: 0.9em;
+}
+
+.session-prompt-meta {
+	font-variant-numeric: tabular-nums;
+}
+
+.session-prompt-body {
+	flex: 1 1 auto;
+	min-height: 0;
+	margin: 0;
+	overflow: auto;
+	padding: 10px 12px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--bg-elev-2);
+	color: var(--text);
+	font-family: var(--mono);
+	font-size: calc(var(--chat-ui-font-size, 12px) * 0.9167);
+	line-height: 1.6;
+	/* 提示词里长行很多（技能清单 / 路径）：折行读，不横向拖着看 */
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+/* 两张卡片拿不到数据时的一句人话（居中，别留一块空白让人猜） */
+.session-view-empty {
+	flex: 1 1 auto;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 24px;
+	color: var(--text-faint);
+	text-align: center;
+}
+
+/* 失败时多一颗「重读」：竖着排，文案在上、按钮在下 */
+.session-view-error {
+	flex-direction: column;
+	gap: 10px;
+}

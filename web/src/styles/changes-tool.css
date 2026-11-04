@@ -1,0 +1,58 @@
+/* 文件树「改动过的文件」模式（见 components/FileTree.tsx 的 renderChanges） */
+
+/* 列表顶上一行提示：当前是改动模式 + 条数 */
+.filetree-changes-head {
+	/* 是 .filetree（flex 竖排 + overflow:auto）的一格：**不许被压缩** ——
+	 * 否则清单长到超过侧栏高度时，这一行会被 flex 挤扁，标题只剩半截（用户 2026-11-04 报的「看不到字」）。 */
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	line-height: 1.5;
+	padding: 4px 10px;
+	margin-bottom: 2px;
+	border-bottom: 1px solid var(--border);
+	color: var(--text-faint);
+	font-size: 12px;
+	white-space: nowrap;
+	overflow: hidden;
+}
+
+/* 左边那句「改动过的文件 · N」：占满剩余宽度，太长省略（右端要留位置给出口按钮） */
+.filetree-changes-title {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* 出口：「所有文件」—— 回到普通的树，跟右键菜单里那一条同一个意思 */
+.filetree-changes-exit {
+	flex: none;
+	padding: 1px 6px;
+	border: 1px solid var(--border);
+	border-radius: 5px;
+	background: none;
+	color: var(--text-faint);
+	font: inherit;
+	font-size: 11px;
+	cursor: pointer;
+}
+
+.filetree-changes-exit:hover {
+	border-color: var(--accent-dim);
+	color: var(--text);
+}
+
+/* 目录路径接在文件名后面、灰色、过长省略；右边留出状态字母的位置 */
+.filetree-changes-dir {
+	flex: 1 1 0;
+	min-width: 0;
+	margin-left: 6px;
+	padding-right: 16px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--text-faint);
+	font-size: 12px;
+}

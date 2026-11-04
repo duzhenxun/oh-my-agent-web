@@ -356,13 +356,77 @@
 	border: 1px solid var(--border);
 	/* 圆角跟前面的工具 chip（7px）一致：整排看起来是同一套控件，不是两种风格 */
 	border-radius: 7px;
-	padding: 3px 10px;
+	/* 高度必须跟前面那排 `.tool-chip`（模板 / 想想）**一模一样**（用户 2026-11-04：
+	 * 「快捷指令高度要跟前面想想的高度一样」）。
+	 * 那排是 inline-flex + 1px padding，这边原来是普通 button + 3px padding，
+	 * 差 4px 就能看出来；所以这里锁死高度并改成同样的行内 flex 居中。
+	 * 21px 来自 `.tool-chip` 的实际高度（字体随 --chat-ui-font-size 缩放时一起变，
+	 * 所以用 em 兜底：1.75em ≈ 21px）。 */
+	display: inline-flex;
+	align-items: center;
+	height: 1.75em;
+	box-sizing: border-box;
+	padding: 0 10px;
 	font: inherit;
 	font-size: calc(var(--chat-ui-font-size, 12px) * 0.8966);
 	cursor: pointer;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+/* 快捷指令末尾那颗「编辑」：虚线框，明确不是一条短语（点它不发送，只开小窗编辑） */
+.quick-chip.quick-edit {
+	border-style: dashed;
+	color: var(--text-faint);
+}
+
+.quick-chip.quick-edit:hover {
+	border-color: var(--accent-dim);
+	color: var(--text);
+}
+
+/*
+ * 快捷指令编辑弹窗：一行一条的纯文本域
+ *
+ * 宽度写 `.modal.quick-edit-modal`（两个类）：`.modal` 自己也定了 `width: min(560px, 100%)`，
+ * 而且 overlay.css 比本文件后导入 —— 只用单类时后者会盖掉这里，手机上就变成
+ * **贴边的一整块面板**（左右没留白、跟「卡片式弹窗」不是一套，用户 2026-11-04 报「布局不对」）。
+ *
+ * 布局是「抬头 / 说明 / 正文 / 按钮」四段，**只有正文会缩会滚**：
+ * 卡片本身 overflow: hidden（盖掉 .modal 的整页滚动），否则视口一变矮，
+ * 整块内容就比卡片高 —— 「取消 / 保存」被顶到卡片外面，看不见也点不到。
+ * （手机上键盘一弹就是这个情形，见 responsive.css 里的 `.modal-backdrop`。）
+ */
+.modal.quick-edit-modal {
+	width: min(520px, calc(100vw - 32px));
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	overflow: hidden;
+}
+
+.quick-edit-text {
+	width: 100%;
+	/* 桌面：默认高一点好写；上限按视口收，写长了在框里自己滚 */
+	min-height: 160px;
+	max-height: min(46vh, 420px);
+	flex: 1 1 auto;
+	resize: vertical;
+	box-sizing: border-box;
+	background: var(--bg);
+	color: var(--text);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	padding: 8px 10px;
+	font: inherit;
+	font-size: calc(var(--chat-ui-font-size, 12px) * 0.9167);
+	line-height: 1.6;
+}
+
+.quick-edit-text:focus {
+	outline: none;
+	border-color: var(--accent-dim);
 }
 
 .quick-chip:hover:not(:disabled) {

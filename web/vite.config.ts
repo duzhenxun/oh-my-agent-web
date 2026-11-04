@@ -226,6 +226,12 @@ export default defineConfig({
 		fs: { allow: [".."] },
 		proxy: {
 			"/api": { target: `http://${BACKEND_HOST}:${BACKEND_PORT}`, xfwd: true },
+			/**
+			 * 推送通道（WebSocket，`server/http/ws-routes.ts`）：开发态由 Vite 反代到后端。
+			 * `ws: true` 是必须的 —— 少写这一句，升级请求会被当成普通 GET，WS 永远握手失败
+			 * （前端会退回 SSE，能用，但又回到「占满 6 条连接」的老路上）。
+			 */
+			"/ws": { target: `http://${BACKEND_HOST}:${BACKEND_PORT}`, ws: true, xfwd: true },
 			// 独立登录页（`server/http/login-page.ts` 渲染的那张）也归后端：
 			// 开发态 `GET /` 是 Vite 给的，未登录时必须有条路能拿到服务端的登录页
 			"/login": { target: `http://${BACKEND_HOST}:${BACKEND_PORT}`, xfwd: true },

@@ -57,7 +57,10 @@ function SidebarInner({
 	runningIds = [],
 	onOpenTerminal,
 	onOpenFile,
+	onOpenChangedFile,
 	onSearchContents,
+	onOpenBottomTerminal,
+	onFindInFolder,
 	fileOpen: fileOpenProp,
 	onFileOpenChange,
 	/** 「＋ 新建项目」：对话框由 App 画（快捷键也要能开它，而侧栏收起时整个 Sidebar 是不挂载的） */
@@ -80,8 +83,14 @@ function SidebarInner({
 	onOpenTerminal?: (cwd: string) => void;
 	/** 点文件 → 打开预览（root 是该文件所属项目根） */
 	onOpenFile?: (path: string, root: string) => void;
+	/** 「改动过的文件」清单里点一个文件：以 diff 打开 */
+	onOpenChangedFile?: (path: string, root: string) => void;
 	/** 文件管理标题栏的「搜文件内容」：开全文搜索浮层（浮层挂在 App 上） */
 	onSearchContents?: () => void;
+	/** 文件树右键「在集成终端中打开」：在底部终端新开一个标签，cwd = 该目录（绝对路径） */
+	onOpenBottomTerminal?: (absDir: string) => void;
+	/** 文件树右键「在文件夹中查找」：传项目内的相对目录 */
+	onFindInFolder?: (relDir: string) => void;
 	/**
 	 * 文件树的根（＝「文件 ▾」下拉框选中的那个项目），`null` = 跟随当前会话工作区。
 	 * **由 App 持有**：全文搜索浮层要跟它走 —— 下拉框选了哪个项目，就只在那个项目里搜
@@ -1315,6 +1324,7 @@ function SidebarInner({
 						label: aliases[project.cwd] || project.name || project.cwd,
 					}))}
 					onOpenFile={(path) => onOpenFile?.(path, root ?? currentRoot ?? "")}
+					onOpenChangedFile={(path) => onOpenChangedFile?.(path, root ?? currentRoot ?? "")}
 					activePath={activePath ?? null}
 					revealSeq={revealSeq ?? 0}
 					revealPath={revealPath ?? null}
@@ -1325,6 +1335,8 @@ function SidebarInner({
 					}}
 					// 在 Finder 中显示：复用项目菜单那条后端接口（只定位，不执行文件）
 					onSearchContents={onSearchContents}
+					onOpenBottomTerminal={onOpenBottomTerminal}
+					onFindInFolder={onFindInFolder}
 					onReveal={(cwd) =>
 						void fetch("/api/projects/reveal", {
 							method: "POST",

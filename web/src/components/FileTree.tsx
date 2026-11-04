@@ -4,6 +4,9 @@ import { FolderIcon } from "./FolderIcon.tsx";
 import { fileTypeOf } from "../file-type.ts";
 import { collapseAt, ancestorDirs, hiddenAncestor } from "../file-tree-model.ts";
 import { setDraft } from "../store.ts";
+import { basename, dirname } from "../path-utils.ts";
+import { FileTreeMenu } from "./FileTreeMenu.tsx";
+import type { MenuPoint } from "./ProjectMenuPopover.tsx";
 import { STATUS_LETTER, foldStatusToDirs, useGitStatus } from "../use-git-status.ts";
 import { useT } from "../use-language.ts";
 
@@ -51,6 +54,11 @@ export function FileTree({
 	revealPath = null,
 	onNeedHidden,
 	onOpenFile,
+	onOpenTerminalAt,
+	onFindInFolder,
+	changesOnly = false,
+	onToggleChangesOnly,
+	onOpenChangedFile,
 }: {
 	root: string | null;
 	/** 「眼睛」开关：是否列出点开头的隐藏文件 */
@@ -79,8 +87,30 @@ export function FileTree({
 	/** 定位时发现祖先是个隐藏目录（树没列）：请外面把「显示隐藏文件」打开，然后重定位一次 */
 	onNeedHidden?: () => void;
 	onOpenFile: (path: string) => void;
+	/** 右键「在集成终端中打开」：传目录的绝对路径。不传 = 菜单里不画这一项 */
+	onOpenTerminalAt?: (absDir: string) => void;
+	/** 右键「在文件夹中查找…」：传项目内的相对目录（根目录是 ""）。不传 = 不画这一项 */
+	onFindInFolder?: (relDir: string) => void;
+	/** 「改动过的文件」模式：树换成 git 改动清单（状态由 SidebarFiles 持有） */
+	changesOnly?: boolean;
+	/** 右键「改动过的文件 / 所有文件」：切换上面那个模式。不传 = 不画这一项 */
+	onToggleChangesOnly?: () => void;
+	/** 改动清单里点一个文件时用的打开方式（默认看「改动」（diff））。不传 = 跟普通打开一样 */
+	onOpenChangedFile?: (path: string) => void;
 }) {
 	const t = useT();
+	/** 右键菜单开在哪一行（null = 没开） */
+	const [menu, setMenu] = useState<{ entry: FileEntry; point: MenuPoint } | null>(null);
+	/** 项目内相对路径 → 绝对路径（终端 / Finder 要绝对路径） */
+	const absOf = (rel: string) => (root ? `${root.replace(/[\\/]+$/, "")}/${rel}` : rel);
+	/** 在 Finder 里定位（只定位、不执行，见 server/terminal/terminal-routes.ts） */
+	const revealEntry = (rel: string) => {
+		void fetch("/api/projects/reveal", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ cwd: absOf(rel) }),
+		});
+	};
 	/** git 改动状态：文件行染色 + 右侧 M/A/U，目录行按「底下有没有改动」聚合 */
 	const gitStatus = useGitStatus(root, statusRevision, running);
 	const dirtyDirs = useMemo(() => foldStatusToDirs(gitStatus.entries), [gitStatus.entries]);
@@ -228,10 +258,79 @@ export function FileTree({
 
 	if (!root) return <div className="filetree-empty">{t("还没有打开会话，不知道是哪个项目。")}</div>;
 
+	/**
+	 * 「改动过的文件」模式：不再画整棵树，只列 git 状态里有改动的文件，一行一个。
+	 * 行的样式共用树的那一套（filetree-row / filetree-status），目录路径灰色接在文件名后面。
+	 * 点一个 = 打开它；右键还是那张菜单（可以切回所有文件）。
+	 */
+	const renderChanges = () => {
+		const changed = Object.keys(gitStatus.entries).sort((a, b) => a.localeCompare(b));
+		return (
+			<>
+				<div className="filetree-changes-head">
+					<span className="filetree-changes-title">
+						{t("改动过的文件", "Changed files")} · {changed.length}
+					</span>
+					{/* 标题栏那颗 diff 图标是个入口（进去之后它会一直亮着）；这里给一条明确的出口，
+					    不然想回普通树只能去右键菜单里找「所有文件」—— 那颗图标一变灰就没人找得到 */}
+					{onToggleChangesOnly ? (
+						<button
+							type="button"
+							className="filetree-changes-exit"
+							onClick={onToggleChangesOnly}
+							title={t("回到普通的文件树", "Back to the file tree")}
+						>
+							{t("所有文件", "All files")}
+						</button>
+					) : null}
+				</div>
+				{!gitStatus.isRepo ? (
+					<div className="filetree-empty">{t("这个目录不是 git 仓库。", "Not a git repository.")}</div>
+				) : changed.length === 0 ? (
+					<div className="filetree-empty">{t("没有改动过的文件。", "No changed files.")}</div>
+				) : (
+					changed.map((path) => {
+						const entry = gitStatus.entries[path];
+						const name = basename(path);
+						const fileType = fileTypeOf(name);
+						return (
+							<div className="filetree-item" key={path}>
+								<button
+									type="button"
+									data-path={path}
+									className={`filetree-row filetree-file filetree-${entry.status}${
+										path === activePath ? " filetree-row-on" : ""
+									}`}
+									style={{ paddingLeft: 8 }}
+									title={path}
+									onClick={() => (onOpenChangedFile ?? onOpenFile)(path)}
+									onContextMenu={(event) => {
+										event.preventDefault();
+										setMenu({ entry: { name, path, isDir: false }, point: { x: event.clientX, y: event.clientY } });
+									}}
+								>
+									<span className="filetree-icon" aria-hidden="true" />
+									<span className={`filetree-type${fileType ? ` filetype-${fileType.tone}` : ""}`} aria-hidden="true">
+										{fileType ? fileType.label : "▤"}
+									</span>
+									<span className="filetree-name">{name}</span>
+									{dirname(path) ? <span className="filetree-changes-dir">{dirname(path)}</span> : null}
+									<span className={`filetree-status filetree-status-${entry.status}`} aria-hidden="true">
+										{STATUS_LETTER[entry.status]}
+									</span>
+								</button>
+							</div>
+						);
+					})
+				)}
+			</>
+		);
+	};
+
 	return (
 		<div className="filetree" ref={treeRef}>
 			{error ? <div className="filetree-error">{error}</div> : null}
-			{nodes.map((node, index) => {
+			{changesOnly ? renderChanges() : nodes.map((node, index) => {
 				// 文件取自己的状态；目录取「底下有没有改动」的聚合结果
 				const fileStatus = gitStatus.entries[node.entry.path];
 				const dirStatus = dirtyDirs.get(node.entry.path);
@@ -255,6 +354,10 @@ export function FileTree({
 							style={{ paddingLeft: 8 + node.depth * 14 }}
 							onClick={() => (node.entry.isDir ? void toggleDir(node.entry.path) : onOpenFile(node.entry.path))}
 							title={rowTitle}
+							onContextMenu={(event) => {
+								event.preventDefault();
+								setMenu({ entry: node.entry, point: { x: event.clientX, y: event.clientY } });
+							}}
 						>
 							<span className="filetree-icon" aria-hidden="true">
 								{node.entry.isDir ? (node.expanded ? "▾" : "▸") : null}
@@ -303,6 +406,29 @@ export function FileTree({
 					</div>
 				);
 			})}
+			{menu ? (
+				<FileTreeMenu
+					point={menu.point}
+					isDir={menu.entry.isDir}
+					onReveal={() => revealEntry(menu.entry.path)}
+					onTerminal={
+						onOpenTerminalAt && menu.entry.isDir ? () => onOpenTerminalAt(absOf(menu.entry.path)) : undefined
+					}
+					onAddToConversation={() => setDraft(`${referenceFor(menu.entry.path, null)} `)}
+					onFind={
+						onFindInFolder
+							? () => onFindInFolder(menu.entry.isDir ? menu.entry.path : dirname(menu.entry.path))
+							: undefined
+					}
+					changesOnly={changesOnly}
+					onChanges={
+						onToggleChangesOnly && (changesOnly || (gitStatus.isRepo && Object.keys(gitStatus.entries).length > 0))
+							? onToggleChangesOnly
+							: undefined
+					}
+					onClose={() => setMenu(null)}
+				/>
+			) : null}
 		</div>
 	);
 }

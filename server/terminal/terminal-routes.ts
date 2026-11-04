@@ -17,7 +17,16 @@ import { dirname, isAbsolute } from "node:path";
 import type { Express } from "express";
 import { startTerminal, type TerminalSession } from "./terminal-session.js";
 
-export function registerTerminalRoutes(app: Express, options: { workspaceOf: () => string | null }): void {
+export function registerTerminalRoutes(
+	app: Express,
+	options: { workspaceOf: () => string | null },
+): {
+	/**
+	 * 订阅某个终端的输出（给 WS 通道用：与 SSE 那条路共用同一份 `listeners`）。
+	 * 终端不存在时回 null —— 调用方不要挂一条永远不会来数据的流。
+	 */
+	watchTerminal: (id: string, listener: (chunk: string) => void) => (() => void) | null;
+} {
 	/**
 	 * 多终端注册表（ADR-0027 增补）：每个终端一个 id，互不影响。
 	 * 之前是「全局单例」，所以开第二个终端会把第一个杀掉（用户反馈的"切换终端就退出"）。
@@ -86,6 +95,14 @@ export function registerTerminalRoutes(app: Express, options: { workspaceOf: () 
 				},
 			},
 		});
+		// 异步起 PTY 期间，同一个 id 可能又来了新的 start（例如 React StrictMode 的 effect 双挂载）或 stop。
+		// 这一次已经不是最新的一代：刚起的 PTY 直接收掉，**不能**覆盖掉新的那个（否则前端的输入会发进
+		// 一个没人订阅输出的 shell，表现为「有时打不进字」）。
+		if (generation.get(id) !== gen) {
+			if (result.ok) result.terminal.kill();
+			response.status(409).json({ error: { code: "terminal.superseded", message: "已被更新的启动请求取代" } });
+			return;
+		}
 		if (!result.ok) {
 			response.status(503).json({ error: { code: "terminal.start_failed", message: result.error } });
 			return;
@@ -154,6 +171,15 @@ export function registerTerminalRoutes(app: Express, options: { workspaceOf: () 
 	process.on("exit", () => {
 		for (const entry of terminals.values()) entry.session.kill();
 	});
+
+	return {
+		watchTerminal: (id, listener) => {
+			const entry = terminals.get(id);
+			if (!entry) return null;
+			entry.listeners.add(listener);
+			return () => entry.listeners.delete(listener);
+		},
+	};
 }
 
 /**
@@ -171,9 +197,10 @@ export function registerProjectActions(app: Express, _options: { workspaceOf: ()
 			typeof (request.body as { cwd?: unknown } | undefined)?.cwd === "string"
 				? String((request.body as { cwd: string }).cwd)
 				: "";
-		const safe = await safeDirectory(cwd);
+		// 文件树右键「在 Finder 中显示」也走这里：目录与普通文件都能定位（只定位，不执行）
+		const safe = await safeEntry(cwd);
 		if (!safe) {
-			response.status(400).json({ error: { code: "project.bad_path", message: "不是可用的目录路径" } });
+			response.status(400).json({ error: { code: "project.bad_path", message: "不是可用的目录或文件路径" } });
 			return;
 		}
 		// 三个平台各用自家的「在文件管理器中定位」命令。每一步都只定位、不执行：
@@ -192,12 +219,13 @@ export function registerProjectActions(app: Express, _options: { workspaceOf: ()
 	});
 }
 
-/** 纯函数式的校验：绝对路径 + 存在 + 是目录 */
-async function safeDirectory(cwd: string): Promise<string | null> {
-	if (!isAbsolute(cwd)) return null;
+/** 目录或普通文件（reveal 用）：绝对路径 + 存在 + 是目录或文件 */
+async function safeEntry(path: string): Promise<string | null> {
+	if (!isAbsolute(path)) return null;
 	try {
-		const real = realpathSync(cwd);
-		return statSync(real).isDirectory() ? real : null;
+		const real = realpathSync(path);
+		const stat = statSync(real);
+		return stat.isDirectory() || stat.isFile() ? real : null;
 	} catch {
 		return null;
 	}

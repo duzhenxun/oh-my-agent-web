@@ -206,7 +206,7 @@
  * 唯一还只画图标的场合是**手机单栏壳**（`.is-mobile-shell`，见 app-bar-mobile.css）：
  * 那是整套布局的形态，不是「宽度一变就隐藚」。 */
 
-/* 右侧一列：上边是「对话 + 右侧面板」，下边是状态栏（只占这一栏，左边那栏底部是文件管理） */
+/* 右侧一列：只放「对话 + 右侧面板」（状态栏已提到 .app 层，横贯整窗） */
 .right-col {
 	flex: 1 1 auto;
 	display: flex;
@@ -579,7 +579,7 @@
 
 /* 贴边布局下正文与输入区需要一点内边距，否则文字/按钮顶到边缘被裁 */
 .workspace {
-	padding: 0 16px 10px 20px; /* 左侧多一点：消息与工具卡的左边距太小会显得贴边 */
+	padding: 0 16px 0 20px; /* 左侧多一点：消息与工具卡的左边距太小会显得贴边 */
 }
 
 .workspace .main {
@@ -608,8 +608,8 @@
 	/* 固定 24px 高：字 12px（= --statusbar-font-size 的默认值）+ 里面最小 12px 的圆环，正好放得下 */
 	height: 24px;
 	box-sizing: border-box;
-	/* 右边不留内边距：「顶部」开关要贴到窗口右沿（项目名已经挪到最左边） */
-	padding: 0 0 0 10px;
+	/* 左右都不留内边距：整条贴满工作区左右两沿（「顶部」开关贴右沿，第一项贴左沿） */
+	padding: 0;
 	border-top: 1px solid var(--border);
 	background: var(--bg-elev);
 	color: var(--text-faint);
@@ -657,7 +657,12 @@
 
 /* 滚动条要贴着面板右边缘：workspace 右侧不留内边距，把留白挪到内容自己身上 */
 .workspace {
-	padding: 0 0 10px 20px;
+	padding: 0 0 0 20px;
+}
+
+/* 输入框离底部（状态栏，或展开的底部终端）留 10px */
+.workspace > .composer-wrap {
+	margin-bottom: 10px;
 }
 
 .workspace .main {

@@ -133,10 +133,10 @@ export const SHORTCUT_DEFS: readonly ShortcutDefinition[] = [
 	},
 	{
 		id: "terminal",
-		label: "打开终端",
-		labelEn: "Terminal",
-		hint: "Ctrl+` —— 在右栏开（或切回）终端；mac ⌘` 会被系统「切换窗口」先吃掉，所以用 ⌃",
-		hintEn: "Ctrl+` — opens (or focuses) the terminal on the right; on macOS ⌘` is taken by “cycle windows”, hence ⌃",
+		label: "切换终端",
+		labelEn: "Toggle terminal",
+		hint: "Ctrl+` —— 显示 / 隐藏对话框下面的终端（隐藏时进程不断）；mac ⌘` 会被系统「切换窗口」先吃掉，所以用 ⌃",
+		hintEn: "Ctrl+` — shows / hides the terminal under the chat (shells keep running while hidden); on macOS ⌘` is taken by “cycle windows”, hence ⌃",
 		defaultCombo: "Ctrl+Backquote",
 	},
 	{

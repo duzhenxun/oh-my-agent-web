@@ -188,6 +188,18 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		isPinned: (conversationId) => state.conversations.some((item) => item.id === conversationId && item.ephemeral),
 	});
 
+	/**
+	 * 会话文件在哪：「完整历史」要把它交给 pi 的导出器。
+	 * 与统计刷新器同一个口径：opener 记得的（本进程开过 / 新建过）优先，
+	 * 否则去历史清单里找（切走之后句柄可能已经回收了）。
+	 */
+	const sessionPathOf = (conversationId: string): string | null =>
+		piOpener.pathOf(conversationId) ??
+		state.piProjects
+			.flatMap((project) => project.sessions)
+			.find((session) => session.id === conversationId)?.sessionPath ??
+		null;
+
 	const conversations = createConversationFactory({
 		state,
 		engine,
@@ -638,6 +650,40 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		renameSession: (conversationId, title) => renameSession(conversationId, title),
 
 		suggestSessionTitle: (conversationId) => suggestSessionTitle(conversationId),
+
+		/** 「完整历史」：交给引擎自己的导出器；引擎没有这个能力时直说，不让界面白转一圈 */
+		async sessionHistoryHtml(conversationId) {
+			if (!engine.exportSessionHtml) {
+				return {
+					ok: false as const,
+					code: "engine.unsupported",
+					message: `当前引擎（${state.engine}）没有「完整历史」：那是 pi 的会话导出页`,
+				};
+			}
+			try {
+				const html = await engine.exportSessionHtml(conversationId, sessionPathOf(conversationId));
+				return { ok: true as const, html };
+			} catch (error) {
+				return {
+					ok: false as const,
+					code: "session.export_failed",
+					message: error instanceof Error ? error.message : String(error),
+				};
+			}
+		},
+
+		/** 「系统提示词」：引擎手里现成的这段（拼完上下文文件 / 技能之后） */
+		async sessionSystemPrompt(conversationId) {
+			const prompt = (await engine.readSystemPrompt?.(conversationId)) ?? null;
+			if (prompt === null) {
+				return {
+					ok: false as const,
+					code: "engine.unsupported",
+					message: `拿不到这条会话的系统提示词（${state.engine} 不提供，或会话还没打开）`,
+				};
+			}
+			return { ok: true as const, prompt };
+		},
 
 		switchConversation: (conversationId, clientId) => switchTo(conversationId, clientId),
 	};

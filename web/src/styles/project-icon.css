@@ -107,6 +107,15 @@
 	min-width: 0;
 	display: flex;
 	flex-direction: column;
+	/**
+	 * 宽度上限：**不再有 520px 的死上限**（用户 2026-11-04：「最大宽度可以不限制」）——
+	 * 只永远给右边留 240px（`SIDEBAR_CHAT_RESERVE`，见 sidebar-layout.ts）：
+	 * 对话区不能被压没，而那条拖拽把手画在侧栏右**外侧**（`right: -8px`），
+	 * 侧栏铺满窗口时它就出屏、再也拖不回来了。
+	 *
+	 * 手机上不吃这条：抽屉宽度由 `responsive.css` 的 `--drawer-w` + `max-width: none` 管。
+	 */
+	max-width: max(240px, calc(100vw - 240px));
 }
 
 .side-host > .sidebar {

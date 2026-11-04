@@ -33,6 +33,9 @@
 @import "./styles/new-session.css";
 @import "./styles/composer-actions.css";
 @import "./styles/statusbar.css";
+@import "./styles/bottom-terminal.css"; /* 对话框下面的底部终端（BottomTerminal） */
+@import "./styles/session-view.css"; /* 右侧面板：完整历史（pi 导出页）+ 系统提示词 */
+@import "./styles/changes-tool.css"; /* 文件树「改动过的文件」模式的清单样式（FileTree） */
 @import "./styles/push.css";
 @import "./styles/sent-queue.css";
 @import "./styles/messages.css";

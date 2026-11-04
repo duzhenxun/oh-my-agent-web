@@ -93,6 +93,7 @@ import { ConversationIcon } from "./components/ConversationIcon.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
 import { ContentSearch } from "./components/ContentSearch.tsx";
 import { StatusBar } from "./components/StatusBar.tsx";
+import { BottomTerminal } from "./components/BottomTerminal.tsx";
 import { useT } from "./use-language.ts";
 import { useBrandName } from "./use-brand-name.ts";
 
@@ -394,7 +395,7 @@ export function App() {
 		// 触控笔被系统收走 / 窗口失焦时不会来 pointerup：不兜住就会一直"粘"在拖动状态
 		document.addEventListener("pointercancel", onUp);
 	};
-	// 右侧面板的标签：文件与终端共用（终端也在右侧，标签上标出来）
+	// 右侧面板的标签：文件与网页共用（终端已全部搬到对话框下面那条，见 `openTool`）
 	const [panelItems, setPanelItems] = useState<PanelItem[]>(() => restorePanelItems(restoredPanel.current?.tabs ?? []));
 	/**
 	 * 在右侧面板打开一个文件（文件树点文件、消息尾部「改动过的文件」点 chip 都走这里）。
@@ -479,7 +480,12 @@ export function App() {
 	useEffect(() => {
 		writeStored(PANEL_STATE_KEY, serializePanelState(panelItems, activeItem, previewVisible));
 	}, [panelItems, activeItem, previewVisible]);
-	const [termSeq, setTermSeq] = useState(0);
+	/** 底部终端（对话框下面那条，VSCode 式）是否显示；隐藏时 shell 继续跑 */
+	const [bottomTermOpen, setBottomTermOpen] = useState(false);
+	/** 文件树右键「在集成终端中打开」的请求（seq 每次 +1，BottomTerminal 据此新开标签） */
+	const [bottomTermRequest, setBottomTermRequest] = useState<{ cwd: string; seq: number } | null>(null);
+	/** 文件树右键「在文件夹中查找」预填的 glob（seq 每次 +1，ContentSearch 据此换框） */
+	const [contentSearchPreset, setContentSearchPreset] = useState<{ value: string; seq: number } | null>(null);
 	/** 分栏里那些工具标签的序号（网页 / 临时聊天各自递增，标签不重名） */
 	const [toolSeq, setToolSeq] = useState(0);
 	/** 关一个标签：临时聊天要把那条独立通道也断开（否则 SSE 会一直挂着） */
@@ -584,22 +590,29 @@ export function App() {
 		() => Object.keys(snapshot?.runningByConversation ?? {}),
 		[snapshot?.runningByConversation],
 	);
+	const openContentSearch = useCallback(() => setContentSearchOpen(true), []);
 	/**
-	 * 终端标签 id 里的自增序号放 ref 里：回调才能保持零依赖。
-	 * 依赖 state 的话，每开一次终端回调就换一次引用，侧栏跟着重渲染一轮。
+	 * 「完整历史 / 系统提示词」：两张**看当前会话内部**的卡片，同一时刻只开一张（再点就切回去）。
+	 * 跟着当前会话变，所以不需要每次重新开标签（见 PreviewPanel 的 conversationId）。
 	 */
-	const termSeqRef = useRef(termSeq);
-	const openTerminal = useCallback((cwd: string) => {
-		const id = `term:${termSeqRef.current}:${cwd}`;
-		termSeqRef.current += 1;
-		setTermSeq(termSeqRef.current);
-		setPanelItems((current) => [...current, { id, kind: "terminal", cwd }]);
-		setActiveItem(id);
-		// 侧栏点「终端」就是要看到它：分栏没开 / 正在落地页都要拉回标签上
+	const openSessionView = useCallback((kind: "history" | "prompt") => {
 		setPreviewVisible(true);
 		setPanelLanding(false);
+		setPanelItems((current) =>
+			current.some((item) => item.id === kind) ? current : [...current, { id: kind, kind }],
+		);
+		setActiveItem(kind);
 	}, []);
-	const openContentSearch = useCallback(() => setContentSearchOpen(true), []);
+	/** 文件树右键「在集成终端中打开」：底部终端新开一个标签到这个目录，顶手展开 */
+	const openBottomTerminalAt = useCallback((cwd: string) => {
+		setBottomTermRequest((current) => ({ cwd, seq: (current?.seq ?? 0) + 1 }));
+		setBottomTermOpen(true);
+	}, []);
+	/** 文件树右键「在文件夹中查找…」：内容搜索打开，glob 框预填 `<目录>/**`（根目录 = 不限） */
+	const findInFolder = useCallback((relDir: string) => {
+		setContentSearchPreset((current) => ({ value: relDir ? `${relDir}/**` : "", seq: (current?.seq ?? 0) + 1 }));
+		setContentSearchOpen(true);
+	}, []);
 	const openNewProjectDialog = useCallback(() => setNewProjectOpen(true), []);
 	const revealPathInTree = useCallback((path: string) => {
 		// 文件名搜索点了目录：不开文件，只让左树展开到那儿（见 SidebarFiles 的 onPick）
@@ -624,6 +637,17 @@ export function App() {
 				setCollapsed(false);
 				return;
 			}
+			/**
+			 * 终端**一律开在底部**（用户 2026-11-04：「终端默认都改成在底部终端打开」）。
+			 * 右侧面板里那种「终端标签」因此不再由任何入口创建（`PanelItem` 里那条老标签类型留着，
+			 * 只是为了刷新后还能认出来；底部终端本身也是同一份 `TerminalPanel`）。
+			 */
+			if (tool === "terminal") {
+				// 知道工作区就开在那个目录；不知道（还没选项目）就先开一个默认目录的
+				if (workspaceRoot) openBottomTerminalAt(workspaceRoot);
+				else setBottomTermOpen(true);
+				return;
+			}
 			setPreviewVisible(true);
 			setPanelLanding(false);
 			if (tool === "side") {
@@ -640,13 +664,10 @@ export function App() {
 			}
 			const id = `${tool}:${toolSeq}`;
 			setToolSeq((value) => value + 1);
-			setPanelItems((current) => [
-				...current,
-				tool === "terminal" ? { id, kind: "terminal", cwd: workspaceRoot } : { id, kind: "web", url: "" },
-			]);
+			setPanelItems((current) => [...current, { id, kind: "web", url: "" }]);
 			setActiveItem(id);
 		},
-		[toolSeq, workspaceRoot],
+		[toolSeq, workspaceRoot, openBottomTerminalAt],
 	);
 	/**
 	 * 可自定义快捷键（设置 → 快捷键）：键表存在本机，这套派发器只负责「按到的组合键 → 动作」。
@@ -697,7 +718,8 @@ export function App() {
 					}
 					return;
 				case "terminal":
-					openTool("terminal");
+					// Ctrl+` 切换的是对话框下面那条底部终端（VSCode 的习惯）——所有终端入口现在都落到它
+					setBottomTermOpen((current) => !current);
 					return;
 				case "contentSearch":
 					setContentSearchOpen(true);
@@ -756,7 +778,7 @@ export function App() {
 		[panelItems, toolSeq],
 	);
 	/**
-	 * 抬头「↑ 有新版」点一下：在右侧面板开一个终端标签，并把升级命令**自动敲进去 + 回车**。
+	 * 抬头「↑ 有新版」点一下：在**底部终端**开一个新分组，并把升级命令**自动敲进去 + 回车**。
 	 *
 	 * 为什么走终端而不是直接调 `aw upgrade`：升级要装全局包、可能卡网络或权限，
 	 * 用户在终端里能看全过程、能自己重试；而且「装完记得重启」也是他能直接执行的动作。
@@ -764,23 +786,16 @@ export function App() {
 	 */
 	const upgradeInTerminal = useCallback(
 		(command: string) => {
-			// 每次点都是一个新 id：重复点不能把上一轮正在跑的安装终端顶掉（那是用户要看的东西）
-			const id = `term:upgrade:${Date.now().toString(36)}`;
-			setPanelItems((current) => [
-				...current,
-				{
-					id,
-					kind: "terminal",
-					cwd: workspaceRoot,
-					label: t("终端 · 升级", "Terminal · upgrade"),
-					initialCommand: command,
-				},
-			]);
-			setActiveItem(id);
-			setPreviewVisible(true);
-			setPanelLanding(false);
+			// 终端统一在**底部**开：这里每次都是一个新分组（上面那条 `seq` 加一），
+			// 所以重复点不会把上一轮正在跑的安装终端顶掉（那是用户要看的东西）
+			setBottomTermRequest((current) => ({
+				cwd: workspaceRoot ?? "",
+				initialCommand: command,
+				seq: (current?.seq ?? 0) + 1,
+			}));
+			setBottomTermOpen(true);
 		},
-		[workspaceRoot, t],
+		[workspaceRoot],
 	);
 	const preview = previewCache && previewCache.conversationId !== activeId ? previewCache : null;
 	/**
@@ -1742,8 +1757,12 @@ export function App() {
 								runningIds={sidebarRunningIds}
 								/* 顶栏被藏起来了没有：「新会话」平时在顶栏，只有藏起来时才回落到侧栏抬头里画一颗 */
 								appbarHidden={appbarHidden}
-								onOpenTerminal={openTerminal}
+								/* 终端入口一律落到**底部终端**（文件管理那颗 `>_`、项目菜单的「在终端中打开」都走这里） */
+								onOpenTerminal={(cwd: string) => openBottomTerminalAt(cwd)}
+								onOpenBottomTerminal={openBottomTerminalAt}
+								onFindInFolder={findInFolder}
 								onOpenFile={openFileInPanel}
+								onOpenChangedFile={(path, root) => openFileInPanel(path, root, "diff")}
 								onSearchContents={openContentSearch}
 								onNewProject={openNewProjectDialog}
 								fileOpen={filesOpen}
@@ -2002,6 +2021,12 @@ export function App() {
 											: null
 									}
 								/>
+							<BottomTerminal
+								open={bottomTermOpen}
+								cwd={workspaceRoot}
+								request={bottomTermRequest}
+								onHide={() => setBottomTermOpen(false)}
+							/>
 							</div>
 						)}
 
@@ -2034,17 +2059,28 @@ export function App() {
 								onWebNote={addWebNote}
 								/* 预览里候选文件被点中：用它**那个标签的根**打开（不一定是当前会话工作区） */
 								onOpenFilePath={openFileInPanel}
+								/* 「完整历史 / 系统提示词」两张卡片看的是**当前**会话 */
+								conversationId={snapshot?.active.conversationId ?? null}
 							/>
 						) : null}
 					</div>
-					{/* 状态栏只在**右侧工作区**这一栏（左边那栏底部是文件管理，各用各的） */}
-					<StatusBar
-						snapshot={snapshot}
-						appbarHidden={appbarHidden}
-						onToggleAppbar={() => setAppbarHidden((value) => !value)}
-					/>
 				</div>
 			</div>
+			{/* 状态栏横贯整窗：挂在三栏之下（左栏底部的文件管理也在它上面），和顶栏对称 */}
+			<StatusBar
+				snapshot={snapshot}
+				terminalOpen={bottomTermOpen}
+				onToggleTerminal={() => setBottomTermOpen((current) => !current)}
+				/* 两个入口都**按引擎能力**画：不是 pi 就不画（而不是画一颗点了报错的） */
+				onOpenHistory={
+					snapshot?.engineCapabilities.historyExport ? () => openSessionView("history") : undefined
+				}
+				onOpenPrompt={
+					snapshot?.engineCapabilities.systemPrompt ? () => openSessionView("prompt") : undefined
+				}
+				appbarHidden={appbarHidden}
+				onToggleAppbar={() => setAppbarHidden((value) => !value)}
+			/>
 
 			{/* 全文搜索浮层：入口在「文件管理」标题栏（⌘⇧F 也能开），结果点开就跳到那一行。
 			 * 搜的是**「文件 ▾」下拉框选中的那个项目**（没选 = 当前会话工作区）——
@@ -2070,6 +2106,7 @@ export function App() {
 				root={searchRoot}
 				onClose={() => setContentSearchOpen(false)}
 				onOpen={(path, line) => openFileInPanel(path, searchRoot ?? "", undefined, line)}
+				presetGlob={contentSearchPreset}
 			/>
 
 			{snapshot?.pendingApproval ? <ApprovalDialog approval={snapshot.pendingApproval} /> : null}

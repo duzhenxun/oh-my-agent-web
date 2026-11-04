@@ -43,6 +43,8 @@ import { registerAuxRoutes } from "./http/aux-routes.js";
 import { registerWebProxyRoutes } from "./web-proxy/proxy-routes.js";
 import { handleMessage, type ClientSink } from "./ws/handle-message.js";
 import { registerHealthAndStatic } from "./http/health-and-static.js";
+import { registerWebSocketRoutes } from "./http/ws-routes.js";
+import { decide, effectiveAddress, isCrossOriginRejected, isLoopback } from "./http/auth.js";
 import { registerUploadRoutes } from "./uploads/upload-routes.js";
 import { readConfig, validateConfig } from "./util/env.js";
 import { createLogger } from "./util/log.js";
@@ -437,13 +439,16 @@ const mcpStores: Record<string, McpStore> = {
 const mcpStoreFor = (engineName: string): McpStore =>
 	mcpStores[engineName] ?? createNoneMcpStore(engineName, `${engineName} 没有接入 MCP 面板`);
 
-registerAuxRoutes(app, {
+const auxRoutes = registerAuxRoutes(app, {
 	providerStore,
 	// 「官方内置」provider 的模型 / 端点在引擎目录里，测连与拉模型都要它
 	builtinProviders: () => providerPool({ models: runtime?.state().models ?? [], catalog: engineCatalogProviders }),
 	workspaceOf,
 	projects: () => runtime.state().piProjects,
 	deleteSession: (id, options) => runtime.deleteSession(id, options),
+	// 「完整历史」/「系统提示词」：只有 pi 有（快照的 capabilities 也是这么宣的）
+	sessionHistory: (id) => runtime.sessionHistoryHtml(id),
+	sessionSystemPrompt: (id) => runtime.sessionSystemPrompt(id),
 	pushStore,
 	// 订阅服务（OAuth）：引擎没有这个能力时界面上那一块不画
 	providerAuth: engine.providerAuth,
@@ -498,6 +503,39 @@ registerHealthAndStatic(app, {
 });
 
 const httpServer = createServer(app);
+
+/**
+ * 推送通道的 WebSocket 版：**不占浏览器那 6 条 HTTP 连接**。
+ * 鉴权与 HTTP 面同一套判断（本机放行 / 远程要密码 / 同源门禁），
+ * 否则 WS 就成了绕过密码的后门。SSE 端点保留作兜底（见 ws-routes.ts 文件头）。
+ */
+registerWebSocketRoutes(httpServer, {
+	sinks,
+	snapshotFor: (clientId) => runtime.snapshotFor(clientId),
+	clientTracker: { setSlim: runtime.clientView.setSlim, drop: runtime.clientView.drop },
+	watchTerminal: auxRoutes.watchTerminal,
+	logger,
+	authorize: (request) => {
+		const forwarded = request.headers["x-forwarded-for"];
+		const remote = effectiveAddress(
+			request.socket.remoteAddress,
+			typeof forwarded === "string" ? forwarded : undefined,
+		);
+		const host = request.headers.host;
+		const origin = typeof request.headers.origin === "string" ? request.headers.origin : undefined;
+		// 同源门禁：本机直连时，别的网页不能凭空开一条 WS 来偷看快照
+		if (isCrossOriginRejected({ origin, host, policy, local: isLoopback(remote) })) return false;
+		return (
+			decide({
+				password: passwordStore.get(),
+				remoteAddress: remote,
+				host,
+				authorization: request.headers.authorization,
+				cookie: request.headers.cookie,
+			}) === "allow"
+		);
+	},
+});
 
 // 客户端请求分发在 ws/handle-message.ts（index 只负责装配）
 

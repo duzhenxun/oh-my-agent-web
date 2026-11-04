@@ -4,6 +4,7 @@ import { FilesSearchInput, FilesSearchResults, FilesToolbar, GitBranchTag } from
 import { FilesRootSelect } from "./FilesRootSelect.tsx";
 import { useFileSearch } from "../use-file-search.ts";
 import { useGitBranch } from "../use-git-branch.ts";
+import { useGitStatus } from "../use-git-status.ts";
 import { useAppSelector } from "../store.ts";
 import { useT } from "../use-language.ts";
 
@@ -25,7 +26,10 @@ export function SidebarFiles({
 	onRootChange,
 	options,
 	onOpenFile,
+	onOpenChangedFile,
 	onOpenTerminal,
+	onOpenBottomTerminal,
+	onFindInFolder,
 	onReveal,
 	onSearchContents,
 	activePath,
@@ -45,7 +49,13 @@ export function SidebarFiles({
 		label: string;
 	}[];
 	onOpenFile: (path: string) => void;
+	/** 「改动过的文件」清单里点一个文件：以 diff 打开（默认看改动） */
+	onOpenChangedFile?: (path: string) => void;
 	onOpenTerminal: () => void;
+	/** 文件树右键「在集成终端中打开」：传目录的绝对路径 */
+	onOpenBottomTerminal?: (absDir: string) => void;
+	/** 右键「在文件夹中查找」：传项目内的相对目录 */
+	onFindInFolder?: (relDir: string) => void;
 	/** 在 Finder 里定位某个目录（默认当前 root） */
 	onReveal?: (cwd: string) => void;
 	/** 搜**文件内容**：开全文搜索浮层（由 App 统一渲染） */
@@ -62,6 +72,8 @@ export function SidebarFiles({
 	const t = useT();
 	/** 「眼睛」：是否列出点开头的隐藏文件（默认关，和系统文件管理器一致） */
 	const [showHidden, setShowHidden] = useState(false);
+	/** 「改动过的文件」模式：左边文件树只列 git 有改动的文件（右键菜单切换，见 FileTree） */
+	const [changesOnly, setChangesOnly] = useState(false);
 	/** 刷新：加一就重挂整棵树（重新从第一层列起） */
 	const [refreshSeq, setRefreshSeq] = useState(0);
 	const search = useFileSearch(root);
@@ -83,6 +95,43 @@ export function SidebarFiles({
 	}, [open, searching, closeSearch]);
 
 	const showResults = searching && search.query.trim() !== "";
+
+	/**
+	 * 改动过的文件（只用来决定**标题栏那颗 diff 图标要不要画**，以及它的数量提示）。
+	 *
+	 * 为什么这里再拉一次 `git status`（文件树自己那份还在用）：那颗图标长在标题栏，
+	 * 而标题栏在 `FilesToolbar` 里，拿不到树内部的 hook 状态。多一次 `git status --porcelain`
+	 * 就是几毫秒、而且只在「换分支 / 点刷新 / 一轮跑完」时发生，不值得为此把树的
+	 * git 状态一路提升上来（那要改 FileTree 的 props 与所有取用点）。
+	 */
+	const gitStatus = useGitStatus(root, `${git.branch ?? ""}:${refreshSeq}`, running);
+	const changedCount = Object.keys(gitStatus.entries).length;
+
+	/**
+	 * 点标题栏那颗 diff 图标：进「改动过的文件」，并**强制拉最新的**。
+	 *
+	 * 每次都加 `refreshSeq`（文件树会重挂 + 重拉状态表，标题栏这一份也会重拉），
+	 * 所以在改动清单里连着点，就等于「再刷新一次」—— 在终端里刚 `git add`、智能体刚改完文件，
+	 * 点一下看到的就是最新的，不用先去点左边的 ↻。
+	 */
+	const showChangedFiles = () => {
+		// 收起状态下点它也要能看见结果：先把文件管理展开（那块没渲染，直接进模式等于没反应）
+		if (!open) onToggle();
+		setChangesOnly(true);
+		setRefreshSeq((seq) => seq + 1);
+		git.refresh();
+	};
+
+	/**
+	 * 改动被清空（提交了 / 还原了）→ 自动退出清单模式。
+	 *
+	 * 不退出的话会卡在「改动过的文件 · 0」那一屏，而且那颗 diff 图标已经因为没改动而消失，
+	 * 用户找不到回去的路（只剩右键菜单里那条「所有文件」）。
+	 * 只在**确认是 git 仓库**之后才判（初始状态 isRepo=false，不能当成「没改动了」）。
+	 */
+	useEffect(() => {
+		if (changesOnly && gitStatus.isRepo && changedCount === 0) setChangesOnly(false);
+	}, [changesOnly, gitStatus.isRepo, changedCount]);
 
 	return (
 		<section
@@ -117,6 +166,9 @@ export function SidebarFiles({
 					}}
 					onSearchContents={() => onSearchContents?.()}
 					search={search}
+					changesOnly={changesOnly}
+					changedCount={changedCount}
+					onShowChanges={showChangedFiles}
 				/>
 				{/* 标题右边剩下的空白 = 同一个开关（跟「项目」那一行同一套，见 Sidebar.tsx）：
 				 * 透明热区按钮铺满剩余宽度，图标位置一点不动；键盘 / 读屏仍走标题那颗。 */}
@@ -160,7 +212,12 @@ export function SidebarFiles({
 								revealSeq={revealSeq ?? 0}
 								revealPath={revealPath ?? null}
 								onNeedHidden={() => setShowHidden(true)}
+								onOpenTerminalAt={onOpenBottomTerminal}
+								onFindInFolder={onFindInFolder}
+								changesOnly={changesOnly}
+								onToggleChangesOnly={() => setChangesOnly((value) => !value)}
 								onOpenFile={onOpenFile}
+								onOpenChangedFile={onOpenChangedFile}
 							/>
 						)}
 					</div>

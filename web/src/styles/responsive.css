@@ -86,7 +86,7 @@
 
 /* 对话区：收窄内边距，去掉左侧 20px 的"留白" */
 .is-mobile-shell .workspace {
-	padding: 0 8px 8px;
+	padding: 0 8px 0;
 }
 
 .is-mobile-shell .workspace .main {
@@ -95,7 +95,7 @@
 
 /* 手机上两侧只留 4px：滚动条只在桌面占地方，8px + 14px 的让位全是白掉的宽度 */
 .is-mobile-shell .workspace {
-	padding: 0 4px 6px;
+	padding: 0 4px 0;
 }
 
 .is-mobile-shell .workspace .main {
@@ -152,13 +152,13 @@
 	max-width: 88%;
 }
 
-/* 提示词模板 / 技能等大弹窗：整屏 */
+/* 提示词模板 / 技能等大弹窗：整屏（高度跟 backdrop 走，而 backdrop 量的是**可视化视口**） */
 .is-mobile-shell .modal.big-modal,
 .is-mobile-shell .modal.tpl-modal,
 .is-mobile-shell .modal.new-project,
 .is-mobile-shell .modal.file-preview {
 	width: 100vw;
-	height: 100vh;
+	height: 100%;
 	max-height: none;
 	border-radius: 0;
 }
@@ -181,13 +181,11 @@
  * 用 `100vw` 而不是 `%`：`.app-main` 有 8px 内边距，百分比基数不同。
  * JS 侧同一个数见 `web/src/sidebar-layout.ts` 的 `sidebarMaxWidth()`（拖动时也按它夹）。
  */
-@media (min-width: 401px) and (max-width: 1000px) {
-	.side-host {
-		/* 240px 是侧栏的**最小宽度**（跟 sidebar-layout.ts 的 SIDEBAR_MIN_WIDTH 同一个数）：
-		 * 再窄项目行就排不下「图标 + 名字 + 运行中/圆点 + ⋯」，角标会压在标题上 */
-		max-width: max(240px, calc(100vw - 430px));
-	}
-}
+/* 侧栏宽度上限现在是一条**全局**规则（`.side-host` 的 `max-width`，见 project-icon.css）：
+ * 以前这里给 401~1000px 单独夹到「窗口 - 430px」，用户 2026-11-04 要求「最大宽度不限制」之后
+ * 上下统一成同一条公式（窗口 - 240px），不再需要按区间分两套。
+ * 手机上另有 `--drawer-w` + `max-width: none`，与它无关。 */
+
 
 /* 超窄屏（老机型 / 分屏）：再收一档 */
 /* 手机上的「过程 N 步」折叠条：必须能塞进一行。
@@ -218,6 +216,11 @@
 	.quick-chip {
 		font-size: 14px;
 		padding: 3px 8px;
+	}
+
+	/* 胶囊高度是锁死的（跟 .tool-chip 对齐），上下 3px padding 会把文字挤扁，这里只留横向 */
+	.quick-chip {
+		padding: 0 8px;
 	}
 
 	/* 项目名再长也别把一屏占满：这条是横向可滑的，留半屏给后面的模型/模板 */
@@ -610,17 +613,29 @@
 	   路径栏与「关闭」按钮看不见） */
 .is-mobile-shell .modal.new-project {
 	height: auto;
-	max-height: calc(100vh - var(--appbar-h, 46px) - 24px);
-	max-height: calc(100dvh - var(--appbar-h, 46px) - 24px);
+	max-height: 100%;
 }
 
 /* 弹窗必须盖在顶栏之上（顶栏在手机上是 z-index:45，否则弹窗标题被压住）；
-	   顶部还要**按顶栏真实高度让位**，否则标题会缩到顶栏底下看不见（新建项目就踩过） */
+	   顶部还要**按顶栏真实高度让位**，否则标题会缩到顶栏底下看不见（新建项目就踩过）。
+
+	   高度用**可视化视口**（`--vvh` / `--vvtop`，见 web/src/visual-viewport.ts）：
+	   手机上一聚焦输入框就弹键盘，而 100vh / 100dvh 量的是布局视口、**不会跟着变**，
+	   于是弹窗下面一截（取消 / 保存）被键盘盖住，用户根本看不到（2026-11-04 报的「编辑弹窗有的看不到」）。
+	   没量到（旧浏览器 / 桌面）时退回 `100dvh`。 */
 .is-mobile-shell .modal-backdrop {
 	z-index: 60;
+	inset: var(--vvtop, 0) 0 auto 0;
+	height: var(--vvh, 100dvh);
 	padding-top: calc(var(--appbar-h, 46px) + 8px);
 	padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
 	align-items: flex-start;
+}
+
+/* 手机上的普通弹窗：上限就是 backdrop 的内容盒（已经扣掉顶栏与内边距），
+   不再用 80vh —— 那个数在键盘弹起时比实际看得见的地方高得多。 */
+.is-mobile-shell .modal {
+	max-height: 100%;
 }
 
 /* 目录列表在手机上至少给 40vh，否则只剩两行可点 */
@@ -663,4 +678,13 @@
 	.appbar .appbar-panel-btn {
 		padding: calc(4px * var(--ab)) calc(5px * var(--ab));
 	}
+}
+
+/* 「编辑快捷指令」在手机上：正文先缩（键盘弹起时尤其），给「取消 / 保存」留出位置。
+   桌面那个 160px 的默认高度在小屏上太占，最小 72px ≈ 3 行，够改一两句。 */
+.is-mobile-shell .quick-edit-text {
+	min-height: 72px;
+	max-height: none;
+	/* 手机上不让人拖高度：拖动把手跟页面滚动打架，而且这里本来就会被视口夹住 */
+	resize: none;
 }

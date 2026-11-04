@@ -280,6 +280,22 @@ export type EnginePort = {
 	deleteSession?: (handle: string) => Promise<void>;
 	/** 读转录并映射成界面消息（text / tool 块）——侧栏与对话区都靠它 */
 	readUiMessages(sessionId: string): Promise<UiMessage[]>;
+	/**
+	 * 「完整历史」：把这条会话导成**整份 HTML 导出页**。
+	 *
+	 * pi 的 `/export` 用的就是这套模板（时间线 / 工具调用 / 思考 / 分支树都画出来），
+	 * 所以这里**不自己拼 HTML** —— 引擎给什么就展示什么，模板与它一起演进。
+	 *
+	 * `sessionPath`：宿主登记的会话文件路径（历史会话没开在当前进程里时也导得出来）。
+	 * 不实现 = 这个引擎没有「完整历史」（`capabilities.historyExport` 应为 false）。
+	 */
+	exportSessionHtml?: (sessionId: string, sessionPath: string | null) => Promise<string>;
+	/**
+	 * 「系统提示词」：这条会话**正在用**的那一段（拼完上下文文件 / 技能 / 附加段之后的全文）。
+	 * 拿不到（会话还没打开 / 引擎不知道）返回 null。
+	 * 不实现 = 这个引擎看不到自己的提示词（`capabilities.systemPrompt` 应为 false）。
+	 */
+	readSystemPrompt?: (sessionId: string) => Promise<string | null>;
 	/** 危险操作前引擎会调用它；宿主负责弹给用户并等待决定（ADR-0006 审批三态） */
 	setApprovalHandler(handler: ApprovalHandler): void;
 	/**

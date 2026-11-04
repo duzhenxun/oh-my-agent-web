@@ -35,7 +35,7 @@ export function ProjectBranchChips({ projectRoot }: { projectRoot: string }) {
 		<>
 			{/* 项目：静态标签，不可点（见上面第 1 条）。tooltip 给完整路径，同名目录能分清 */}
 			<span className="new-scope-chip new-scope-chip-static" title={projectRoot}>
-				<span className="new-scope-icon" aria-hidden="true">
+				<span className="new-scope-icon new-scope-icon-folder" aria-hidden="true">
 					<FolderIcon open={false} />
 				</span>
 				<span className="new-scope-label">{name}</span>

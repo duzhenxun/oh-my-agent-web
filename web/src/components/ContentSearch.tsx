@@ -59,16 +59,25 @@ export function ContentSearch({
 	root,
 	onClose,
 	onOpen,
+	presetGlob = null,
 }: {
 	open: boolean;
 	root: string | null;
 	onClose: () => void;
 	/** 打开某条命中：右侧面板开这个文件并跳到第 `line` 行 */
 	onOpen: (path: string, line: number) => void;
+	/**
+	 * 外面指定的文件夹范围（文件树右键「在文件夹中查找」）：每次 seq 变一下就把 glob 框换成 value。
+	 * 普通的 ⌘⇧F 打开不会动它（保留上次的筛选）。
+	 */
+	presetGlob?: { value: string; seq: number } | null;
 }) {
 	const t = useT();
 	const [query, setQuery] = useState("");
 	const [glob, setGlob] = useState("");
+	useEffect(() => {
+		if (presetGlob) setGlob(presetGlob.value);
+	}, [presetGlob]);
 	const [hits, setHits] = useState<ContentHit[]>([]);
 	const [truncated, setTruncated] = useState(false);
 	const [error, setError] = useState<string | null>(null);

@@ -1,0 +1,155 @@
+/* 底部终端（挂在对话框下面，见 components/BottomTerminal.tsx） */
+.bottom-term {
+	position: relative;
+	flex: none;
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	/* 与上面的输入框的间距由 .composer-wrap 的 margin-bottom 提供（app-bar.css）；跟底部状态栏贴齐 */
+	margin-top: 0;
+	border-top: 1px solid var(--border);
+	background: #0d1117;
+}
+
+.bottom-term[hidden],
+.bottom-term-group[hidden] {
+	display: none;
+}
+
+/* 顶边的拖拽热区：整条盖在分割线上下各 4px */
+.bottom-term-handle {
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: -4px;
+	height: 8px;
+	cursor: row-resize;
+	z-index: 2;
+}
+
+.bottom-term-bar {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	height: 24px;
+	padding: 0 6px;
+	background: var(--bg-elev);
+	border-bottom: 1px solid var(--border);
+	color: var(--text-faint);
+	font-size: 12px;
+	white-space: nowrap;
+}
+
+.bottom-term-tabs {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	min-width: 0;
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+
+.bottom-term-tab {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 20px;
+	padding: 0 8px;
+	cursor: pointer;
+	border-top: 1px solid transparent;
+}
+
+.bottom-term-tab:hover {
+	color: var(--text);
+}
+
+.bottom-term-tab.is-active {
+	color: var(--text);
+	border-top-color: var(--border-strong);
+	background: var(--bg);
+}
+
+.bottom-term-tab-x,
+.bottom-term-btn {
+	border: none;
+	background: none;
+	color: inherit;
+	cursor: pointer;
+	line-height: 1;
+	border-radius: 4px;
+}
+
+.bottom-term-tab-x {
+	padding: 2px 3px;
+	font-size: 14px;
+	opacity: 0.6;
+}
+
+.bottom-term-tab-x:hover {
+	opacity: 1;
+}
+
+.bottom-term-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 20px;
+	height: 20px;
+	font-size: 14px;
+}
+
+.bottom-term-btn:hover:not(:disabled) {
+	background: var(--bg-elev-2);
+	color: var(--text);
+}
+
+.bottom-term-btn:disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+
+.bottom-term-spacer {
+	flex: 1 1 auto;
+}
+
+.bottom-term-body {
+	position: relative;
+	flex: 1 1 auto;
+	min-height: 0;
+}
+
+/* 一个分组 = 占满整个区域的一排并排终端 */
+.bottom-term-group {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	min-width: 0;
+}
+
+.bottom-term-pane {
+	position: relative;
+	flex: 1 1 0;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.bottom-term-pane + .bottom-term-pane {
+	border-left: 1px solid #30363d;
+}
+
+/* xterm 的 viewport 默认是纯黑，会在终端底部露出一条黑带（padding 区）；盖成终端自己的背景色 */
+.bottom-term .terminal-host {
+	background: #0d1117;
+}
+
+.bottom-term .terminal-host .xterm {
+	/* 底部不留 padding：终端内容直接贴到状态栏 */
+	padding: 4px 6px 0;
+}
+
+.bottom-term .terminal-host .xterm .xterm-viewport {
+	background-color: #0d1117;
+}

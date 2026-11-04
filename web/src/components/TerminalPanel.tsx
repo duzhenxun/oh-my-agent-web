@@ -4,6 +4,7 @@ import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { basename } from "../path-utils.ts";
 import { useT } from "../use-language.ts";
+import { openStream, type Stream } from "../stream.ts";
 import { TERMINAL_FONT_DEFAULT, TERMINAL_FONT_KEY, TERMINAL_FONT_MAX, TERMINAL_FONT_MIN } from "../ui-prefs.ts";
 import { useStoredNumber } from "../use-stored-number.ts";
 
@@ -139,7 +140,7 @@ export function TerminalPanel({
 		};
 		host.addEventListener("keydown", onKeyDown, true);
 
-		let source: EventSource | null = null;
+		let source: Stream | null = null;
 		let observer: ResizeObserver | null = null;
 		let disposed = false;
 		let started = false;
@@ -198,15 +199,42 @@ export function TerminalPanel({
 					body: JSON.stringify({ id: termId, data: `${initialCommand}\r` }),
 				});
 			}
-			// SSE 收输出
-			source = new EventSource(`/api/terminal/stream?id=${encodeURIComponent(termId)}`);
-			source.onmessage = (event) => {
-				try {
-					term.write(JSON.parse(event.data) as string);
-				} catch {
-					term.write(event.data);
-				}
+			/**
+			 * 收输出：**WebSocket**（`?terminal=<id>`），不是 SSE ——
+			 * SSE 会永久占住浏览器给同一个 host 的一条 HTTP 连接，开几个终端就把 6 条占满，
+			 * 连页面都加载不出来（用户 2026-11-04 撞到的「切会话卡死」）。
+			 * 代理挡掉 Upgrade 时 `openStream` 会自动退回 SSE，行为不变。
+			 */
+			let retry = 0;
+			const subscribe = () => {
+				source = openStream({
+					wsPath: `/ws?terminal=${encodeURIComponent(termId)}`,
+					sseUrl: `/api/terminal/stream?id=${encodeURIComponent(termId)}`,
+					handlers: {
+						onOpen: () => {
+							retry = 0;
+						},
+						onMessage: (data) => {
+							try {
+								term.write(JSON.parse(data) as string);
+							} catch {
+								term.write(data);
+							}
+						},
+						// 服务端重启 / 终端被别的标签页关掉：自己按退避再连几次（最多 5 次），
+						// 别让这一屏变成「黑着但还显示 PTY 已启动」的假状态
+						onClose: () => {
+							source = null;
+							if (disposed || retry >= 5) return;
+							retry += 1;
+							setTimeout(() => {
+								if (!disposed) subscribe();
+							}, Math.min(500 * 2 ** retry, 8000));
+						},
+					},
+				});
 			};
+			subscribe();
 			// 存在 effect 作用域里：卸载时要 disconnect（以前它建在 async 回调里，清理拿不到）
 			observer = new ResizeObserver(() => fit.fit());
 			observer.observe(host);

@@ -25,10 +25,10 @@
 	min-width: 0;
 	max-width: 200px;
 	padding: 1px 7px;
-	border: 1px solid var(--border);
+	border: 1px solid var(--border-strong);
 	border-radius: 7px;
 	background: var(--bg-elev);
-	color: var(--text-dim);
+	color: var(--text);
 	font: inherit;
 	font-size: calc(var(--chat-ui-font-size, 12px) * 0.8621);
 	/* 不写 line-height：跟 `.tool-chip` 一样继承外层，两颗胶囊高度才会真的一样（21px） */
@@ -70,9 +70,14 @@
 	cursor: default;
 }
 
+/* 「项目」标签里的文件夹图标用暖黄描边（只这一颗，不影响文件树等其它地方的 FolderIcon） */
+.new-scope-icon-folder path {
+	stroke: var(--yellow, #d9a441);
+}
+
 .new-scope-chip-static:hover {
-	border-color: var(--border);
-	color: var(--text-dim);
+	border-color: var(--border-strong);
+	color: var(--text);
 }
 
 .new-scope-chip-ephemeral:hover {
@@ -86,8 +91,7 @@
 	flex: none;
 	width: 13px;
 	height: 13px;
-	/* 跟 `.tool-chip` 里的 emoji 图标同一档淡化（那边是 opacity .85），不抢字 */
-	opacity: 0.85;
+	opacity: 1;
 }
 
 .new-scope-icon svg {

@@ -11,10 +11,16 @@ import {
 	SessionManager,
 	createAgentSession,
 	getAgentDir,
+	getPackageDir,
 	initTheme,
 } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI, InlineExtension, ToolCallEventResult } from "@earendil-works/pi-coding-agent";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
+import { randomUUID } from "node:crypto";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { pathToFileURL } from "node:url";
+import { patchExportHtml } from "./export-html-tree-patch.js";
 import { getBuiltinClassifierModels, getBuiltinImageModels, getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
 import { chatModels, isChatModel } from "../providers/model-kind.js";
 import { classifyScope } from "../approval/scope.js";
@@ -86,6 +92,13 @@ type SessionHandle = {
 		refreshContext?: () => void;
 		/** pi 原生的会话导出（`/export` 同一套序列化）：临时会话转正靠它落盘 */
 		exportToJsonl: (outputPath: string) => string;
+		/**
+		 * 这次运行**实际在用**的系统提示词（AGENTS.md / 技能 / 本次附加段都拼完了，见 `readSystemPrompt`）；
+		 * 只有老版本 SDK 没有这个 getter 时才取不到。
+		 */
+		systemPrompt?: string;
+		/** 完整的 agent 状态（导出 HTML 里的「System Prompt / Available Tools」两块靠它） */
+		state?: unknown;
 	};
 	workspace: string;
 	/** 取消**全部**监听器（关会话 / 切引擎时用） */
@@ -362,6 +375,25 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 	const sessions = new Map<string, SessionHandle>();
 	const thinking = createPiThinking(sessions as unknown as Map<string, { session: unknown }>);
 	let approvalHandler: ApprovalHandler | null = null;
+
+	/**
+	 * pi 的 HTML 导出器（`pi --export` 那套模板）。
+	 *
+	 * 只能**按路径动态 import**：它在包里没进 exports map（`dist/core/export-html/index.js`），
+	 * 直接 `import ... from "@earendil-works/pi-coding-agent/dist/..."` 会被 exports 拦住。
+	 * 模块只加载一次（导出页的模板 / 高亮 / markdown 都在里面）。
+	 */
+	let exportHtmlModule: Promise<{
+		exportSessionToHtml: (manager: unknown, state: unknown, options: { outputPath: string }) => Promise<string>;
+		exportFromFile: (inputPath: string, options: { outputPath: string }) => Promise<string>;
+	}> | null = null;
+	const loadExportHtml = () => {
+		exportHtmlModule ??= (async () => {
+			const entry = pathToFileURL(join(getPackageDir(), "dist", "core", "export-html", "index.js")).href;
+			return (await import(entry)) as Awaited<NonNullable<typeof exportHtmlModule>>;
+		})();
+		return exportHtmlModule;
+	};
 
 	const notice = (text: string, level: "info" | "warn" | "error" = "warn") => options.onNotice?.(text, level);
 
@@ -816,6 +848,55 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 			// 这一轮还在跑：中间那条工具的结果只是还没落盘，别提前判成失败（切回来看会话时会发生）
 			const live = handle.session.isStreaming === true || handle.subscriptions.size > 0;
 			return entriesToUiMessages(handle.sessionManager.getEntries(), { live });
+		},
+
+		/**
+		 * 「系统提示词」：把 SDK 现拼出来的那段全文交回去。
+		 *
+		 * 为什么不自己拼：pi 的提示词是 `resourceLoader` 按 cwd 现拼的（AGENTS.md、技能清单、
+		 * 扩展注入的 guidance、本次的 appendSystemPrompt）—— 抄一份等于抄错了也没人知道。
+		 * 会话没开（历史会话没打开过）时给 null：那种情况引擎手里真的没有这段。
+		 */
+		async readSystemPrompt(sessionId: string) {
+			const handle = sessions.get(sessionId);
+			const prompt = handle?.session.systemPrompt;
+			return typeof prompt === "string" && prompt !== "" ? prompt : null;
+		},
+
+		/**
+		 * 「完整历史」：交给 pi 自己的导出器（`pi --export` 同一套模板），我们只负责
+		 * ①挑输入（优先用活着的会话，带上系统提示词与工具清单）②把产出的 HTML 读回来。
+		 *
+		 * 为什么不自己拼页面：模板在 pi 包里跟着引擎一起演进（分支树、工具渲染、主题），
+		 * 抄一份必然越用越旧。这里连「写临时文件」都是照它的 API 来的（它只支持写文件）。
+		 */
+		async exportSessionHtml(sessionId: string, sessionPath: string | null) {
+			const handle = sessions.get(sessionId);
+			const file = handle?.sessionPath ?? sessionPath;
+			// 临时会话（`SessionManager.inMemory`）根本没有文件，导出器会直接报
+			// 「Cannot export in-memory session」——先说人话，别把 SDK 的英文原样丢给用户
+			if (handle && !handle.sessionManager.isPersisted() && !file) {
+				throw new Error("这条会话是临时会话（不落盘），没有可以导出的完整历史；先点「保存为正式对话」。");
+			}
+			if (!handle && !file) throw new Error("找不到这条会话的文件，导不出完整历史。");
+
+			const exporter = await loadExportHtml();
+			// 导出器只支持「写到文件」：给它一个自己的临时目录，读完就整个删掉
+			const dir = await mkdtemp(join(tmpdir(), "agent-web-export-"));
+			const output = join(dir, `${randomUUID()}.html`);
+			try {
+				if (handle) {
+					// 活着的会话：带上 state，导出页才有「System Prompt / Available Tools」两块
+					await exporter.exportSessionToHtml(handle.sessionManager as never, handle.session.state as never, {
+						outputPath: output,
+					});
+				} else {
+					await exporter.exportFromFile(file as string, { outputPath: output });
+				}
+				return patchExportHtml(await readFile(output, "utf8"));
+			} finally {
+				await rm(dir, { recursive: true, force: true });
+			}
 		},
 
 		async sendMessage(

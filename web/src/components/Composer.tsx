@@ -16,6 +16,7 @@ import { ModelChips } from "./ModelChips.tsx";
 import { ProjectBranchChips } from "./ProjectBranchChips.tsx";
 import { ThinkButton } from "./ThinkButton.tsx";
 import { TemplateEditor, TemplateGallery } from "./TemplateModals.tsx";
+import { QuickPhraseEditor } from "./QuickPhraseEditor.tsx";
 import { setDraft as setStoreDraft, useAppState } from "../store.ts";
 import { textOfMessage } from "../message-text.ts";
 import { COMPOSER_ITEM_KEY, COMPOSER_TOGGLES } from "../ui-prefs.ts";
@@ -567,6 +568,8 @@ export function Composer({
 	const templates = snapshot?.settings.templates ?? [];
 	// 模板库 / 模板编辑两个弹窗（P5）
 	const [galleryOpen, setGalleryOpen] = useState(false);
+	// 快捷指令的单独编辑弹窗（入口在快捷胶囊后面那颗粒子上）
+	const [quickEditOpen, setQuickEditOpen] = useState(false);
 	const [editing, setEditing] = useState<{ template: PromptTemplate | null } | null>(null);
 
 	const addFiles = async (files: File[]) => {
@@ -758,6 +761,15 @@ export function Composer({
 					<>
 						<span className="tool-sep" aria-hidden="true" />
 						<div className="quick-row">
+							{/* 就地编辑：放在最左边（快捷短语前面），不跑设置面板，单独弹一个小窗改这一排短语（数据同一份） */}
+							<button
+								type="button"
+								className="quick-chip quick-edit"
+								title={t("编辑快捷指令", "Edit quick commands")}
+								onClick={() => setQuickEditOpen(true)}
+							>
+								✏️ {t("编辑", "Edit")}
+							</button>
 							{quickPhrases.map((phrase) => (
 								<button
 									type="button"
@@ -1041,6 +1053,9 @@ export function Composer({
 			) : null}
 			{editing ? (
 				<TemplateEditor template={editing.template} library={templates} onClose={() => setEditing(null)} />
+			) : null}
+			{quickEditOpen ? (
+				<QuickPhraseEditor phrases={quickPhrases} onClose={() => setQuickEditOpen(false)} />
 			) : null}
 		</div>
 	);

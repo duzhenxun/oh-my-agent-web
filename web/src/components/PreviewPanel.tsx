@@ -7,6 +7,8 @@ import { WebTool } from "./WebTool.tsx";
 import type { WebNoteWithNumber } from "../web-note.ts";
 import { FilesTool } from "./FilesTool.tsx";
 import { FilesRail } from "./FilesRail.tsx";
+import { SessionHistory } from "./SessionHistory.tsx";
+import { SystemPromptView } from "./SystemPromptView.tsx";
 import { useStoredBool } from "../use-stored-bool.ts";
 import { hostOf } from "../url-bar.ts";
 import { disposeSideChannel } from "../side-chat.ts";
@@ -15,7 +17,7 @@ import { useT } from "../use-language.ts";
 /**
  * 右侧工作区面板里的一个标签。
  *
- * 五类：文件 / 终端 / 文件树 / 网页 / 临时聊天 —— 后三类是「分栏工作区」加进来的，
+ * 文件 / 终端 / 文件树 / 网页 / 临时聊天 / 完整历史 / 系统提示词 —— 后四类是「分栏工作区」加进来的，
  * 前两类是原来就有的（消息里的 chip、侧栏「终端」按钮都还走它们）。
  */
 export type PanelItem =
@@ -43,7 +45,14 @@ export type PanelItem =
 	/** 网页：地址栏 + iframe */
 	| { id: string; kind: "web"; url: string }
 	/** 临时聊天：每条标签一条独立通道（见 web/src/side-chat.ts）；不跨刷新恢复（见 preview-tabs-pref.ts） */
-	| { id: string; kind: "side"; label?: string };
+	| { id: string; kind: "side"; label?: string }
+	/**
+	 * 「完整历史」：pi 自己的会话导出页（整份转录，工具/思考/分支都画出来）。
+	 * 直接 iframe 进来 —— 那是一整页独立文档，链接的是服务端的 `/api/sessions/<id>/history`。
+	 */
+	| { id: string; kind: "history" }
+	/** 「系统提示词」：这次运行**实际在用**的那段（AGENTS.md / 技能 / 附加段都拼完了） */
+	| { id: string; kind: "prompt" };
 
 /** 落地页上能点的那四样工具 */
 export type WorkTool = "files" | "terminal" | "side" | "web";
@@ -104,6 +113,17 @@ function tabTextOf(
 			title: item.url || t("网页", "Web page"),
 		};
 	}
+	// 「完整历史 / 系统提示词」：两张只看不改的卡片，标签固定、只开一个
+	if (item.kind === "history") {
+		return { icon: "📜", label: t("完整历史", "Full history"), title: t("完整历史（pi 的会话导出页）", "Full history (pi session export)") };
+	}
+	if (item.kind === "prompt") {
+		return {
+			icon: "🧾",
+			label: t("系统提示词", "System prompt"),
+			title: t("这次运行实际在用的系统提示词", "The system prompt this run actually uses"),
+		};
+	}
 	const icon = /\.[jt]sx?$/i.test(item.path)
 		? "TS"
 		: /\.json$/i.test(item.path)
@@ -136,8 +156,8 @@ const TOOL_CARDS: { tool: WorkTool; icon: string; zh: string; en: string; hintZh
 		icon: ">_",
 		zh: "终端",
 		en: "Terminal",
-		hintZh: "在当前工作区开一个 shell",
-		hintEn: "Open a shell in the current workspace",
+		hintZh: "在对话框下面开一个 shell（底部终端）",
+		hintEn: "Open a shell under the chat (bottom panel)",
 	},
 	{
 		tool: "files",
@@ -182,6 +202,7 @@ export function PreviewPanel({
 	chatOnRight = false,
 	showSplitButton = true,
 	onWebNote,
+	conversationId = null,
 }: {
 	items: PanelItem[];
 	activeId: string;
@@ -232,6 +253,11 @@ export function PreviewPanel({
 	 * （页面上那个徽标、胶囊里那一行、发出去那段都用这个号）。
 	 */
 	onWebNote?: (note: WebNoteWithNumber) => void;
+	/**
+	 * 当前这条会话的 id：「完整历史」/「系统提示词」两张卡片要按它去取数据。
+	 * 跟着**当前会话**走（而不是开标签时的那个）—— 切了会话，这两张「看当前会话内部」的卡片就该跟着变。
+	 */
+	conversationId?: string | null;
 }) {
 	const t = useT();
 	const [width, setWidth] = useState(() => readWidth() ?? 620);
@@ -787,6 +813,10 @@ export function PreviewPanel({
 							<FilesTool root={root} onOpenFile={onOpenFile} />
 						) : item.kind === "web" ? (
 							<WebTool initialUrl={item.url} onAddNote={onWebNote} />
+						) : item.kind === "history" ? (
+							<SessionHistory conversationId={conversationId} />
+						) : item.kind === "prompt" ? (
+							<SystemPromptView conversationId={conversationId} />
 						) : (
 							<SideChat itemId={item.id} />
 						)}

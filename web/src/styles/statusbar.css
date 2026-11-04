@@ -204,6 +204,15 @@ html.is-mobile-shell {
 	font-size: 1.05em;
 }
 
+/*
+ * 「完整历史 / 系统提示词」两颗：手机上**不显示**（用户 2026-11-04：手机版不需要）。
+ * 窄屏那条状态栏本来就靠横向滑动，这两颗是「看会话内部」的桌面工具，
+ * 手机上留出位置给模型 / 上下文 / 终端 / 顶部这几个更常用的开关。
+ */
+.is-mobile-shell .statusbar > .status-toggle.status-view {
+	display: none;
+}
+
 /* 手机上的控件只放大「盒子」（桌面那版是为 24px 高的栏收过的）；
    字号跟着基准一起涨，不必再逐颗写 */
 .is-mobile-shell .statusbar .tool-chip {
@@ -420,4 +429,17 @@ html.is-mobile-shell {
 /* 箭头是装饰，比文字小一档 */
 .statusbar .model-caret {
 	font-size: 0.87em;
+}
+
+/* 审批模式芯片：桌面写「全部放行」，手机窄栏只写「放行」（两份文案都在 DOM 里，这里切显示） */
+.approval-label-short {
+	display: none;
+}
+
+.is-mobile-shell .approval-label-full {
+	display: none;
+}
+
+.is-mobile-shell .approval-label-short {
+	display: inline;
 }

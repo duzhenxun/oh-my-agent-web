@@ -63,6 +63,20 @@ export type Runtime = {
 	 * 成功时把最终用的标题带回来，界面可直接拿来提示。
 	 */
 	suggestSessionTitle(conversationId: string): Promise<SuggestTitleResult>;
+	/**
+	 * 「完整历史」：把这条会话导成 pi 的 HTML 导出页（整份转录，含工具调用 / 思考 / 分支）。
+	 *
+	 * 为什么放在 runtime 而不是在 HTTP 路由里直接叫引擎：会话文件路径这事只有宿主知道
+	 * （opener 记得的 + 历史清单里的），引擎拿不到「没开在当前进程里」的会话。
+	 * 当前引擎没这个能力时回 `engine.unsupported`（界面按 capabilities.historyExport 早就不画入口）。
+	 */
+	sessionHistoryHtml(
+		conversationId: string,
+	): Promise<{ ok: true; html: string } | { ok: false; code: string; message: string }>;
+	/** 「系统提示词」：这次运行**实际在用**的那段（AGENTS.md / 技能 / 附加段都拼完了） */
+	sessionSystemPrompt(
+		conversationId: string,
+	): Promise<{ ok: true; prompt: string } | { ok: false; code: string; message: string }>;
 	/** 删除会话：引擎原生删除（codex）或文件改名（pi）；已经不在的按成功处理（`gone`）。
 	 * `purge` 为真时 pi 那条路是真删（`unlink`），默认只是改名 —— 见 `delete-session.ts` */
 	deleteSession(
