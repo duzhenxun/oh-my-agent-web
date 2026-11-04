@@ -535,7 +535,12 @@ npm run dev          # 一条命令起两个进程
 | `npm run build` | 服务端 `tsc` + 前端 `vite build` 到 `web/dist` |
 | `npm run icons` | 用 playwright-core 重新生成 PWA 图标 |
 
-CI（`.github/workflows/ci.yml`）：`npm ci` → typecheck → lint → test → build，跑在 ubuntu + Node 22。
+两个工作流，**没有单独的 `ci.yml`**：
+
+- `.github/workflows/release.yml`（`v*` 标签或手动触发）：`npm ci` → typecheck → lint → build → `npm pack --dry-run` → `npm publish`（OIDC）。单测与 `format:check` **暂未**进门禁。
+- `.github/workflows/pages.yml`（`docs/site/**` 变更时）：把 `docs/site` 原样发布到 GitHub Pages。
+
+单测在本地跑：`node --import tsx --test tests/unit/*.test.ts`。
 
 ---
 

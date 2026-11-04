@@ -10,7 +10,7 @@
 
 | 事 | 现状 | 说明 |
 |---|---|---|
-| 包已存在于 npm | ✅ `oh-my-agent-web@1.0.3` | Trusted Publishing **不能用于包名从未发布过**的情况：那种必须先手动发一个版本，再回来配 |
+| 包已存在于 npm | ✅ `oh-my-agent-web@1.1.1`（当前版本，见 `package.json`） | Trusted Publishing **不能用于包名从未发布过**的情况：那种必须先手动发一个版本，再回来配 |
 | 工作流文件 | ✅ `.github/workflows/release.yml` | 配白名单时填的文件名就是 `release.yml` |
 | 仓库 | ✅ `duzhenxun/oh-my-agent-web` | 配白名单时填 `duzhenxun/oh-my-agent-web` |
 
@@ -92,7 +92,7 @@ GitHub → Actions → `release` → **Run workflow**：发布默认分支 `pack
 
 ## 五、已知的 CI 边界
 
-- **单测没进流水线**：`tests/unit` 现在有 33 个失败（与发布无关的历史遗留），拿它当门禁会把发版全卡住。修完之后再把
-  `node --import tsx --test tests/unit/*.test.ts` 加进 `release.yml` 就行。
-- **`format:check` 也没门禁**：仓库里有 7 个文件没过 Prettier，`npm run lint`（oxlint）是干净的，先只卡它。
+- **单测没进流水线**：`tests/unit` 现在**全部用例都过**（`node --import tsx --test tests/unit/*.test.ts`，约 10 秒；用例数在涨，这里不写死数字），
+  随时可以加进 `release.yml` 当门禁；目前只是还没接上。
+- **`format:check` 也没门禁**：仓库里有 8 个文件没过 Prettier，`npm run lint`（oxlint）是干净的，先只卡它。
 - 工作流里不跑 `prettier`，也不自动改文件 —— 发布流程只读。

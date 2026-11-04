@@ -27,6 +27,7 @@ import {
 	useAppSelector,
 } from "./store.ts";
 import { shortcutFor, type ShortcutId } from "./shortcuts.ts";
+import { toggleProjects } from "./projects-panel.ts";
 import { toggleShortcutSheet } from "./shortcut-sheet.ts";
 import { useShortcuts } from "./use-shortcuts.ts";
 import { SPLIT_CHAT_SIDE_KEY, readStored, writeStored } from "./ui-prefs.ts";
@@ -61,7 +62,8 @@ import { readWebMarks, removeMarkAt, writeWebMarks } from "./web-marks.ts";
 import { AnnotationSummary } from "./components/AnnotationSummary.tsx";
 import type { SelectionAddInput } from "./components/SelectionToolbar.tsx";
 import { showToast } from "./toast.ts";
-import { closeEphemeralChat } from "./close-ephemeral.ts";
+import { discardEphemeralChat } from "./close-ephemeral.ts";
+import { CloseEphemeralDialog } from "./components/CloseEphemeralDialog.tsx";
 import { nextTreeRoot } from "./file-tree-model.ts";
 import { realPathForToken, toolPathUses } from "./changed-files.ts";
 import type { UiMessage } from "./types.ts";
@@ -190,6 +192,8 @@ export function App() {
 	 * `onNewProject` 回调上来，两处共用同一份 state。
 	 */
 	const [newProjectOpen, setNewProjectOpen] = useState(false);
+	/** 待确认关闭的临时对话（非空 = 显示自绘确认弹窗） */
+	const [closingEphemeral, setClosingEphemeral] = useState<{ conversationId: string; title: string } | null>(null);
 	/**
 	 * 分栏里**对话在哪一侧**（ADR：跟工作区对调）。
 	 *
@@ -670,19 +674,27 @@ export function App() {
 				case "settings":
 					setMenuPanel("settings");
 					return;
-				case "openRight":
-					if (!previewVisible) toggleSplit();
-					return;
-				case "closeRight":
-					if (previewVisible) toggleSplit();
+				case "toggleRight":
+					// 一个键开 / 关右侧工作区（用户 2026-11-04：开、关合并成一个动作）
+					toggleSplit();
 					return;
 				case "toggleLeft":
 					setCollapsed((value) => !value);
 					return;
+				case "projects":
+					// 「项目管理」那一栏的开关。侧栏收着时 Sidebar 根本没挂载（没人接），
+					// 那这一下就当作「展开侧栏」—— 展开后项目列表本来就默认是开的。
+					if (collapsed || !toggleProjects()) setCollapsed(false);
+					return;
 				case "files":
-					// 跟右侧落地页那张「文件」卡同一个行为：左树打开、并确保侧栏展开（否则展开了也看不见）
-					setFilesOpen(true);
-					setCollapsed(false);
+					// 一个键开 / 关（用户 2026-11-04：「打开收起也用一个」）：
+					// 树开着且侧栏没收 → 收起；其余情况一律打开 + 展开侧栏
+					// （侧栏收着时只 setFilesOpen 是看不见的，那个分支必须连展开一起做）。
+					if (filesOpen && !collapsed) setFilesOpen(false);
+					else {
+						setFilesOpen(true);
+						setCollapsed(false);
+					}
 					return;
 				case "terminal":
 					openTool("terminal");
@@ -695,7 +707,7 @@ export function App() {
 					return;
 			}
 		},
-		[openTool, previewVisible, toggleSplit],
+		[collapsed, filesOpen, openTool, toggleSplit],
 	);
 	const runShortcutRef = useRef(runShortcutAction);
 	runShortcutRef.current = runShortcutAction;
@@ -1359,55 +1371,10 @@ export function App() {
 					 */}
 					<NewChatButton />
 					{/*
-					 * 整页全屏（用户：「这里再加一个全屏按钮，可以加竖线左边」）。
-					 *
-					 * 位置：**顶栏左段的最右边**。原先它左边还有一道 `.appbar-divider` 跟「品牌 / 新会话」
-					 * 分段，但这一段本身就窄，那道线紧贴着「新会话」胶囊、视觉上像是多出来的一根，
-					 * 用户「全屏左边那条竖线不要」—— 已去掉，只留这颗方按钮。
-					 *
-					 * `supported` 为 false 时整组不画（iOS Safari 不支持元素全屏）：
-					 * 点了没反应比没有按钮更糟。状态由 `fullscreenchange` 兜着，Esc 退出也亮/灭得对。
+					 * 整页全屏这颗按钮 **2026-11-04 挪到了右边入口排的末尾**（用户：「往后放，放设置后面试试」）。
+					 * 以前在左段最右边，紧挨「新会话」；现在跟「技能 / 模型 / 设置」同一排，见下面
+					 * `SidebarMenu` 之后那段。左段从此只剩「品牌 + 新会话」。
 					 */}
-					{fullscreen.supported ? (
-						<span className="appbar-side-end">
-							<button
-								type="button"
-								className={`appbar-side-btn${fullscreen.active ? " appbar-side-btn-on" : ""}`}
-								onClick={fullscreen.toggle}
-								aria-pressed={fullscreen.active}
-								title={fullscreen.active ? t("退出全屏", "Exit full screen") : t("全屏", "Full screen")}
-								aria-label={fullscreen.active ? t("退出全屏", "Exit full screen") : t("全屏", "Full screen")}
-							>
-								{/* 四角图标：进全屏是「往外张」，已在全屏时是「往里收」——同一个语汇，方向相反 */}
-								<svg
-									className="appbar-side-btn-icon"
-									viewBox="0 0 16 16"
-									fill="none"
-									stroke="currentColor"
-									strokeWidth={1.4}
-									strokeLinecap="round"
-									strokeLinejoin="round"
-									aria-hidden="true"
-								>
-									{fullscreen.active ? (
-										<>
-											<path d="M2.6 6.4h3.8V2.6" />
-											<path d="M13.4 6.4H9.6V2.6" />
-											<path d="M2.6 9.6h3.8v3.8" />
-											<path d="M13.4 9.6H9.6v3.8" />
-										</>
-									) : (
-										<>
-											<path d="M6.4 2.6H2.6v3.8" />
-											<path d="M9.6 2.6h3.8v3.8" />
-											<path d="M6.4 13.4H2.6V9.6" />
-											<path d="M9.6 13.4h3.8V9.6" />
-										</>
-									)}
-								</svg>
-							</button>
-						</span>
-					) : null}
 				</div>
 				{/*
 				 * 标题一侧整组（会话名 + 子代理徽标 + 入口排 + 分栏）单独包一层：它同时是**尺寸容器**
@@ -1582,6 +1549,50 @@ export function App() {
 								: undefined
 						}
 					/>
+					{/*
+					 * 整页全屏（2026-11-04 从左段末端挪到这儿：用户「往后放，放设置后面试试」）。
+					 * 位置是入口排的末尾、分栏分隔线之前 —— 也就是「设置」右边。
+					 * `supported` 为 false 时整组不画（iOS Safari 不支持元素全屏）：
+					 * 点了没反应比没有按钮更糟。状态由 `fullscreenchange` 兜着，Esc 退出也亮/灭得对。
+					 */}
+					{fullscreen.supported ? (
+						<button
+							type="button"
+							className={`appbar-side-btn${fullscreen.active ? " appbar-side-btn-on" : ""}`}
+							onClick={fullscreen.toggle}
+							aria-pressed={fullscreen.active}
+							title={fullscreen.active ? t("退出全屏", "Exit full screen") : t("全屏", "Full screen")}
+							aria-label={fullscreen.active ? t("退出全屏", "Exit full screen") : t("全屏", "Full screen")}
+						>
+							{/* 四角图标：进全屏是「往外张」，已在全屏时是「往里收」——同一个语汇，方向相反 */}
+							<svg
+								className="appbar-side-btn-icon"
+								viewBox="0 0 16 16"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth={1.4}
+								strokeLinecap="round"
+								strokeLinejoin="round"
+								aria-hidden="true"
+							>
+								{fullscreen.active ? (
+									<>
+										<path d="M2.6 6.4h3.8V2.6" />
+										<path d="M13.4 6.4H9.6V2.6" />
+										<path d="M2.6 9.6h3.8v3.8" />
+										<path d="M13.4 9.6H9.6v3.8" />
+									</>
+								) : (
+									<>
+										<path d="M6.4 2.6H2.6v3.8" />
+										<path d="M9.6 2.6h3.8v3.8" />
+										<path d="M6.4 13.4H2.6V9.6" />
+										<path d="M9.6 13.4h3.8V9.6" />
+									</>
+								)}
+							</svg>
+						</button>
+					) : null}
 					{/*
 					 * 分栏开关：点一下把屏幕分成两块 —— 左边还是对话，右边是工作区
 					 * （文件 / 终端 / 临时聊天 / 网页）；没标签时右边是工具落地页，
@@ -1896,7 +1907,10 @@ export function App() {
 											type="button"
 											className="ephemeral-close"
 											onClick={() =>
-												closeEphemeralChat(snapshot.active.conversationId as string, activeConversation?.title ?? "")
+												setClosingEphemeral({
+													conversationId: snapshot.active.conversationId as string,
+													title: activeConversation?.title ?? "",
+												})
 											}
 											title={
 												canPersistEphemeral
@@ -2039,6 +2053,17 @@ export function App() {
 			<ShortcutSheet />
 
 			{newProjectOpen ? <NewProjectDialog onClose={() => setNewProjectOpen(false)} /> : null}
+
+			{closingEphemeral ? (
+				<CloseEphemeralDialog
+					title={closingEphemeral.title}
+					onCancel={() => setClosingEphemeral(null)}
+					onConfirm={() => {
+						discardEphemeralChat(closingEphemeral.conversationId);
+						setClosingEphemeral(null);
+					}}
+				/>
+			) : null}
 
 			<ContentSearch
 				open={contentSearchOpen}

@@ -21,8 +21,8 @@ export type ShortcutId =
 	| "newProject"
 	| "tempChat"
 	| "settings"
-	| "openRight"
-	| "closeRight"
+	| "toggleRight"
+	| "projects"
 	| "toggleLeft"
 	| "files"
 	| "terminal"
@@ -43,9 +43,18 @@ export type ShortcutDefinition = {
 /**
  * 动作用一张表描述（顺序 = 设置面板里的行顺序）。
  *
- * 默认键的取法：`Mod+字母` 给「最常用、最想顺手」的两个（新会话 / 新项目，用户点名要的），
- * 其余面板类动作统一用 `Mod+Alt+字母` —— 这一档在浏览器里几乎没人占，也不容易和
- * macOS 的系统菜单撞（⌘M/⌘W/⌘T/⌘L 这些都是系统或浏览器先吃掉的）。
+ * 默认键的取法（2026-11-04 更新）：**这套默认值就是用户实际在用的那一套**，
+ * 用户原话：「改成默认也用这个，恢复时用现在的这些」。所以设置里点「恢复默认」
+ * 回到的就是截图里那套：
+ *
+ *   新会话 ⌘⌥N / 新项目 ⌘⌥X / 临时会话 ⌘⌥H / 设置 ⌘, /
+ *   右侧栏 ⌘⌥O / 左侧栏 ⌘⌥L / 项目管理 ⌘⌥P / 文件管理 ⌘⌥F /
+ *   终端 ⌃` / 搜索 ⌘⇧F / 速查表 ⌘/
+ *
+ * 两条通用规矩没变：`Mod+字母` 只给最顺手的，其余面板类动作统一用 `Mod+Alt+字母` ——
+ * 这一档在浏览器里几乎没人占，也不容易和 macOS 的系统菜单撞
+ * （⌘M/⌘W/⌘T/⌘L 这些都被系统或浏览器先吃掉）。改默认值时**顺手改 `tests/unit/shortcuts.test.ts`
+ * 里那份「默认键」断言**，那里是故意的二次确认。
  */
 export const SHORTCUT_DEFS: readonly ShortcutDefinition[] = [
 	{
@@ -54,15 +63,15 @@ export const SHORTCUT_DEFS: readonly ShortcutDefinition[] = [
 		labelEn: "New session",
 		hint: "换掉左边这条主对话，会落盘",
 		hintEn: "Replaces the main chat on the left; it is saved",
-		defaultCombo: "Mod+K",
+		defaultCombo: "Mod+Alt+N",
 	},
 	{
 		id: "newProject",
 		label: "新项目",
 		labelEn: "New project",
-		hint: "打开目录选择器；macOS 上 ⌘M 会被系统「最小化」抢走，建议改成 ⌘⇧M",
-		hintEn: "Opens the directory picker; on macOS ⌘M is taken by Window ▸ Minimize — use ⌘⇧M instead",
-		defaultCombo: "Mod+M",
+		hint: "打开目录选择器；macOS 上 ⌘M 会被系统「最小化」抢走，所以默认避开 ⌘M",
+		hintEn: "Opens the directory picker; ⌘M is taken by Window ▸ Minimize on macOS, so it is avoided",
+		defaultCombo: "Mod+Alt+X",
 	},
 	{
 		id: "tempChat",
@@ -70,25 +79,30 @@ export const SHORTCUT_DEFS: readonly ShortcutDefinition[] = [
 		labelEn: "Temp session",
 		hint: "在右侧另开一条不落盘的聊天",
 		hintEn: "Opens an unsaved chat on the right",
-		defaultCombo: "Mod+Shift+K",
+		defaultCombo: "Mod+Alt+H",
 	},
 	{
 		id: "settings",
 		label: "设置",
 		labelEn: "Settings",
-		defaultCombo: "Mod+Alt+S",
+		defaultCombo: "Mod+Comma",
 	},
+	/*
+	 * 右侧边栏就用**一个**动作（2026-11-04 用户：「合并成一个」）。
+	 * 以前分成「打开」「收起」两条，结果是同一個面板占两个键、两份文案，
+	 * 实际用起来只会记得“左侧边栏是切换、右边却要分两个键”。
+	 * 旧数据里的 `openRight` / `closeRight` 会在 `readShortcuts` 里迁到这条（见 `LEGACY_IDS`）。
+	 *
+	 * 摆放位置（用户 2026-11-04）：**紧贴在「收起 / 展开左侧栏」上方**，两条一上一下对看；
+	 * 文案也跟它对齐成「收起 / 展开…栏」（原来单写「右侧边栏」看不出是一个开关）。
+	 */
 	{
-		id: "openRight",
-		label: "打开右侧边栏",
-		labelEn: "Open right panel",
+		id: "toggleRight",
+		label: "收起 / 展开右侧栏",
+		labelEn: "Toggle right panel",
+		hint: "同一个键开 / 关：关着就打开，开着就收起",
+		hintEn: "Opens and closes with the same key",
 		defaultCombo: "Mod+Alt+O",
-	},
-	{
-		id: "closeRight",
-		label: "收起右侧边栏",
-		labelEn: "Close right panel",
-		defaultCombo: "Mod+Alt+W",
 	},
 	{
 		id: "toggleLeft",
@@ -96,19 +110,34 @@ export const SHORTCUT_DEFS: readonly ShortcutDefinition[] = [
 		labelEn: "Toggle left sidebar",
 		defaultCombo: "Mod+Alt+L",
 	},
+	/*
+	 * 「项目管理」紧贴在「文件管理」上方（用户 2026-11-04：「跟文件管理上下靠着」）：
+	 * 这两个都是**左栏里的一轤**（管理哪几个项目 / 看哪个文件树），而上面两条是「整栏收起 / 展开」——
+	 * 两种粒度分开排，看的时候不用在一排里找。
+	 */
+	{
+		id: "projects",
+		label: "项目管理",
+		labelEn: "Projects",
+		hint: "侧栏里「项目管理」那一栏的开关；侧栏收着时会先展开",
+		hintEn: "Toggles the Projects section in the sidebar; expands the sidebar if it was collapsed",
+		defaultCombo: "Mod+Alt+P",
+	},
 	{
 		id: "files",
 		label: "文件管理",
 		labelEn: "Files",
-		hint: "打开左侧文件树（收起状态会自动展开）",
-		hintEn: "Opens the file tree on the left (expands the sidebar if collapsed)",
+		hint: "同一个键开 / 关：树开着就收起；侧栏收着时会先展开",
+		hintEn: "Opens and closes with the same key; expands the sidebar if it was collapsed",
 		defaultCombo: "Mod+Alt+F",
 	},
 	{
 		id: "terminal",
-		label: "新建终端",
-		labelEn: "New terminal",
-		defaultCombo: "Mod+Alt+T",
+		label: "打开终端",
+		labelEn: "Terminal",
+		hint: "Ctrl+` —— 在右栏开（或切回）终端；mac ⌘` 会被系统「切换窗口」先吃掉，所以用 ⌃",
+		hintEn: "Ctrl+` — opens (or focuses) the terminal on the right; on macOS ⌘` is taken by “cycle windows”, hence ⌃",
+		defaultCombo: "Ctrl+Backquote",
 	},
 	{
 		id: "contentSearch",
@@ -134,7 +163,7 @@ export const SHORTCUTS_KEY = "agent-web.shortcuts";
 const SHORTCUTS_EVENT = "agent-web:shortcuts";
 
 /** 解析后的组合键：`key` 是 token（`K` / `Comma` / `ArrowLeft`…），不是打字结果 */
-export type ParsedCombo = { mod: boolean; shift: boolean; alt: boolean; key: string };
+export type ParsedCombo = { mod: boolean; ctrl: boolean; shift: boolean; alt: boolean; key: string };
 
 /** 允许当主键的命名键（跟 `event.code` 一致，避免 Shift 把 `,` 变成 `<` 这种歧义） */
 const CODE_KEYS = new Set([
@@ -206,27 +235,43 @@ export function parseCombo(combo: string | null | undefined): ParsedCombo | null
 	if (parts.length < 2) return null;
 	const key = parts[parts.length - 1] ?? "";
 	if (key === "") return null;
-	const parsed: ParsedCombo = { mod: false, shift: false, alt: false, key };
+	const parsed: ParsedCombo = { mod: false, ctrl: false, shift: false, alt: false, key };
 	for (const part of parts.slice(0, -1)) {
 		if (part === "Mod") parsed.mod = true;
+		else if (part === "Ctrl") parsed.ctrl = true;
 		else if (part === "Shift") parsed.shift = true;
 		else if (part === "Alt") parsed.alt = true;
 		else return null; // 不认识的修饰键：整条作废，别猜
 	}
-	// 约定 2：必须带 Mod 或 Alt（Shift 单独不算）
-	if (!parsed.mod && !parsed.alt) return null;
+	// 约定 2：必须带 Mod / Ctrl / Alt（Shift 单独不算）
+	if (!parsed.mod && !parsed.ctrl && !parsed.alt) return null;
 	const known = /^[A-Z0-9]$/.test(key) || /^F([1-9]|1[0-2])$/.test(key) || CODE_KEYS.has(key);
 	return known ? parsed : null;
 }
 
-/** 把解析结果拼回规范字符串（顺序固定：Mod → Shift → Alt → key） */
+/** 把解析结果拼回规范字符串（顺序固定：Mod → Ctrl → Shift → Alt → key） */
 export function comboOf(parsed: ParsedCombo): string {
 	const parts: string[] = [];
 	if (parsed.mod) parts.push("Mod");
+	if (parsed.ctrl) parts.push("Ctrl");
 	if (parsed.shift) parts.push("Shift");
 	if (parsed.alt) parts.push("Alt");
 	parts.push(parsed.key);
 	return parts.join("+");
+}
+
+/**
+ * 按**平台**归一化一条存储值。
+ *
+ * 非 macOS 上 Ctrl 就是主修饰键本身（`Mod` 和 `Ctrl` 是同一个物理键），
+ * 所以 `Ctrl+` → `Mod+``；macOS 上两者是两个不同的键（`⌃` / `⌘`），原样保留。
+ * 两边都归一到一个写法后，“存什么”和“按什么”才能对上。
+ */
+export function platformCombo(combo: string | null | undefined, mac = isMacPlatform()): string | null {
+	const parsed = parseCombo(combo);
+	if (!parsed) return null;
+	if (!mac && parsed.ctrl) return comboOf({ ...parsed, ctrl: false, mod: true });
+	return comboOf(parsed);
 }
 
 /** 归一化（同一组合只有一种写法）；非法 → null */
@@ -258,8 +303,16 @@ export function comboFromEvent(
 	if (!key) return null;
 	// 主修饰键只认该平台那一个（见文件头第 1 条）
 	const mod = mac ? Boolean(event.metaKey) : Boolean(event.ctrlKey);
-	if (!mod && !event.altKey) return null;
-	return comboOf({ mod, shift: Boolean(event.shiftKey), alt: Boolean(event.altKey), key });
+	// 单独的 Ctrl 只在 macOS 上可表达（其它平台它已经就是 Mod）
+	const ctrl = mac ? Boolean(event.ctrlKey) : false;
+	if (!mod && !ctrl && !event.altKey) return null;
+	/**
+	 * macOS 上「单独的 ⌃ + 字母/数字」仍不认：`⌃K` 是文本框里「删到行尾」、`⌃A/⌃E` 是行首行尾，
+	 * 抢它们等于把编辑习惯弄坏（文件头约定 1 的理由）。
+	 * `⌃\``（用户要的「打开终端」）不在这个集合里 —— 它不是文本编辑键，所以放行。
+	 */
+	if (mac && ctrl && !mod && /^[A-Z0-9]$/.test(key)) return null;
+	return comboOf({ mod, ctrl, shift: Boolean(event.shiftKey), alt: Boolean(event.altKey), key });
 }
 
 /** 事件 → 命中的动作（没有就是 null）；派发器只需要这一个函数 */
@@ -278,7 +331,7 @@ export function shortcutFor(
 	const combo = comboFromEvent(event, mac);
 	if (!combo) return null;
 	for (const def of SHORTCUT_DEFS) {
-		if (map[def.id] === combo) return def.id;
+		if (platformCombo(map[def.id], mac) === combo) return def.id;
 	}
 	return null;
 }
@@ -316,6 +369,16 @@ export function dedupeShortcuts(map: ShortcutMap): ShortcutMap {
 	return next;
 }
 
+/**
+ * 合并 / 改名过的旧动作：旧 id → 新 id。
+ *
+ * 只在读存储时用：老数据里存的是旧 id，不迁的话用户的绑定会凭空丢掉（回落默认）。
+ * 迁移规则很土：按新表里**新 id 缺失**才看旧 id，旧值原样拿来，还是走同一套归一化。
+ */
+const LEGACY_IDS: Partial<Record<ShortcutId, readonly string[]>> = {
+	toggleRight: ["openRight", "closeRight"],
+};
+
 /** 读存储：坏 JSON / 坏值一律回落默认，绝不抛错（隐私模式下 localStorage 也可能 throw） */
 export function readShortcuts(raw: string | null): ShortcutMap {
 	let parsed: unknown = null;
@@ -328,6 +391,12 @@ export function readShortcuts(raw: string | null): ShortcutMap {
 	const map = {} as ShortcutMap;
 	for (const def of SHORTCUT_DEFS) {
 		if (!(def.id in stored)) {
+			// 没有新 id：先看有没有合并前的旧 id（有的话直接用它）
+			const legacy = LEGACY_IDS[def.id]?.find((id) => typeof stored[id] === "string");
+			if (legacy) {
+				map[def.id] = normalizeCombo(stored[legacy] as string);
+				continue;
+			}
 			// 没配过（含以后新加的动作）→ 用默认键
 			map[def.id] = normalizeCombo(def.defaultCombo);
 			continue;
@@ -378,12 +447,13 @@ export function findConflict(
 	map: ShortcutMap,
 	combo: string | null | undefined,
 	except?: ShortcutId,
+	mac = isMacPlatform(),
 ): ShortcutId | null {
-	const normalized = normalizeCombo(combo);
+	const normalized = platformCombo(combo, mac);
 	if (!normalized) return null;
 	for (const def of SHORTCUT_DEFS) {
 		if (def.id === except) continue;
-		if (map[def.id] === normalized) return def.id;
+		if (platformCombo(map[def.id], mac) === normalized) return def.id;
 	}
 	return null;
 }
@@ -429,9 +499,20 @@ export function formatCombo(combo: string | null | undefined, mac = isMacPlatfor
 	const parsed = parseCombo(combo);
 	if (!parsed) return "";
 	const parts: string[] = [];
-	if (parsed.mod) parts.push(mac ? "⌘" : "Ctrl");
-	if (parsed.shift) parts.push(mac ? "⇧" : "Shift");
-	if (parsed.alt) parts.push(mac ? "⌥" : "Alt");
+	/* macOS 用符号且按系统顺序（⌃⌥⇧⌘）；其它平台只有 Ctrl 一个修饰键名，
+	 * `Mod` 和 `Ctrl` 重复时就只写一次。 */
+	if (mac) {
+		/* 顺序保持原样（⌘⇧⌥），只把新加的 ⌃ 放在最前：系统里通常写作 ⌃⌥⇧⌘，
+		 * 但这一栏原有的展示习惯是 ⌘ 开头，不为一个新修饰键重排全部文案。 */
+		if (parsed.ctrl) parts.push("⌃");
+		if (parsed.mod) parts.push("⌘");
+		if (parsed.shift) parts.push("⇧");
+		if (parsed.alt) parts.push("⌥");
+	} else {
+		parts.push("Ctrl");
+		if (parsed.shift) parts.push("Shift");
+		if (parsed.alt) parts.push("Alt");
+	}
 	const label = KEY_LABELS[parsed.key];
 	parts.push(label ? label[mac ? 0 : 1] : parsed.key);
 	return mac ? parts.join("") : parts.join("+");

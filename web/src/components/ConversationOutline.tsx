@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { UiMessage } from "../types.ts";
 import { tNow, useT } from "../use-language.ts";
 
@@ -56,6 +56,34 @@ export function ConversationOutline({ messages }: { messages: UiMessage[] }) {
 	 * 依赖里带上 `t`：条目文本里有 `tNow` 的空消息文案，切语言要跟着重算。
 	 */
 	const items = useMemo(() => buildItems(messages), [messages, t]);
+	/**
+	 * 预览面板的垂直锚点：`.outline` 是 `row-reverse + flex-start`，默认会把面板顶在
+	 * 整个大纲的最上面，跟鼠标指着的方块毫无关系 —— 会话一长，点下面的方块、弹窗
+	 * 却在屏幕顶上。这里量出悬停方块的位置，把面板平移过去。
+	 *
+	 * 对齐的是面板里「当前高亮的那一条」而不是面板顶部：面板会带前后各两条语境，
+	 * 对顶部就会让高亮条和鼠标差出好几行。
+	 */
+	const [previewOffset, setPreviewOffset] = useState(0);
+	const outlineRef = useRef<HTMLDivElement | null>(null);
+	const railRef = useRef<HTMLDivElement | null>(null);
+	const previewRef = useRef<HTMLDivElement | null>(null);
+	useLayoutEffect(() => {
+		if (hoverIndex === null) return;
+		const container = outlineRef.current;
+		const preview = previewRef.current;
+		const dot = railRef.current?.children[hoverIndex] as HTMLElement | undefined;
+		if (!container || !preview || !dot) return;
+		const containerRect = container.getBoundingClientRect();
+		const previewRect = preview.getBoundingClientRect();
+		const active = preview.querySelector<HTMLElement>(".outline-entry-on");
+		// 高亮条相对面板顶部的偏移（面板自身的 marginTop 会一起平移，差值是稳定的）
+		const activeTop = active ? active.getBoundingClientRect().top - previewRect.top : 0;
+		const dotTop = dot.getBoundingClientRect().top - containerRect.top;
+		// 别超出大纲可视范围：上方不出界，下方留 8px 余量
+		const max = Math.max(0, container.clientHeight - preview.offsetHeight - 8);
+		setPreviewOffset(Math.max(0, Math.min(dotTop - activeTop, max)));
+	}, [hoverIndex, items.length]);
 	if (items.length === 0) return null;
 
 	const jump = (id: string) => {
@@ -67,8 +95,8 @@ export function ConversationOutline({ messages }: { messages: UiMessage[] }) {
 		hoverIndex === null ? [] : items.slice(Math.max(0, hoverIndex - 2), Math.min(items.length, hoverIndex + 3));
 
 	return (
-		<div className="outline" aria-label={t("对话大纲")}>
-			<div className="outline-rail" onMouseLeave={scheduleClose} onMouseEnter={keepOpen}>
+		<div className="outline" aria-label={t("对话大纲")} ref={outlineRef}>
+			<div className="outline-rail" ref={railRef} onMouseLeave={scheduleClose} onMouseEnter={keepOpen}>
 				{items.map((item, index) => (
 					<button
 						type="button"
@@ -82,7 +110,13 @@ export function ConversationOutline({ messages }: { messages: UiMessage[] }) {
 				))}
 			</div>
 			{hoverIndex !== null ? (
-				<div className="outline-preview" onMouseEnter={keepOpen} onMouseLeave={scheduleClose}>
+				<div
+					className="outline-preview"
+					ref={previewRef}
+					style={{ marginTop: previewOffset }}
+					onMouseEnter={keepOpen}
+					onMouseLeave={scheduleClose}
+				>
 					{window.map((item) => {
 						const isCurrent = items[hoverIndex]?.id === item.id;
 						return (

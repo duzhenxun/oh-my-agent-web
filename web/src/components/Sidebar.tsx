@@ -14,6 +14,7 @@ import { SessionSelectionBar } from "./SessionSelectionBar.tsx";
 import { groupArchived, isProjectOpen } from "../archived-groups.ts";
 import { deleteSession, deleteSessions } from "../delete-session.ts";
 import { showToast } from "../toast.ts";
+import { registerProjectsToggle } from "../projects-panel.ts";
 import { getAppState, startNewSession } from "../store.ts";
 import { sessionUrlFor } from "../session-url.ts";
 import { SessionRow } from "./SessionRow.tsx";
@@ -200,6 +201,11 @@ function SidebarInner({
 	 * 以前点标题是「把所有项目各自展开/收起」—— 那是另一个动作，现在挪到标题右边的图标上。
 	 */
 	const [projectsOpen, setProjectsOpen] = useState(true);
+	/**
+	 * 登给快捷键用（见 `projects-panel.ts`）：状态在本地，快捷键在 `App`，
+	 * 这一栏收起 / 展开的唯一入口就是这颗回调。侧栏卸载时自动注销。
+	 */
+	useEffect(() => registerProjectsToggle(() => setProjectsOpen((open) => !open)), []);
 	/** 列表底部「已隐藏 · N」那个入口是否展开（展开就是一串可「取消隐藏」的项目） */
 	const [hiddenOpen, setHiddenOpen] = useState(false);
 	/**

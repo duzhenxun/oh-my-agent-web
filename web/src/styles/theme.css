@@ -62,7 +62,6 @@
 :root[data-theme="dark"] {
 	/* 顶栏投影：深色主题下黑底上的黑影几乎看不见，得加浓才分得出「顶栏 / 内容」 */
 	--appbar-shadow-line: rgb(0 0 0 / 22%);
-	--appbar-shadow: rgb(0 0 0 / 45%);
 	--bg: #1a1b26;
 	--bg-elev: #1f2335;
 	--bg-elev-2: #292e42;
@@ -89,7 +88,6 @@
 :root[data-theme="dark-night"] {
 	/* 顶栏投影：深色主题下黑底上的黑影几乎看不见，得加浓才分得出「顶栏 / 内容」 */
 	--appbar-shadow-line: rgb(0 0 0 / 22%);
-	--appbar-shadow: rgb(0 0 0 / 45%);
 	--bg: #1e1e2e;
 	--bg-elev: #25253a;
 	--bg-elev-2: #313244;
@@ -116,7 +114,6 @@
 :root[data-theme="dark-warm"] {
 	/* 顶栏投影：深色主题下黑底上的黑影几乎看不见，得加浓才分得出「顶栏 / 内容」 */
 	--appbar-shadow-line: rgb(0 0 0 / 22%);
-	--appbar-shadow: rgb(0 0 0 / 45%);
 	--bg: #2e3440;
 	--bg-elev: #343b49;
 	--bg-elev-2: #3b4252;
@@ -144,7 +141,6 @@
  * 主区使用编辑器灰黑，顶栏 / 侧栏 / 状态栏另用更深的 #181818；文字柔白，蓝色只作关键强调。 */
 :root[data-theme="dark-vscode"] {
 	--appbar-shadow-line: rgb(0 0 0 / 28%);
-	--appbar-shadow: rgb(0 0 0 / 42%);
 	--bg: #1f1f1f;
 	--bg-elev: #252526;
 	--bg-elev-2: #2d2d2d;

@@ -113,7 +113,10 @@ export function ShortcutsPane() {
 				<span>{t("快捷键", "Shortcuts")}</span>
 				<span className="settings-sub">
 					{mac
-						? t("macOS：⌘ 就是这里的 Mod 键", "macOS: ⌘ is the Mod key")
+						? t(
+								"macOS：Mod = ⌘；想要真正的 ⌃ 就录 ⌃ + 非字母键（如 ⌃`）",
+								"macOS: Mod = ⌘; for a real ⌃ combo record ⌃ plus a non-letter key (e.g. ⌃`)",
+							)
 						: t("这里写 Ctrl 的地方，macOS 上是 ⌘", "Where it says Ctrl, macOS uses ⌘")}
 				</span>
 			</div>

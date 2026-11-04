@@ -171,13 +171,15 @@ export function StatusBar({
 							)
 						}
 						title={t(
-							"审批模式（全局生效，重启回到默认：放行）——点一下在「放行 / 询问」之间切换",
-							"Approval mode (global; resets to allow on restart) — click to switch between allow and ask",
+							"审批模式（全局生效，重启回到默认：全放行）——点一下在「全放行 / 询问」之间切换",
+							"Approval mode (global; resets to allow-all on restart) — click to switch between allow-all and ask",
 						)}
 					>
-						{/* 文案 2026-10-29 从「全部放行」改短成「放行」（用户：改成放行）——
-						 * 跟隔壁的「🔒 询问」一样是两个字的动作词，手机上这一排本来就挤。 */}
-						{snapshot?.approvalMode === "allow" ? t("🔓 放行", "🔓 Allow") : t("🔒 询问", "🔒 Ask")}
+						{/* 文案 2026-11-04 从「放行」改回三字「全放行」（用户：文案改成全放行）——
+						 * 「放行」读起来像一次性的单个动作，而这一档是**本会话全部不再拦**，
+						 * 加上「全」才不会跟审批弹窗里的「放行这一次」混。
+						 * （更早的 2026-10-29 曾从「全部放行」缩成「放行」，那次是为了手机窄栏。） */}
+						{snapshot?.approvalMode === "allow" ? t("🔓 全放行", "🔓 Allow all") : t("🔒 询问", "🔒 Ask")}
 					</button>
 				)}
 				<EnginePicker placement="statusbar" />

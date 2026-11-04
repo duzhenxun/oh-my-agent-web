@@ -17,6 +17,7 @@ import {
 	isReservedCombo,
 	normalizeCombo,
 	parseCombo,
+	platformCombo,
 	readShortcuts,
 	shortcutFor,
 } from "../../web/src/shortcuts.ts";
@@ -60,6 +61,26 @@ describe("组合键解析与归一化", () => {
 
 	it("Windows 上的 Win 键不算 Mod（只认 Ctrl）", () => {
 		assert.equal(comboFromEvent(key({ key: "k", code: "KeyK", meta: true }), false), null);
+	});
+
+	it("macOS 上单独的 ⌃ + 非字母键可用（⌃` 开终端），字母/数字仍不认", () => {
+		assert.equal(comboFromEvent(key({ key: "`", code: "Backquote", ctrl: true }), true), "Ctrl+Backquote");
+		assert.equal(comboFromEvent(key({ key: "1", code: "Digit1", ctrl: true }), true), null);
+		assert.equal(comboFromEvent(key({ key: "1", code: "Digit1", ctrl: true }), false), "Mod+1");
+	});
+
+	it("Ctrl+` 在 mac 上真的能命中终端，⌘` 不会（避免跟系统「切换窗口」打抢）", () => {
+		const map = { ...defaultShortcuts(), terminal: "Ctrl+Backquote" };
+		const backquote = { key: "`", code: "Backquote" };
+		assert.equal(shortcutFor(map, key({ ...backquote, ctrl: true }), true), "terminal");
+		assert.equal(shortcutFor(map, key({ ...backquote, meta: true }), true), null);
+	});
+
+	it("非 mac 上 Ctrl 就是 Mod：两种写法指向同一个键，都能命中", () => {
+		const map = { ...defaultShortcuts(), terminal: "Ctrl+Backquote" };
+		assert.equal(platformCombo("Ctrl+Backquote", false), "Mod+Backquote");
+		assert.equal(shortcutFor(map, key({ key: "`", code: "Backquote", ctrl: true }), false), "terminal");
+		assert.equal(formatCombo("Ctrl+Backquote", false), "Ctrl+`");
 	});
 
 	it("修饰键顺序不同也归一成同一个字符串", () => {
@@ -133,6 +154,8 @@ describe("展示文案", () => {
 		assert.equal(formatCombo("Mod+Shift+K", false), "Ctrl+Shift+K");
 		assert.equal(formatCombo("Mod+Alt+O", true), "⌘⌥O");
 		assert.equal(formatCombo("Mod+Alt+O", false), "Ctrl+Alt+O");
+		assert.equal(formatCombo("Ctrl+Backquote", true), "⌃`");
+		assert.equal(formatCombo("Ctrl+Backquote", false), "Ctrl+`");
 	});
 
 	it("未设置 / 坏值展示成空串（由调用方写「未设置」）", () => {
@@ -142,10 +165,19 @@ describe("展示文案", () => {
 });
 
 describe("默认表", () => {
-	it("用户点名要的两个：新会话 Mod+K、新项目 Mod+M", () => {
+	it("默认值 = 用户实际在用的那一套（2026-11-04 定）", () => {
 		const defaults = defaultShortcuts();
-		assert.equal(defaults.newChat, "Mod+K");
-		assert.equal(defaults.newProject, "Mod+M");
+		assert.equal(defaults.newChat, "Mod+Alt+N");
+		assert.equal(defaults.newProject, "Mod+Alt+X");
+		assert.equal(defaults.tempChat, "Mod+Alt+H");
+		assert.equal(defaults.settings, "Mod+Comma");
+		assert.equal(defaults.toggleRight, "Mod+Alt+O");
+		assert.equal(defaults.toggleLeft, "Mod+Alt+L");
+		assert.equal(defaults.projects, "Mod+Alt+P");
+		assert.equal(defaults.files, "Mod+Alt+F");
+		assert.equal(defaults.terminal, "Ctrl+Backquote");
+		assert.equal(defaults.contentSearch, "Mod+Shift+F");
+		assert.equal(defaults.cheatSheet, "Mod+Slash");
 	});
 
 	it("默认值互不重复，且没有任何一条是「裸键」或浏览器保留键", () => {
@@ -159,18 +191,18 @@ describe("默认表", () => {
 	});
 
 	it("测试里那份「默认键」常量与实际默认值一致", () => {
-		// 这两个是用户点名要的，写在断言里当锁（改默认值就得来这里确认一下）
-		assert.equal(defaultShortcuts().newChat, "Mod+K");
-		assert.equal(defaultShortcuts().newProject, "Mod+M");
+		// 用户在用的那一套：改默认值就得来这里确认一下
+		assert.equal(defaultShortcuts().newChat, "Mod+Alt+N");
+		assert.equal(defaultShortcuts().newProject, "Mod+Alt+X");
 	});
 });
 
 describe("去重与冲突", () => {
 	it("同一组合只留给表里靠前的动作，后来的置空", () => {
 		const map = defaultShortcuts();
-		map.tempChat = "Mod+K"; // 跟 newChat 撞了
+		map.tempChat = "Mod+Alt+N"; // 跟 newChat 撞了
 		const clean = dedupeShortcuts(map);
-		assert.equal(clean.newChat, "Mod+K");
+		assert.equal(clean.newChat, "Mod+Alt+N");
 		assert.equal(clean.tempChat, null);
 	});
 
@@ -182,17 +214,20 @@ describe("去重与冲突", () => {
 
 	it("shortcutFor：事件 → 命中的动作（派发器只用它）", () => {
 		const map = defaultShortcuts();
-		assert.equal(shortcutFor(map, key({ key: "k", code: "KeyK", meta: true }), true), "newChat");
-		assert.equal(shortcutFor(map, key({ key: "m", code: "KeyM", meta: true }), true), "newProject");
-		assert.equal(shortcutFor(map, key({ key: "o", code: "KeyO", ctrl: true, alt: true }), false), "openRight");
+		assert.equal(shortcutFor(map, key({ key: "n", code: "KeyN", meta: true, alt: true }), true), "newChat");
+		assert.equal(shortcutFor(map, key({ key: "x", code: "KeyX", meta: true, alt: true }), true), "newProject");
+		assert.equal(shortcutFor(map, key({ key: "o", code: "KeyO", meta: true, alt: true }), true), "toggleRight");
 		// 未设置的动作永远命中不了
-		assert.equal(shortcutFor({ ...map, newChat: null }, key({ key: "k", code: "KeyK", meta: true }), true), null);
+		assert.equal(
+			shortcutFor({ ...map, newChat: null }, key({ key: "n", code: "KeyN", meta: true, alt: true }), true),
+			null,
+		);
 	});
 
 	it("findConflict 能报出「这条组合被谁占了」，且能排除自己", () => {
 		const map = defaultShortcuts();
-		assert.equal(findConflict(map, "Mod+K"), "newChat");
-		assert.equal(findConflict(map, "Mod+K", "newChat"), null);
+		assert.equal(findConflict(map, "Mod+Alt+N"), "newChat");
+		assert.equal(findConflict(map, "Mod+Alt+N", "newChat"), null);
 		assert.equal(findConflict(map, "Mod+F9"), null);
 	});
 });
@@ -225,6 +260,15 @@ describe("存储清洗", () => {
 		assert.equal(map.tempChat, null);
 	});
 
+	it("合并前的旧 id（openRight / closeRight）能迁到新的 toggleRight", () => {
+		// 用户曾把「打开」改成 ⌘⇧O：合并后这个绑定不能凭空丢掉
+		const map = readShortcuts(JSON.stringify({ openRight: "Mod+Shift+O", closeRight: "Mod+Alt+W" }));
+		assert.equal(map.toggleRight, "Mod+Shift+O");
+		// 新 id 已经存在时不再看旧值（新值优先）
+		const explicit = readShortcuts(JSON.stringify({ toggleRight: "Mod+Alt+J", openRight: "Mod+Shift+O" }));
+		assert.equal(explicit.toggleRight, "Mod+Alt+J");
+	});
+
 	it("每个动作都在表里有定义（防止新增动作忘了写 def）", () => {
 		const map = defaultShortcuts();
 		for (const def of SHORTCUT_DEFS) assert.ok(def.id in map, `${def.id} 缺行`);
@@ -240,13 +284,13 @@ describe("速查表（浮层）", () => {
 			SHORTCUT_DEFS.map((def) => def.id),
 			"顺序要跟设置面板一致",
 		);
-		assert.equal(rows.find((row) => row.id === "newChat")?.combo, "⌘K");
+		assert.equal(rows.find((row) => row.id === "newChat")?.combo, "⌘⌥N");
 		assert.equal(rows.find((row) => row.id === "cheatSheet")?.combo, "⌘/");
 	});
 
 	it("Windows 文案用长名", () => {
 		const rows = sheetRows(defaultShortcuts(), false);
-		assert.equal(rows.find((row) => row.id === "newChat")?.combo, "Ctrl+K");
+		assert.equal(rows.find((row) => row.id === "newChat")?.combo, "Ctrl+Alt+N");
 	});
 
 	it("未绑定的动作照样列出来（显示成 null，由界面画「未设置」）", () => {

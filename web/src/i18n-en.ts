@@ -129,8 +129,8 @@ export const EN: Record<string, string> = {
 	"临时会话（不保存）": "Temporary session (not saved)",
 	全部收起: "Collapse all",
 	全部展开: "Expand all",
-	// 审批模式芯片的文案（旧文案是「全部放行」，2026-10-29 按用户要求改短）
-	放行: "Allow",
+	// 审批模式芯片的文案（2026-10-29 曾缩成「放行」，2026-11-04 按用户要求改回「全放行」）
+	全放行: "Allow all",
 	询问: "Ask",
 	顶部: "Top",
 	终端: "Terminal",

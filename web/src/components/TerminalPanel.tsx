@@ -77,8 +77,18 @@ export function TerminalPanel({
 		const term = new Terminal({
 			// 初值取当前偏好；之后由下面那个 effect 跟着改（不重建终端）
 			fontSize: fontPxRef.current,
-			// 补上 Windows 字体：SFMono/Menlo 都没有，缺了就落到 Courier New，TUI 制表符会错位
-			fontFamily: '"Cascadia Mono", Consolas, "Courier New", ui-monospace, SFMono-Regular, Menlo, monospace',
+			// 补上 Windows 字体：SFMono/Menlo 都没有，缺了就落到 Courier New，TUI 制表符会错位。
+			// 2026-11-04（用户：「终端的字体被压扁了」）：`ui-monospace` / `Menlo` 提到 `Courier New` **前面** ——
+			// 以前 macOS 上 Cascadia / Consolas 都没有，于是先命中 Courier New（细弱、带衬线的打字机体），
+			// 再用系统等宽（SF Mono / Menlo）就正常了；Windows 上这几个全部落空，照旧落到 Courier New。
+			fontFamily:
+				'"Cascadia Mono", Consolas, ui-monospace, SFMono-Regular, Menlo, "Courier New", monospace',
+			/**
+			 * 行高：xterm 默认是 1.0，字号一大（⌘+滚轮可以调到 24px）字就上下贴着，
+			 * 看着像被压扁（用户 2026-11-04）。1.2 是「不显挤、又不多占行」的常用值。
+			 * **不会**影响列数：列宽只看字符宽度，行高只管纵向。
+			 */
+			lineHeight: 1.2,
 			theme: { background: "#0d1117", foreground: "#c9d1d9" },
 			cursorBlink: true,
 			scrollback: 2000,

@@ -11,8 +11,10 @@
  * `--ab` 只在 `.appbar` 里改值，其它地方恒为 1：`.side-foot-icon` 这类共用类
  * 在顶栏里会跟着缩，在弹窗 Tab / 侧栏底部保持原样。
  *
- * 底边除 1px 边框外加一条极淡的阴影（往下 2px、柔散 6px）：顶栏和对话区都是浅色时，
- * 一条 1px 线分不清是「栏的边界」还是「内容的边框」，带点投影才看得出上面是浮着的一层。 */
+ * 底边除 1px 边框外只多一条 1px 的窄阴影：顶栏和对话区都是浅色时，
+ * 一条 1px 线分不清是「栏的边界」还是「内容的边框」，略深一点就够。
+ * （更早还有一层 4px/12px 的柔散投影，2026-11-04 按用户要求去掉 —— 它在浅色主题下
+ *   就是顶栏下面一条灰带。） */
 .appbar {
 	flex: none;
 	display: flex;
@@ -39,13 +41,11 @@
 	/* 阴影要盖在下面的三栏上：不定位的话会被 .app-main 的背景/边框覆盖掉 */
 	position: relative;
 	z-index: 4;
-	/* 颜色抽成变量（`--appbar-shadow`）：深色主题要更浓一点才看得见，
-	   而模糊半径里的 `--ab` 必须留在**这里**算 —— 写在 `:root` 的变量里
-	   会按 `:root` 的 `--ab`（=1）解析，顶栏缩小后阴影就不跟着缩了。 */
-	box-shadow:
-		/* 贴着栏底的一条窄阴影 + 一层大一点的柔散（两层叠起来才像「浮在上面」） */
-		0 1px 0 var(--appbar-shadow-line, rgb(0 0 0 / 6%)),
-		0 calc(4px * var(--ab)) calc(12px * var(--ab)) var(--appbar-shadow, rgb(0 0 0 / 12%));
+	/* 颜色抽成变量（`--appbar-shadow-line`）：深色主题要更浓一点才看得见。
+	 * 2026-11-04（用户：「这里有块阴影不好看」）：**去掉了那层 4px/12px 的柔散投影**。
+	 * 顶栏在布局里是普通一列、并不浮在内容上，那层 12% 的黑模糊在浅色主题下
+	 * 表现为顶栏下面一条灰带（截图里那一条）；分隔已经由 `border-bottom` 那条线承担。 */
+	box-shadow: 0 1px 0 var(--appbar-shadow-line, rgb(0 0 0 / 6%));
 	min-width: 0;
 }
 
@@ -155,35 +155,24 @@
  *
  * 这里以前还有一道竖线（`.appbar-divider`）把「品牌 / 新会话」跟全屏分开，
  * 用户不要了（「全屏左边那条竖线不要」）：那段里两道线挨得太近，看着像多出来一根。 */
-.appbar-side-end {
-	display: inline-flex;
-	align-items: center;
-	/* 这一段本来就窄：再宽一点品牌名就要多截两三个字 */
-	gap: calc(6px * var(--ab));
-	flex: none;
-	/* 拉满顶栏内容高度 */
-	align-self: stretch;
-}
+/* 2026-11-04：全屏那颗从这段挪到了右边入口排（见 App.tsx），
+ * `.appbar-side-end` 包裹层与它的 `margin-left: auto` 一起删了。 */
 
-/* 展开态「新会话」那颗不在这一段（它在侧栏抬头，见 `.appbar-side-fixed .newchat-pill`），
- * 没有它顶着，这一组得自己靠右 —— 收起态则由 `.newchat-pill` 的 auto 外边距负责。 */
-.appbar-side-fixed .appbar-side-end {
-	margin-left: auto;
-}
-
-/* ---- 顶栏左段里的小方按钮（目前是全屏那颗）----
- * 框画成小的方按钮（图标 + 两倍内边距 ≈ 28px）：它挨着「品牌 / 新会话」那条线，
- * 光图标会糊在里面；带一圈细边和浅底，才看得出是能按的。
+/* ---- 顶栏里的小方按钮（目前是全屏那颗）----
+ * 框画成小的方按钮（图标 + 两倍内边距）：它现在长在入口排末尾，
+ * 旁边那几颗都是裸图标，光一个图标会糊在里面；带一圈细边和浅底，才看得出是能按的。
  * 手机上手指要按得住，尺寸另见 responsive.css。 */
 .appbar-side-btn {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
 	flex: none;
-	/* 4px：右边这段本来就窄，方框比原来的 5px 再收一档（≈24px） */
-	padding: calc(4px * var(--ab));
+	/* 这段本来就窄，方框一直是往小里收的（5px → 4px → 3px）。
+	 * 2026-11-04（用户：这颗按钮变小一些）：上下内边距 4 → 3、图标 16 → 14、圆角 8 → 7，
+	 * 整颗从 26px 收到 22px。图标不再往下缩：`┌` 这种细笔画 14px 以下会糊成一块。 */
+	padding: calc(3px * var(--ab));
 	border: 1px solid var(--border);
-	border-radius: calc(8px * var(--ab));
+	border-radius: calc(7px * var(--ab));
 	background: var(--bg-elev);
 	color: var(--text);
 	line-height: 1;
@@ -197,8 +186,8 @@
 
 .appbar-side-btn-icon {
 	display: block;
-	width: calc(16px * var(--ab));
-	height: calc(16px * var(--ab));
+	width: calc(14px * var(--ab));
+	height: calc(14px * var(--ab));
 }
 
 /* 打开着就亮一下（跟顶栏那排入口的 `side-foot-btn-on` 一个口径） */
@@ -296,6 +285,9 @@
 
 .appbar-menu .side-foot-row {
 	display: flex;
+	/* 整排按中线对齐：默认的 `stretch` 下，定高的那颗（「临时会话」虚线钮）会被顶在行首，
+	 * 比旁边的图标 / 文字高出几像素（用户 2026-11-04：「要居中对齐」）。 */
+	align-items: center;
 	/* 入口之间真正看得见的那条缝由两层组成：这个 gap + 每颗按钮的左右内边距。
 	 * 用户又嫌宽（「左右的距离再调小一点」）：4 → 2，宽度省给中间那路口会话名。 */
 	gap: calc(2px * var(--ab));
@@ -346,8 +338,28 @@
  *  2. hover 那句也得单独写：上面那条带 `:hover` 的规则比它更specific，不覆盖就会在悬停时
  *     被改回透明 —— 边框「碰一下就没了」。
  * 颜色跟着强调色走一半（45% 落进边框色）：够看得出是虚线，又不至于比图标本身还抢眼。 */
-.appbar .appbar-menu .tempchat-btn {
+/* 选择器带上 `.side-foot-btn`：下面容器查询（≤900px / ≤760px）里的
+ * `.appbar .appbar-menu .side-foot-btn { padding: 4px 5px }` 跟它同特异性且更靠后，
+ * 不带这一层的话窄屏时上下内边距会被加回去，定高 19px 就装不下 15px 的图标了。 */
+.appbar .appbar-menu .side-foot-btn.tempchat-btn {
 	border: 1px dashed color-mix(in srgb, var(--accent) 45%, var(--border));
+	/* 高度不再由内容撑（图标 18 + 上下 1px 内边距 + 虚线 2 = 约 22px），直接定死 19px：
+	 * 用户 2026-11-04「描边高度再小一点」—— 虚线框比字高出一大截时，看着像一粒胶囊
+	 * 而不是一个入口。border-box 下内容区 17px，框内图标相应缩到 15px（见下一条），
+	 * 虚线就只比图标高 1px，跟旁边只有图标的那几颗一样矮。 */
+	height: calc(19px * var(--ab));
+	padding: 0 calc(4px * var(--ab));
+	/* 定高之后 `align-self` 不能再是 `stretch`：父行一旦没写 `align-items`，
+	 * 它就回落到行首对齐 —— 显式居中，这一句是保底的。 */
+	align-self: center;
+}
+
+/* 只在这颗里缩图标：18px 装不进 17px 的内容区，硬撑会溢出虚线框。
+ * 其余入口的图标尺寸仍走 `.side-foot-icon` 那份（18px / 窄屏 15px）。 */
+.appbar .appbar-menu .side-foot-btn.tempchat-btn .side-foot-icon {
+	width: calc(15px * var(--ab));
+	height: calc(15px * var(--ab));
+	font-size: calc(13px * var(--ab));
 }
 
 .appbar .appbar-menu .tempchat-btn:hover {
@@ -396,10 +408,13 @@
 	gap: calc(3px * var(--ab));
 	min-width: 0;
 	max-width: 100%;
-	/* 会话名：跟着 `--ab` 等比缩 —— 默认（「标准」1.15）下落地 ≈17.8px，切到「紧凑」（0.85）≈13.2px。
-	   这里存的是**未缩放的基准值**（15.5px），当年是在 0.85 默认下定的；
-	   2026-10-29 默认改成 115% 后整体跟着变大，基准值不改 —— 要小就选「紧凑」。 */
-	font-size: calc(15.5px * var(--ab));
+	/* 会话名：跟着 `--ab` 等比缩。
+	 * 2026-11-04（用户：「字体加粗、字号再小一点」）：基准值 15.5 → 14px（默认 115% 下落地
+	 * ≈16.1px，原来 ≈17.8px），并加 600 字重 —— 字变小之后靠字重维持可读性，
+	 * 在「标准 / 紧凑」两档缩放里都不会糊成一片灰。
+	 * 更早的历史：15.5px 是 2026-10-29 在 0.85 默认缩放下定的，默认改回 115% 后整体变大。 */
+	font-size: calc(14px * var(--ab));
+	font-weight: 600;
 	line-height: 1.4;
 }
 
@@ -409,7 +424,7 @@
  * 形态按用户最新要求：「蓝色双气泡，不要淡蓝底，大小再大一些，跟文案差不多大」——
  * 所以不再套那块 20px 的主色淡底（那是「标签」的语汇，压在标题前面显得重），
  * 只留纯图标 + 主色，尺寸直接跟**标题字号**走：`.appbar-title` 的 `font-size`
- * 是 `15.5 × --ab`（默认缩放 ≈13.2px），图标取 `1.15em` ≈ 15px ——
+ * 是 `14 × --ab`（默认缩放 ≈16.1px），图标取 `1.15em` ≈ 18.5px ——
  * 视觉上跟旁边那行标题一样高（SVG 里图形只占 viewBox 的 ~75%，所以要比字号稍大一点点）。
  * 项目路径仍在标题的悬停提示里。 */
 .appbar-title-badge {
@@ -889,8 +904,8 @@
 	font: inherit;
 	font-size: calc(12px * var(--ab));
 	font-weight: 600;
-	/* 竖向 5.5px：算上 1.15 的行高，胶囊最终 ~23px 高 —— 跟旁边那排入口按钮（24px）齐平 */
-	padding: calc(5.5px * var(--ab)) calc(10px * var(--ab));
+	/* 竖向 2.5px：算上 1.15 的行高，胶囊最终 ~20px 高（用户要求调小；以前 5.5px 约 23px） */
+	padding: calc(2.5px * var(--ab)) calc(10px * var(--ab));
 	/* **行高必须收**：不写就继承顶栏那段的行高（实测 label 高 21.8px），
 	   胶囊被撑到 30.5px 高 —— 比旁边那排入口按钮（24px）整整高出一头，
 	   用户看到的「太大了」主要就是这一截。1.15 让高度回到 22px 上下，跟那排齐平。 */

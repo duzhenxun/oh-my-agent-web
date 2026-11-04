@@ -533,7 +533,12 @@ npm run dev          # starts both processes with one command
 | `npm run build` | Server `tsc` + frontend `vite build` into `web/dist` |
 | `npm run icons` | Regenerate the PWA icons with playwright-core |
 
-CI (`.github/workflows/ci.yml`): `npm ci` → typecheck → lint → test → build, on ubuntu + Node 22.
+Two workflows, no separate `ci.yml`:
+
+- `.github/workflows/release.yml` (on `v*` tags, or manual): `npm ci` → typecheck → lint → build → `npm pack --dry-run` → `npm publish` (OIDC). Unit tests and `format:check` are **not** gating yet.
+- `.github/workflows/pages.yml` (on `docs/site/**`): publishes the landing page to GitHub Pages as-is.
+
+Unit tests are run locally: `node --import tsx --test tests/unit/*.test.ts`.
 
 ---
 

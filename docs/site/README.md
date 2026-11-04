@@ -1,6 +1,6 @@
 # 官网（单页）
 
-`index.html` 是产品官网，`assets/` 是它用到的截图。
+`index.html`（英文）与 `zh.html`（中文）是产品官网，`assets/` 是它俩用到的截图。
 
 - **纯静态、可离线打开**：没有 CDN、没有外部字体、没有请求，双击 `index.html` 就能看。
 - **自动深浅色**：跟随系统的 `prefers-color-scheme`。
@@ -19,7 +19,7 @@ python3 -m http.server 8080 --directory docs/site
 
 ## 改内容
 
-文案与结构都在 `index.html` 里，按下面的顺序排：
+文案与结构都在 `index.html`（英文）和 `zh.html`（中文）里，两份**内容一一对应、要改一起改**，按下面的顺序排：
 
 | 区块 | 内容 |
 |---|---|
