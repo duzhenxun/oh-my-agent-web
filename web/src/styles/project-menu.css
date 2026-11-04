@@ -189,6 +189,21 @@
 	padding: 6px 9px;
 }
 
+/* 切盘按钮行（只有 Windows 会渲染）：盘根上不去，这里是去别的盘的唯一入口 */
+.new-project-drives {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex: none;
+	flex-wrap: wrap;
+}
+
+/* 当前所在盘的按钮给点提示，别让人以为点了没反应 */
+.new-project-drives .btn.is-current {
+	border-color: var(--accent);
+	color: var(--accent);
+}
+
 .new-project-list {
 	flex: 1 1 auto;
 	min-height: 120px;

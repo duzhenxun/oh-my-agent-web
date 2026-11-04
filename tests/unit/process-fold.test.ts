@@ -3,7 +3,8 @@
  *
  * 守住用户 2026-11-02 要的那个行为：**跑着的时候铺开、跑完自动收起，屏幕上只留最后结果**。
  * 顺手把几条容易被改坏的边界固定下来：
- *   - 这一轮以工具调用收尾（没有最终正文）→ 跑完也不能收，否则屏幕上只剩一行按钮；
+ *   - 这一轮以工具调用收尾（插队 / 被打断，没有最终正文）→ **也照样收起**（用户 2026-11-03：
+ *     以前留了个“不收”的例外，结果历史里这些回合永远是摊开的）；
  *   - 关掉「跑完自动折叠」→ 交回那两个「默认展开思考块 / 工具卡」开关；
  *   - 手动点开过的**已结束**消息不许被重渲染折叠回去（但跑完那一下要作废手动状态）。
  */
@@ -11,6 +12,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
 	foldLayout,
+	hidesNarration,
 	isNarrationText,
 	isTurnRunning,
 	processView,
@@ -19,7 +21,6 @@ import {
 
 const base = {
 	running: false,
-	hasAnswer: true,
 	autoCollapse: true,
 	autoFoldRunning: false,
 	defaultOpen: false,
@@ -76,8 +77,10 @@ describe("过程区怎么展", () => {
 		assert.equal(processView({ ...base, running: false }), "collapsed");
 	});
 
-	it("收不起来就不会收：以工具调用收尾（没有最终答案）时摊开", () => {
-		assert.equal(processView({ ...base, hasAnswer: false }), "all");
+	it("以工具调用收尾（插队 / 被打断的回合）也照样收起（用户 2026-11-03）", () => {
+		// 以前这里摊开（“收起来只剩一行按钮”），结果这些回合在历史里永远是打开的
+		assert.equal(processView({ ...base, autoCollapse: true }), "collapsed");
+		assert.equal(processView({ ...base, autoCollapse: true, defaultOpen: true }), "collapsed");
 	});
 
 	it("关掉「跑完自动折叠」→ 交回两个默认展开开关", () => {
@@ -88,12 +91,11 @@ describe("过程区怎么展", () => {
 
 	it("手动优先：已结束的消息点开就得一直开着", () => {
 		assert.equal(processView({ ...base, manual: true }), "all");
-		assert.equal(processView({ ...base, hasAnswer: false, manual: false }), "collapsed");
+		assert.equal(processView({ ...base, manual: false }), "collapsed");
 	});
 });
 
-describe("跑完那一下作废手动状态", () => {
-	it("上一帧在跑、这一帧不跑 → 作废（跑完自动收起）", () => {
+describe("跑完那一下作废手动状态", () => {	it("上一帧在跑、这一帧不跑 → 作废（跑完自动收起）", () => {
 		assert.equal(shouldForgetManual(true, false), true);
 	});
 
@@ -122,14 +124,16 @@ describe("折叠收到哪里", () => {
 		assert.equal(layout.insideFold(4), false);
 	});
 
-	it("以工具收尾（最后动手之后没结论）→ 不该收，否则屏幕上只剩一行按钮", () => {
+	it("以工具收尾（最后动手之后没结论）→ 按钮还在；说明是否藏要看跑没跑完（见 hidesNarration）", () => {
 		const layout = foldLayout([
 			{ kind: "process" },
 			{ kind: "text", text: "查到了，接下来跑一下" },
 			{ kind: "process" },
 		]);
 		assert.equal(layout.hasAnswer, false);
-		assert.equal(layout.insideFold(1), false); // 最后那段说明不在任何结论之前？它在，但不该藏（hasAnswer=false 时根本不会进入收起状态）
+		// insideFold 只管「结论之前」：这里最后一句非空正文（index 1）仍算 lastAnswerAt，所以 0 在范围内；
+		// 1 本身不藏于 insideFold，是 hidesNarration 在「跑完且无结论」时把它收掉
+		assert.deepEqual([0, 1, 2].map(layout.insideFold), [true, false, false]);
 	});
 
 	it("空白正文不算结论（流式末尾常见的只有换行的 text 块）", () => {
@@ -251,5 +255,40 @@ describe("哪一段正文用「叙述」字号（同一片过程里必须统一�
 			}),
 			false,
 		);
+	});
+});
+
+describe("哪一段说明要藏进折叠（hidesNarration）", () => {
+	const collapsed = { view: "collapsed" as const, hasProcess: true };
+
+	it("铺开时一律不藏", () => {
+		assert.equal(
+			hidesNarration({ view: "all", running: false, hasProcess: true, hasAnswer: true, insideFold: true }),
+			false,
+		);
+	});
+
+	it("收起时：结论之前的说明藏起来，结论本身不藏", () => {
+		assert.equal(hidesNarration({ ...collapsed, running: false, hasAnswer: true, insideFold: true }), true);
+		assert.equal(hidesNarration({ ...collapsed, running: false, hasAnswer: true, insideFold: false }), false);
+	});
+
+	it("跑完但没结论（插队 / 打断在工具上）：说明也一起藏，不再留在屏幕上", () => {
+		assert.equal(hidesNarration({ ...collapsed, running: false, hasAnswer: false, insideFold: false }), true);
+	});
+
+	it("还在跑：说明一律留着（那时候它就是「现在在干什么」）", () => {
+		assert.equal(hidesNarration({ ...collapsed, running: true, hasAnswer: false, insideFold: false }), false);
+		assert.equal(hidesNarration({ ...collapsed, running: true, hasAnswer: true, insideFold: true }), true);
+	});
+
+	it("没有过程的消息（用户消息 / 纯文字回复）永远不藏，哪怕折叠是收起状态", () => {
+		// 回归：2026-11-03 用户消息整条消失，就是因为「跑完且无结论」分支没看有没有过程
+		for (const running of [false, true]) {
+			assert.equal(
+				hidesNarration({ view: "collapsed", running, hasProcess: false, hasAnswer: false, insideFold: false }),
+				false,
+			);
+		}
 	});
 });

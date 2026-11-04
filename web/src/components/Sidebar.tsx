@@ -5,9 +5,10 @@ import { useSplitHeight } from "../use-split-height.ts";
 import { useAppSelector } from "../store.ts";
 import type { ConversationMeta, PiProject, PiSessionSummary, ProjectPrefs } from "../types.ts";
 import { reorderProjects, sortProjects } from "../project-sort.ts";
+import { splitHiddenProjects } from "../project-hide.ts";
 import { moveSession, renameSession, setSettings, switchConversation } from "../ws.ts";
 import { ArchivedEntryRow } from "./ArchivedEntryRow.tsx";
-import { ArchivedSection } from "./ArchivedSection.tsx";
+import { ArchivedSessions } from "./ArchivedSessions.tsx";
 import { SessionBatchMenu } from "./SessionBatchMenu.tsx";
 import { SessionSelectionBar } from "./SessionSelectionBar.tsx";
 import { groupArchived, isProjectOpen } from "../archived-groups.ts";
@@ -18,6 +19,7 @@ import { sessionUrlFor } from "../session-url.ts";
 import { SessionRow } from "./SessionRow.tsx";
 import { FolderPlusIcon } from "./FolderIcon.tsx";
 import { ProjectFolderIcon } from "./ProjectFolderIcon.tsx";
+import { HiddenProjectsRow } from "./HiddenProjectsRow.tsx";
 import { ProjectNameInput } from "./ProjectNameInput.tsx";
 import { ProjectMenu } from "./ProjectMenu.tsx";
 import type { MenuPoint } from "./ProjectMenuPopover.tsx";
@@ -127,18 +129,31 @@ function SidebarInner({
 	// 跑完了、还没点开看过的会话（会话行 / 项目行上的小蓝点）
 	const unseen = useUnseenMarks();
 	// 项目偏好来自 settings.json（ADR-0028）：置顶 / 顺序 / 别名都是服务端事实源
-	const rawPrefs: ProjectPrefs = projectPrefsFromStore ?? { order: [], pinned: [], aliases: {} };
+	const rawPrefs: ProjectPrefs = projectPrefsFromStore ?? { order: [], pinned: [], aliases: {}, hidden: [] };
 	/**
 	 * 旧数据里的项目 key 可能带着尾斜杠（`/a/b/`，见 `normalizeCwd` 的注释），
-	 * 而分组后的 cwd 是干净的 `/a/b` —— 不归一化的话「置顶 / 顺序 / 别名」会全部对不上号
+	 * 而分组后的 cwd 是干净的 `/a/b` —— 不归一化的话「置顶 / 顺序 / 别名 / 隐藏」会全部对不上号
 	 * （表现就是：明明置顶过，却掉回下面那一段）。读的时候收敛一下，写回去的就是干净的。
 	 */
 	const prefs: ProjectPrefs = {
 		order: rawPrefs.order.map(normalizeCwd),
 		pinned: rawPrefs.pinned.map(normalizeCwd),
 		aliases: Object.fromEntries(Object.entries(rawPrefs.aliases).map(([cwd, name]) => [normalizeCwd(cwd), name])),
+		// 老快照里没这个字段（服务端还没升级）：当成「一个都没藏」
+		hidden: (rawPrefs.hidden ?? []).map(normalizeCwd),
 	};
 	const pinned = prefs.pinned;
+	/** 读**最新**的项目偏好（整表覆盖写：闭包里那份可能是上几帧的，会把刚写的隐藏冲掉） */
+	const latestProjectPrefs = (): ProjectPrefs => {
+		const raw = getAppState().snapshot?.settings.projectPrefs;
+		if (!raw) return prefs;
+		return {
+			order: raw.order.map(normalizeCwd),
+			pinned: raw.pinned.map(normalizeCwd),
+			aliases: Object.fromEntries(Object.entries(raw.aliases).map(([cwd, name]) => [normalizeCwd(cwd), name])),
+			hidden: (raw.hidden ?? []).map(normalizeCwd),
+		};
+	};
 	// 受控展开：菜单里的「折叠其他项目 / 展开全部」需要它
 	const [openMap, setOpenMap] = useState<Record<string, boolean>>({});
 	/**
@@ -185,14 +200,19 @@ function SidebarInner({
 	 * 以前点标题是「把所有项目各自展开/收起」—— 那是另一个动作，现在挪到标题右边的图标上。
 	 */
 	const [projectsOpen, setProjectsOpen] = useState(true);
-	const [archivedView, setArchivedView] = useState(false);
+	/** 列表底部「已隐藏 · N」那个入口是否展开（展开就是一串可「取消隐藏」的项目） */
+	const [hiddenOpen, setHiddenOpen] = useState(false);
 	/**
-	 * 文件区被**外部**打开时（右侧工具落地页那张「文件」卡）先把「已归档」视图切回来：
-	 * 那个视图里整块文件管理是不渲染的，不切回去就等于点了没反应。
+	 * 列表最后那行「已归档 · N」是否展开 —— 展开就把归档的会话**就地**画在它下面。
+	 * 以前是切到一张独立视图（整块列表让位 + 左上角 ‹ 返回 + 再逐组点开），太绕，去掉了。
 	 */
-	useEffect(() => {
-		if (fileOpen) setArchivedView(false);
-	}, [fileOpen]);
+	const [archivedOpen, setArchivedOpen] = useState(false);
+	/** 「已归档」那一块在列表最底下：从提示里的「查看」展开时顺手滚到它那儿，不用自己找 */
+	const archivedBlockRef = useRef<HTMLDivElement | null>(null);
+	const openArchived = () => {
+		setArchivedOpen(true);
+		requestAnimationFrame(() => archivedBlockRef.current?.scrollIntoView({ block: "nearest" }));
+	};
 	// 文件树根默认跟随当前会话工作区（下拉框里选了项目时由 App 那边的 `root` 接管）
 	const sessionPrefs = sessionPrefsFromStore ?? { pinned: [], archived: [], order: [] };
 	/** 「置顶」那个分组是否展开（默认展开：置顶本来就是最常用的几条） */
@@ -246,7 +266,7 @@ function SidebarInner({
 	 *
 	 * 为什么要读「最新的」设置而不是用闭包里那份：连着归档两条时，第二个回调里的
 	 * `sessionPrefs` 还是第一次归档之前的（服务端是整表覆盖），会把前一条又放出来。
-	 * 提示里给「撤销」（就地还原）和「查看」（跳到归档视图），误点一下不至于找不回来。
+	 * 提示里给「撤销」（就地还原）和「查看」（展开列表底部的「已归档」那一行），误点一下不至于找不回来。
 	 */
 	const archiveSession = (id: string, title: string) => {
 		const latest = latestSessionPrefs();
@@ -256,7 +276,7 @@ function SidebarInner({
 			text: t(`已归档「${title || "未命名会话"}」`, `Archived "${title || "Untitled session"}"`),
 			actions: [
 				{ label: t("撤销", "Undo"), onClick: () => restoreSession(id) },
-				{ label: t("查看", "View"), onClick: () => setArchivedView(true) },
+				{ label: t("查看", "View"), onClick: openArchived },
 			],
 		});
 	};
@@ -316,6 +336,8 @@ function SidebarInner({
 		const blocks = [...listEl.querySelectorAll<HTMLElement>("details.proj[data-cwd]")];
 		let last: { cwd: string; after: boolean } | null = null;
 		for (const block of blocks) {
+			// 隐藏区里的项目不能当落点：它不在主列表的顺序里，拖过去会让人以为「插到那儿了」
+			if (block.classList.contains("proj-hidden")) continue;
 			const cwd = block.dataset.cwd ?? "";
 			if (cwd === "" || cwd === projDrag) continue;
 			const head = block.querySelector<HTMLElement>(".proj-head") ?? block;
@@ -332,7 +354,9 @@ function SidebarInner({
 	 */
 	const moveProjectTo = (fromCwd: string, targetCwd: string, after: boolean) => {
 		const next = reorderProjects({
-			visible: groups.map((group) => group.cwd),
+			// 用**全部**项目（含被隐藏的）当「当前顺序」：隐藏只是不画，
+			// 拿看得见的那几行当真相的话，一次拖动就会把藏起来的从 pinned/order 里静默挤掉
+			visible: allGroups.map((group) => group.cwd),
 			pinned,
 			from: fromCwd,
 			target: targetCwd,
@@ -345,6 +369,41 @@ function SidebarInner({
 	const togglePin = (cwd: string) => {
 		const next = pinned.includes(cwd) ? pinned.filter((item) => item !== cwd) : [cwd, ...pinned];
 		setSettings({ projectPrefs: { ...prefs, pinned: next } });
+	};
+
+	/** 取消隐藏（「已隐藏」入口、刚隐藏那条提示的「撤销」都走这里） */
+	const unhideProject = (cwd: string) => {
+		const latest = latestProjectPrefs();
+		const key = normalizeCwd(cwd);
+		const next = latest.hidden.filter((item) => normalizeCwd(item) !== key);
+		if (next.length === latest.hidden.length) return;
+		setSettings({ projectPrefs: { ...latest, hidden: next } });
+		// 全放出来了就把这个入口收起来（没东西可点了）
+		if (next.length === 0) setHiddenOpen(false);
+	};
+	/**
+	 * 隐藏一个项目（右键菜单）：只是**侧栏不画它**，会话/别名/置顶/顺序都原样留着。
+	 *
+	 * 隐藏完当场给一条可撤销的提示：藏起来的东西立刻从眼前消失，
+	 * 不给退路的话（尤其中招的是手滑点错）就只能去底部找「已隐藏」入口了。
+	 */
+	const hideProject = (cwd: string, name: string, sessionCount: number) => {
+		const latest = latestProjectPrefs();
+		const key = normalizeCwd(cwd);
+		if (latest.hidden.some((item) => normalizeCwd(item) === key)) return;
+		setSettings({ projectPrefs: { ...latest, hidden: [...latest.hidden, cwd] } });
+		setProjectMenu(null);
+		showToast({
+			text: t(
+				`已隐藏项目「${name}」（${sessionCount} 条会话）`,
+				`Hid project "${name}" (${sessionCount} session(s))`,
+			),
+			actions: [
+				{ label: t("撤销", "Undo"), onClick: () => unhideProject(cwd) },
+				// 「已隐藏」入口默认是收着的 —— 给一颗一步跳过去的按钮，免得藏了找不到
+				{ label: t("查看", "View"), onClick: () => setHiddenOpen(true) },
+			],
+		});
 	};
 
 	// 文件区默认高度：矮一点，「文件管理」标题离底部（文件树占的地方）更近；拖过的人按自己存的来
@@ -378,9 +437,17 @@ function SidebarInner({
 	 * 用户报的「新建项目出来两个」的根源 —— 同一条会话的 workspace（`/a/b/`，带尾斜杠）
 	 * 与 pi 扫出来的 cwd（`/a/b`）不相等，于是同一个项目被画成两组。
 	 */
-	const groups: PiProject[] = buildProjectGroups(piProjects, conversations, t("未分组", "Ungrouped"));
+	const allGroups: PiProject[] = buildProjectGroups(piProjects, conversations, t("未分组", "Ungrouped"));
 	// 排序统一走 ADR-0028 的纯函数：置顶 → 显式顺序 → 新项目落最上面
-	groups.splice(0, groups.length, ...sortProjects(groups, prefs));
+	allGroups.splice(0, allGroups.length, ...sortProjects(allGroups, prefs));
+	/**
+	 * 「隐藏项目」只影响**侧栏怎么画**：排序整理完再拆，`groups` = 画出来的那些，
+	 * `hiddenProjects` = 被藏起来的（列表底部「已隐藏 · N」入口靠它才能点开）。
+	 * 先排序再拆还有个好处：取消隐藏回到原位，不会跑到列表最底下。
+	 */
+	const projectSplit = splitHiddenProjects(allGroups, prefs.hidden);
+	const groups: PiProject[] = projectSplit.visible;
+	const hiddenProjects: PiProject[] = projectSplit.hidden;
 	// 头部箭头方向：所有项目当前都展开才算"已展开"
 	// 展开态只算一处：标题的「全部收起/展开」、<details open>、文件夹图标都用它（否则点一下会「看着没变」）
 	/**
@@ -412,7 +479,7 @@ function SidebarInner({
 		string,
 		{ expanded: boolean; visibleSessions: PiSessionSummary[]; shown: PiSessionSummary[] }
 	>();
-	for (const project of groups) {
+	for (const project of allGroups) {
 		const visibleSessions = rankSessions(
 			// 归档的隐藏；全局置顶的挪到最上面的「置顶」组里，这里不再重复出现
 			project.sessions.filter(
@@ -433,15 +500,23 @@ function SidebarInner({
 	 * 没展开的「还有 N 个…」也不算。
 	 */
 	const visibleSessionIds: string[] = [];
-	if (!archivedView) {
-		if (pinnedEntries.length > 0 && pinnedOpen) visibleSessionIds.push(...pinnedEntries.map((session) => session.id));
-		if (projectsOpen)
-			groups.forEach((project, index) => {
-				const plan = rowsOf.get(project.cwd);
-				if (!plan || !isOpenAt(project, index)) return;
-				visibleSessionIds.push(...plan.shown.map((session) => session.id));
-			});
-	}
+	if (pinnedEntries.length > 0 && pinnedOpen) visibleSessionIds.push(...pinnedEntries.map((session) => session.id));
+	if (projectsOpen)
+		groups.forEach((project, index) => {
+			const plan = rowsOf.get(project.cwd);
+			if (!plan || !isOpenAt(project, index)) return;
+			visibleSessionIds.push(...plan.shown.map((session) => session.id));
+		});
+	/**
+	 * 「已隐藏」展开时，里面那些项目展开着的会话也是「看得见的行」——
+	 * 不列入的话，在隐藏区里 Shift 连选会被 `pruneSelection` 当场剔掉（那看起来就像点不动）。
+	 */
+	if (projectsOpen && hiddenOpen)
+		hiddenProjects.forEach((project) => {
+			const plan = rowsOf.get(project.cwd);
+			if (!plan || openMap[project.cwd] !== true) return;
+			visibleSessionIds.push(...plan.shown.map((session) => session.id));
+		});
 	/** 清空多选（批量菜单里的「取消选择」、切归档视图、选完干完活都走这里） */
 	const clearSelection = () => {
 		setSelectedIds([]);
@@ -464,7 +539,7 @@ function SidebarInner({
 	 * 批量归档：**一次写完整张 `archived`**。
 	 *
 	 * 会话偏好是整表覆盖写的：逐条发的话，第二条起都会基于旧快照算，服务端一覆盖就只剩最后一条生效
-	 * （归档视图里批量还原那条注释也记的是同一个坑）。提示里给「撤销」与「查看」。
+	 * （归档里批量还原那条注释也记的是同一个坑）。提示里给「撤销」与「查看」（展开底部的「已归档」）。
 	 */
 	const archiveSelected = () => {
 		const ids = selectedIds;
@@ -483,7 +558,7 @@ function SidebarInner({
 						patchSessionPrefs({ archived: latestSessionPrefs().archived.filter((id) => !drop.has(id)) });
 					},
 				},
-				{ label: t("查看", "View"), onClick: () => setArchivedView(true) },
+				{ label: t("查看", "View"), onClick: openArchived },
 			],
 		});
 	};
@@ -507,7 +582,10 @@ function SidebarInner({
 	 * 「置顶」子组跟着一起走 —— 它现在在「项目」里面，
 	 * 否则点了「全部收起」它自己还摊着，看着像没收干净。 */
 	const toggleAllProjects = () => {
-		setOpenMap(Object.fromEntries(groups.map((group) => [group.cwd, !allOpen])));
+		// 隐藏区的项目也一起展开/收起：它们用的是同一份 openMap，漏掉就会出现「点了全部展开，隐藏区没动」
+		setOpenMap(
+			Object.fromEntries([...groups, ...hiddenProjects].map((group) => [group.cwd, !allOpen])),
+		);
 		setPinnedOpen(!allOpen);
 	};
 
@@ -577,7 +655,10 @@ function SidebarInner({
 		if (next === current) return;
 		setSettings({ sessionPrefs: { ...latest, order: withProjectOrder(latest.order, current, next) } });
 	};
-	const renderSession = (session: PiSessionSummary, options: { project?: PiProject; pinnedGroup?: boolean } = {}) => (
+	const renderSession = (
+		session: PiSessionSummary,
+		options: { project?: PiProject; pinnedGroup?: boolean; noDrag?: boolean } = {},
+	) => (
 		<SessionRow
 			key={session.id}
 			session={session}
@@ -646,7 +727,8 @@ function SidebarInner({
 			onOpenInNewTab={() => window.open(sessionUrlFor(window.location.href, session.id), "_blank", "noopener")}
 			onDelete={() => deleteSession(session.id, titleOf(session) || session.id)}
 			onCloseMenu={() => setSessionMenu(null)}
-			draggable
+			/* 「已隐藏」里的会话不可拖：那里不接拖放（拖过去等于把会话搬进一个看不见的项目） */
+			draggable={!options.noDrag}
 			onDragStart={() => startDrag(session)}
 			onDragEnd={endDrag}
 			/* 行内互换位置的落点，两套：
@@ -656,7 +738,7 @@ function SidebarInner({
 			     那才是「搬家到那个项目」的语义。
 			   拖项目（`projDrag`）时一律不当目标：那是改项目顺序，跟会话顺序无关。 */
 			{...(() => {
-				if (projDrag) return {};
+				if (projDrag || options.noDrag) return {};
 				const asTarget = {
 					dragOver: dragOverSession === session.id,
 					onDragOver: () => setDragOverSession(session.id),
@@ -689,11 +771,10 @@ function SidebarInner({
 			 *  - 会话多了自己滚（`max-height: 34vh`），别把下面的列表顶没。
 			 */}
 			{/*
-			 * 只在「归档视图」里收起：那个视图整块讲的是另一件事（归档的会话），
-			 * 置顶组留在上面会让人以为归档里也有它们。
 			 * **不跟「项目」那个折叠开关走**：它在「项目」这一块**上面**，是独立一段。
+			 * （归档现在只是列表最后一行就地展开，不再遮住这一块 —— 没有「切归档就收起置顶」那回事了。）
 			 */}
-			{pinnedEntries.length > 0 && !archivedView ? (
+			{pinnedEntries.length > 0 ? (
 				<section className="pin-group">
 					<button
 						type="button"
@@ -705,13 +786,14 @@ function SidebarInner({
 						{/* 跟下面「项目」「文件」两个标题**完全同一套**（用户 2026-10-29：\u201c风格统一一些\u201d）：
 						 * 三角 + 文字、14.5px / 600 / hover 变强调色、`aria-expanded` 转三角。
 						 * 颜色用 `--text`（黑）而不是隔壁那两行的 `--text-dim`：用户 2026-10-29 晚
-						 * “置顶会话 改回黑色”（金色那版撤了）。文案也收成两个字“置顶” —— 与下面
-						 * 项目行上那枚 “置顶项目” 📌 不冲突：这一组下面摆的就是会话行，不会认错。 */}
+						 * “置顶会话 改回黑色”（金色那版撤了）。
+						 * 文案：2026-10-29 曾收成两个字“置顶”，2026-11-02 用户要求改回“置顶会话”——
+						 * 与项目行上那枚 “置顶项目” 📌 对仗，这一组下面摆的就是会话行。 */}
 						<span
 							className={`sidebar-title-caret${pinnedOpen ? " sidebar-title-caret-open" : ""}`}
 							aria-hidden="true"
 						/>
-						<span className="sidebar-title-label">{t("置顶", "Pinned")}</span>
+						<span className="sidebar-title-label">{t("置顶会话", "Pinned sessions")}</span>
 					</button>
 					{pinnedOpen ? (
 						<div className="pin-group-body">
@@ -831,7 +913,7 @@ function SidebarInner({
 			</div>
 
 			<div
-				className={`sidebar-list${archivedView ? " sidebar-list-hidden" : ""}${projectsOpen ? "" : " sidebar-list-hidden"}`}
+				className={`sidebar-list${projectsOpen ? "" : " sidebar-list-hidden"}`}
 				/*
 				 * 拖项目换顺序的**投放区就是这条列表**（不是只有几像素高的表头）：
 				 * 以前只在 `.proj-head` 上接 dragover/drop，落在会话列表区、行间空隙、
@@ -862,7 +944,7 @@ function SidebarInner({
 					setProjDrop(null);
 				}}
 			>
-				{groups.length === 0 ? (
+				{groups.length === 0 && hiddenProjects.length === 0 ? (
 					<div className="sidebar-empty">
 						{t(
 							"还没有会话。发一条消息就会自动建一个；「临时会话（不保存）」不会留在这里。",
@@ -870,12 +952,19 @@ function SidebarInner({
 						)}
 					</div>
 				) : null}
-				{groups.map((project, index) => {
+				{/*
+				 * 可见项目 + （已隐藏展开时的）隐藏项目走**同一段渲染**：
+				 * 用户 2026-11-03：「已隐藏里面也要分项目、项目也能点开、点得到会话，跟项目管理低一级的功能一样」。
+				 * 复制一份项目行的话，两边的右键菜单/运行角点/Rename 迟早叉开，所以只靠 `isHidden` 开关行为差异。
+				 */}
+				{(hiddenOpen ? [...groups, ...hiddenProjects] : groups).map((project, index) => {
+					const isHidden = hiddenProjects.some((each) => each.cwd === project.cwd);
 					const plan = rowsOf.get(project.cwd)!;
 					const { expanded, visibleSessions, shown } = plan;
 					const rest = visibleSessions.length - shown.length;
 					const name = aliases[project.cwd] || project.name || t("未分组", "Ungrouped");
-					const projectOpen = isOpenAt(project, index);
+					/** 隐藏区里的项目**默认收起**（藏起来的东西不该一展开就摊一屏会话）；可见区照旧走 isProjectOpen */
+					const projectOpen = isHidden ? openMap[project.cwd] === true : isOpenAt(project, index);
 					/**
 					 * 项目**折叠**时，组内的会话行根本看不见 —— 运行状态得顶到项目行上来，
 					 * 否则你以为这项目闲着。展开的时候每行自己会显示，项目行不用再重复一遍。
@@ -888,9 +977,15 @@ function SidebarInner({
 					);
 					void knownWorkspaces;
 					return (
+						<>
+							{/* 隐藏区的二级入口：就画在第一个隐藏项目上面（收着时那一条在列表末尾单独画） */}
+							{isHidden && hiddenProjects[0]?.cwd === project.cwd ? (
+								<HiddenProjectsRow count={hiddenProjects.length} open onToggle={() => setHiddenOpen(false)} />
+							) : null}
 						<details
 							data-cwd={project.cwd}
-							className={`proj${dragOverCwd === project.cwd ? " proj-drag-over" : ""}${
+							data-hidden={isHidden ? "true" : undefined}
+							className={`proj${isHidden ? " proj-hidden" : ""}${dragOverCwd === project.cwd ? " proj-drag-over" : ""}${
 								projDrag === project.cwd ? " proj-dragging" : ""
 							}${projDrop?.cwd === project.cwd ? (projDrop.after ? " proj-drop-after" : " proj-drop-before") : ""}`}
 							key={project.cwd || name}
@@ -921,6 +1016,8 @@ function SidebarInner({
 								setOpenMap((current) => ({ ...current, [project.cwd]: next }));
 							}}
 							onDragOver={(event) => {
+								// 隐藏区不接拖放：拖进来看不见的项目 = 「会话莫名消失了」
+								if (isHidden) return;
 								// 拖的是项目 = 改顺序，走下面 summary 那套（这里不接）
 								if (projDrag || !drag) return;
 								/**
@@ -935,9 +1032,12 @@ function SidebarInner({
 								event.preventDefault();
 								if (drag.cwd !== project.cwd) setDragOverCwd(project.cwd);
 							}}
-							onDragLeave={() => setDragOverCwd((current) => (current === project.cwd ? null : current))}
+							onDragLeave={() => {
+								if (isHidden) return;
+								setDragOverCwd((current) => (current === project.cwd ? null : current));
+							}}
 							onDrop={(event) => {
-								if (projDrag) return;
+								if (isHidden || projDrag) return;
 								event.preventDefault();
 								if (drag) dropOnProject(project);
 								endDrag();
@@ -945,11 +1045,16 @@ function SidebarInner({
 						>
 							<summary
 								className="proj-head"
-								title={`${project.cwd || t("未分组", "Ungrouped")}\n${t("拖动可换项目顺序　右键：项目菜单", "Drag to reorder projects · Right-click for the project menu")}`}
+								title={`${project.cwd || t("未分组", "Ungrouped")}\n${
+									isHidden
+										? t("右键：项目菜单（可取消隐藏）", "Right-click for the project menu (unhide)")
+										: t("拖动可换项目顺序　右键：项目菜单", "Drag to reorder projects · Right-click for the project menu")
+								}`}
 								/* 拖这一行 = 改项目顺序（会话拖动那套在行里，两套互不干扰）。
 								   改名时关掉：不然在输入框里选字会变成「拖着整行跑」。 */
-								draggable={renaming?.cwd !== project.cwd}
+								draggable={!isHidden && renaming?.cwd !== project.cwd}
 								onDragStart={(event) => {
+									if (isHidden) return;
 									// 自带的「拖文本」也要压掉，否则会同时触发浏览器默认的选区拖拽
 									event.dataTransfer.setData("text/plain", project.cwd);
 									event.dataTransfer.effectAllowed = "move";
@@ -1107,11 +1212,16 @@ function SidebarInner({
 											`「${name}」下的全部会话`,
 										)
 									}
+									/* 隐藏 = 只从侧栏收起来（会话/名称/顺序都还在），藏完给一条可撤销的提示 */
+									onHide={() => hideProject(project.cwd, name, project.sessions.length)}
+									/* 隐藏区里最后一项换成「取消隐藏」（它已经在里面了，再藏没有意义） */
+									hidden={isHidden}
+									onUnhide={() => unhideProject(project.cwd)}
 									sessionCount={project.sessions.length}
 								/>
 							) : null}
 							<div className="proj-body">
-								{shown.map((session) => renderSession(session, { project }))}
+								{shown.map((session) => renderSession(session, { project, noDrag: isHidden }))}
 								{rest > 0 ? (
 									<button
 										type="button"
@@ -1139,27 +1249,38 @@ function SidebarInner({
 								) : null}
 							</div>
 						</details>
+						</>
 					);
 				})}
-				{/* 「已归档」单独一行，跟项目文件夹同一层（列表最后一行）—— 不再挂在标题栏上 */}
-				<ArchivedEntryRow total={archivedTotal} active={archivedView} onOpen={() => setArchivedView(true)} />
+				{/* 隐藏区收着时：列表末尾留一行入口（展开后入口画进上面那段里） */}
+				{hiddenProjects.length > 0 && !hiddenOpen ? (
+					<HiddenProjectsRow count={hiddenProjects.length} open={false} onToggle={() => setHiddenOpen(true)} />
+				) : null}
+				{/* 「已归档」单独一行，跟项目文件夹同一层（列表最后一行）—— 点一下就地展开，不再切视图 */}
+				<div className="archived-block" ref={archivedBlockRef}>
+					<ArchivedEntryRow
+						total={archivedTotal}
+						open={archivedOpen}
+						onToggle={() => setArchivedOpen((open) => !open)}
+					/>
+					{archivedOpen && archivedTotal > 0 ? (
+						<ArchivedSessions
+							groups={archivedGroups}
+							onOpen={(id) => {
+								clearSelection();
+								void switchConversation(id);
+								setArchivedOpen(false);
+							}}
+							onRestore={restoreSession}
+							onRestoreMany={(ids) => {
+								// 一次算完再发：批量恢复不能逐条发（每条都基于旧列表，服务端整表覆盖 → 只剩一条生效）
+								const drop = new Set(ids);
+								patchSessionPrefs({ archived: latestSessionPrefs().archived.filter((item) => !drop.has(item)) });
+							}}
+						/>
+					) : null}
+				</div>
 			</div>
-			<ArchivedSection
-				groups={archivedGroups}
-				view={archivedView}
-				onBack={() => setArchivedView(false)}
-				onOpen={(id) => {
-					clearSelection();
-					void switchConversation(id);
-					setArchivedView(false);
-				}}
-				onRestore={restoreSession}
-				onRestoreMany={(ids) => {
-					// 一次算完再发：批量恢复不能逐条发（每条都基于旧列表，服务端整表覆盖 → 只剩一条生效）
-					const drop = new Set(ids);
-					patchSessionPrefs({ archived: latestSessionPrefs().archived.filter((item) => !drop.has(item)) });
-				}}
-			/>
 			{/* 多选后的右键菜单：批量归档 / 批量删除（只对“这一批会话都成立”的动作，见组件注释） */}
 			{batchMenu ? (
 				<SessionBatchMenu
@@ -1172,11 +1293,10 @@ function SidebarInner({
 				/>
 			) : null}
 			{/* 项目列表收起时文件区直接撑到底：这时没有「上下两块」可拖，隐藏分割条 */}
-			{archivedView || !projectsOpen ? null : (
+			{!projectsOpen ? null : (
 				<SideSplitter open={fileOpen} onOpen={() => setFileOpen(true)} onStart={split.start} onReset={split.reset} />
 			)}
-			{archivedView ? null : (
-				<SidebarFiles
+			<SidebarFiles
 					open={fileOpen}
 					onToggle={() => setFileOpen((open) => !open)}
 					height={split.height}
@@ -1207,7 +1327,6 @@ function SidebarInner({
 						})
 					}
 				/>
-			)}
 			{/*
 			 * 侧栏底部那里**不再画「收起」**（用户：「这里这个不要呀」）。
 			 * 「收起 / 展开」现在只有一处：分割线上那颗舌形箭头（`.side-collapse` / `.side-expand`，

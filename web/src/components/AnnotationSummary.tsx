@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useT } from "../use-language.ts";
-import { annotationNumber, type Annotation } from "../annotations.ts";
+import { annotationNumber, isWebAnnotation, type Annotation } from "../annotations.ts";
 
 /**
  * 输入框**里面**那颗「N 条注释」的小胶囊（点开才是完整列表）。
@@ -27,6 +27,7 @@ export function AnnotationSummary({
 	onQuote,
 	onJump,
 	onComment,
+	onClear,
 }: {
 	annotations: readonly Annotation[];
 	open: boolean;
@@ -34,6 +35,8 @@ export function AnnotationSummary({
 	focusedId?: string | null;
 	onToggle: () => void;
 	onRemove: (id: string) => void;
+	/** 清空这条对话里的全部注释（网页上对应的编号一并清掉） */
+	onClear: () => void;
 	onQuote: (item: Annotation) => void;
 	onJump: (item: Annotation) => void;
 	/** 写/改一条的评论（空串 = 清掉评论） */
@@ -44,6 +47,8 @@ export function AnnotationSummary({
 	const [editingId, setEditingId] = useState<string | null>(null);
 	const [draft, setDraft] = useState("");
 	const inputRef = useRef<HTMLInputElement | null>(null);
+	/** 垃圾桶点过之后的确认气泡（「丢弃所有待处理标注？」） */
+	const [confirmingClear, setConfirmingClear] = useState(false);
 
 	useEffect(() => {
 		if (editingId !== null) inputRef.current?.focus();
@@ -55,7 +60,19 @@ export function AnnotationSummary({
 		else if (editingId !== null && !annotations.some((item) => item.id === editingId)) setEditingId(null);
 	}, [open, annotations, editingId]);
 
+	// 注释清空了：确认气泡一并收起，以后再有注释也不会自己冠出来
+	useEffect(() => {
+		if (annotations.length === 0) setConfirmingClear(false);
+	}, [annotations.length]);
+
 	if (annotations.length === 0) return null;
+
+	/** 点垃圾桶：先弹确认，不直接清 */
+	const clearAll = () => setConfirmingClear(true);
+	const confirmClear = () => {
+		setConfirmingClear(false);
+		onClear();
+	};
 
 	const startEditing = (item: Annotation) => {
 		setEditingId(item.id);
@@ -68,26 +85,65 @@ export function AnnotationSummary({
 
 	return (
 		<div className="annot-summary">
-			<button
-				type="button"
-				className="annot-chip"
-				onClick={onToggle}
-				aria-expanded={open}
-				title={t("这条对话里标过的几处文字（点开看每一条）", "Spots you marked in this chat (click to see each)")}
-			>
-				<span className="annot-chip-icon" aria-hidden="true">
-					{/* 一颗小气泡：这是「注释」，不是菜单（以前那个 ☰ 看着像汉堡菜单） */}
-					<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.4">
-						<path d="M2.5 3.5h11v7.2h-6L4.2 13v-2.3H2.5z" strokeLinejoin="round" />
+			<div className="annot-head">
+				<button
+					type="button"
+					className="annot-chip"
+					onClick={onToggle}
+					aria-expanded={open}
+					title={t("这条对话里标过的几处文字（点开看每一条）", "Spots you marked in this chat (click to see each)")}
+				>
+					<span className="annot-chip-icon" aria-hidden="true">
+						{/* 一颗小气泡：这是「注释」，不是菜单（以前那个 ☰ 看着像汉堡菜单） */}
+						<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.4">
+							<path d="M2.5 3.5h11v7.2h-6L4.2 13v-2.3H2.5z" strokeLinejoin="round" />
+						</svg>
+					</span>
+					{t(`${annotations.length} 条注释`, `${annotations.length} note(s)`)}
+					<span className={`annot-chip-caret${open ? " annot-chip-caret-open" : ""}`} aria-hidden="true" />
+				</button>
+				<button
+					type="button"
+					className="annot-trash"
+					onClick={clearAll}
+					title={t("批量清空这条对话里的全部注释", "Discard all notes in this chat")}
+					aria-label={t("批量清空", "Discard all")}
+				>
+					<svg
+						viewBox="0 0 16 16"
+						width="13"
+						height="13"
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="1.4"
+						aria-hidden="true"
+					>
+						<path d="M2.5 4h11M6.2 4V2.8h3.6V4M4 4l.7 9.2h6.6L12 4" strokeLinecap="round" strokeLinejoin="round" />
 					</svg>
-				</span>
-				{t(`${annotations.length} 条注释`, `${annotations.length} note(s)`)}
-				<span className={`annot-chip-caret${open ? " annot-chip-caret-open" : ""}`} aria-hidden="true" />
-			</button>
+				</button>
+				{confirmingClear ? (
+					<div className="annot-confirm" role="alertdialog">
+						<div className="annot-confirm-title">{t("丢弃所有待处理标注？", "Discard all pending notes?")}</div>
+						<div className="annot-confirm-sub">
+							{t("页面上的所有编辑都将被移除", "All edits on the page will be removed")}
+						</div>
+						<div className="annot-confirm-actions">
+							<button type="button" className="annot-confirm-cancel" onClick={() => setConfirmingClear(false)}>
+								{t("取消", "Cancel")}
+							</button>
+							<button type="button" className="annot-confirm-danger" onClick={confirmClear}>
+								{t("放弃", "Discard")}
+							</button>
+						</div>
+					</div>
+				) : null}
+			</div>
 			{open ? (
 				<ul className="annot-list">
 					{annotations.map((item) => {
-						const excerpt = item.anchor.exact.replace(/\s+/g, " ").trim();
+						const web = isWebAnnotation(item);
+						// 网页标注没有「正文里那段话」，能认出它的是选择器（悬停看完整地址 + 选择器）
+						const excerpt = web ? item.spot.selector : item.anchor.exact.replace(/\s+/g, " ").trim();
 						const editing = editingId === item.id;
 						return (
 							<li
@@ -98,10 +154,18 @@ export function AnnotationSummary({
 								<button
 									type="button"
 									className="annot-row-main"
-									onClick={() => onJump(item)}
-									title={t("跳到正文里那一处", "Jump to that spot in the chat")}
+									disabled={web}
+									onClick={() => {
+										if (!web) onJump(item);
+									}}
+									title={
+										web
+											? `${t("网页上的一处", "A spot on the page")}: ${item.spot.url} ${item.spot.selector}`
+											: t("跳到正文里那一处", "Jump to that spot in the chat")
+									}
 								>
 									<span className="annot-index">{annotationNumber(annotations, item.id)}</span>
+									{web ? <span className="annot-web-mark">🌐</span> : null}
 									<span className="annot-excerpt">{excerpt}</span>
 								</button>
 								{editing ? (

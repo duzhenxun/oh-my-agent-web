@@ -17,6 +17,11 @@ type TurnMarkersInput = {
 	/** 本回合的**原始**文本（含标记）：建议必须从它里面解析 —— 流式过滤器已经把标记丢了 */
 	rawText: string;
 	nextId: (prefix: string) => string;
+	/**
+	 * 这一轮是怎么结束的。只有 `interrupted` 会在消息上写 `stopped`：语音播报据此说
+	 * 「任务已停止」而不是「任务已完成」（用户 2026-11-03：「如果是手动停止，就是任务已停止」）。
+	 */
+	reason?: "done" | "interrupted" | "error";
 	/** 回合结束的时间（毫秒）：写进助手消息的 `endedAt`，界面显示它而不是开始时间 */
 	at?: number;
 };
@@ -35,10 +40,14 @@ export function settleTurnMarkers(input: TurnMarkersInput): { actions: ActionIte
 	const applied = applyMarkersToMessage(assistant, actions, () => input.nextId("act"));
 	actions = applied.actions;
 	const endedAt = input.at ?? Date.now();
+	/** 被停掉的回合：标在身上（只加不清 —— 停过就是停过，重算不该把它抹掉） */
+	const stopped = input.reason === "interrupted";
 	const blocksChanged = applied.blocks !== assistant.blocks;
-	if (blocksChanged || assistant.endedAt !== endedAt) {
+	if (blocksChanged || assistant.endedAt !== endedAt || (stopped && assistant.stopped !== true)) {
 		state.messages[conversationId] = (state.messages[conversationId] ?? []).map((message) =>
-			message.id === messageId ? { ...message, blocks: applied.blocks, endedAt } : message,
+			message.id === messageId
+				? { ...message, blocks: applied.blocks, endedAt, ...(stopped ? { stopped: true } : {}) }
+				: message,
 		);
 	}
 	return { actions };

@@ -12,13 +12,20 @@
  * 只认 `suspended` 的写法从此永远不响 —— 所以这里一律用「不是 running 就唤醒」。
  */
 
-export type SoundKind = "start" | "done" | "error" | "approval";
+export type SoundKind = "start" | "steer" | "done" | "error" | "approval";
 
 export type SoundSettings = {
 	/** 总开关：关掉就一声都不响 */
 	enabled: boolean;
 	/** 回复开始（智能体开始新一轮） */
 	start: boolean;
+	/**
+	 * 插队（你的追问插进正在跑的这一轮）。
+	 *
+	 * 它是**唯一**「事情发生在你这一侧」的提示音：勾上才响（提示音 + 语音片段都归它管），
+	 * 关掉就是彻底安静 —— 有人觉得每次插队都念一句很吵（用户 2026-11-03 要求的这一项）。
+	 */
+	steer: boolean;
 	/** 回复结束（智能体完成一轮回答） */
 	done: boolean;
 	/** 出错（弹出错误提示时） */
@@ -33,6 +40,9 @@ const DEFAULT_SOUND_SETTINGS: SoundSettings = {
 	enabled: true,
 	// 开始只给一个很轻的「嗒」，默认**关**：每轮都响一下很吵
 	start: false,
+	// 插队默认**开**：那是你自己刚发的指令被接住了，值得给个确认（跟「开始」不一样，
+	// 它一轮里通常只有一两次，不像开始那样每轮必响）
+	steer: true,
 	done: true,
 	error: true,
 	approval: true,
@@ -52,6 +62,12 @@ export const SOUND_LABEL: Record<SoundKind, { title: string; titleEn: string; hi
 		hint: "智能体完成一轮回答时",
 		hintEn: "when the agent finishes a turn",
 	},
+	steer: {
+		title: "插队",
+		titleEn: "Steering",
+		hint: "你的追问插进正在跑的这一轮时",
+		hintEn: "when your follow-up cuts into the running turn",
+	},
 	error: { title: "出错", titleEn: "Error", hint: "出现错误提示时", hintEn: "when an error notice appears" },
 	approval: {
 		title: "等待审批",
@@ -70,7 +86,7 @@ export function loadSoundSettings(): SoundSettings {
 		if (!raw) return { ...DEFAULT_SOUND_SETTINGS };
 		const parsed = JSON.parse(raw) as Partial<SoundSettings>;
 		const merged: SoundSettings = { ...DEFAULT_SOUND_SETTINGS, ...parsed };
-		for (const key of ["enabled", "start", "done", "error", "approval"] as const) {
+		for (const key of ["enabled", "start", "steer", "done", "error", "approval"] as const) {
 			if (typeof merged[key] !== "boolean") merged[key] = DEFAULT_SOUND_SETTINGS[key];
 		}
 		if (typeof merged.volume !== "number" || !Number.isFinite(merged.volume)) {
@@ -191,6 +207,11 @@ const ERROR: Note[] = [
 	{ type: "square", freq: 220, start: 0, dur: 0.16, peak: 0.18 },
 	{ type: "square", freq: 174.61, start: 0.18, dur: 0.26, peak: 0.18 },
 ];
+/** 两声轻快上行的短音 —— 有新任务插队（跟「开始」那记单响区分得开，又不像出错那么重） */
+const STEER: Note[] = [
+	{ type: "triangle", freq: 740, start: 0, dur: 0.07, peak: 0.2 },
+	{ type: "triangle", freq: 988, start: 0.09, dur: 0.1, peak: 0.22 },
+];
 /** 三声门铃 —— 等你批准 */
 const APPROVAL: Note[] = [
 	{ type: "sine", freq: 659.25, start: 0, dur: 0.11, peak: 0.45 },
@@ -198,7 +219,13 @@ const APPROVAL: Note[] = [
 	{ type: "sine", freq: 880, start: 0.28, dur: 0.26, peak: 0.5 },
 ];
 
-const PATTERNS: Record<SoundKind, Note[]> = { start: START, done: DONE, error: ERROR, approval: APPROVAL };
+const PATTERNS: Record<SoundKind, Note[]> = {
+	start: START,
+	steer: STEER,
+	done: DONE,
+	error: ERROR,
+	approval: APPROVAL,
+};
 
 function tone(context: AudioContext, note: Note, volume: number): void {
 	const osc = context.createOscillator();

@@ -12,7 +12,14 @@ import {
 } from "../ui-prefs.ts";
 import { useStoredBool } from "../use-stored-bool.ts";
 import { useSkillNames } from "../skill-names.ts";
-import { foldLayout, isNarrationText, isTurnRunning, processView, shouldForgetManual } from "../process-fold.ts";
+import {
+	foldLayout,
+	hidesNarration,
+	isNarrationText,
+	isTurnRunning,
+	processView,
+	shouldForgetManual,
+} from "../process-fold.ts";
 import type { ActionItem, SubagentRunView, UiMessage } from "../types.ts";
 import type { QueuedView } from "../pending-sends.ts";
 import { firstLine, readExpanded, toggleExpanded, writeExpanded } from "../steer-collapsed.ts";
@@ -493,11 +500,13 @@ function MessageViewInner({
 	/**
 	 * 折叠**收到哪里**：最后一个结论之前的一切 —— 思考、工具卡、**以及中间那几段说明文字**。
 	 *
-	 * 这条路走过两次（判断全在 `foldLayout` 里）：
+	 * 这条路走过三次（判断全在 `foldLayout` 里）：
 	 *   - 2026-10-30：只收思考与工具，说明文字留在外面（当时的理由是「A 不行改用 B」是可信度来源）；
 	 *   - 2026-11-02：改回来了 —— 跑完屏幕上剩下「我先看一下…」「版本并不一致，我再确认…」
 	 *     这类过程话，最后的结论反而被麦在中间（用户给了截图）。现在**跑的时候照样铺着看，
-	 *     跑完只留最后的结果**，说明文字跟过程一起进折叠，点开就能看回完整时间线。
+	 *     跑完只留最后的结果**，说明文字跟过程一起进折叠，点开就能看回完整时间线；
+	 *   - 2026-11-03：没结论的回合（插队 / 打断截在工具调用上）也整条收掉 —— 之前这些回合
+	 *     在历史里永远摊开，用户勾了「跑完自动折叠」也看不到效果。
 	 *
 	 * 两个落点：
 	 *   - `firstProcessAt` = 折叠按钮的落点：第一次动手的地方（按钮长在「过程」发生的位置）；
@@ -556,7 +565,9 @@ function MessageViewInner({
 	 *   - **跑着的时候铺开**（用户 2026-11-02）：思考段、工具卡、以及中间那几段说明都按发生顺序排着，
 	 *     顶部那行「N 段思考 · N 次工具 · 耗时」的秒表跟着往上跳 —— 长任务能一眼看出它到底在干什么；
 	 *   - **跑完自动收起**（默认）：过程收成那一行，屏幕上只留最后的结果；
-	 *   - 没有最终结果（这一轮以工具调用收尾）或关掉了「跑完自动折叠过程」→ 不收起；
+	 *     **以工具调用收尾的也算跑完**（插队 / 被打断的回合，用户 2026-11-03）：照样收，
+	 *     否则重开历史时这些回合永远是摊开的（用户勾了「跑完自动折叠」却看不到效果）；
+	 *   - 关掉了「跑完自动折叠过程」→ 交回两个「默认展开」开关；
 	 *   - **手动点过**的那条消息以手动为准（否则用户点开看了一眼，一次重渲染又自己折叠回去），
 	 *     但「跑完那一下」会把这条手动状态作废 —— 要的就是跑完自动收起，不能因为中途点开过就不收。
 	 * 关掉自动折叠时回落到原来那两个「默认展开思考块 / 工具卡」开关。
@@ -573,7 +584,6 @@ function MessageViewInner({
 	 */
 	const view = processView({
 		running,
-		hasAnswer,
 		autoCollapse,
 		autoFoldRunning,
 		defaultOpen: thinkingDefaultOpen || toolsDefaultOpen,
@@ -651,10 +661,10 @@ function MessageViewInner({
 	 * 过程段（思考 + 工具）：
 	 *   - `all`：全部铺开（按钮长在**第一段**过程的位置）；
 	 *   - `collapsed`：只剩按钮。
-	 * 中间那几段说明（text）与错误块同理：收起时按折叠范围切（最后一个结论之前的进折叠）。
+	 * 中间那几段说明（text）同理：收起时按折叠范围切（最后一个结论之前的进折叠）。
+	 * 错误块**不进折叠**：那一行只报「N 段思考 · N 次工具 · 耗时」，报错藏进去就没人知道了。
 	 */
 	const renderSegment = (segment: TurnSegment, index: number) => {
-		const folded = view === "collapsed" && insideFold(index);
 		if (segment.kind === "process") {
 			if (view === "collapsed")
 				return index === firstProcessAt ? <Fragment key={`fold-${index}`}>{foldButton}</Fragment> : null;
@@ -693,8 +703,9 @@ function MessageViewInner({
 			);
 		}
 		if (segment.kind === "text") {
-			// 收起时：最后一个结论之前的进折叠（只要有一句落在最后，它就是「最后的输出」，永远画）
-			if (folded) return null;
+			// 收起时：折叠范围内的不画（只要有一句落在最后，它就是「最后的输出」，永远画）；
+			// “跑完了却没结论” 的回合连说明也一起收（用户 2026-11-03，见 hidesNarration）
+			if (hidesNarration({ view, running, hasProcess, hasAnswer, insideFold: insideFold(index) })) return null;
 			// `live` = 这一条正在流式生成：markdown 降级渲染（节流 + 暂不高亮），
 			// 否则每个 delta 都要把整段正文重新解析一遍（越长越贵，末尾最卡）
 			// 中间那几段说明（结论之前的正文）字号大一号：夹在思考行与工具行之间时，
@@ -711,7 +722,7 @@ function MessageViewInner({
 				/>
 			) : null;
 		}
-		if (folded) return null;
+		// 错误块永远画（收起时也不藏）：它是这一轮真正要说的话
 		return (
 			<div key={segment.index} className="block-error">
 				<span className="block-error-code">{segment.block.code}</span>

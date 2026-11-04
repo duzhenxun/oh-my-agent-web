@@ -199,8 +199,13 @@ function entriesToUiMessagesRaw(entries: unknown[], live: boolean): UiMessage[] 
 		if (!mapped) continue;
 		// 同一轮里的助手消息合并成一条（工具轮次会有很多条）：界面上一次提问只有一个回复气泡，
 		// token / 费用也跟着累加 —— 否则历史里看到的是「每次模型调用各一条」，总数还得自己加。
+		//
+		// ⚠️ 条件必须**两边都是助手**（用户 2026-11-03）。以前只判 `previous.role === "assistant"`，
+		// 于是「助手回答 → 用户又发一句 → 助手继续」时，那句**用户消息被并进了助手气泡**：
+		// 界面上看不到自己的气泡，回复里却多出几段来路不明的短句（快照里就是这样，
+		// 用户看到的是「文案有问题 / 有时只出来一个字」）。用户消息一定要单独成条。
 		const previous = messages.at(-1);
-		if (previous && previous.role === "assistant") {
+		if (previous && previous.role === "assistant" && mapped.role === "assistant") {
 			previous.blocks = [...previous.blocks, ...mapped.blocks];
 			if (mapped.usage) previous.usage = addUsage(previous.usage, mapped.usage);
 			if (mapped.model) previous.model = mapped.model;

@@ -10,9 +10,16 @@
  * 而不是整页空白。JS 里动态拼的地址改不到 —— 那类走点击拦截（`NAV_SCRIPT`）兜底。
  */
 
-type RewriteScope = { scheme: string; host: string };
+import { PICKER_SCRIPT } from "./picker-script.js";
+import { PROXY_PREFIX } from "./proxy-url.js";
 
-const PREFIX_OF = (scope: RewriteScope) => `/web/p/${scope.scheme}/${scope.host}`;
+/**
+ * `prefix` 决定改写出来的地址落在哪个模式下：普通（`/web/p/`）还是手机（`/web/m/`）。
+ * 它**必须**跟着进来 —— 手机模式下把根相对的图/CSS 改回普通前缀，那一页就会一半手机一半电脑。
+ */
+type RewriteScope = { scheme: string; host: string; prefix?: string };
+
+const PREFIX_OF = (scope: RewriteScope) => `${scope.prefix ?? PROXY_PREFIX}${scope.scheme}/${scope.host}`;
 
 /** 单个引用值要不要改写。返回原值表示「不动」 */
 function toProxied(value: string, scope: RewriteScope): string {
@@ -35,8 +42,9 @@ const ATTR = /(\s(?:src|href|action|poster|data-src|data-href)\s*=\s*)(["'])([^"
  * 而站点自己拼的绝对链接（搜索结果、分页）也必须代理，否则一点就撞回他们的 DENY。
  * 这里在**捕获阶段**拦 click / submit，把目标换算成代理地址再交给浏览器。
  */
-const NAV_SCRIPT = `<script>(function(){
-var PREFIX=${JSON.stringify("/web/p/")};
+function navScript(prefix: string): string {
+	return `<script>(function(){
+var PREFIX=${JSON.stringify(prefix)};
 function proxied(href){
   if(!href) return null;
   if(href.indexOf(PREFIX)===0) return href;
@@ -46,6 +54,8 @@ function proxied(href){
   return PREFIX+abs.protocol.slice(0,-1)+"/"+abs.host+abs.pathname+abs.search+abs.hash;
 }
 document.addEventListener("click",function(event){
+  /* 标注拾取中：点链接是「选这一块」，绝不能把页面导走（拾取脚本会自己画编辑框） */
+  if(window.__awPicking) return;
   var node=event.target;
   while(node&&node.nodeType===1&&node.tagName!=="A") node=node.parentElement;
   if(!node||node.tagName!=="A") return;
@@ -57,15 +67,25 @@ document.addEventListener("click",function(event){
   location.href=next;
 },true);
 document.addEventListener("submit",function(event){
+  /* 拾取中也不要让页面自己提交走（表单通常就藏在按钮旁边） */
+  if(window.__awPicking){ event.preventDefault(); return; }
   var form=event.target;
   if(!form||form.tagName!=="FORM") return;
   var next=proxied(form.getAttribute("action")||location.href);
   if(next) form.setAttribute("action",next);
 },true);
 })()</script>`;
+}
 
-/** HTML：属性改写 + 把拦截脚本塞进 `<head>`（没有 head 就塞在文档最前面） */
+/**
+ * 塞进页面的两段脚本（按这一页的代理前缀生成）：点击拦截 + 元素拾取。
+ * 前缀要跟着走，否则手机模式下页面里点出来的下一页会掉回普通模式（UA 一变，站点又发电脑版）。
+ */
+const injected = (scope: RewriteScope) => navScript(scope.prefix ?? PROXY_PREFIX) + PICKER_SCRIPT;
+
+/** HTML：属性改写 + 把两段脚本塞进 `<head>`（没有 head 就塞在文档最前面） */
 export function rewriteHtml(html: string, scope: RewriteScope): string {
+	const scripts = injected(scope);
 	const rewritten = html.replace(ATTR, (whole, lead: string, quote: string, value: string) => {
 		const next = toProxied(value, scope);
 		return next === value ? whole : `${lead}${quote}${next}${quote}`;
@@ -73,9 +93,9 @@ export function rewriteHtml(html: string, scope: RewriteScope): string {
 	const head = /<head[^>]*>/i.exec(rewritten);
 	if (head && head.index >= 0) {
 		const at = head.index + head[0].length;
-		return `${rewritten.slice(0, at)}${NAV_SCRIPT}${rewritten.slice(at)}`;
+		return `${rewritten.slice(0, at)}${scripts}${rewritten.slice(at)}`;
 	}
-	return NAV_SCRIPT + rewritten;
+	return scripts + rewritten;
 }
 
 const CSS_URL = /url\(\s*(["']?)([^"')]+)\1\s*\)/gi;

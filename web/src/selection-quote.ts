@@ -24,12 +24,20 @@ export function quoteOf(text: string): string {
 }
 
 /**
- * 把一段引用**接进已有草稿**后面（不清空用户已经打的字）。
+ * 把一段**接进已有草稿**后面（不清空用户已经打的字）。
  *
  * 前后各空一行：粘在上一句屁股上会被当成那一句的延续，
- * 后面不留空行则用户下一句话会紧贴引用块，看着像引用的一部分。
+ * 后面不留空行则用户下一句话会紧贴这一段，看着像它的一部分。
+ *
+ * 引用块和「网页标注」那条共用它：两种块的接法完全一样，
+ * 分开写两份迟早会在其中一份改歪（`web-note.ts` 里那段也走这里）。
  */
-export function appendQuote(draft: string, quote: string): string {
+export function appendBlock(draft: string, block: string): string {
 	const body = draft.replace(/\s+$/, "");
-	return body === "" ? `${quote}\n\n` : `${body}\n\n${quote}\n\n`;
+	return body === "" ? `${block}\n\n` : `${body}\n\n${block}\n\n`;
+}
+
+/** 引用块接进草稿：语义名字保留下来，调用处读起来才知道接的是什么 */
+export function appendQuote(draft: string, quote: string): string {
+	return appendBlock(draft, quote);
 }

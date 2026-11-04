@@ -77,6 +77,16 @@ export const SIDE_CHAT_ZOOM_KEY = "agent-web.sidechat.zoom";
 /** 网页面板的缩放百分比（同上） */
 export const WEB_ZOOM_KEY = "agent-web.web.zoom";
 
+/**
+ * 网页面板的「手机尺寸预览」开着没有，以及选了哪台机型。
+ *
+ * 纯本机偏好（跟 `WEB_ZOOM_KEY` 同一类）：手机 / 桌面各记各的，不影响别人。
+ * 机型存的是 `phone-frame.ts` 里的那个**稳定 id**（不是尺寸）—— 以后改机型表里的像素值，
+ * 用户的选择不会被一起改掉。
+ */
+export const WEB_PHONE_KEY = "agent-web.web.phone";
+export const WEB_PHONE_SIZE_KEY = "agent-web.web.phoneSize";
+
 export const TERMINAL_FONT_KEY = "agent-web.terminal.fontSize";
 export const TERMINAL_FONT_DEFAULT = 14;
 export const TERMINAL_FONT_MIN = 8;

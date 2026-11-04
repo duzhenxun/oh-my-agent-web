@@ -13,7 +13,7 @@
  * 首帧前跑的内联脚本只需要一条前缀判断，不会和这里的表各说各话。
  */
 type ThemeMode = "light" | "dark";
-export type ThemeId = "light" | "light-warm" | "light-cool" | "dark" | "dark-night" | "dark-warm";
+export type ThemeId = "light" | "light-warm" | "light-cool" | "dark" | "dark-night" | "dark-warm" | "dark-vscode";
 
 export type ThemeDef = {
 	id: ThemeId;
@@ -26,7 +26,7 @@ export type ThemeDef = {
 	swatch: [string, string, string];
 };
 
-/** 3 浅 + 3 深。第一个浅色就是改版前的默认配色，所以老用户升级后视觉不变。 */
+/** 3 浅 + 4 深。第一个浅色就是改版前的默认配色，所以老用户升级后视觉不变。 */
 export const THEMES: readonly ThemeDef[] = [
 	{
 		id: "light",
@@ -75,6 +75,14 @@ export const THEMES: readonly ThemeDef[] = [
 		hint: "冷灰青，最冷静，Nord",
 		hintEn: "Cool grey-teal, the calmest, Nord",
 		swatch: ["#2e3440", "#434c5e", "#88c0d0"],
+	},
+	{
+		id: "dark-vscode",
+		name: "VSCode 暗色",
+		nameEn: "VSCode Dark",
+		hint: "经典中性灰，VS Code Dark+",
+		hintEn: "Classic neutral grey, VS Code Dark+",
+		swatch: ["#1f1f1f", "#252526", "#3794ff"],
 	},
 ];
 

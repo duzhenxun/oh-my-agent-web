@@ -1,0 +1,34 @@
+/* 侧栏列表底部的「已隐藏 · N」入口 + 展开后的清单。
+ *
+ * 收起态那一行直接复用 `.archived-row-entry`（组件上两个类都挂着）：
+ * 它跟「已归档 · N」是同一层的东西，本来就该长得一模一样 ——
+ * 这里只补「展开以后那一块」和几个必须不一样的地方。
+ */
+/* 入口那一行直接复用 `.archived-row-entry`（组件上两个类都挂着）：
+ * 它跟「已归档 · N」是同一层的入口，本来就该长得一模一样。 */
+.hidden-row-entry .proj-chevron {
+	/* 里面是 emoji 不是 svg：比 16px 的图形小一号，跟文件夹图标同一个视觉重量 */
+	font-size: 13px;
+	line-height: 1;
+}
+
+.hidden-row-name {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* 隐藏区展开后，里面的项目行就是普通项目行（与项目管理那一栏同一套）。
+ * 只靠**缩进**表达「在二级里」（用户 2026-11-03：「隐藏下面的项目往里缩进一下」）——
+ * 之前这里还画了一条竖向导轨，但当前会话那一行的左侧蓝条（`.pi-row-active::before`）
+ * 也落在这附近，两条平行的竖线挨在一起，看着像多出来一条莫名其妙的线（用户 2026-11-03 的截图）。
+ * 缩进本身已经够说明层级，导轨去掉。 */
+.proj-hidden .proj-head {
+	padding-left: 22px;
+}
+
+.proj-hidden .proj-body {
+	padding-left: 26px;
+}

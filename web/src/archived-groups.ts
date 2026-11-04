@@ -1,11 +1,14 @@
 /**
  * 把「已归档的会话 id」按项目分组（纯函数）。
  * 归档只是从主列表隐藏，会话数据仍在 pi 的存储里。
+ *
+ * 行上只留标题（用户 2026-11-03：每行后面那个灰字「已归档」不要了）——
+ * 整个清单本来就在「已归档 · N」下面，每条再写一遍是纯噪声。
  */
 import type { PiProject, SessionPrefs } from "./types.ts";
 import { tNow } from "./use-language.ts";
 
-type ArchivedGroup = { name: string; items: { id: string; title: string; time: string }[] };
+type ArchivedGroup = { name: string; items: { id: string; title: string }[] };
 
 export function groupArchived(projects: PiProject[], prefs: SessionPrefs): ArchivedGroup[] {
 	return projects
@@ -16,7 +19,6 @@ export function groupArchived(projects: PiProject[], prefs: SessionPrefs): Archi
 				.map((session) => ({
 					id: session.id,
 					title: session.title || tNow("（无标题）", "(untitled)"),
-					time: tNow("已归档", "Archived"),
 				})),
 		}))
 		.filter((group) => group.items.length > 0);

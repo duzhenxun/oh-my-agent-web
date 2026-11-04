@@ -20,8 +20,26 @@
 /** 代理前缀：不用 `/api` 是为了让页面里的相对地址解析得干净（不做 API 鉴权以外的事情） */
 export const PROXY_PREFIX = "/web/p/";
 
+/**
+ * **手机模式**的前缀：同一套镜像路径，只是换个前缀、上游请求换个手机 User-Agent。
+ *
+ * 为什么必须换前缀而不是加个查询参数：页面里的**相对地址**（`a/b`、`./c`）由浏览器按目录规则
+ * 解析，前缀一换，它们自动落在手机模式下 —— 不用在每个地址后面追一个参数；
+ * 而根相对的地址本来就要由 `rewriteHtml` / `rewriteCss` 改写，前缀跟着 scope 走就够了。
+ *
+ * 为什么需要换 UA：不少站点（百度就是）是按 **User-Agent** 决定发电脑版还是手机版的，
+ * 与视口宽度无关。只把 iframe 收窄到 390px，它们照样回电脑版 HTML/CSS ——
+ * 「手机尺寸预览」看到的就是电脑排版（用户 2026-11-03 的原话）。
+ */
+export const MOBILE_PREFIX = "/web/m/";
+
+/** 两个前缀（解析时哪个都认；顺序无关） */
+export const PROXY_PREFIXES = [PROXY_PREFIX, MOBILE_PREFIX] as const;
+
+const prefixOf = (mobile: boolean) => (mobile ? MOBILE_PREFIX : PROXY_PREFIX);
+
 /** 目标地址 → 代理路径。非 http(s) 返回 null（调用方自己决定怎么报错） */
-export function proxyPathOf(target: string): string | null {
+export function proxyPathOf(target: string, options: { mobile?: boolean } = {}): string | null {
 	let parsed: URL;
 	try {
 		parsed = new URL(target);
@@ -31,7 +49,7 @@ export function proxyPathOf(target: string): string | null {
 	if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
 	const scheme = parsed.protocol.slice(0, -1);
 	// host 里可能带端口（`localhost:3000`）：路径段里冒号是合法的，不用转义
-	return `${PROXY_PREFIX}${scheme}/${parsed.host}${parsed.pathname}${parsed.search}`;
+	return `${prefixOf(options.mobile === true)}${scheme}/${parsed.host}${parsed.pathname}${parsed.search}`;
 }
 
 /**
@@ -41,8 +59,9 @@ export function proxyPathOf(target: string): string | null {
  * 必须原封不动地带回去，解一次就会把 `%2F` 变成 `/`，那是另一条资源。
  */
 export function targetOfProxyPath(pathname: string, search = ""): string | null {
-	if (!pathname.startsWith(PROXY_PREFIX)) return null;
-	const rest = pathname.slice(PROXY_PREFIX.length);
+	const prefix = PROXY_PREFIXES.find((item) => pathname.startsWith(item));
+	if (prefix === undefined) return null;
+	const rest = pathname.slice(prefix.length);
 	const slash = rest.indexOf("/");
 	// `https/<host>` 至少要有一个 `/` 把协议与主机分开
 	if (slash < 0) return null;

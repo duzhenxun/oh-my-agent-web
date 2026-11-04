@@ -18,13 +18,14 @@ import { createCueMemory, planCues, type Cue } from "../../web/src/voice-cue-log
 
 type Status = "idle" | "streaming" | "awaiting_approval" | "error";
 
-function message(id: string, role: UiMessage["role"], endedAt?: number): UiMessage {
+function message(id: string, role: UiMessage["role"], endedAt?: number, extra: Partial<UiMessage> = {}): UiMessage {
 	return {
 		id,
 		role,
 		ts: 1,
 		endedAt,
 		blocks: [{ kind: "text", text: "hi" }],
+		...extra,
 	} as UiMessage;
 }
 
@@ -142,5 +143,70 @@ describe("提示音：回合完成判定", () => {
 			snapshot({ conversationId: "c2", byConversation: {} }),
 		]);
 		assert.deepEqual(kinds(turns[1] ?? []), ["done"]);
+	});
+});
+
+describe("提示音：手动停止说「任务已停止」", () => {
+	it("消息上带 stopped 的收尾：报 stopped，不报 done", () => {
+		const turns = play([
+			snapshot({ messages: [message("m1", "user")], status: "streaming", turnStartedAt: 100 }),
+			snapshot({
+				messages: [message("m1", "user"), message("m2", "assistant", 999, { stopped: true })],
+			}),
+		]);
+		assert.deepEqual(kinds(turns[1] ?? []), ["stopped"]);
+	});
+
+	it("停一儛之后不会再补一声（同一轮只播一次）", () => {
+		const stoppedMsg = message("m2", "assistant", 999, { stopped: true });
+		const turns = play([
+			snapshot({ messages: [message("m1", "user")], status: "streaming", turnStartedAt: 100 }),
+			snapshot({ messages: [message("m1", "user"), stoppedMsg] }),
+			snapshot({ messages: [message("m1", "user"), stoppedMsg] }),
+		]);
+		assert.deepEqual(kinds(turns[1] ?? []), ["stopped"]);
+		assert.deepEqual(kinds(turns[2] ?? []), []);
+	});
+
+	it("endedAt 晚一拍的停止：补判也是 stopped", () => {
+		const turns = play([
+			snapshot({ messages: [message("m1", "user")], status: "streaming", turnStartedAt: 100 }),
+			// 状态已经收了，但这条消息还没落 endedAt
+			snapshot({ messages: [message("m1", "user"), message("m2", "assistant", undefined, { stopped: true })] }),
+			snapshot({ messages: [message("m1", "user"), message("m2", "assistant", 999, { stopped: true })] }),
+		]);
+		assert.deepEqual(kinds(turns[1] ?? []), []);
+		assert.deepEqual(kinds(turns[2] ?? []), ["stopped"]);
+	});
+});
+
+describe("提示音：插队说「有新任务插队」", () => {
+	it("消息流里新冒出一条插队消息：报 steer，且只报一次", () => {
+		const user = message("m1", "user");
+		const steered = message("m3", "user", undefined, { steer: true });
+		const turns = play([
+			snapshot({ messages: [user], status: "streaming", turnStartedAt: 100 }),
+			snapshot({ messages: [user, message("m2", "assistant"), steered], status: "streaming", turnStartedAt: 100 }),
+			snapshot({ messages: [user, message("m2", "assistant"), steered], status: "streaming", turnStartedAt: 100 }),
+		]);
+		assert.deepEqual(kinds(turns[1] ?? []), ["steer"]);
+		assert.deepEqual(kinds(turns[2] ?? []), []);
+	});
+
+	it("第一次看到的会话里已经有插队消息（历史 / 切回来）：不补播", () => {
+		const turns = play([snapshot({ messages: [message("m1", "user", undefined, { steer: true })] })]);
+		assert.deepEqual(kinds(turns[0] ?? []), []);
+	});
+
+	it("插队后这一轮跑完：仍然只响一次「完成」", () => {
+		const user = message("m1", "user");
+		const steered = message("m3", "user", undefined, { steer: true });
+		const turns = play([
+			snapshot({ messages: [user], status: "streaming", turnStartedAt: 100 }),
+			snapshot({ messages: [user, steered], status: "streaming", turnStartedAt: 100 }),
+			snapshot({ messages: [user, steered, message("m4", "assistant", 999)] }),
+		]);
+		assert.deepEqual(kinds(turns[1] ?? []), ["steer"]);
+		assert.deepEqual(kinds(turns[2] ?? []), ["done"]);
 	});
 });

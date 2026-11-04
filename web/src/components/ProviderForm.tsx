@@ -132,7 +132,13 @@ export function ProviderForm({
 				setLatency((current) => ({
 					...current,
 					[id]: body.ok
-						? { ok: true, text: `${body.latencyMs ?? "?"}ms` }
+						? {
+								ok: true,
+								// 引擎侧测出来的会多一段「首字 / 出字速度」；直连 HTTP 只有一个耗时
+								text: [body.latencyMs === undefined ? null : `${body.latencyMs}ms`, body.message ?? null]
+									.filter((part): part is string => part !== null && part !== "")
+									.join(" · "),
+							}
 						: {
 								ok: false,
 								text: t(

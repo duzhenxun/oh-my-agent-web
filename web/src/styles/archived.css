@@ -1,72 +1,28 @@
-/* 已归档入口（在主列表底部） */
-.archived-entry {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	width: 100%;
-	border: none;
-	background: none;
-	color: var(--text-faint);
-	font: inherit;
-	font-size: 14px;
-	text-align: left;
-	padding: 6px;
-	margin-top: 4px;
-	cursor: pointer;
-}
-
-.archived-entry:hover {
-	color: var(--text);
-	background: var(--bg-elev-2);
-}
-
-/* 归档视图：占满列表区，顶部一条返回栏 */
-.archived-view {
-	flex: 1 1 auto;
-	min-height: 0;
-	height: auto;
-	/* 打开归档视图时文件区会让位，这里能吃满剩余高度 */
+/* ---- 就地展开的归档清单 ----
+ * 以前它是一张独立视图（.archived-view 占满列表区、顶部一条返回栏、进去还得逐组点开）；
+ * 现在直接挂在列表最后那行「已归档 · N」下面：不抢位、也不用返回。
+ * 左边缩进到项目里会话行那一条线上（图标 16px + 6px 间距）。 */
+.archived-inline {
 	display: flex;
 	flex-direction: column;
-	gap: 6px;
+	gap: 4px;
+	min-width: 0;
+	padding: 0 0 2px 12px;
 }
 
-.archived-view-head {
+.archived-inline-bar {
 	display: flex;
 	align-items: center;
 	gap: 6px;
-	flex: none;
-	padding: 2px 0;
+	padding: 0 2px;
 }
 
-.archived-back {
-	width: 22px;
-	height: 22px;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	border: 1px solid var(--border);
-	border-radius: 6px;
-	background: var(--bg-elev);
-	color: var(--text-dim);
-	font: inherit;
-	cursor: pointer;
-	padding: 0;
-}
-
-.archived-view-title {
-	font-size: 15px;
-	font-weight: 600;
-	color: var(--text);
-}
-
+/* 清单本体：外层 .sidebar-list 已经在滚，这里别再自己滚一层、也别撑高度 */
 .archived-view-list {
-	flex: 1 1 auto;
-	min-height: 120px;
-	overflow: auto;
 	display: flex;
 	flex-direction: column;
-	gap: 6px;
+	gap: 2px;
+	min-width: 0;
 }
 
 .archived-group-title {
@@ -108,21 +64,12 @@
 	white-space: nowrap;
 }
 
-/* 每个项目分组右上角的「全选 / 全不选」：默认淡一点，鼠标进到这一组才明显 */
-.archived-group-select {
-	flex: none;
-	font-size: 13px;
-	padding: 1px 7px;
-	opacity: 0.55;
-}
-
-.archived-group:hover .archived-group-select,
-.archived-group-select:focus-visible {
-	opacity: 1;
-}
+/* 每个项目分组右上角原来的「全选 / 全不选」已去掉（用户 2026-11-03）：
+ * 批量选择改成跟项目管理一样的 Shift 连选 / Ctrl·⌘ 加减选，不再靠按钮全选。 */
 
 .archived-open {
 	flex: 1 1 auto;
+	width: 100%;
 	min-width: 0;
 	display: flex;
 	align-items: center;
@@ -142,13 +89,25 @@
 	background: var(--bg-elev-2);
 }
 
-.archived-time {
-	flex: none;
-	color: var(--text-faint);
+/* 选中的行：跟主列表多选的底色同一套（不再有勾选框，行底色就是「选上了」） */
+.archived-open.archived-row-on,
+.archived-open.archived-row-on:hover {
+	background: color-mix(in srgb, var(--accent) 12%, transparent);
+	color: var(--accent);
+}
+
+/* 归档清单就地展开时更紧凑：它挂在侧栏里，要和会话行同一套字号/行高 */
+.archived-inline .archived-group-title {
+	padding: 2px 2px 0;
 	font-size: 13px;
 }
 
-/* 归档视图打开时，项目列表整块让位（连空壳也不占 flex 空间） */
+.archived-inline .archived-open {
+	font-size: 14px;
+	padding: 3px 4px 3px 22px;
+}
+
+/* 项目整块收起时，列表区整个让位（连空壳也不占 flex 空间） */
 .sidebar-list-hidden {
 	display: none;
 }
@@ -182,9 +141,9 @@
 	background: var(--bg-elev-2);
 }
 
-/* 归档视图开着时高亮（正常情况下列表已被归档视图顶替，这一行看不到） */
-.archived-row-entry-on {
-	color: var(--accent);
+/* 展开中被点上时的高亮（当前会话不会出现在这里，这里只是「按着/选中」的余辉） */
+.archived-row-entry:active {
+	color: var(--text);
 }
 
 .archived-row-entry-name {
@@ -201,29 +160,16 @@
 	height: 100%;
 }
 
-/* ---- 归档视图：批量选择 ---- */
-.archived-bulk {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	flex: none;
-	padding: 4px 6px;
-	border: 1px solid var(--border);
-	border-radius: 8px;
-	background: var(--bg-elev);
+/* ---- 归档清单：批量选择 ----
+ * 批量条本身就是「项目管理」抬头那条选择条（.sidebar-selection），
+ * 这里只负责把它排成清单顶部的一行。 */
+.archived-inline-bar {
+	align-self: stretch;
+	padding: 0 2px 2px;
 }
 
-.archived-bulk-count {
-	font-size: 14px;
-	color: var(--text-dim);
-}
-
+/* 选中行底色（本体挂在 .archived-open 上，见上面那段） */
 .archived-row-on {
 	background: color-mix(in srgb, var(--accent) 10%, transparent);
 	border-radius: 6px;
-}
-
-.archived-row input[type="checkbox"] {
-	flex: none;
-	margin: 0;
 }

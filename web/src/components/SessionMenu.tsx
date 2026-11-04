@@ -89,7 +89,7 @@ export function SessionMenu({
 				</button>
 			) : null}
 			<button type="button" className="proj-menu-item" onClick={act(onPin)}>
-				📌 {pinned ? t("取消置顶", "Unpin") : t("置顶", "Pin")}
+				📌 {pinned ? t("取消置顶会话", "Unpin session") : t("置顶会话", "Pin session")}
 			</button>
 			{/* 重命名不是在菜单里改名：收起菜单后让那行（或顶栏那颗标题）变成输入框就地改 */}
 			<button type="button" className="proj-menu-item" onClick={act(onRename)}>

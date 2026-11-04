@@ -103,7 +103,9 @@
 /* 手机上宽度收一点，别贴着两边（手机的“对话列”≈整屏，量到的内联宽度已经够用，
  * 这里只是给兵底那条加个更紧的上限） */
 .is-mobile-shell .toast-host {
-	bottom: calc(52px + env(safe-area-inset-bottom, 0px));
+	/* 让开底部状态栏：高度见 statusbar.css 的 `--statusbar-h`（含安全区），
+	   不写死 px，改栏高时不用回来改两处 */
+	bottom: calc(var(--statusbar-h, 32px) + 16px);
 	max-width: calc(100vw - 16px);
 }
 

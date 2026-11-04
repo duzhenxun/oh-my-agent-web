@@ -9,7 +9,7 @@
  *   2. 按判定结果放声音、念句子。
  */
 import { useEffect, useRef } from "react";
-import { playSound } from "./sound.ts";
+import { loadSoundSettings, playSound } from "./sound.ts";
 import type { Snapshot } from "./types.ts";
 import { loadTtsSettings, speak, stripMarkdownForSpeech } from "./tts.ts";
 import type { TtsSettings } from "./tts.ts";
@@ -68,6 +68,9 @@ function assistantSpeech(message: UiMessage): string {
 }
 
 type DoneCue = Extract<Cue, { kind: "done" }>;
+/** 收尾那两类：「跑完了」和「被停掉」—— 都要出声，但说的不是同一句话 */
+type EndCue = Extract<Cue, { kind: "done" | "stopped" }>;
+const isDoneCue = (cue: EndCue): cue is DoneCue => cue.kind === "done";
 
 /**
  * 一拍里的多条完成只朗读**一条**回复（开了「朗读回复」才会走到这里）。
@@ -95,14 +98,21 @@ export function useVoiceCues(snapshot: Snapshot | null): void {
 		const cues = planCues(memory.current, snapshot);
 		if (cues.length === 0) return;
 		const tts = loadTtsSettings();
-		/** 完成单独攒起来：并行 / 后台会话一起收尾时，它们得合成一次 */
-		const done: DoneCue[] = [];
+		const sound = loadSoundSettings();
+		/** 收尾（完成 / 被停掉）单独攒起来：并行 / 后台会话一起收尾时，它们得合成一次 */
+		const ends: EndCue[] = [];
 		for (const cue of cues) {
-			if (cue.kind === "done") {
-				done.push(cue);
+			if (cue.kind === "done" || cue.kind === "stopped") {
+				ends.push(cue);
 				continue;
 			}
-			// 开始 / 出错 / 等审批：语音开着就播**预生成的本地片段**，否则只响提示音。
+			/**
+			 * 插队有自己的开关（设置 → 声音 → 插队，用户 2026-11-03）：关掉就**彻底不响** ——
+			 * 提示音和语音片段都不播。别的事件是「提示音归勾选、片段归语音总开关」，
+			 * 唯独插队只有这一句「有新任务插队」，不在这里拦一道的话，取消勾选在开了语音时等于没效果。
+			 */
+			if (cue.kind === "steer" && !sound.steer) continue;
+			// 开始 / 出错 / 等审批 / 插队：语音开着就播**预生成的本地片段**，否则只响提示音。
 			// 不再走语音合成（固定句子合成在真机上会重复播，2026-11-02）。
 			const channel = voiceChannelOf({
 				kind: cue.kind,
@@ -110,25 +120,33 @@ export function useVoiceCues(snapshot: Snapshot | null): void {
 				readReplies: tts.readReplies,
 				hasReply: false,
 			});
-			if (channel === "clip") playVoiceClip(cue.kind === "approval" ? "approval" : "error");
+			// 「开始」只有一记轻响、没有片段；插队现在有自己的片段和提示音（`BEEP_OF.steer`）
+			if (channel === "clip" && cue.kind !== "start") playVoiceClip(cue.kind);
 			else playSound(cue.kind);
 		}
-		if (done.length === 0) return;
+		if (ends.length === 0) return;
 		/**
 		 * 两条会话在同一拍收尾时，以前是两句「任务已完成」先后出声（音频层还会把前一句咬掉重念），
 		 * 听感就是「重复播了两遍」。现在：**同一拍合并成一次**（只念一条回复 / 只播一个片段），并且
 		 * 1.5s 内不再重复响（并行收尾也常落在相邻的两拍里）。
+		 *
+		 * 合并时当前会话优先：用户最关心眼前这条是「完成」还是「被停掉」（2026-11-03）。
 		 */
-		const reply = tts.enabled && tts.readReplies ? replyToRead(done, snapshot.active.conversationId) : "";
+		const primary = ends.find((cue) => cue.conversationId === snapshot.active.conversationId) ?? ends[0]!;
+		const reply =
+			primary.kind === "done" && tts.enabled && tts.readReplies
+				? replyToRead(ends.filter(isDoneCue), snapshot.active.conversationId)
+				: "";
 		const channel = voiceChannelOf({
-			kind: "done",
+			kind: primary.kind,
 			voiceEnabled: tts.enabled,
 			readReplies: tts.readReplies,
 			hasReply: reply !== "",
 		});
-		if (!shouldAnnounceDone(announced.current, channel === "reply" ? reply : null, Date.now())) return;
+		const nature = primary.kind === "stopped" ? "stopped" : "done";
+		if (!shouldAnnounceDone(announced.current, channel === "reply" ? reply : null, Date.now(), nature)) return;
 		if (channel === "reply") speakAuto(reply, tts);
-		else if (channel === "clip") playVoiceClip("done");
+		else if (channel === "clip") playVoiceClip(nature);
 		else playSound("done");
 	}, [snapshot]);
 	// 空闲时先把三类片段拉下来解码好：回答一结束就要出声，那一拍主线程正在收尾渲染，

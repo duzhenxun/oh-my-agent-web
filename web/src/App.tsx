@@ -43,11 +43,13 @@ import {
 import { focusComposer } from "./composer-focus.ts";
 import { PLAIN_TEXT_INPUT } from "./plain-text-input.ts";
 import { appendQuote, quoteOf } from "./selection-quote.ts";
+import type { WebNoteWithNumber } from "./web-note.ts";
 import {
 	addAnnotation,
 	annotationBlock,
 	annotationNumber,
 	findSameSpot,
+	isWebAnnotation,
 	markQuoted,
 	readAnnotations,
 	removeAnnotation,
@@ -55,6 +57,7 @@ import {
 	writeAnnotations,
 	type Annotation,
 } from "./annotations.ts";
+import { readWebMarks, removeMarkAt, writeWebMarks } from "./web-marks.ts";
 import { AnnotationSummary } from "./components/AnnotationSummary.tsx";
 import type { SelectionAddInput } from "./components/SelectionToolbar.tsx";
 import { showToast } from "./toast.ts";
@@ -352,6 +355,18 @@ export function App() {
 		 * 拿 516 当起点的话，往左拖 10px 只是把 516 改成 506，屏幕上那 235px 一动不动（「拖不动」）。
 		 */
 		const startWidth = Math.min(sideWidth, sidebarMaxWidth(window.innerWidth));
+		/**
+		 * 抓手指（pointer capture）：拖出窗口 / 拖到别的元素上时，move 与 up 还能回到这一条。
+		 * （面板里那种 iframe 它是拦不住的 —— 那种情况靠 `<html>.is-resizing` 那层全屏遮挡，
+		 * 见 project-icon.css。）
+		 */
+		const handle = event.currentTarget;
+		const pointerId = event.pointerId;
+		try {
+			handle.setPointerCapture(pointerId);
+		} catch {
+			// 拿不到就算了，下面还有 pointerup 兜底
+		}
 		const onMove = (moveEvent: PointerEvent) => {
 			if (!dragging.current) return;
 			// 上限跟着窗口算（`sidebarMaxWidth`，与 responsive.css 的 42vw 同一条规则）：
@@ -364,6 +379,11 @@ export function App() {
 			document.removeEventListener("pointermove", onMove);
 			document.removeEventListener("pointerup", onUp);
 			document.removeEventListener("pointercancel", onUp);
+			try {
+				if (handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId);
+			} catch {
+				// 元素已不在 / 指针已释放：忽略
+			}
 		};
 		document.addEventListener("pointermove", onMove);
 		document.addEventListener("pointerup", onUp);
@@ -895,10 +915,20 @@ export function App() {
 	/** 删掉一条标注（列表里那颗 ✕）：正文里的编号跟着重排 */
 	const removeAnnotationById = useCallback(
 		(id: string) => {
+			const target = annotations.find((item) => item.id === id);
 			const next = removeAnnotation(annotations, id);
 			setAnnotations(next);
 			writeAnnotations(window.localStorage, activeSessionId, next);
 			if (focusedAnnotation === id) setFocusedAnnotation(null);
+			/**
+			 * 网页注释：对话框里删掉，网页上那个编号框也要跟着没（两边认的是同一「处」：同页 + 同选择器）。
+			 * 只删这一处，不动别的；**发送**之后的清空（`clearSentAnnotations`）不走这里 ——
+			 * 发出去的标记在页面上保留着编号，那是有意的（见 web-marks.ts 的文件说明）。
+			 */
+			if (target !== undefined && isWebAnnotation(target)) {
+				const storage = window.localStorage;
+				writeWebMarks(storage, removeMarkAt(readWebMarks(storage), target.spot.url, target.spot.selector));
+			}
 		},
 		[annotations, activeSessionId, focusedAnnotation],
 	);
@@ -913,6 +943,23 @@ export function App() {
 		setAnnotationsOpen(false);
 		setFocusedAnnotation(null);
 	}, [activeSessionId]);
+
+	/**
+	 * 「清空全部」（注释列表里那颗）：这条对话的全部注释一次清掉，网页上对应的编号也一并去掉。
+	 * 只动这条对话（`activeSessionId`）的注释；网页标记只删这些注释指向的那几处。
+	 */
+	const clearAllAnnotations = useCallback(() => {
+		const storage = window.localStorage;
+		let marksNext = readWebMarks(storage);
+		for (const item of annotations) {
+			if (isWebAnnotation(item)) marksNext = removeMarkAt(marksNext, item.spot.url, item.spot.selector);
+		}
+		writeWebMarks(storage, marksNext);
+		setAnnotations([]);
+		writeAnnotations(storage, activeSessionId, []);
+		setAnnotationsOpen(false);
+		setFocusedAnnotation(null);
+	}, [annotations, activeSessionId]);
 
 	/**
 	 * 「放进输入框」：把这条标注的原文（引用块）+ 我自己的评论接进草稿。
@@ -935,6 +982,40 @@ export function App() {
 		[t, annotations, activeSessionId],
 	);
 
+	/**
+	 * 右侧网页里标出的一处（`WebTool` 的 📍）→ 收进「N 条注释」。
+	 *
+	 * 跟对话里选一段文字完全同一个列表（`annotations`），所以两边能**批量**一起发出去：
+	 * 标在对话里的、标在网页上的，就是同一批「待发内容」，输入框里只占那一颗胶囊。
+	 * **不动草稿**：标的时候用户往往正在打自己的问题，往草稿里塞东西就是在抢输入。
+	 *
+	 * 同一处再标一次 = 改那句评论（`addAnnotation` 按 url + 选择器去重），不叠第二个编号。
+	 */
+	const addWebNote = useCallback(
+		(note: WebNoteWithNumber) => {
+			const createdAt = Date.now();
+			const next = addAnnotation(annotations, {
+				id: `web:${createdAt}:${annotations.length}`,
+				kind: "web",
+				// 页面上的号（拾取时定的），胶囊里那一行与发出去那段都用它
+				number: note.number,
+				spot: {
+					url: note.url,
+					selector: note.selector,
+					tag: note.tag,
+					label: note.label,
+					text: note.text,
+				},
+				comment: note.comment,
+				createdAt,
+			});
+			setAnnotations(next);
+			writeAnnotations(window.localStorage, activeSessionId, next);
+			showToast({ text: t("已加入注释", "Added to the notes"), ttl: 1800 });
+		},
+		[t, annotations, activeSessionId],
+	);
+
 	/** 列表里就地写/改一条的评论（空串 = 清掉）：正文里的编号和胶囊上的说法都会跟着变 */
 	const updateAnnotationComment = useCallback(
 		(id: string, comment: string) => {
@@ -950,6 +1031,8 @@ export function App() {
 	 * 消息 id → DOM id 的拼法跟 MessageList 一致（`msg-<id>`）；消息已经被分页 / 删掉就什么都不做。
 	 */
 	const jumpToAnnotation = useCallback((item: Annotation) => {
+		// 网页标注没有对应的正文位置（它指的是 iframe 里那个元素），跳不了就不跳
+		if (isWebAnnotation(item)) return;
 		const target = document.getElementById(`msg-${item.messageId}`);
 		if (target === null) return;
 		target.scrollIntoView({ block: "center", behavior: "smooth" });
@@ -1874,6 +1957,7 @@ export function App() {
 											focusedId={focusedAnnotation}
 											onToggle={() => setAnnotationsOpen((current) => !current)}
 											onRemove={removeAnnotationById}
+											onClear={clearAllAnnotations}
 											onQuote={quoteAnnotation}
 											onJump={jumpToAnnotation}
 											onComment={updateAnnotationComment}
@@ -1932,6 +2016,8 @@ export function App() {
 									setFileReveal((current) => ({ path, seq: current.seq + 1 }));
 								}}
 								onOpenFile={(path) => openFileInPanel(path, workspaceRoot ?? "")}
+								/* 网页页里的 📍：收进「N 条注释」（与对话里那些同一个列表，批量一起发） */
+								onWebNote={addWebNote}
 								/* 预览里候选文件被点中：用它**那个标签的根**打开（不一定是当前会话工作区） */
 								onOpenFilePath={openFileInPanel}
 							/>

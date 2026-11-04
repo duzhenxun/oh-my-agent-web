@@ -145,6 +145,56 @@
 	color: var(--red);
 }
 
+/* ---- 网页标注：📍 按钮 / 拾取提示（编辑框画在页面里，见 picker-script.ts） ---- */
+/* 开着的时候要一眼看出来：填一点主色，跟「没开」不是一个长相。
+   连续标注是主要用法，人得知道「现在是标完一处还能接着标」还是已经停了。 */
+.work-web-pick-on,
+.work-web-phone-on {
+	border-color: var(--accent);
+	background: color-mix(in srgb, var(--accent) 16%, transparent);
+	color: var(--accent);
+}
+
+.work-web-pick-hint {
+	color: var(--accent);
+}
+
+/* ---- 手机尺寸预览 ----
+ * 两层盒子：`stage` 是「装页面那一块」（占满可用高度），`body` 是页面本体。
+ * 平时 body 就是整块；开手机预览时 body 变成一台固定尺寸的机身（宽高由 JS 写死），
+ * 放不下就整体等比缩放（`zoom`，见 phone-frame.ts 的 fitScale）—— 所以 stage 不要滚动条。
+ */
+.work-web-stage {
+	flex: 1 1 auto;
+	min-width: 0;
+	min-height: 0;
+	display: flex;
+}
+
+.work-web-stage-phone {
+	overflow: auto;
+}
+
+.work-web-body {
+	flex: 1 1 auto;
+	min-width: 0;
+	min-height: 0;
+	display: flex;
+}
+
+/* 机身：圆角 + 细边 + 一点投影，像一台手机而不是「一个被压窄的框」
+ * 居中用 `margin: auto` 而不是舞台上的 `justify/align-items: center`：后者在内容比舞台高时
+ * 会两端同时裁掉（用户反馈「上面被遮挡」）；`margin: auto` 溢出时只往下/右溢，顶部始终可见。 */
+.work-web-body-phone {
+	flex: none;
+	margin: auto;
+	overflow: hidden;
+	border: 1px solid var(--border);
+	border-radius: 20px;
+	background: #fff;
+	box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+}
+
 .work-web-frame {
 	flex: 1 1 auto;
 	min-height: 0;
@@ -152,6 +202,12 @@
 	border: 1px solid var(--border);
 	border-radius: 8px;
 	background: #fff;
+}
+
+/* 机身边框与圆角已经由 body 画了，里面这一层不要再套一圈 */
+.work-web-body-phone .work-web-frame {
+	border: none;
+	border-radius: 0;
 }
 
 .work-web-start {
@@ -457,4 +513,47 @@
 	background: color-mix(in srgb, var(--accent) 12%, transparent);
 	border-color: transparent;
 	color: var(--accent);
+}
+
+/* 📱 手机预览：机型菜单（原来是工具栏里一个下拉框，现在收进按钮） */
+.work-web-phone-wrap {
+	position: relative;
+	flex: none;
+}
+
+.work-web-phone-menu {
+	position: absolute;
+	top: calc(100% + 4px);
+	left: 0;
+	z-index: 30;
+	display: flex;
+	flex-direction: column;
+	min-width: 200px;
+	padding: 4px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--bg-elev);
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+.work-web-phone-item {
+	padding: 5px 8px;
+	border: none;
+	border-radius: 6px;
+	background: none;
+	color: var(--text);
+	font: inherit;
+	font-size: 12px;
+	text-align: left;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.work-web-phone-item:hover {
+	background: color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+.work-web-phone-item-on {
+	color: var(--accent);
+	font-weight: 600;
 }

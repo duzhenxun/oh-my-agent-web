@@ -449,6 +449,8 @@ registerAuxRoutes(app, {
 	providerAuth: engine.providerAuth,
 	// 模型测速（模型面板的「测速」按钮）：交给当前引擎开一次性会话跑 ping
 	probeModel: (modelId) => runtime.probeModel(modelId),
+	// 引擎当前报上来的模型：逐模型测试碰到「工作台没凭证」时靠它判断能不能交给引擎自己跑
+	engineModels: () => runtime.state().models,
 	// 插件 / MCP：按当前引擎分发（见上面 pluginStores / mcpStores 的注释）
 	engineOf: () => runtime.state().engine,
 	pluginStoreFor,

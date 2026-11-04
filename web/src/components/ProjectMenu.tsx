@@ -23,6 +23,9 @@ export function ProjectMenu({
 	onOpenFiles,
 	onOpenTerminal,
 	onReveal,
+	onHide,
+	hidden = false,
+	onUnhide,
 	onDeleteAll,
 	sessionCount,
 }: {
@@ -44,6 +47,11 @@ export function ProjectMenu({
 	onOpenFiles: () => void;
 	onOpenTerminal: () => void;
 	onReveal: () => void;
+	/** 把这个项目从侧栏隐藏（只藏列表，会话与偏好都还在，可撤销 / 到「已隐藏」里放回来） */
+	onHide: () => void;
+	/** 这张菜单是从「已隐藏」里打开的：最后那一项换成「取消隐藏」 */
+	hidden?: boolean;
+	onUnhide?: () => void;
 	/** 删除这个项目下的全部会话（会二次确认） */
 	onDeleteAll: () => void;
 	/** 供菜单显示条数 */
@@ -108,6 +116,34 @@ export function ProjectMenu({
 			>
 				🔍 {t("在 Finder 中显示", "Reveal in Finder")}
 			</button>
+			{/* 隐藏 / 取消隐藏在「Finder 中显示」之后、破坏性操作之前：它不删任何东西，
+			 * 但因为「项目当场从主列表消失」，所以放在最后这一组、给一句「会话都还在」的说明。
+			 * 同一个位置两种文案：在主列表里是「隐藏项目」，在「已隐藏」里是「取消隐藏」。 */}
+			{hidden ? (
+				<button
+					type="button"
+					className="proj-menu-item"
+					title={t(
+						"把它放回主列表（会话都在，位置也还是原来的）",
+						"Put it back in the main list (sessions and position are kept)",
+					)}
+					onClick={act(() => onUnhide?.())}
+				>
+					👁 {t("取消隐藏", "Unhide")}
+				</button>
+			) : (
+				<button
+					type="button"
+					className="proj-menu-item"
+					title={t(
+						"把这个项目从侧栏收起来（会话都还在；可撤销，也可在「已隐藏」里放回来）",
+						"Hide this project from the sidebar (sessions stay; undoable, or unhide from “Hidden”)",
+					)}
+					onClick={act(onHide)}
+				>
+					🙈 {t("隐藏项目", "Hide project")}
+				</button>
+			)}
 			{/* 破坏性操作放最后、标红：删的是这条项目的全部会话，**真删文件、不可恢复**。
 			 * 两下确认：第一下只上膛 —— 见文件里 `wipe` 那段注释。 */}
 			<button

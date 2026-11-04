@@ -18,6 +18,31 @@ export function appendText(message: UiMessage, text: string): UiMessage {
 	return { ...message, blocks };
 }
 
+/**
+ * 用权威全文校正「这一段正文」（`text_end` 到达时调用，ADR-0004 §3 的兜底）。
+ *
+ * 只在两种情况下动手，其余一律原样返回（幂等、不会把别的正文写坏）：
+ *   1. 尾部正文块是权威全文的**前缀** → 补全（典型：某个 delta 丢了，界面只剩半句 / 一个字）；
+ *   2. 还没有尾部正文块（delta 全丢）→ 补一块。
+ * 尾部是工具块时（text_end 之后紧跟 toolCall）也属于第 2 种：正文本来就该在工具块**之前**，
+ * 这里不越过工具块去改历史，交给下一段正文正常追加。
+ */
+export function reconcileText(message: UiMessage, text: string): UiMessage {
+	if (text === "") return message;
+	const blocks = [...message.blocks];
+	const last = blocks[blocks.length - 1];
+	if (!last) return { ...message, blocks: [{ kind: "text", text }] };
+	if (last.kind === "text") {
+		if (last.text === text) return message;
+		// 只补全前缀；已经更长 / 内容不同（比如两段正文被并到一个块里）就不碰
+		if (!text.startsWith(last.text)) return message;
+		blocks[blocks.length - 1] = { kind: "text", text };
+		return { ...message, blocks };
+	}
+	if (last.kind === "tool") return message;
+	return { ...message, blocks: [...blocks, { kind: "text", text }] };
+}
+
 export function startTool(
 	message: UiMessage,
 	input: { toolCallId: string; name: string; argsSummary: string; argsFull?: string; startedAt: number },

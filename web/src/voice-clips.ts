@@ -8,13 +8,17 @@
  *
  * 预生成之后播放只有一步：`AudioBufferSourceNode.start()`。没有重试、没有取消、没有网络、
  * 也没有「这台机器装了什么音色」。片段由 `scripts/make-voice-cues.mjs` 生成（中文 + 英文各一套），
- * 合计 80KB 左右，随源码一起发布。
+ * 合计 130KB 左右，随源码一起发布。
  *
  * 播放仍然借 `sound.ts` 那个 AudioContext：Safari / iOS 只放行「用户手势里建好并 resume 过的」
  * 上下文，另开一个的话，自动触发的那一声永远不响。
  */
 import doneZh from "./assets/cues/done.zh.mp3?url";
 import doneEn from "./assets/cues/done.en.mp3?url";
+import stoppedZh from "./assets/cues/stopped.zh.mp3?url";
+import stoppedEn from "./assets/cues/stopped.en.mp3?url";
+import steerZh from "./assets/cues/steer.zh.mp3?url";
+import steerEn from "./assets/cues/steer.en.mp3?url";
 import errorZh from "./assets/cues/error.zh.mp3?url";
 import errorEn from "./assets/cues/error.en.mp3?url";
 import approvalZh from "./assets/cues/approval.zh.mp3?url";
@@ -30,14 +34,30 @@ import {
 	type SoundKind,
 } from "./sound.ts";
 
-/** 现在有片段的三类事件（`start` 只是「嗒」一声，没必要做成语音） */
-export type VoiceClipKind = Extract<SoundKind, "done" | "error" | "approval">;
+/** 现在有片段的事件（`start` 只是「嗒」一声，没必要做成语音） */
+export type VoiceClipKind = "done" | "stopped" | "steer" | "error" | "approval";
 
 /** 片段清单：kind × language → 打包后的静态资源 URL */
 const CLIPS: Record<VoiceClipKind, Record<Language, string>> = {
 	done: { zh: doneZh, en: doneEn },
+	stopped: { zh: stoppedZh, en: stoppedEn },
+	steer: { zh: steerZh, en: steerEn },
 	error: { zh: errorZh, en: errorEn },
 	approval: { zh: approvalZh, en: approvalEn },
+};
+
+/**
+ * 片段播不了的时候退回哪个提示音。
+ *
+ * 「已停止」没有单独的设置项：它听起来就是一轮结束（用完成的「叮」）。
+ * 「插队」现在**有**自己的一行了（用户 2026-11-03），提示音也是它自己的两声轻响。
+ */
+const BEEP_OF: Record<VoiceClipKind, SoundKind> = {
+	done: "done",
+	stopped: "done",
+	steer: "steer",
+	error: "error",
+	approval: "approval",
 };
 
 /** 某个事件 + 语言对应哪个片段（导出给测试用：漏了一条会被当场抓到） */
@@ -84,14 +104,14 @@ export function playVoiceClip(
 	const volume = options.volume ?? soundVolumeOf(settings);
 	const context = audioContextNow();
 	if (!context) {
-		playSound(kind, settings);
+		playSound(BEEP_OF[kind], settings);
 		return;
 	}
 	const requestedAt = Date.now();
 	void bufferOf(context, voiceClipUrl(kind, language))
 		.then((buffer) => {
 			if (!buffer) {
-				playSound(kind, settings);
+				playSound(BEEP_OF[kind], settings);
 				return;
 			}
 			// 和提示音一样：用户十秒后才点了一下页面，这时候再念「任务已完成」只会让人误会又完成了一轮
@@ -114,15 +134,15 @@ export function playVoiceClip(
 				.then(() => {
 					if (!withinResumeWindow(requestedAt)) return;
 					if (isAudioRunning(context)) start();
-					else playSound(kind, settings);
+					else playSound(BEEP_OF[kind], settings);
 				})
-				.catch(() => playSound(kind, settings));
+				.catch(() => playSound(BEEP_OF[kind], settings));
 		})
-		.catch(() => playSound(kind, settings));
+		.catch(() => playSound(BEEP_OF[kind], settings));
 }
 
 /**
- * 热身：把三类片段提前拉下来解码好。
+ * 热身：把五类片段提前拉下来解码好。
  *
  * 第一次播报要「fetch + decode」≈几十毫秒，正常情况下感觉不到；但**回答一结束就要出声**，
  * 而那时主线程正在收尾渲染（markdown 重解析最贵的一拍），很可能把这一声拖到半秒后。

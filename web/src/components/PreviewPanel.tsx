@@ -4,6 +4,7 @@ import { FileViewer } from "./FilePreview.tsx";
 import { TerminalPanel } from "./TerminalPanel.tsx";
 import { SideChat } from "./SideChat.tsx";
 import { WebTool } from "./WebTool.tsx";
+import type { WebNoteWithNumber } from "../web-note.ts";
 import { FilesTool } from "./FilesTool.tsx";
 import { FilesRail } from "./FilesRail.tsx";
 import { useStoredBool } from "../use-stored-bool.ts";
@@ -180,6 +181,7 @@ export function PreviewPanel({
 	onRevealFile,
 	chatOnRight = false,
 	showSplitButton = true,
+	onWebNote,
 }: {
 	items: PanelItem[];
 	activeId: string;
@@ -221,6 +223,15 @@ export function PreviewPanel({
 	 * 所以这一刻传 false（用户要求：这颗按钮永远在窗口右上角）。
 	 */
 	showSplitButton?: boolean;
+	/**
+	 * 网页页的「标注」接进对话草稿（`WebTool` 里拾取到的那一处 + 那句意见）。
+	 * 不传就不画那颗 📍 —— 没有「接进输入框」的去处，标了也没用。
+	 */
+	/**
+	 * 网页页里标中的一处 → 进「N 条注释」。传进来的带着它在页面上的编号
+	 * （页面上那个徽标、胶囊里那一行、发出去那段都用这个号）。
+	 */
+	onWebNote?: (note: WebNoteWithNumber) => void;
 }) {
 	const t = useT();
 	const [width, setWidth] = useState(() => readWidth() ?? 620);
@@ -255,6 +266,23 @@ export function PreviewPanel({
 			dragging.current = true;
 			const startX = event.clientX;
 			const startWidth = width;
+			/**
+			 * 抓手指（pointer capture）：拖出窗口 / 拖到别的元素上时，move 与 up 还能回到这一条。
+			 *
+			 * 但它**拦不住面板里的 iframe**（网页页就是一个跨进程子文档）：指针落在网页里时，
+			 * 事件在另一个渲染进程里发，捕获不生效 —— 那一拖会当场卡死，松手也收不到。
+			 * 真正治它的是 `<html>.is-resizing` 上那层全屏遮挡（见 project-icon.css）：
+			 * 拖动期间指针事件全留在本文档里。两者各管一段，都要。
+			 */
+			const handle = event.currentTarget;
+			const pointerId = event.pointerId;
+			try {
+				handle.setPointerCapture(pointerId);
+			} catch {
+				// 老浏览器 / 指针已经抬起：拿不到就当没有，下面还有 pointerup 兜底
+			}
+			// 拖动期间不许选中页面上的文字（`preventDefault()` 只管按下那一帧）
+			document.documentElement.classList.add("is-resizing");
 			const onMove = (moveEvent: PointerEvent) => {
 				if (!dragging.current) return;
 				// 一条统一的规矩：**往左拖 = 右边那块变大**。
@@ -267,11 +295,21 @@ export function PreviewPanel({
 			};
 			const onUp = () => {
 				dragging.current = false;
+				document.documentElement.classList.remove("is-resizing");
 				document.removeEventListener("pointermove", onMove);
 				document.removeEventListener("pointerup", onUp);
+				document.removeEventListener("pointercancel", onUp);
+				// 抓到谁身上就在谁身上还回去（没有配对释放会一直占着那根指针）
+				try {
+					if (handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId);
+				} catch {
+					// 元素已经不在 / 指针已释放：忽略
+				}
 			};
 			document.addEventListener("pointermove", onMove);
 			document.addEventListener("pointerup", onUp);
+			// 触控笔被系统收走 / 窗口失焦时不会来 pointerup：不兜住就会一直「粘」在拖动状态
+			document.addEventListener("pointercancel", onUp);
 		},
 		[width, chatOnRight],
 	);
@@ -748,7 +786,7 @@ export function PreviewPanel({
 						) : item.kind === "files" ? (
 							<FilesTool root={root} onOpenFile={onOpenFile} />
 						) : item.kind === "web" ? (
-							<WebTool initialUrl={item.url} />
+							<WebTool initialUrl={item.url} onAddNote={onWebNote} />
 						) : (
 							<SideChat itemId={item.id} />
 						)}

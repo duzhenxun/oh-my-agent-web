@@ -32,6 +32,15 @@ export type ApprovalHandler = (request: ApprovalRequest) => Promise<ApprovalDeci
 /** 引擎发出的原子事件（宿主负责翻译成 UI 状态与协议事件） */
 export type EngineEvent =
 	| { type: "text_delta"; text: string }
+	/**
+	 * 一段正文**结束**时的权威全文（SDK 的 `text_end.content`）。
+	 *
+	 * 为什么需要它：增量只是「尽最大努力」的推送 —— 传输层抖一下、监听器晚挂一次，
+	 * 中途某个 delta 就可能没到手，界面上就只剩半句 / 一个字（用户 2026-11-03：
+	 * 「怎么有时候出来一个字」）。`text_end` 带的是这一段的**完整内容**，
+	 * 宿主用它把尾部正文块校正回权威版本（幂等：已经一致就什么都不做）。
+	 */
+	| { type: "text_end"; text: string }
 	/** 模型的"思考"增量（reasoning）：单独一类，界面上折叠展示 */
 	| { type: "thinking_delta"; text: string }
 	| {

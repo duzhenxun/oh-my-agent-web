@@ -97,4 +97,13 @@ describe("相同内容 1.5s 内只响一次", () => {
 		assert.equal(shouldAnnounceDone(memory, null, 1000), true);
 		assert.equal(shouldAnnounceDone(memory, "一条回复", 1050), true);
 	});
+
+	it("「完成」和「已停止」是两件事：各放行一次，但各自都不重复", () => {
+		const memory = createAnnounceMemory();
+		// 一个会话完成、紧接一刻另一个会话被停掉 —— 两件事都得说，不能合成一句
+		assert.equal(shouldAnnounceDone(memory, null, 1000, "done"), true);
+		assert.equal(shouldAnnounceDone(memory, null, 1050, "stopped"), true);
+		// 同一件连着来两次：只响一次
+		assert.equal(shouldAnnounceDone(memory, null, 1100, "stopped"), false);
+	});
 });

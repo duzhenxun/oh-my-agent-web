@@ -54,6 +54,14 @@ export function registerAuxRoutes(
 		 * 不给就不挂这条路由 —— 界面按 `capabilities.modelProbe` 决定画不画按钮。
 		 */
 		probeModel?: (modelId: string) => Promise<import("../engine/port.js").ModelProbeResult>;
+		/**
+		 * 引擎**当前**报上来的模型 id（`provider/model`）。
+		 *
+		 * 只用来回答一个问题：这个模型引擎现在跑得起来吗？跑得起来就把逐模型测试交给引擎
+		 * （`probeModel`），跑不起来就沿用旧的「工作台直连 HTTP」—— 后者能给出更准的
+		 * 「还没配 key」提示，而不是一句引擎侧的报错。
+		 */
+		engineModels?: () => { id: string }[];
 		log: (message: string, meta?: Record<string, unknown>) => void;
 	},
 ): void {
@@ -101,5 +109,8 @@ export function registerAuxRoutes(
 		...(options.builtinProviders ? { builtinProviders: options.builtinProviders } : {}),
 		catalog: createCatalogLookup(),
 		testModel: (input) => testModel(input),
+		// 凭证不在工作台手里（环境变量 / 引擎自己的登录）时，逐模型测试交给引擎自己跑
+		...(options.probeModel ? { probeModel: options.probeModel } : {}),
+		...(options.engineModels ? { engineModels: options.engineModels } : {}),
 	});
 }

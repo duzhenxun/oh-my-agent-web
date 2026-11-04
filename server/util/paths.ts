@@ -88,6 +88,33 @@ export function normalizeWorkspacePath(value: string): string {
 	return resolve(trimmed);
 }
 
+/**
+ * 用户「手输 / 粘贴」进来的目录路径 → 能拿去 `realpath` 的形状（纯函数，不碰文件系统）。
+ *
+ * Windows 上有三种「看着对、其实不是绝对路径」的输入，以前都会**静默**变成「跳转没反应」
+ * （服务端只认 `isAbsolute`，不认就直接回落成当前工作区，用户以为按钮坏了）：
+ *   1. 资源管理器「复制文件地址」给的是带引号的 `"C:\Users\me\Desktop"`；
+ *   2. 只写了盘符的 `C:` / `c:` —— `isAbsolute("C:") === false`；
+ *   3. 从别处粘来的 `%USERPROFILE%` 这类环境变量（Windows 用户很爱这么写）。
+ * 只做「去引号 / 补根分隔符 / 展开 `%VAR%`」，认不出来就原样返回：不猜。
+ */
+export function normalizePathInput(value: string, env: NodeJS.ProcessEnv = process.env): string {
+	let text = value.trim();
+	// 整串被一对引号包着才剥（Windows 路径里本来就不允许引号）
+	for (const quote of ['"', "'"]) {
+		if (text.length >= 2 && text.startsWith(quote) && text.endsWith(quote)) {
+			text = text.slice(1, -1).trim();
+		}
+	}
+	// `%USERPROFILE%\x` → 真实路径（只展开存在的变量，展开不了就留着原样）
+	if (text.includes("%")) {
+		text = text.replace(/%([^%\\/]+)%/g, (whole, name: string) => env[name] ?? env[name.toUpperCase()] ?? whole);
+	}
+	// 只有盘符：`C:` 不是绝对路径，补上根分隔符才是
+	if (/^[A-Za-z]:$/.test(text)) return `${text}\\`;
+	return text;
+}
+
 export function pickExisting(candidates: string[], exists: (path: string) => boolean): string | null {
 	for (const candidate of candidates) if (exists(candidate)) return candidate;
 	return null;

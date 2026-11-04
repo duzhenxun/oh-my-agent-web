@@ -172,6 +172,24 @@
 	cursor: col-resize !important;
 }
 
+/* 拖宽的「遮挡层」：拖动期间**指针一个都不能落进子文档**。
+ *
+ * 右侧面板里可能嵌着 iframe（网页页就是这么嵌的）。指针一旦进到那个子文档里，
+ * pointermove / pointerup 就归它了 —— 跨进程的 iframe 连 pointer capture 也拦不住
+ * （事件在另一个渲染进程里发，捕获不生效）。于是：拖到宽度上限后面板不再跟着走，
+ * 指针越过去落进网页里，这一拖当场卡住；松手也是那边收的，`is-resizing` 也摘不掉，
+ * 再按也拖不动 —— 用户看到的就是「有时（面板开得很宽之后）这条线拖不动了」。
+ * 盖一层 fixed 的全屏透明层，事件就全留在我们自己的文档里（拖动本身照旧听 document）。
+ * 用伪元素而不是新节点：这套状态已经挂在 `<html>` 上了，不用再为它加一个 DOM。 */
+.is-resizing::after {
+	content: "";
+	position: fixed;
+	inset: 0;
+	z-index: 2147483647;
+	background: transparent;
+	cursor: col-resize;
+}
+
 /* hover / 拖动：线变粗变亮（**没有把手了**，粗线自己就是「能拖」的提示）。
  * 拖动中鼠标可能已经飘出 8px 命中区：靠 html 上的类名把这条线留住。 */
 .side-resizer:hover::after,

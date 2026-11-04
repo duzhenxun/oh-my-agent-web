@@ -7,6 +7,7 @@
  * 走 HTTP 而不是 WS：这是"按需查目录"的一次性数据，不属于会话状态。
  */
 import type { Express } from "express";
+import type { ModelProbeResult } from "../engine/port.js";
 import { listCodexModels } from "./codex-models.js";
 import { testCodex } from "./codex-test.js";
 import { listRemoteModels } from "./import-models.js";
@@ -19,6 +20,15 @@ import type { ProviderCredential, ProviderStore } from "./provider-store.js";
  * 订阅登录（OAuth）与 api key 是两条路，错误文案必须分开说，
  * 否则用户会以为自己的 ChatGPT Plus/Pro 登录白做了（历史 bug：一律报 provider.no_key）。
  */
+/** 引擎侧测出的结果 → 一行人话（首字 / 出字速度，拿不到就不写，不编数字） */
+function probeSummary(result: { ttftMs: number | null; tps: number | null; averageTps: number | null }): string {
+	const parts: string[] = [];
+	if (result.ttftMs !== null) parts.push(`首字 ${result.ttftMs >= 1000 ? `${(result.ttftMs / 1000).toFixed(2)}s` : `${result.ttftMs}ms`}`);
+	const speed = result.tps ?? result.averageTps;
+	if (speed !== null) parts.push(`出字 ${Math.round(speed)} tok/s${result.tps === null ? "（均速）" : ""}`);
+	return parts.join(" · ");
+}
+
 function noCredentialMessage(credential: ProviderCredential): string {
 	return credential.kind === "oauth"
 		? "这个 provider 走的是订阅登录（没有 api key）：拉取 / 验证走订阅额度时需要单独的协议支持"
@@ -208,6 +218,16 @@ export function registerCatalogRoutes(
 			modelId: string;
 			headers?: Record<string, string>;
 		}) => Promise<unknown>;
+		/**
+		 * 引擎自己跑一次最小请求（`Port.probeModel`）。
+		 *
+		 * 只在「工作台手里没有凭证」时用：pi 的凭证还可能来自**环境变量**（opencode 读的是
+		 * `OPENCODE_API_KEY`），而且 provider 会要求自己的 header（opencode 的 `x-opencode-session`）。
+		 * 这两样只有引擎知道 —— 工作台硬直连只会得到 401，或者看上去像「没配 key」。
+		 */
+		probeModel?: (modelId: string) => Promise<ModelProbeResult>;
+		/** 引擎当前报上来的模型 id（`provider/model`）：判断这个模型引擎跑不跑得起来 */
+		engineModels?: () => { id: string }[];
 	},
 ): void {
 	const views = async (provider: string) => options.store.get(provider, (await options.builtinProviders?.()) ?? []);
@@ -238,6 +258,29 @@ export function registerCatalogRoutes(
 		// 两条路的端点/鉴权头完全不同，不能拿 `/chat/completions` 去测 Codex。
 		const credential = await options.store.readCredential(provider);
 		if (credential.kind === "none") {
+			/**
+			 * 工作台手里没有凭证 —— **不代表用不了**：opencode 的 key 在环境变量 `OPENCODE_API_KEY` 里，
+			 * 而且它还要自己的 `x-opencode-session` 头，这两样只有 pi 知道。
+			 * 所以：引擎当前报了这个模型，就让它自己跑一次（见 options.probeModel）；
+			 * 引擎连报都没报（没登录的 provider），才回「还没配凭证」那句人话。
+			 */
+			const full = `${provider}/${request.params.modelId}`;
+			const engineCanRun = options.engineModels?.().some((model) => model.id === full) ?? false;
+			if (options.probeModel && engineCanRun) {
+				const probed = await options.probeModel(full);
+				response.json(
+					probed.ok
+						? {
+								ok: true,
+								// 面板上显示「多久才动」：首字延迟优先，拿不到才退回整轮耗时
+								latencyMs: probed.ttftMs ?? probed.totalMs,
+								source: "engine",
+								message: probeSummary(probed),
+							}
+						: { ok: false, source: "engine", message: probed.message },
+				);
+				return;
+			}
 			response
 				.status(400)
 				.json({ error: { code: "provider.no_key", message: "这个 provider 还没有凭证（订阅登录或 api key）" } });

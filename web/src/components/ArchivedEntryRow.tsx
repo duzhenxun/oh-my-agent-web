@@ -1,37 +1,42 @@
 import { ArchiveIcon } from "./ArchiveIcon.tsx";
+import { useT } from "../use-language.ts";
 
 /**
- * 侧栏列表里的「已归档 · N」入口。
+ * 侧栏列表里的「已归档 · N」入口（列表最后一行，跟项目文件夹同一层）。
  *
- * 以前是标题栏上一枚 hover 才出现的小图标（🗄）：藏在角落、还得先发现它。
- * 现在**单独占一行**、跟项目文件夹同一层（就是列表最后一行）——
- * 归档是一块独立的内容，不该挂在「项目」标题上。
- *
- * 点它 → 整个列表区切到归档视图（那里能批量恢复 / 删除，左上角 ‹ 返回）。
+ * 点它就是**就地展开 / 收起**归档的会话（清单直接画在这一行下面，见 ArchivedSessions）。
+ * 以前点它是切到一张独立视图：整个项目列表让位、左上角多一颗 ‹ 返回，进来还得分组
+ * 一个个点开才看得见 —— 太绕，改成「点一下直接展开」。
  */
-import { useT } from "../use-language.ts";
 export function ArchivedEntryRow({
 	total,
-	active = false,
-	onOpen,
+	open,
+	onToggle,
 }: {
 	total: number;
-	/** 归档视图是否正开着（开着时这一行高亮） */
-	active?: boolean;
-	onOpen: () => void;
+	/** 归档清单是否正展开着（只影响无障碍状态与提示文字） */
+	open: boolean;
+	onToggle: () => void;
 }) {
 	const t = useT();
 	if (total <= 0) return null;
 	return (
 		<button
 			type="button"
-			className={`archived-row-entry${active ? " archived-row-entry-on" : ""}`}
-			title={t(
-				`已归档 · ${total}（点一下查看，可批量恢复 / 删除）`,
-				`Archived · ${total} (click to review; restore or delete in bulk)`,
-			)}
-			onClick={onOpen}
+			className="archived-row-entry"
+			aria-expanded={open}
+			title={
+				open
+					? t("收起归档的会话", "Collapse archived sessions")
+					: t(
+							`已归档 · ${total}（点一下展开，可恢复 / 删除）`,
+							`Archived · ${total} (click to expand; restore or delete)`,
+						)
+			}
+			onClick={onToggle}
 		>
+				{/* 这里**不画折叠三角**（用户 2026-11-03）：这一行是「另一块清单」的入口，
+			 * 不是项目那种可折叠的文件夹；三角留在名字左边反而像个没对齐的子弹头。 */}
 			{/* 跟项目行的 📁 同一个尺寸/位置；图标与「归档」按钮共用一份（ArchiveIcon） */}
 			<span className="proj-chevron" aria-hidden="true">
 				<ArchiveIcon className="archived-row-entry-icon" />

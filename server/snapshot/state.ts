@@ -148,7 +148,7 @@ export function createServerState(
 			quickPhrases: [],
 			quickPhrasesEnabled: true,
 			templates: [],
-			projectPrefs: { order: [], pinned: [], aliases: {} },
+			projectPrefs: { order: [], pinned: [], aliases: {}, hidden: [] },
 			sessionPrefs: { pinned: [], archived: [], order: [] },
 			defaultModels: {},
 			thinkCount: 5,
@@ -353,6 +353,7 @@ export function buildSnapshot(
 				order: [...state.settings.projectPrefs.order],
 				pinned: [...state.settings.projectPrefs.pinned],
 				aliases: { ...state.settings.projectPrefs.aliases },
+				hidden: [...state.settings.projectPrefs.hidden],
 			},
 			defaultModels: { ...state.settings.defaultModels },
 			sessionPrefs: {

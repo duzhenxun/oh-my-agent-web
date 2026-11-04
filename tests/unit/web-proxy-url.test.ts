@@ -9,7 +9,7 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { proxyPathOf, targetOfProxyPath } from "../../server/web-proxy/proxy-url.ts";
+import { MOBILE_PREFIX, proxyPathOf, targetOfProxyPath } from "../../server/web-proxy/proxy-url.ts";
 import { rewriteCss, rewriteHtml } from "../../server/web-proxy/rewrite.ts";
 import { proxyUrlOf } from "../../web/src/url-bar.ts";
 
@@ -73,5 +73,32 @@ describe("网页改写", () => {
 		const out = rewriteCss(css, scope);
 		assert.match(out, /url\(\/web\/p\/https\/www\.baidu\.com\/img\/a\.png\)/);
 		assert.match(out, /url\("https:\/\/x\.com\/b\.png"\)/);
+	});
+
+	/**
+	 * 手机模式（`/web/m/`）：同一套镜像路径，只是前缀不同 —— 上游据此换成手机 UA。
+	 * 三件必须成立：正拼与反解都认这个前缀、改写出来的根相对地址留在手机前缀下、
+	 * 注入的跳转脚本也用手机前缀（否则页面里点一下下一页就掉回电脑版）。
+	 */
+	it("手机前缀：正拼 / 反解 / 改写都留在 /web/m/ 下", () => {
+		const target = "https://www.baidu.com/s?wd=1";
+		const client = proxyUrlOf(target, { mobile: true });
+		assert.equal(client, `${MOBILE_PREFIX}https/www.baidu.com/s?wd=1`);
+		// 客户端拼的地址，服务端要能原样反解回来
+		assert.equal(targetOfProxyPath(client ?? ""), target);
+		assert.equal(proxyPathOf(target, { mobile: true }), client);
+		// 根相对地址改写时不能跑回普通前缀
+		const html = rewriteHtml('<img src="/img/a.png">', { scheme: "https", host: "www.baidu.com", prefix: MOBILE_PREFIX });
+		assert.ok(html.includes(`${MOBILE_PREFIX}https/www.baidu.com/img/a.png`), html.slice(0, 300));
+		// 注入的跳转脚本认的是手机前缀（相对地址之外的跳转也留在手机模式）
+		assert.ok(html.includes(`var PREFIX="${MOBILE_PREFIX}"`));
+		assert.ok(!html.includes(`var PREFIX="/web/p/"`));
+	});
+
+	it("普通前缀不受影响（两种前缀互不串味）", () => {
+		assert.equal(proxyUrlOf("https://www.baidu.com/s?wd=1"), "/web/p/https/www.baidu.com/s?wd=1");
+		const html = rewriteHtml('<img src="/img/a.png">', { scheme: "https", host: "www.baidu.com" });
+		assert.ok(html.includes("/web/p/https/www.baidu.com/img/a.png"));
+		assert.ok(html.includes('var PREFIX="/web/p/"'));
 	});
 });

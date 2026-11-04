@@ -7,6 +7,19 @@ import { FolderIcon } from "./FolderIcon.tsx";
 type DirEntry = { name: string; path: string };
 
 /**
+ * 「复制文件地址」粘进来的是带引号的 `"C:\Users\me"`，手输时也可能带着引号 ——
+ * 服务端也会剥一次，这里做一遍是为了让**输入框里显示的**和**真去打开的**是同一个东西。
+ */
+function cleanPath(value: string): string {
+	let text = value.trim();
+	for (const quote of ['"', "'"]) {
+		if (text.length >= 2 && text.startsWith(quote) && text.endsWith(quote)) text = text.slice(1, -1).trim();
+	}
+	// 只写了盘符（`C:`）不算绝对路径，补上根分隔符
+	return /^[A-Za-z]:$/.test(text) ? `${text}\\` : text;
+}
+
+/**
  * 读一个 JSON 响应，**但先看它到底是不是 JSON**。
  *
  * 为什么需要：服务端在跑的可能是旧构建（没有这个接口），那时请求会落到 SPA 的静态兜底，
@@ -51,6 +64,8 @@ export function NewProjectDialog({ onClose, onPick }: { onClose: () => void; onP
 	const [input, setInput] = useState<string>("");
 	const [parent, setParent] = useState<string | null>(null);
 	const [entries, setEntries] = useState<DirEntry[]>([]);
+	/** Windows 的盘符列表（其它平台是空数组）：到了盘根就上不去了，切盘只能靠这一行 */
+	const [drives, setDrives] = useState<DirEntry[]>([]);
 	const [error, setError] = useState<string | null>(null);
 	const [loading, setLoading] = useState(true);
 	/** 原生选择框开着的时候：按钮要禁掉，否则能点出两个对话框 */
@@ -66,6 +81,7 @@ export function NewProjectDialog({ onClose, onPick }: { onClose: () => void; onP
 				path?: string;
 				parent?: string | null;
 				entries?: DirEntry[];
+				drives?: DirEntry[];
 				error?: { message?: string };
 			}>(response);
 			if (!parsed.ok) {
@@ -81,6 +97,7 @@ export function NewProjectDialog({ onClose, onPick }: { onClose: () => void; onP
 			setInput(body.path ?? "");
 			setParent(body.parent ?? null);
 			setEntries(body.entries ?? []);
+			setDrives(body.drives ?? []);
 		} catch (cause) {
 			setError(cause instanceof Error ? cause.message : String(cause));
 		} finally {
@@ -97,6 +114,9 @@ export function NewProjectDialog({ onClose, onPick }: { onClose: () => void; onP
 		else newChat(target);
 		onClose();
 	};
+
+	/** 输入框 → 服务端：先剥引号 / 补盘符根，不然粘贴进来的路径会被当成「没跳转」 */
+	const go = (value: string) => void load(cleanPath(value));
 
 	/**
 	 * 在**服务端那台电脑**上弹原生目录选择框（浏览器拿不到本机绝对路径）。
@@ -166,11 +186,11 @@ export function NewProjectDialog({ onClose, onPick }: { onClose: () => void; onP
 						value={input}
 						onChange={(event) => setInput(event.target.value)}
 						onKeyDown={(event) => {
-							if (event.key === "Enter") void load(input.trim());
+							if (event.key === "Enter") go(input);
 						}}
 						placeholder={isWindowsHost() ? t("C:\\绝对路径", "C:\\absolute\\path") : t("/绝对路径", "/absolute/path")}
 					/>
-					<button type="button" className="btn btn-tiny" onClick={() => void load(input.trim())} disabled={loading}>
+					<button type="button" className="btn btn-tiny" onClick={() => go(input)} disabled={loading}>
 						{t("跳转", "Go")}
 					</button>
 				</div>
@@ -200,7 +220,7 @@ export function NewProjectDialog({ onClose, onPick }: { onClose: () => void; onP
 					<button
 						type="button"
 						className="btn btn-tiny btn-send"
-						onClick={() => choose(path || input.trim())}
+						onClick={() => choose(path || cleanPath(input))}
 						disabled={loading || (path === "" && input.trim() === "")}
 					>
 						{t("选择当前目录", "Use this folder")}
@@ -208,9 +228,39 @@ export function NewProjectDialog({ onClose, onPick }: { onClose: () => void; onP
 				</div>
 
 				{error ? <div className="side-error">{error}</div> : null}
+				{/* 原生框在**服务端那台电脑**上弹，可能被浏览器挡住 —— 干等着转圈最难受，直接给找回来的办法 */}
+				{picking ? (
+					<div className="side-panel-hint">
+						{t(
+							"文件夹选择框已经在你电脑上打开，如果没看到，它可能被浏览器/别的窗口挡住了（Alt+Tab 找一下）",
+							"The folder picker is open on your computer — if you can't see it, it may be behind another window (Alt+Tab)",
+						)}
+					</div>
+				) : null}
+				{/* 切盘：Windows 没有统一的树根，到了 C:\ 就上不去了，这一行是唯一的「去 D 盘」入口 */}
+				{drives.length > 1 ? (
+					<div className="new-project-drives">
+						{drives.map((drive) => (
+							<button
+								key={drive.path}
+								type="button"
+								className={`btn btn-tiny${drive.path === path ? " is-current" : ""}`}
+								onClick={() => void load(drive.path)}
+								title={drive.path}
+							>
+								{drive.name}
+							</button>
+						))}
+					</div>
+				) : null}
 				<div className="new-project-list">
 					{loading ? <div className="side-panel-hint">{t("读取中…")}</div> : null}
-					{!loading && entries.length === 0 ? <div className="side-panel-hint">{t("这个目录下没有子目录")}</div> : null}
+					{!loading && entries.length === 0 ? (
+						<div className="side-panel-hint">
+							{t("这个目录下没有子目录", "No subfolders here")}
+							{parent ? t(" —— 可以点上面的「↑ 上级目录」往外走", " — use ↑ Up one level above") : null}
+						</div>
+					) : null}
 					{entries.map((entry) => (
 						<div className="new-project-row" key={entry.path}>
 							<button

@@ -123,7 +123,13 @@ export function createRuntimeTurnFinisher(options: {
  * 少了这一步，并行回合时 A 会话的建议会落到 B 会话的界面上（用户报的 bug）。
  */
 function settleWith(state: ServerState, nextId: (prefix: string) => string, now?: () => number) {
-	return (input: { conversationId: string; messageId: string; rawText: string }) => {
+	return (input: {
+		conversationId: string;
+		messageId: string;
+		rawText: string;
+		/** 收尾原因：落成消息上的 `stopped`（被停掉的回合不能报成「完成」） */
+		reason: "done" | "interrupted" | "error";
+	}) => {
 		const result = settleTurnMarkers({
 			state,
 			actions: actionsOf(state, input.conversationId),

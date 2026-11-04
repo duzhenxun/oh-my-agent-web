@@ -18,6 +18,13 @@ export type ProjectPrefs = {
 	order: string[];
 	pinned: string[];
 	aliases: Record<string, string>;
+	/**
+	 * 被用户「隐藏」的项目 cwd（右键菜单 → 隐藏项目）。
+	 *
+	 * 只是**侧栏不画它**，会话、别名、置顶、顺序全都原样留着 ——
+	 * 取消隐藏（「已隐藏 · N」入口 / 刚隐藏时那条提示的「撤销」）就回来了。
+	 */
+	hidden: string[];
 };
 
 /** 提示词模板（P5）：一个模板 = 名字 + 一句说明 + 图标 + 正文 */

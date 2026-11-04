@@ -37,7 +37,7 @@ import { playVoiceClip } from "../voice-clips.ts";
 import { voiceChannelOf } from "../voice-cue-logic.ts";
 import { useT } from "../use-language.ts";
 
-const SOUND_KINDS: SoundKind[] = ["start", "done", "error", "approval"];
+const SOUND_KINDS: SoundKind[] = ["start", "steer", "done", "error", "approval"];
 
 export function VoicePanel() {
 	const t = useT();
@@ -99,10 +99,18 @@ export function VoicePanel() {
 	 * 试听：跳过「总开关关着」「这一项关着」的判断 —— 试听本来就是显式意图。
 	 *
 	 * 走的是**真实链路**（`voiceChannelOf`）：语音开着就播对应事件的本地片段，关着就只响提示音。
-	 * 真机上要听「出错 / 审批」的语音，现实里很难现场造出来，这三颗按钮就是唯一方便的人口。
+	 * 真机上要听「出错 / 审批」的语音，现实里很难现场造出来，这几颗按钮就是唯一方便的人口。
 	 * （「开始」没有片段，永远只是轻响一声。）
+	 *
+	 * **插队例外**（用户 2026-11-03）：这一行要听的就是那句「有新任务插队」——
+	 * 它没有「提示音」这层语义（以前退回去借用「开始」的轻响，试听只听到一声「嗒」，
+	 * 根本不知道插队会念什么）。所以不论「启用语音播报」勾没勾，试听都**直接播片段**。
 	 */
 	const preview = (kind: SoundKind) => {
+		if (kind === "steer") {
+			playVoiceClip("steer", { force: true, volume: Math.max(0.05, sound.volume / 100) });
+			return;
+		}
 		const enabled = loadTtsSettings().enabled;
 		const channel = voiceChannelOf({ kind, voiceEnabled: enabled, readReplies: false, hasReply: false });
 		if (channel === "clip" && kind !== "start") {
@@ -284,8 +292,8 @@ export function VoicePanel() {
 						<span aria-hidden="true">🔊</span> {t("启用语音播报", "Enable speech")}
 						<span className="voice-row-hint">
 							{t(
-								"完成 / 出错 / 等待审批播本地音频（中文、英文各一套，不联网、不依赖系统音色）",
-								"Plays bundled audio clips on finish / error / approval (Chinese and English, no network, no system voices)",
+								"完成 / 插队 / 出错 / 等待审批播本地音频（中文、英文各一套，不联网、不依赖系统音色）",
+								"Plays bundled audio clips on finish / steer / error / approval (Chinese and English, no network, no system voices)",
 							)}
 						</span>
 					</span>

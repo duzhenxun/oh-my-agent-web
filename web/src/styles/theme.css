@@ -1,5 +1,5 @@
 /*
- * 外观色板（ADR-0030）：3 浅 + 3 深。
+ * 外观色板（ADR-0030）：3 浅 + 4 深。
  *
  * 约定：
  *   - 每套色板必须把 base.css `:root` 里那组变量**填满**（少填一个就会漏到上一套的颜色，
@@ -8,7 +8,7 @@
  *     深色主题里靠**亮度递增**表达层级，浅色主题里靠**亮度递减**，别混着来；
  *   - `--accent-dim` 是主色的「暗版」，只用于描边、焦点环、hover 边框，不要用来填块；
  *   - `--on-accent` 是放在主色块上的文字色（浅色主题给白字，深色主题给深底字）；
- *   - 「清亮白」就是 base.css `:root` 里的默认值，这里不重复写，只写另外 5 套。
+ *   - 「清亮白」就是 base.css `:root` 里的默认值，这里不重复写，只写另外 6 套。
  */
 
 /* ---- 浅色：暖纸（米白底 + 赭石主色）---- */
@@ -140,11 +140,63 @@
 	--speed-fg: #8fbcbb;
 }
 
+/* ---- 深色：VSCode 暗色（VS Code Dark Modern 的灰黑层次 + Dark+ 语法色）----
+ * 主区使用编辑器灰黑，顶栏 / 侧栏 / 状态栏另用更深的 #181818；文字柔白，蓝色只作关键强调。 */
+:root[data-theme="dark-vscode"] {
+	--appbar-shadow-line: rgb(0 0 0 / 28%);
+	--appbar-shadow: rgb(0 0 0 / 42%);
+	--bg: #1f1f1f;
+	--bg-elev: #252526;
+	--bg-elev-2: #2d2d2d;
+	--bg-soft: #1e1e1e;
+	--border: #333333;
+	--border-strong: #454545;
+	--text: #d4d4d4;
+	--text-dim: #b8b8b8;
+	--text-faint: #9d9d9d;
+	--accent: #3794ff;
+	--accent-dim: #264f78;
+	--on-accent: #101010;
+	--green: #89d185;
+	--amber: #d7ba7d;
+	--steer: #d7ba7d;
+	--red: #f48771;
+	--yellow: #dcdcaa;
+	--speed-bg: #0b324a;
+	--speed-fg: #75beff;
+}
+
+/* Dark Modern 的导航区比编辑区深一档；只调整这套主题，不改变其它色板的面层级约定。 */
+:root[data-theme="dark-vscode"] .appbar,
+:root[data-theme="dark-vscode"] .sidebar,
+:root[data-theme="dark-vscode"] .statusbar {
+	background: #181818;
+}
+
+/* VS Code 主按钮是低亮度蓝底白字；链接和选中态仍用上面的亮蓝 --accent。 */
+:root[data-theme="dark-vscode"] .appbar .newchat-pill,
+:root[data-theme="dark-vscode"] .sidebar-head .newchat-pill,
+:root[data-theme="dark-vscode"] .btn.btn-send:not(:disabled) {
+	border-color: #0e639c;
+	background: #0e639c;
+	color: #ffffff;
+	box-shadow: none;
+}
+
+:root[data-theme="dark-vscode"] .appbar .newchat-pill:hover,
+:root[data-theme="dark-vscode"] .sidebar-head .newchat-pill:hover,
+:root[data-theme="dark-vscode"] .btn.btn-send:not(:disabled):hover {
+	border-color: #1177bb;
+	background: #1177bb;
+	color: #ffffff;
+	box-shadow: none;
+}
+
 /*
  * 深色主题里的「补丁色」：这些颜色原本是写死在各个分区里的浅色值
  * （代码高亮的 VS Code Light+ 配色、测试结果的绿/红胶囊），
  * 在深底上要么糊、要么刺眼。按 `data-theme-mode` 统一覆盖一遍，
- * 不再给 6 套色板各写一份。
+ * 不再给每套色板各写一份。
  */
 :root[data-theme-mode="dark"] {
 	color-scheme: dark;
@@ -223,6 +275,54 @@
 :root[data-theme-mode="dark"] .hljs-addition {
 	color: #aff5b4;
 	background: rgb(46, 160, 67, 0.15);
+}
+
+:root[data-theme="dark-vscode"] .hljs-comment,
+:root[data-theme="dark-vscode"] .hljs-quote,
+:root[data-theme="dark-vscode"] .hljs-meta {
+	color: #6a9955;
+}
+
+:root[data-theme="dark-vscode"] .hljs-keyword,
+:root[data-theme="dark-vscode"] .hljs-selector-tag,
+:root[data-theme="dark-vscode"] .hljs-literal,
+:root[data-theme="dark-vscode"] .hljs-doctag,
+:root[data-theme="dark-vscode"] .hljs-tag,
+:root[data-theme="dark-vscode"] .hljs-name {
+	color: #569cd6;
+}
+
+:root[data-theme="dark-vscode"] .hljs-string,
+:root[data-theme="dark-vscode"] .hljs-regexp {
+	color: #ce9178;
+}
+
+:root[data-theme="dark-vscode"] .hljs-number {
+	color: #b5cea8;
+}
+
+:root[data-theme="dark-vscode"] .hljs-attr,
+:root[data-theme="dark-vscode"] .hljs-attribute,
+:root[data-theme="dark-vscode"] .hljs-property,
+:root[data-theme="dark-vscode"] .hljs-selector-attr,
+:root[data-theme="dark-vscode"] .hljs-variable,
+:root[data-theme="dark-vscode"] .hljs-template-variable,
+:root[data-theme="dark-vscode"] .hljs-params {
+	color: #9cdcfe;
+}
+
+:root[data-theme="dark-vscode"] .hljs-built_in,
+:root[data-theme="dark-vscode"] .hljs-type,
+:root[data-theme="dark-vscode"] .hljs-symbol,
+:root[data-theme="dark-vscode"] .hljs-title.class_,
+:root[data-theme="dark-vscode"] .hljs-class .hljs-title {
+	color: #4ec9b0;
+}
+
+:root[data-theme="dark-vscode"] .hljs-title,
+:root[data-theme="dark-vscode"] .hljs-title.function_,
+:root[data-theme="dark-vscode"] .hljs-section {
+	color: #dcdcaa;
 }
 
 /* 模型测试的绿/红胶囊：浅色版是深绿深红字，深底上得反过来提亮 */

@@ -171,7 +171,7 @@ const MAX_ALIAS_CHARS = 40;
 
 /** 纯函数：归一化项目偏好 —— 只保留绝对路径、去重、上限、别名裁剪 */
 function normalizeProjectPrefs(input: unknown): ProjectPrefs {
-	const empty: ProjectPrefs = { order: [], pinned: [], aliases: {} };
+	const empty: ProjectPrefs = { order: [], pinned: [], aliases: {}, hidden: [] };
 	if (typeof input !== "object" || input === null) return empty;
 	const record = input as Record<string, unknown>;
 	const paths = (value: unknown): string[] => {
@@ -196,7 +196,7 @@ function normalizeProjectPrefs(input: unknown): ProjectPrefs {
 			if (name !== "") aliases[key] = name;
 		}
 	}
-	return { order: paths(record.order), pinned: paths(record.pinned), aliases };
+	return { order: paths(record.order), pinned: paths(record.pinned), aliases, hidden: paths(record.hidden) };
 }
 
 /** 纯函数：会话偏好的归一化（只保留非空字符串，上限 2000 条；改名不在这里） */
@@ -220,7 +220,7 @@ export function defaultSettings(): ClientSettings {
 		quickPhrases: [...DEFAULT_QUICK_PHRASES],
 		quickPhrasesEnabled: true,
 		templates: DEFAULT_TEMPLATES.map((template) => ({ ...template })),
-		projectPrefs: { order: [], pinned: [], aliases: {} },
+		projectPrefs: { order: [], pinned: [], aliases: {}, hidden: [] },
 		sessionPrefs: { pinned: [], archived: [], order: [] },
 		defaultModels: {},
 		thinkCount: DEFAULT_THINK_COUNT,

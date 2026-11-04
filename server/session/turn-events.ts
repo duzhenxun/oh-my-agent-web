@@ -13,7 +13,7 @@
 import type { Notice, ServerEvent, UiMessage } from "../protocol.js";
 import type { EngineEvent } from "../engine/port.js";
 import type { ServerState } from "../snapshot/state.js";
-import { appendError, appendText, appendThinking, finishTool, startTool } from "../snapshot/messages.js";
+import { appendError, appendText, appendThinking, finishTool, reconcileText, startTool } from "../snapshot/messages.js";
 import { scheduledCost } from "../util/pricing-index.js";
 
 /** 思考计时：messageId → 这一段思考的起点（跨事件累计，最后落成 message.thinkingMs） */
@@ -151,6 +151,17 @@ export function applyEngineEvent(context: TurnEventContext, input: TurnEventInpu
 			if (isGlobal()) state.running.streamingText += visible;
 			patchOwnRunning((own) => (own.streamingText = (own.streamingText ?? "") + visible));
 			context.emitEvent({ type: "event", event: "message_delta", conversationId, messageId, text: visible });
+			return;
+		}
+		case "text_end": {
+			// 权威全文到了：把这一段正文校正回来（丢过 delta 的话，界面就是「只有一个字」）
+			let changed = false;
+			patch((message) => {
+				const next = reconcileText(message, event.text);
+				changed = next !== message;
+				return next;
+			});
+			if (changed) context.pushSnapshot();
 			return;
 		}
 		case "thinking_delta": {

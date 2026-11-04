@@ -11,6 +11,12 @@
  *   2. 隐藏回合（「想想」）不播 —— 它不新建助手消息，`isRealTurnEnd` 会把它挡掉；
  *   3. 切会话不算开始/结束 —— 状态按会话 id 分开记，切过去不会把旧状态当成新跳变。
  *
+ * 收尾那一拍要说准三种话（用户 2026-11-03）：
+ *   · 自己跑完 → `done`（「任务已完成」）；
+ *   · 被停掉 → `stopped`（「任务已停止」，看消息上的 `stopped` 标记）；
+ *   · 插队 → `steer`（「有新任务插队」，消息流里新冒出一条 `steer` 用户消息）。
+ * 以前只有「完成」一种，于是一个停止的回合也被念成「已完成」—— 听着就像重复播了一遍。
+ *
  * 外加一条**出口**的去重（见下面的 `DONE_ANNOUNCE_GAP_MS`）：上面三条保证「同一轮只发一条
  * 完成 cue」，但并行 / 后台会话同时收尾仍然是**多个回合**、会各发一条。提示音没必要连响两声，
  * 所以出口再合一次：同一拍的多条算一次，相同内容 1.5s 内不重复。
@@ -20,6 +26,10 @@ import type { Snapshot, UiMessage } from "./types.ts";
 export type Cue =
 	| { kind: "start"; conversationId: string }
 	| { kind: "done"; conversationId: string; message: UiMessage | null }
+	/** 这一轮是**被停掉的**（用户点停止 / 看门狗中断）：只说「任务已停止」，不说「完成」 */
+	| { kind: "stopped"; conversationId: string; message: UiMessage | null }
+	/** 有新消息插队进了这一轮：说「有新任务插队」 */
+	| { kind: "steer"; conversationId: string }
 	| { kind: "approval" }
 	| { kind: "error" };
 
@@ -38,6 +48,13 @@ type CueMemory = {
 	startedTurns: Set<string>;
 	seenErrors: Set<string>;
 	lastApprovalId: string | null;
+	/**
+	 * 已经见过消息流的会话。第一次看到某个会话时只把现有的插队消息记下来、**不补播** ——
+	 * 否则切进一个历史会话就会把里面每一条插队都念一遍。
+	 */
+	knownConversations: Set<string>;
+	/** 已经报过（或开场就存在的）插队消息：`会话id:消息id` */
+	seenSteers: Set<string>;
 };
 
 export function createCueMemory(): CueMemory {
@@ -49,6 +66,8 @@ export function createCueMemory(): CueMemory {
 		startedTurns: new Set(),
 		seenErrors: new Set(),
 		lastApprovalId: null,
+		knownConversations: new Set(),
+		seenSteers: new Set(),
 	};
 }
 
@@ -98,6 +117,13 @@ export function createAnnounceMemory(): AnnounceMemory {
 
 /** 「只响提示音、不说话」那次去抖用的键（没开启朗读时也得能去重） */
 const SOUND_ONLY_KEY = "\u0000sound";
+/**
+ * 「任务已停止」那次去抖用的键。
+ *
+ * 为什么不和「完成」共用：一轮被停掉、另一轮在同一秒里正常跑完，是**两件事**，
+ * 合成一次就少说了一半。但同样的事件连来两次（并行收尾 / 补判那一拍）仍然只响一次。
+ */
+const STOPPED_KEY = "\u0000stopped";
 
 /**
  * 这一次到底要不要出声（提示音 + 可能的朗读）。
@@ -106,8 +132,14 @@ const SOUND_ONLY_KEY = "\u0000sound";
  * 否则并行收尾会听到两声「叮」。同一内容在 `DONE_ANNOUNCE_GAP_MS` 内只放行一次；被拦下的
  * 那一拍**不动记忆**，所以窗口一过、下一拍照样能响。
  */
-export function shouldAnnounceDone(memory: AnnounceMemory, text: string | null, now: number): boolean {
-	const key = text ?? SOUND_ONLY_KEY;
+export function shouldAnnounceDone(
+	memory: AnnounceMemory,
+	text: string | null,
+	now: number,
+	/** 收尾的性质：正常完成 / 被停掉。两者的「没话说」必须各算各的去重键 */
+	kind: "done" | "stopped" = "done",
+): boolean {
+	const key = text ?? (kind === "stopped" ? STOPPED_KEY : SOUND_ONLY_KEY);
 	if (memory.lastText === key && now - memory.lastAt < DONE_ANNOUNCE_GAP_MS) return false;
 	memory.lastText = key;
 	memory.lastAt = now;
@@ -166,6 +198,17 @@ export function planCues(memory: CueMemory, snapshot: Snapshot): Cue[] {
 	/**
 	 * 这一轮该不该播「完成」（按回合身份去重）—— 开始/收尾、以及「晚一拍」的补判都走它。
 	 */
+	/**
+	 * 收尾那一拍该说什么。
+	 *
+	 * 「跑完了」和「被停掉」在 `running` 里都是 idle，区别只在消息上的 `stopped` 标记
+	 * （服务端在 `interrupted` 收尾时写）—— 没有标记时按「完成」说，因为那是绝大多数。
+	 */
+	const endCue = (conversationId: string, finished: UiMessage | null): Cue =>
+		finished?.stopped === true
+			? { kind: "stopped", conversationId, message: finished }
+			: { kind: "done", conversationId, message: finished };
+
 	const takeDone = (conversationId: string, mark: TurnMark | null, finished: UiMessage | null): boolean => {
 		// 不是当前会话（后台跑完）时看不到消息，只能信状态；当前会话还要再确认一次
 		const real = conversationId === activeId ? isRealTurnEnd(mark, finished) : true;
@@ -192,7 +235,7 @@ export function planCues(memory: CueMemory, snapshot: Snapshot): Cue[] {
 			if (finished?.endedAt === undefined) continue; // 还没落上，继续等
 			memory.awaitingEnd.delete(conversationId);
 			if (takeDone(conversationId, mark, finished)) {
-				cues.push({ kind: "done", conversationId, message: finished });
+				cues.push(endCue(conversationId, finished));
 			}
 		}
 	}
@@ -234,8 +277,28 @@ export function planCues(memory: CueMemory, snapshot: Snapshot): Cue[] {
 				continue;
 			}
 			if (takeDone(conversationId, mark, finished)) {
-				cues.push({ kind: "done", conversationId, message: finished });
+				cues.push(endCue(conversationId, finished));
 			}
+		}
+	}
+
+	// ---- 插队（steer）：消息流里新冒出一条「插队」的用户消息 ----
+	// 没有会话就没有「当前这一轮」可说，整段跳过
+	if (activeId !== null) {
+		const steered = activeMessages.filter((message) => message.role === "user" && message.steer === true);
+		if (!memory.knownConversations.has(activeId)) {
+			// 第一次看到这个会话：现有的插队消息已经发生过了，只记账、不补播
+			memory.knownConversations.add(activeId);
+			trim(memory.knownConversations);
+			for (const message of steered) memory.seenSteers.add(`${activeId}:${message.id}`);
+		} else {
+			for (const message of steered) {
+				const key = `${activeId}:${message.id}`;
+				if (memory.seenSteers.has(key)) continue;
+				memory.seenSteers.add(key);
+				cues.push({ kind: "steer", conversationId: activeId });
+			}
+			trim(memory.seenSteers);
 		}
 	}
 

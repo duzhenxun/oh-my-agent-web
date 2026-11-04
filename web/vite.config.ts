@@ -229,6 +229,11 @@ export default defineConfig({
 			// 独立登录页（`server/http/login-page.ts` 渲染的那张）也归后端：
 			// 开发态 `GET /` 是 Vite 给的，未登录时必须有条路能拿到服务端的登录页
 			"/login": { target: `http://${BACKEND_HOST}:${BACKEND_PORT}`, xfwd: true },
+			// 网页页的代理与它的同源外壳（ADR-0047）：这两个前缀要**原样交给后端**。
+			// 不过去的话会被 Vite 的 SPA 回退接走，面板里就变成了「网页页里嵌了个工作台」。
+			// 同源外壳（`/web/w`）算出的兄弟回环主机也带这个端口，所以开发态/生产态用的是同一条路。
+			"/web/p": { target: `http://${BACKEND_HOST}:${BACKEND_PORT}`, xfwd: true },
+			"/web/w": { target: `http://${BACKEND_HOST}:${BACKEND_PORT}`, xfwd: true },
 		},
 	},
 });

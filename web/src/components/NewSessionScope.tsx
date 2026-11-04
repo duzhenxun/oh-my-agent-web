@@ -63,7 +63,12 @@ export function NewSessionScope({
 }) {
 	const t = useT();
 	const snapshot = useAppSelector((state) => state.snapshot);
-	const projectPrefs: ProjectPrefs = snapshot?.settings.projectPrefs ?? { order: [], pinned: [], aliases: {} };
+	const projectPrefs: ProjectPrefs = snapshot?.settings.projectPrefs ?? {
+		order: [],
+		pinned: [],
+		aliases: {},
+		hidden: [],
+	};
 	// 跟侧栏同一份排序 + 别名：下拉框里看到的顺序和名字，跟左边那一栏一字不差
 	const projects = sortProjects(snapshot?.piProjects ?? [], projectPrefs).map((project) => ({
 		cwd: project.cwd,

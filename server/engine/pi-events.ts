@@ -92,6 +92,11 @@ export function mapSessionEvent(event: unknown): EngineEvent | null {
 		) {
 			return { type: "text_delta", text: assistantEvent.delta };
 		}
+		// 正文结束：这一段是权威全文（见 port.ts 里 `text_end` 的注释）。
+		// 必须在 thinking 分支之前：两者类型不同，但顺序上先正文后思考符合实际时序。
+		if (assistantEvent.type === "text_end" && typeof assistantEvent.content === "string") {
+			return assistantEvent.content === "" ? null : { type: "text_end", text: assistantEvent.content };
+		}
 		// 模型的思考过程：单独一类事件，界面上折叠展示（不是正文）
 		if (
 			assistantEvent.type === "thinking_delta" &&

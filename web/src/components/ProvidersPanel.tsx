@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAppSelector } from "../store.ts";
 import { isModelEnabled } from "../model-enabled.ts";
+import { engineReadyProviderIds, isProviderListed } from "../provider-listed.ts";
 import { deleteProvider, requestProviders, setProviderEnabled } from "../ws.ts";
 import type { ProviderView } from "../types.ts";
 import { ImportModels } from "./ImportModels.tsx";
@@ -14,8 +15,10 @@ import { useT } from "../use-language.ts";
 /**
  * 模型管理（左列表 + 右详情）。
  *
- * 左栏列**全部** provider（自定义的 + pi 内置的），点哪个就把它的模型摊在下面；
- * 右栏是它的配置。之前只列自定义的，用户会以为 nexita / nexita-anthropic 之类「丢了」。
+ * 左栏列**现在能用的** provider（自定义的 + pi 内置的），点哪个就把它的模型摊在下面；
+ * 右栏是它的配置。以前只列自定义的，用户会以为 nexita / nexita-anthropic 之类「丢了」。
+ * 「能用」的具体口径见 `../provider-listed.ts`：有 key / 订阅登录，**或者引擎已经报上来它的模型**
+ * （后者是 2026-11-03 补的：`opencode` 的 key 不在 auth.json，以前连行都不显）。
  *
  * 内置 provider 由 pi 自己的目录管理（baseUrl / 模型表都是 pi 给的），
  * 它们是可以改的：写回 pi 的 models.json（不是另建覆盖条目），见 catalog-store.ts。
@@ -86,11 +89,18 @@ export function ProvidersPanel() {
 		.sort((left, right) => Number(right.entry.connected) - Number(left.entry.connected) || left.index - right.index)
 		.map((item) => item.entry);
 	/**
-	 * 左栏**默认只列能用的**：有 api key，或者订阅已登录。
-	 * 没配置的（pi 目录里那几十家「无 key」）不再堆在列表里 —— 它们是"要加的时候才需要"的，
+	 * 引擎**当前真的报了它的模型**（`provider/model` 出现在快照的模型表里）= 现在就能用。
+	 * 判定在 `../provider-listed.ts`（那条路径上还有一段「为什么不只看 credential」）。
+	 */
+	const engineReady = engineReadyProviderIds((snapshot?.models ?? []).map((model) => model.id));
+	/**
+	 * 左栏**只列能用的**：有 api key、订阅已登录，或者引擎已经报上来它的模型。
+	 * 最后一种以前漏了 —— `opencode` 的 key 不在 `auth.json`（引擎自己解析），于是它明明在输入区
+	 * 的模型下拉里能选，面板里却根本找不到（2026-11-03 用户报的）。
+	 * 没配置的（pi 目录里那几十家「无 key」）仍然不堆在列表里 —— 它们是"要加的时候才需要"的，
 	 * 统一进「＋ 添加服务商」（按来源分：订阅 / 官方内置 / 自己输入）。
 	 */
-	const usable = (provider: ProviderView) => provider.credential === "apiKey" || provider.credential === "oauth";
+	const usable = (provider: ProviderView) => isProviderListed(provider, { engineReady });
 	/**
 	 * 已连接的订阅会在列表顶部单独列一行；同一个 provider 不再按官方内置 / 自定义
 	 * 名称重复显示。未连接的订阅不参与去重，避免把普通 API key 配置误藏起来。
@@ -219,6 +229,21 @@ export function ProvidersPanel() {
 							}
 						>
 							{provider.oauth?.expired ? t("订阅已过期", "Expired") : t("订阅已登录", "Signed in")}
+						</span>
+					) : engineReady.has(provider.provider) ? (
+						/*
+						 * 没有 api key、也不是订阅登录，但引擎已经报上来它的模型（opencode）。
+						 * 这里**不能**说「无 key / 填一把就能用」—— 用户会去找一把根本不存在的 key。
+						 * 只说事实：引擎现在给出这些模型，换模型用输入区那个下拉。
+						 */
+						<span
+							className="prov-item-state prov-item-state-on"
+							title={t(
+								"引擎已经报上来它的模型（凭证由引擎自己解析，不在这份配置里）：能直接用，换模型用输入区的下拉",
+								"The engine already reports its models (credentials are resolved by the engine, not stored here): ready to use — switch models from the composer",
+							)}
+						>
+							{t("引擎已可用", "Ready")}
 						</span>
 					) : (
 						<span

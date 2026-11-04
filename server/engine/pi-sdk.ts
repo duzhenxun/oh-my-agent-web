@@ -15,7 +15,8 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI, InlineExtension, ToolCallEventResult } from "@earendil-works/pi-coding-agent";
 import { dirname } from "node:path";
-import { getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
+import { getBuiltinClassifierModels, getBuiltinImageModels, getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
+import { chatModels, isChatModel } from "../providers/model-kind.js";
 import { classifyScope } from "../approval/scope.js";
 import { mapSessionEvent } from "./pi-events.js";
 import { RETRY_MAX_ATTEMPTS, classifyProviderError, retryDelayMs, retryOmitTargets } from "./pi-retry.js";
@@ -34,6 +35,7 @@ import type {
 	ProviderAuthEntry,
 	ProviderAuthEvent,
 	ProviderAuthPrompt,
+	ModelProbeResult,
 } from "./port.js";
 
 type PiSdkEngineOptions = {
@@ -72,6 +74,8 @@ type SessionHandle = {
 	session: {
 		prompt: (text: string) => Promise<void>;
 		abort: () => Promise<void>;
+		/** 取消 pi 自己的退避重试（见 `interrupt` 上面那段：abort 与重试之间有竞态） */
+		abortRetry?: () => void;
 		subscribe: (listener: (event: unknown) => void) => () => void;
 		dispose: () => void;
 		messages: unknown[];
@@ -93,6 +97,10 @@ type SessionHandle = {
 	subscriptions: Set<() => void>;
 	/** 正在被 abort（用来把 agent_settled 翻译成「中断」而不是「完成」） */
 	aborting: boolean;
+	/** 这一轮还在跑（从开始到 turn_end 之间为 true）：停止之后据此决定还要不要补发 abort */
+	running: boolean;
+	/** 回合序号：停止时只盯住「发出停止的那一轮」，不误停排在后面的下一轮 */
+	turnSeq: number;
 	/** 会话转录的管理器（ADR-0021 §2：读条目 → 界面消息） */
 	sessionManager: {
 		getEntries: () => unknown[];
@@ -235,6 +243,28 @@ type AuthRuntime = {
 };
 
 /**
+ * 探针用到的 ModelRuntime 面（同 AuthRuntime 的纪律：只描述真正用到的部分）。
+ *
+ * `streamSimple` 照 SDK 的原签名 —— 鉴权解析、协议选择、provider 专属 header
+ * 全由它自己套，这里不重复也不猜。
+ */
+type ProbeRuntime = {
+	getModels: (providerId?: string) => readonly { id?: string }[];
+	streamSimple: (
+		model: unknown,
+		context: { messages: readonly { role: string; content: string; timestamp: number }[] },
+		options: { signal?: AbortSignal },
+	) => AsyncIterable<{ type: string }> & { result: () => Promise<unknown> };
+};
+
+/** 探针只关心收尾这三样（stopReason / errorMessage / usage.output） */
+type ProbeMessage = {
+	stopReason?: string;
+	errorMessage?: string;
+	usage?: { output?: number };
+};
+
+/**
  * provider 的显示名：只覆盖 SDK 名字太长/不直观的两个，
  * 其余直接用引擎给的 OAuth 名称（`Anthropic (Claude Pro/Max)`、`xAI (Grok/X subscription)` 等）。
  */
@@ -312,6 +342,7 @@ export { NARRATE_GUIDANCE, SUGGESTION_GUIDANCE, SUBAGENT_GUIDANCE };
 import { createPiThinking } from "./pi-thinking.js";
 import { piSdkVersion } from "./pi-version.js";
 import { renameSessionIn } from "./pi-rename.js";
+import { keepAbortingUntilSettled } from "./pi-stop.js";
 
 export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort {
 	/**
@@ -466,6 +497,8 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 			},
 			subscriptions,
 			aborting: false,
+			running: false,
+			turnSeq: 0,
 			sessionManager: sessionManager as unknown as SessionHandle["sessionManager"],
 			sessionPath: sessionPath ?? sessionManager.getSessionFile() ?? null,
 		};
@@ -521,7 +554,8 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 				subscription: provider.auth.oauth?.isSubscription === true,
 				connected: credentials.get(provider.id) === "oauth",
 				supportsApiKey: Boolean(provider.auth.apiKey),
-				modelCount: runtime.getModels(provider.id).length,
+				// 只数聊天模型：分类器 / 出图模型登不登录都用不了（见 providers/model-kind.ts）
+				modelCount: chatModels(runtime.getModels(provider.id) as Array<{ type?: string; api?: string }>).length,
 			}))
 			.sort((left, right) => left.id.localeCompare(right.id));
 	}
@@ -540,10 +574,18 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 		if (!runtime) return [];
 		return runtime
 			.getProviders()
-			.map((provider) => {
+			.flatMap((provider) => {
 				const apiKey = Boolean(provider.auth.apiKey);
 				const oauth = Boolean(provider.auth.oauth);
-				const models = runtime.getModels(provider.id) as Array<{ id: string; baseUrl?: string; api?: string }>;
+				/**
+				 * 只要**聊天**模型：目录里 `typesafe` 只有一个分类器 `jev-latest`、
+				 * `openrouter` 还挂着出图模型 —— 把它们算进来，用户会在「填一把 key 就能用」里
+				 * 看到一家其实对话用不了的 provider（2026-11-03 用户报的那个 typesafe）。
+				 */
+				const models = chatModels(
+					runtime.getModels(provider.id) as Array<{ id: string; baseUrl?: string; api?: string; type?: string }>,
+				);
+				if (models.length === 0) return [];
 				// SDK 的 Provider 类型里没写 baseUrl（运行时是有的，pi-ai 的 createProvider 会给）：
 				// 这里只读一个可选的显示信息，不值得为它去引 pi-ai 的内部类型。
 				const declaredBaseUrl = (provider as unknown as { baseUrl?: string }).baseUrl;
@@ -574,7 +616,7 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 				const api =
 					modelSpecs.find((model) => model.api !== undefined)?.api ??
 					models.find((model) => typeof model.api === "string" && model.api !== "")?.api;
-				return {
+				return [{
 					provider: provider.id,
 					name: provider.name,
 					...(baseUrl ? { baseUrl } : {}),
@@ -583,7 +625,7 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 					modelCount: models.length,
 					...(apiKey ? {} : oauth ? { oauthOnly: true } : { needsExtraConfig: true }),
 					...(NEEDS_EXTRA_CONFIG.has(provider.id) ? { needsExtraConfig: true } : {}),
-				};
+				}];
 			})
 			.sort((left, right) => left.provider.localeCompare(right.provider));
 	}
@@ -795,6 +837,8 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 			const handle = found;
 
 			handle.aborting = false;
+			handle.running = true;
+			handle.turnSeq += 1;
 
 			/**
 			 * 一轮的收尾结果（自动重试用）。
@@ -867,6 +911,13 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 					// 界面上不打扰 —— 用户看到的仍然是一轮正常的回答。
 					if (record.type === "auto_retry_start") {
 						log("info", "pi 自动重试", { sessionId, attempt: record.attempt, reason: record.errorMessage });
+						/**
+						 * 用户已经点了停：pi 是先 emit 这个事件、后建退避控制器的（同步代码里紧接着就 sleep）。
+						 * 所以这里**同步**取消会扑空；推到微任务里，控制器已经存在，取消才生效。
+						 */
+						if (handle.aborting) {
+							queueMicrotask(() => (handle.session as { abortRetry?: () => void }).abortRetry?.());
+						}
 						return;
 					}
 					if (record.type === "agent_settled") {
@@ -968,6 +1019,7 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 				outcome = await runAttempt(attempt);
 			}
 
+			handle.running = false;
 			if (outcome.failed) {
 				log("error", "这一轮没能发出去", { sessionId, message: outcome.failed.message });
 				onEvent({ type: "error", code: outcome.failed.code, message: outcome.failed.message });
@@ -1004,11 +1056,28 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 			const handle = sessions.get(sessionId);
 			if (!handle) return;
 			handle.aborting = true;
+			const turnNo = handle.turnSeq;
+			const cancelRetry = () => (handle.session as { abortRetry?: () => void }).abortRetry?.();
+			cancelRetry();
 			try {
 				await handle.session.abort();
 			} catch (error) {
 				notice(`中断失败：${error instanceof Error ? error.message : String(error)}`);
 			}
+			/**
+			 * pi 的 `abort()` 有竞态：它在「这一轮刚结束、正准备自动重试」的窗口里调用时，
+			 * 既没有可停的流、也没有已建好的退避控制器，于是停止无效，重试照跑，回合永远不 settle，
+			 * 界面一直显示「正在跑 / 回车排队」，「停止」按了也没用。
+			 *
+			 * 所以只要**这一轮**还没结束，就隔一秒补一次（最多 8 次，约 8 秒）。
+			 * 盯住回合序号：停止期间如果排队的下一轮已经开始，就不再打扰它。
+			 */
+			void keepAbortingUntilSettled({
+				stillStopping: () => handle.running && handle.turnSeq === turnNo,
+				cancelRetry,
+				abortOnce: () => handle.session.abort(),
+				sleep,
+			});
 		},
 
 		async readTranscript(sessionId: string): Promise<EngineMessage[]> {
@@ -1052,9 +1121,28 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 					name?: string;
 					baseUrl?: string;
 					api?: string;
+					type?: string;
 				}>;
 				const current = await this.currentModel?.(sessionId ?? "");
+				/**
+				 * 只留**聊天**模型（`providers/model-kind.ts`）。
+				 * `getAvailable()` 报的是所有类型：分类器 `typesafe/jev-latest` 也被报了上来，
+				 * 于是面板把它当成一个「引擎已可用」的服务商，界面上多一条既删不掉、又聊不了的条目
+				 * （2026-11-03 用户截图报的那个 typesafe）。
+				 * 引擎报上来的对象不一定带 `api` / `type`，所以再查一眼 pi 的静态目录：
+				 * 目录里登记成分类器 / 出图模型的 id，一律不算聊天模型。
+				 */
+				const nonChatIds = new Set<string>();
+				for (const providerId of new Set(models.map((model) => String(model.provider ?? "")))) {
+					const builtin = [
+						...getBuiltinClassifierModels(providerId as Parameters<typeof getBuiltinModels>[0]),
+						...getBuiltinImageModels(providerId as Parameters<typeof getBuiltinModels>[0]),
+					];
+					for (const model of builtin) nonChatIds.add(`${providerId}/${String(model.id)}`);
+				}
 				return models
+					.filter((model) => isChatModel(model))
+					.filter((model) => !nonChatIds.has(`${String(model.provider ?? "?")}/${String(model.id ?? "?")}`))
 					.map((model) => {
 						const id = `${String(model.provider ?? "?")}/${String(model.id ?? "?")}`;
 						return {
@@ -1074,6 +1162,75 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 		listThinkingLevels: thinking.listThinkingLevels,
 		getThinkingLevel: thinking.getThinkingLevel,
 		setThinkingLevel: thinking.setThinkingLevel,
+
+		/**
+		 * 模型探针：**pi 自己**发一次最小请求（一个 ping 回合，没有工具 / 没有审批）。
+		 *
+		 * 为什么不让工作台拿 key 直连（`/api/providers/:p/models/:id/test` 那条路）：
+		 * 那条路只能测「key 落盘在 auth.json / models.json 里」的 provider。pi 的凭证还有另一种来源 ——
+		 * **环境变量**（opencode 读的就是 `OPENCODE_API_KEY`），而且 provider 还会要求自己的 header
+		 * （opencode 要 `x-opencode-session`，见 pi-ai 的 `withOpenCodeSessionHeader`）。
+		 * 结果就是：opencode 在对话里用得挺好，面板上测速却一律报「这个 provider 还没有凭证」。
+		 * 这里走 `modelRuntime.streamSimple` —— 鉴权解析、协议选择、这些专属 header 全是 pi 自己套的，
+		 * 和对话用的完全是同一条路，不重复也不猜。
+		 *
+		 * 语义上这是一次**真实调用**（会花额度）：界面必须已经在用户确认后才调到这里。
+		 */
+		async probeModel(modelId: string): Promise<ModelProbeResult> {
+			const slash = modelId.indexOf("/");
+			if (slash <= 0 || slash === modelId.length - 1) {
+				return { ok: false, message: `模型 id 形状不认识：${modelId}` };
+			}
+			const providerId = modelId.slice(0, slash);
+			const wanted = modelId.slice(slash + 1);
+			const runtime = (await authRuntime()) as ProbeRuntime | null;
+			if (!runtime?.streamSimple) {
+				return { ok: false, message: "引擎还没准备好模型表（先新建一个会话再测）" };
+			}
+			const model = runtime.getModels(providerId).find((entry) => String(entry?.id ?? "") === wanted);
+			if (!model) return { ok: false, message: `引擎里没有这个模型：${modelId}` };
+
+			const startedAt = Date.now();
+			let ttftMs: number | null = null;
+			let firstTokenAt = 0;
+			/** 30s 收不住就当测不出来：面板上宁可报错，也别让按钮一直转 */
+			const controller = new AbortController();
+			const timer = setTimeout(() => controller.abort(), 30_000);
+			try {
+				const stream = runtime.streamSimple(
+					model,
+					{ messages: [{ role: "user", content: "ping", timestamp: Date.now() }] },
+					{ signal: controller.signal },
+				);
+				for await (const event of stream) {
+					// 首字（包括思考流）：这才是用户感知的「多久才动」
+					if (ttftMs === null && (event.type === "text_start" || event.type === "text_delta")) {
+						ttftMs = Date.now() - startedAt;
+						firstTokenAt = Date.now();
+					}
+				}
+				const message = (await stream.result()) as ProbeMessage | undefined;
+				const totalMs = Date.now() - startedAt;
+				if (message?.stopReason === "error" || message?.stopReason === "aborted") {
+					return { ok: false, message: message.errorMessage ?? `引擎回了 ${message.stopReason}` };
+				}
+				const outputTokens = message?.usage?.output ?? 0;
+				const generationMs = firstTokenAt === 0 ? 0 : Date.now() - firstTokenAt;
+				return {
+					ok: true,
+					ttftMs,
+					totalMs,
+					outputTokens,
+					// 与 EngineModelsPanel 同一套纪律：窗口太短 / 没 token 就给 null，不拿噪声充数
+					tps: outputTokens > 0 && generationMs >= 500 ? (outputTokens / generationMs) * 1000 : null,
+					averageTps: outputTokens > 0 && totalMs > 0 ? (outputTokens / totalMs) * 1000 : null,
+				};
+			} catch (error) {
+				return { ok: false, message: error instanceof Error ? error.message : String(error) };
+			} finally {
+				clearTimeout(timer);
+			}
+		},
 
 		async switchModel(sessionId: string, modelId: string) {
 			// ModelRuntime 上没有 find（那是 ModelRegistry 的方法）→ 从可用列表里自己匹配

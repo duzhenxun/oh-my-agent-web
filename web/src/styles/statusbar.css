@@ -32,15 +32,50 @@
 	background: var(--bg-elev-2);
 }
 
-/* 手机上状态栏会很宽：让它横向可滚动，别把布局撑破 */
+/* ---------------------------------------------------------------------------
+ * 手机底部状态栏：**一行**，装不下就左右滑（用户 2026-11-02：「下面底部只要一行
+ * 显示不开就左右滑动，但不要出现滚动条」）。
+ *
+ * 390px 宽的手机上这一条内容要 ~540px，所以它天然是会溢出的容器：
+ *   - `flex-wrap: nowrap` + 子项都是 `flex: none` → **不压缩、不改行**，保持各自的字大小；
+ *   - `overflow-x: auto` → 挤出去的部分往右滑就能看到（最右端是「隐藏顶部」）；
+ *   - 滚动条一律藏掉（三条供应商前缀各写一遍）——那是根装饰，摆在这儿只会显得脏。
+ *
+ * 「不能居中」是踩过的坑：`justify-content: center` 在溢出容器里会把左侧推出可滚动区，
+ * 表现就是「有的显示不全、往左也划不回来」。
+ *
+ * 高度统一由 `--statusbar-h` 给出（定义在下面）：上面的会话信息浮层、底部的轻提示
+ * 都按它让位，免得这一条改高了、那些东西还停在旧坐标上叠在一起。
+ * ------------------------------------------------------------------------- */
+html.is-mobile-shell {
+	--statusbar-h: calc(32px + env(safe-area-inset-bottom, 0px));
+}
+
 .is-mobile-shell .statusbar {
-	overflow-x: auto;
-	scrollbar-width: none;
+	height: auto;
+	min-height: var(--statusbar-h);
+	/* 整条放大 5%：栏内全是 em，放大基准就够了（以前要逐颗控件各写一条 font-size） */
+	font-size: calc(var(--statusbar-font-size, 12px) * 1.05);
+	flex-wrap: nowrap;
+	align-items: center;
+	justify-content: flex-start;
+	gap: 10px;
+	/* 右边也留 10px：以前贴着屏幕右沿，「隐藏顶部」看着像被切掉了半截 */
+	padding: 0 10px calc(env(safe-area-inset-bottom, 0px));
 	white-space: nowrap;
+	overflow-x: auto;
+	overflow-y: hidden;
+	/* 横滑时别把整页一起带着拖（iOS 的橡皮筋） */
+	overscroll-behavior-x: contain;
+	/* 滚动条：Firefox / IE 老写法 / WebKit */
+	scrollbar-width: none;
+	-ms-overflow-style: none;
 }
 
 .is-mobile-shell .statusbar::-webkit-scrollbar {
 	display: none;
+	width: 0;
+	height: 0;
 }
 
 /* 手机：只藏「对话数」（其余：项目 / 引擎 / 工作中 / 排队 / 上下文 都留着） */
@@ -116,8 +151,8 @@
 	right: 8px;
 	width: auto;
 	max-width: none;
-	/* 状态栏 32px 高 + 8px 间距，贴着它上面 */
-	bottom: calc(32px + env(safe-area-inset-bottom, 0px) + 8px);
+	/* 贴着状态栏**上面**：高度取 `--statusbar-h`（写死数值以后改栏高就会压到栏上） */
+	bottom: calc(var(--statusbar-h, 32px) + 8px);
 	border-radius: 12px;
 }
 
@@ -148,30 +183,25 @@
 	font-weight: 600;
 }
 
-/* ---------------------------------------------------------------------------
- * 手机底部状态栏：放行 / 上下文 / 项目名 / 顶部（排队 / 工作中跟随设置里的「底部」开关，默认显示）。
- *
- * 桌面那套 24px 高、12px 字在小屏上「又小又显示不全」，所以这里整条放大一档：
- * 高度 32px、13px 字，控件也水涨船高。
- * 另外**不能居中**：flex 居中 + overflow-x:auto 时左侧会被推出可滚动区，
- * 表现就是「有的显示不全、往左也划不回来」——改成左对齐 + 溢出可滚。
- * ------------------------------------------------------------------------- */
-.is-mobile-shell .statusbar {
-	height: 32px;
-	/* 整条放大 5%：栏内全是 em，放大基准就够了（以前要逐颗控件各写一条 font-size） */
-	font-size: calc(var(--statusbar-font-size, 12px) * 1.05);
-	gap: 10px;
-	justify-content: flex-start;
-	/* 右侧不留内边距：「顶部」开关贴到屏幕右沿 */
-	padding: 0 0 0 10px;
-}
+/* 装不下就让它往外溢、由状态栏横滑（不压缩、不改行）：
+   `.status-controls` 本身是 `flex: none`，这里不再给它 100% 的 basis，
+   也不再给模型胶囊加 `max-width: 100%` —— 各自保持自然宽度，滑过去就行。 */
 
-/* 「顶部」不再绝对定位：留在流里靠右（内容超宽时它跟着一起滚，不会被盖住） */
+/* 「顶部」不再绝对定位：留在流里（滑到最右就能看到） */
 .is-mobile-shell .statusbar > .status-toggle {
 	position: static;
 	transform: none;
 	margin-left: auto;
 	padding: 0 4px;
+	/* 手机上是**唯一**的收起/展开入口，没有快捷键、没有悬浮提示：
+	   图标大一号，按起来不至于眯着眼睛找（窄屏只剩它一个图标时更明显） */
+	min-height: 22px;
+	gap: 3px;
+}
+
+.is-mobile-shell .statusbar > .status-toggle .status-toggle-icon {
+	width: 12px;
+	font-size: 1.05em;
 }
 
 /* 手机上的控件只放大「盒子」（桌面那版是为 24px 高的栏收过的）；
@@ -192,7 +222,7 @@
 }
 
 /* 「排队 / 工作中」不再在手机上无条件隐藏：显隐交给设置 → 界面 → 底部
-   （默认显示，勾掉才不显示）；状态栏本身 overflow-x:auto，装不下就横向滑。 */
+   （默认显示，勾掉才不显示）。它们排在同一行里，「上下文」之后。 */
 
 /* 「工作中」左边的小环：有回合在跑就转，蓝圈；闲着就是个淡灰静止环 */
 .status-running {
@@ -289,8 +319,13 @@
 }
 
 .is-mobile-shell .status-ring {
-	width: 15px;
-	height: 15px;
+	width: 13.5px;
+	height: 13.5px;
+	/* 按 em 抬一点：数字的墨迹比盒子偏上，圆环居中反而看着往下坠。
+	   用 `top` 而不是 transform —— 这颗上面已经有 `rotate(-90deg)`，
+	   再往 transform 里接一句 translateY 就变成「没转的时候的左边」了。 */
+	position: relative;
+	top: -0.05em;
 }
 
 /* 超窄屏（≤380px）：顶部开关只留箭头图标；上下文只留「已用」，把位置让出来 */
@@ -344,12 +379,42 @@
 	font-size: 1em;
 }
 
+/* ---------------------------------------------------------------------------
+ * 图标与文字的**光学**对齐（用户 2026-11-02：「图标与文字要对齐」）。
+ *
+ * 盒子是在一条水平中线上对齐的（flex 的 `align-items: center`），但**墨迹**不在：
+ * 量下来 emoji（🔓 / 🤖 / ⚡）的墨迹中心在它自己那个框里低于中心 ~0.12em，
+ * 而汉字的墨迹中心反而高于中心一点点，于是「🔓 放行」看着就像图标吊在字的下面。
+ * 按 em 抬回去：宽度不变（transform 不参与布局），字号缩放时偏移量也跟着缩。
+ * -------------------------------------------------------------------------- */
+.statusbar .tool-icon {
+	transform: translateY(-0.12em);
+}
+
+/* 模型 / 思考强度那两颗再抬一档（用户 2026-11-02：「机器人跟闪电图标再靠上一点」）。
+ * 旁边是拉丁字母（deepseek-flash）和单字（高）：字面更小、重心更靠上，
+ * 用和「🔓 放行」同一个偏移量就显得还偏低。再抬 0.12em（合计 -0.24em）：
+ * 量下来墨迹中心比旁边文字高 ~1.1px —— 小图标贴在文字左上方，看着才是居中的。 */
+.statusbar .model-trigger .tool-icon,
+.statusbar .thinking-picker .tool-icon {
+	transform: translateY(-0.24em);
+}
+
 .statusbar .model-trigger {
 	max-width: 190px;
 }
 
 .statusbar .thinking-value {
 	font-size: 1em;
+}
+
+/* 小三角（▾ / ▴）也跟着抬一点：它们是装饰，跟同一颗胶囊里的图标对齐就够了
+   （量下来这类三角的墨迹比框中线低 0.7～1px） */
+.statusbar .model-caret,
+.statusbar .thinking-caret,
+.statusbar .status-toggle-icon {
+	position: relative;
+	top: -0.08em;
 }
 
 /* 箭头是装饰，比文字小一档 */

@@ -217,6 +217,18 @@
 	color: var(--text-dim);
 }
 
+/* 网页标注那一行：一颗 🌐 说明「这一条指的不是正文、是右边那一页」 */
+.annot-web-mark {
+	flex: none;
+	font-size: 11px;
+	opacity: 0.75;
+}
+
+/* 网页标注点不到正文里（指不了就是指不了），别让人以为按钮坏了 */
+.annot-row-main:disabled {
+	cursor: default;
+}
+
 /* 评论那一行：现在它是个按钮（点一下就地改），所以要把按钮的默认长相全抹掉 */
 .annot-comment {
 	display: block;
@@ -365,4 +377,88 @@
 .is-mobile-shell .sel-toolbar-input {
 	width: min(52vw, 220px);
 	font-size: 14px;
+}
+
+/* 「N 条注释」和「清空全部」排在一行 */
+.annot-head {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	max-width: 100%;
+}
+
+/* 垃圾桶（批量清空）+ 确认气泡「丢弃所有待处理标注？」：样式对齐截图工具那一套 */
+.annot-head {
+	position: relative;
+}
+
+.annot-trash {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 26px;
+	height: 26px;
+	padding: 0;
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	background: var(--bg-elev);
+	color: var(--text-dim);
+	cursor: pointer;
+}
+
+.annot-trash:hover {
+	color: #d64545;
+	border-color: color-mix(in srgb, #d64545 50%, var(--border));
+}
+
+.annot-confirm {
+	position: absolute;
+	left: 0;
+	bottom: calc(100% + 8px);
+	z-index: 20;
+	width: 268px;
+	padding: 14px 16px 12px;
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	background: var(--bg-elev);
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+.annot-confirm-title {
+	font-size: 15px;
+	font-weight: 600;
+	color: var(--text);
+}
+
+.annot-confirm-sub {
+	margin-top: 4px;
+	font-size: 13px;
+	color: var(--text-dim);
+}
+
+.annot-confirm-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+	margin-top: 12px;
+}
+
+.annot-confirm-cancel,
+.annot-confirm-danger {
+	font: inherit;
+	font-size: 13px;
+	padding: 5px 14px;
+	border: none;
+	border-radius: 8px;
+	cursor: pointer;
+}
+
+.annot-confirm-cancel {
+	background: color-mix(in srgb, var(--text) 7%, transparent);
+	color: var(--text);
+}
+
+.annot-confirm-danger {
+	background: color-mix(in srgb, #d64545 13%, transparent);
+	color: #d64545;
 }

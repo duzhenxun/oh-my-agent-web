@@ -55,19 +55,42 @@ const APPLE_SCRIPT_FILE = [
 	"return POSIX path of chosen",
 ].join("\n");
 
-const WINDOWS_SCRIPT_DIR = [
+/**
+ * Windows 弹窗的公共前奏：造一个**不可见的置顶宿主窗口**当 dialog 的 owner。
+ *
+ * 为什么非要这个：以前直接 `$dialog.ShowDialog()`（无 owner），弹窗就是普通窗口 ——
+ * 浏览器全屏盖在它上面，用户点了「浏览电脑…」后什么也看不到，按钮一直停在「选择中…」
+ * （要等 3 分钟超时才回来）。带着一个 TopMost 的宿主窗口弹，框才会出现在最前面。
+ * 用 `Width/Height/Left/Top` 而不是 `Size`/`Point`：不依赖 System.Drawing。
+ */
+const WINDOWS_PICKER_PRELUDE = [
 	"Add-Type -AssemblyName System.Windows.Forms",
+	"$owner = New-Object System.Windows.Forms.Form",
+	"$owner.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None",
+	"$owner.ShowInTaskbar = $false",
+	"$owner.TopMost = $true",
+	"$owner.Width = 1",
+	"$owner.Height = 1",
+	"$owner.Left = -2000",
+	"$owner.Top = -2000",
+	"$owner.Show()",
+	"$owner.Activate()",
+].join("; ");
+
+const WINDOWS_SCRIPT_DIR = [
+	WINDOWS_PICKER_PRELUDE,
 	"$dialog = New-Object System.Windows.Forms.FolderBrowserDialog",
 	'$dialog.Description = "选择项目文件夹"',
-	"if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $dialog.SelectedPath } else { exit 1 }",
+	"$dialog.ShowNewFolderButton = $true",
+	"if ($dialog.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $dialog.SelectedPath } else { exit 1 }",
 ].join("; ");
 
 const WINDOWS_SCRIPT_FILE = [
-	"Add-Type -AssemblyName System.Windows.Forms",
+	WINDOWS_PICKER_PRELUDE,
 	"$dialog = New-Object System.Windows.Forms.OpenFileDialog",
 	'$dialog.Title = "选择文件"',
 	"$dialog.CheckFileExists = $true",
-	"if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $dialog.FileName } else { exit 1 }",
+	"if ($dialog.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $dialog.FileName } else { exit 1 }",
 ].join("; ");
 
 /** 按平台挑一条能用的命令；一条都没有就返回 null（→ unsupported） */
@@ -79,7 +102,15 @@ function pickerCommand(kind: PickKind): { file: string; args: string[] } | null 
 	if (process.platform === "win32") {
 		return {
 			file: "powershell.exe",
-			args: ["-NoProfile", "-STA", "-Command", file ? WINDOWS_SCRIPT_FILE : WINDOWS_SCRIPT_DIR],
+			// `-WindowStyle Hidden`：别在用户面前闪一个黑框（框是 PowerShell 的，弹窗是 WinForms 的）
+			args: [
+				"-NoProfile",
+				"-STA",
+				"-WindowStyle",
+				"Hidden",
+				"-Command",
+				file ? WINDOWS_SCRIPT_FILE : WINDOWS_SCRIPT_DIR,
+			],
 		};
 	}
 	// Linux / 其它：zenity 没装时命令不存在会直接失败（→ 前端降级），不会挂住
@@ -98,7 +129,8 @@ async function pickPath(kind: PickKind): Promise<PickPathResult> {
 
 	picking = true;
 	try {
-		const { stdout } = await exec(command.file, command.args, { timeout: PICK_TIMEOUT_MS });
+		// windowsHide 只藏控制台窗口，不影响 WinForms 弹窗
+		const { stdout } = await exec(command.file, command.args, { timeout: PICK_TIMEOUT_MS, windowsHide: true });
 		// macOS 的 `POSIX path of chosen` 回的是 `/a/b/`（目录带尾斜杠）。原样传下去会让会话的
 		// workspace 与 pi 写进会话 header 的 cwd（`resolve()` 过）对不上，侧栏里同一个项目
 		// 就变成两个组（用户报的「新建项目出来是两个」）。在出口就归一化。
@@ -110,9 +142,15 @@ async function pickPath(kind: PickKind): Promise<PickPathResult> {
 		if (isCancel(record.stderr ?? "", typeof record.code === "number" ? record.code : undefined)) {
 			return { canceled: true };
 		}
-		// 命令不存在 / 没有图形会话：如实说「这里开不出来」，前端会退回内置浏览
+		// 命令不存在 / 没有图形会话：如实说「这里开不出来」，前端会退回内置浏览。
+		// 超时最常见的原因是「框弹了但被别的窗口挡住」——把这条提示一并给出去，
+		// 否则用户只会看到按钮一直转圈。
 		const reason = record.stderr?.trim() || record.message || "未知原因";
-		return { unsupported: true, message: `这台机器上开不出选择框：${reason}` };
+		const hint =
+			record.message?.includes("timeout") || record.code === "ETIMEDOUT"
+				? "（如果框已经弹出来，它可能被别的窗口挡住了，按 Alt+Tab 找一下）"
+				: "";
+		return { unsupported: true, message: `这台机器上开不出选择框：${reason}${hint}` };
 	} finally {
 		picking = false;
 	}

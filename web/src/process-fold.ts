@@ -13,8 +13,10 @@
  *      不往上堆 —— 长任务里十几个组堆下来，正在干的那一组反而被挤到屏幕外；
  *   2. **跑完 → 收起**：**最后一段结论之前的全部**（思考、工具卡、以及中间那几段说明文字）收成
  *      一行「N 段思考 · N 次工具 · 耗时 X」，外面只留最后的输出；点那一行展开完整时间线；
- *   3. **收起会把人看空 → 不收起**：这一轮以工具调用收尾（最后动手之后没有结论）时，
- *      收起来屏幕上就只剩一行按钮。
+ *   3. **以工具收尾（这一轮没有最终结论）也照样收**（用户 2026-11-03）：以前这里留了个例外
+ *      （“收起来只剩一行按钮”），结果被插队 / 打断打断的那些回合在历史里**永远是摊开的** ——
+ *      用户明明勾了「跑完自动折叠」，重开会话还是满屏思考与工具卡。收起后那一行本身就报了
+ *      「N 段思考 · N 次工具 · 耗时」，点开就是完整时间线；错误块仍然留在外面（报错不能被藏）。
  *
  * 关于「中间的说明」：2026-10-30 曾经刻意留在外面（“A 不行改用 B”是可信度来源），
  * 2026-11-02 用户改主意了 —— 跑的时候看得见就行，跑完只要最后的结果。
@@ -23,8 +25,6 @@
 export type ProcessFold = {
 	/** 这一轮还在跑（没写 endedAt） */
 	running: boolean;
-	/** 最后一次动手之后还有正文 / 错误块 = 这一轮有最终结果 */
-	hasAnswer: boolean;
 	/** 设置里「跑完自动折叠思考与工具调用」 */
 	autoCollapse: boolean;
 	/** 设置里「跑时自动折叠过程」：跑着的时候就收成那行秒表 */
@@ -67,7 +67,12 @@ export type FoldLayout = {
 	lastProcessAt: number;
 	/** 折叠之后外面还留得下结论（= 结论在最后一次动手之后）；false 就不该收，收了只剩一行按钮 */
 	hasAnswer: boolean;
-	/** 收起时这个下标要不要跟过程一起进折叠（最后一个结论之前的全部） */
+	/**
+	 * 收起时这个下标要不要跟过程一起进折叠（最后一个结论之前的全部）。
+	 *
+	 * 注意「没有结论的回合（以工具 / 思考收尾）怎么收」不在这里 —— 那得看这一轮是否还在跑，
+	 * 用 `hidesNarration` 判：跑着的时候说明还是要看得见，跑完了才连说明一起收。
+	 */
 	insideFold: (index: number) => boolean;
 };
 
@@ -77,6 +82,10 @@ export type FoldLayout = {
  * 为什么不是「只收思考和工具」：那一版跑完屏幕上会剩下「我先看一下…」「本地和全局的版本不一致…」
  * 这类过程性说明，最后的结论反而被麦在中间（用户 2026-11-02 的截图就是这个问题）。
  * 空白正文不算结论（流式末尾常见一个只有换行的 text 块）。
+ *
+ * 没有结论的回合（插队 / 打断把这一轮截在工具调用上）**跑完后也整条进折叠**，这条规则在
+ * `hidesNarration`：那一版把说明留在外面，于是“收起来”只收走了思考和工具卡，中间那几段话
+ * 还在屏幕上排着，看着还是没收起（用户 2026-11-03）。
  */
 export function foldLayout(segments: readonly FoldSegment[]): FoldLayout {
 	let firstProcessAt = -1;
@@ -129,14 +138,40 @@ export function isNarrationText(input: {
  *   - **跑着**：看设置里「跑时自动折叠」
  *     - 勾上 → `collapsed`：只剩那一行秒表 + 底下的实时动作行（正在跑哪条命令）；
  *     - 不勾（默认）→ `all`：完整时间线按发生顺序铺着长（用户 2026-11-02：「没勾上这个，应展开才对吧」）。
- *   - **跑完**：看「跑完自动折叠」（没结论就摊开；关掉它才交回两个「默认展开」开关）。
+ *   - **跑完**：看「跑完自动折叠」（勾上就收 —— **没有「以工具收尾就不收」的例外**，
+ *     2026-11-03 去掉了；关掉它才交回两个「默认展开」开关）。
  * 手动点过那条消息时手动优先：点开 = 全铺开，收起 = 一行。
  */
 export function processView(input: ProcessFold): ProcessView {
 	if (input.manual !== null) return input.manual ? "all" : "collapsed";
 	if (input.running) return input.autoFoldRunning ? "collapsed" : "all";
-	if (!input.hasAnswer) return "all";
-	return !input.autoCollapse && input.defaultOpen ? "all" : "collapsed";
+	if (input.autoCollapse) return "collapsed";
+	return input.defaultOpen ? "all" : "collapsed";
+}
+
+/**
+ * 收起时这一段**说明文字**（text）要不要藏？
+ *   - `view` 不是 `collapsed`（铺开）：一律画；
+ *   - 落在折叠范围内（最后一个结论之前的说明）：藏；
+ *   - 这一轮**已经跑完却没有结论**（插队 / 打断截在工具调用上）：说明也一起藏 ——
+ *     否则“收起”只收走了思考和工具卡，中间几段叙述还在屏幕上排着，看着还是没收（用户 2026-11-03）。
+ *     **跑着的时候不藏**：那时候叙述就是「它现在在干什么」，收掉就没得看了。
+ * 错误块不走这个判断：报错永远画在外面（那一行摘要报的是思考/工具，藏进去就没人知道了）。
+ */
+export function hidesNarration(input: {
+	view: ProcessView;
+	running: boolean;
+	/** 这一条消息有没有过程块（思考 / 工具）。没有 = 用户消息或纯文字回复，正文一句都不能藏 */
+	hasProcess: boolean;
+	hasAnswer: boolean;
+	/** 这一段是否落在 `foldLayout().insideFold` 范围内 */
+	insideFold: boolean;
+}): boolean {
+	if (input.view !== "collapsed") return false;
+	// 没有过程 = 没有折叠这回事。2026-11-03 回归：用户消息被误藏，就是因为下面「没结论」分支没看这一点
+	if (!input.hasProcess) return false;
+	if (input.insideFold) return true;
+	return !input.running && !input.hasAnswer;
 }
 
 /**

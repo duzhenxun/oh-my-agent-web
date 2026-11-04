@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { flatTextOf, locateAnchor, rangeOf } from "../annotation-anchor.ts";
-import { annotationNumber, type Annotation } from "../annotations.ts";
+import { annotationNumber, isWebAnnotation, type Annotation } from "../annotations.ts";
 import { useT } from "../use-language.ts";
 
 /**
@@ -69,6 +69,8 @@ export function AnnotationMarks({
 			for (const element of host.querySelectorAll<HTMLElement>("article.msg")) byId.set(element.id, element);
 
 			for (const item of annotations) {
+				// 网页标注不在正文里：它指的是 iframe 里的一个元素，正文找不到对应文字
+				if (isWebAnnotation(item)) continue;
 				const message = byId.get(`msg-${item.messageId}`);
 				const body = message?.querySelector<HTMLElement>(".msg-body") ?? null;
 				if (body === null) continue;
