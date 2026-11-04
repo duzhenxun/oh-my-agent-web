@@ -4,7 +4,7 @@
     var PREF_KEY = "omaw.lang";
     var pref = null;
     try { pref = localStorage.getItem(PREF_KEY); } catch (error) { pref = null; }
-    var isZhPage = /(^|\/)zh\.html$/.test(location.pathname);
+    var isZhPage = /(^|\/)zh(\.html)?\/?$/.test(location.pathname);
     if (pref === null) {
       var langs = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || ""];
       var chinese = langs.some(function (item) { return /^zh/i.test(String(item)); });
