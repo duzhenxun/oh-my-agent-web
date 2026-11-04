@@ -1,26 +1,4 @@
 
-  // 语言：页面默认英文；浏览器首选中文且用户没手动选过 → 去中文页
-  (function () {
-    var PREF_KEY = "omaw.lang";
-    var pref = null;
-    try { pref = localStorage.getItem(PREF_KEY); } catch (error) { pref = null; }
-    var isZhPage = /(^|\/)zh(\.html)?\/?$/.test(location.pathname);
-    if (pref === null) {
-      var langs = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || ""];
-      var chinese = langs.some(function (item) { return /^zh/i.test(String(item)); });
-      if (chinese && !isZhPage) { location.replace("zh.html"); return; }
-      if (!chinese && isZhPage) { location.replace("index.html"); return; }
-    } else if ((pref === "zh") !== isZhPage) {
-      location.replace(pref === "zh" ? "zh.html" : "index.html");
-      return;
-    }
-    document.querySelectorAll("[data-lang]").forEach(function (link) {
-      link.addEventListener("click", function () {
-        try { localStorage.setItem(PREF_KEY, link.getAttribute("data-lang")); } catch (error) {}
-      });
-    });
-  })();
-
 document.documentElement.classList.add("reveal-ready");
 (function () {
   // 复制
