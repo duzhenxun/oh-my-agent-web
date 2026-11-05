@@ -33,7 +33,8 @@ function createTurnFinisher(deps: {
 	/** 按**回合自己的**会话刷新（不能不给 id：并行回合下 activeId 可能是别人） */
 	refreshStats: (conversationId: string) => void;
 	refreshProjects: () => void;
-	notice: (text: string, level: "info" | "warn" | "error") => void;
+	/** 带会话：中断提示只挂在被中断的那条会话上 */
+	notice: (text: string, level: "info" | "warn" | "error", conversationId?: string) => void;
 	pushSnapshot: () => void;
 }) {
 	return async (conversationId: string, reason: "done" | "interrupted" | "error"): Promise<void> => {
@@ -54,7 +55,7 @@ function createTurnFinisher(deps: {
 		if (turn) deps.settle({ conversationId, messageId: turn.messageId, rawText: turn.rawText, reason });
 		deps.touchConversation(conversationId);
 		deps.refreshProjects();
-		if (reason === "interrupted") deps.notice("回合已中断", "info");
+		if (reason === "interrupted") deps.notice("回合已中断", "info", conversationId);
 		deps.pushSnapshot();
 	};
 }
@@ -86,7 +87,7 @@ export function createRuntimeTurnFinisher(options: {
 	/** 按会话刷新（由 createTurnFinisher 传回合自己的 id） */
 	refreshStats: (conversationId: string) => void;
 	refreshProjects: () => void;
-	notice: (text: string, level: "info" | "warn" | "error") => void;
+	notice: (text: string, level: "info" | "warn" | "error", conversationId?: string) => void;
 	pushSnapshot: () => void;
 }): (conversationId: string, reason: "done" | "interrupted" | "error") => Promise<void> {
 	return createTurnFinisher({

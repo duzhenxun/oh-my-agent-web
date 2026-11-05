@@ -415,10 +415,15 @@ export function PreviewPanel({
 					: t("显示文件列表（常驻在内容右边，点文件另开标签）", "Show the file list (opens files as new tabs)")
 			}
 		>
-			{/* 三条横线 + 小方框：一个「列表」的意思，跟全屏/铺开那两颗区分开 */}
+			{/* 文件夹轮廓：「文件列表」就是一排文件夹树，用文件夹图标一眼认出来 */}
 			<svg className="preview-tool-icon" viewBox="0 0 16 16" aria-hidden="true">
-				<path d="M2 3.6h7M2 8h7M2 12.4h4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-				<rect x="11.2" y="3.6" width="3" height="8.8" rx="1" fill="none" stroke="currentColor" strokeWidth="1.3" />
+				<path
+					d="M2 4.4c0-.66.54-1.2 1.2-1.2h2.7l1.4 1.6h5.5c.66 0 1.2.54 1.2 1.2v6.4c0 .66-.54 1.2-1.2 1.2H3.2c-.66 0-1.2-.54-1.2-1.2z"
+					fill="none"
+					stroke="currentColor"
+					strokeWidth="1.3"
+					strokeLinejoin="round"
+				/>
 			</svg>
 		</button>
 	);
@@ -816,7 +821,7 @@ export function PreviewPanel({
 						) : item.kind === "history" ? (
 							<SessionHistory conversationId={conversationId} />
 						) : item.kind === "prompt" ? (
-							<SystemPromptView conversationId={conversationId} />
+							<SystemPromptView conversationId={conversationId} active={item.id === active?.id && !showLanding} />
 						) : (
 							<SideChat itemId={item.id} />
 						)}

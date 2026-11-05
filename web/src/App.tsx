@@ -37,6 +37,7 @@ import {
 	cancelQueued,
 	forkSession,
 	persistConversation,
+	refreshResources,
 	renameSession,
 	suggestSessionTitle,
 	switchConversation,
@@ -1165,7 +1166,11 @@ export function App() {
 		// 首次连上：把地址栏里的会话打开
 		if (!appliedUrlSession.current) {
 			appliedUrlSession.current = true;
-			if (urlSession.current) void switchConversation(urlSession.current);
+			if (urlSession.current) {
+				void switchConversation(urlSession.current);
+				// 刷新网页 = 浏览器重连，服务端那条会话并未重开：顺手让它重读技能 / MCP / AGENTS.md
+				refreshResources(urlSession.current, { force: true });
+			}
 			return;
 		}
 		/**
@@ -1178,7 +1183,11 @@ export function App() {
 		 */
 		if (getAppState().newSession) return; // 在「新会话界面」：别把人拽回上一条
 		const target = believedSession.current;
-		if (target) void switchConversation(target);
+		if (target) {
+			void switchConversation(target);
+			// 断线重连也算「刷新」：同上，让资源跟上（指纹没变的会话不会白重开）
+			refreshResources(target);
+		}
 	}, [connection]);
 	useEffect(() => {
 		if (!snapshot) return;
@@ -1754,6 +1763,9 @@ export function App() {
 								onFindInFolder={findInFolder}
 								onOpenFile={openFileInPanel}
 								onOpenChangedFile={(path, root) => openFileInPanel(path, root, "diff")}
+								/* 侧栏会话右键「分叉」：不必先打开那条会话，服务端从它的当前叶子派生 */
+								canFork={snapshot?.engineCapabilities.forkChat ?? false}
+								onFork={(conversationId) => forkSession(conversationId)}
 								onSearchContents={openContentSearch}
 								onNewProject={openNewProjectDialog}
 								fileOpen={filesOpen}

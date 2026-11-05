@@ -9,6 +9,7 @@ import { normalizeWorkspacePath } from "./util/paths.js";
 
 export const REQUEST_TYPES: ClientRequestType[] = [
 	"set_engine",
+	"refresh_resources",
 	"refresh_actions",
 	"send_message",
 	"interrupt",
@@ -101,8 +102,14 @@ export function parseClientRequest(raw: unknown): ClientRequest | null {
 	if (type === "fork_session") {
 		if (!isRecord(raw.payload)) return null;
 		const { conversationId, messageId } = raw.payload;
-		if (!nonEmptyString(conversationId) || !nonEmptyString(messageId)) return null;
-		return { id, type: "fork_session", payload: { conversationId, messageId } };
+		if (!nonEmptyString(conversationId)) return null;
+		// messageId 可缺省（= 源会话当前叶子）；给了就必须是非空串
+		if (messageId !== undefined && !nonEmptyString(messageId)) return null;
+		return {
+			id,
+			type: "fork_session",
+			payload: messageId === undefined ? { conversationId } : { conversationId, messageId },
+		};
 	}
 
 	if (type === "refresh_actions") {
@@ -280,6 +287,18 @@ export function parseClientRequest(raw: unknown): ClientRequest | null {
 	if (type === "suggest_title") {
 		const conversationId = typeof payload.conversationId === "string" ? payload.conversationId.trim() : "";
 		return conversationId === "" ? null : { id, type: "suggest_title", payload: { conversationId } };
+	}
+
+	/** 刷新网页时重载资源：跟 `suggest_title` 一样只认一个非空会话 id；`force` 只收布尔 */
+	if (type === "refresh_resources") {
+		const conversationId = typeof payload.conversationId === "string" ? payload.conversationId.trim() : "";
+		if (conversationId === "") return null;
+		const force = typeof payload.force === "boolean" ? payload.force : undefined;
+		return {
+			id,
+			type: "refresh_resources",
+			payload: force === undefined ? { conversationId } : { conversationId, force },
+		};
 	}
 
 	if (type === "delete_subagent_profile") {

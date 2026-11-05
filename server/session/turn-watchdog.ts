@@ -91,7 +91,8 @@ export function createRuntimeTurnWatchdog(options: {
 	timeoutMs?: number;
 	engine: { interrupt: (conversationId: string) => Promise<void> };
 	isWaitingForUser: () => boolean;
-	notice: (text: string, level: "info" | "warn" | "error") => void;
+	/** 带会话：超时提示只挂在被中断的那条会话上 */
+	notice: (text: string, level: "info" | "warn" | "error", conversationId?: string) => void;
 	/** 注入定时器（可选；生产走 setTimeout） */
 	setTimer?: (callback: () => void, ms: number) => unknown;
 	clearTimer?: (handle: unknown) => void;
@@ -103,7 +104,11 @@ export function createRuntimeTurnWatchdog(options: {
 		...(options.setTimer ? { setTimer: options.setTimer } : {}),
 		...(options.clearTimer ? { clearTimer: options.clearTimer } : {}),
 		onTimeout: (conversationId) => {
-			options.notice(`回合超过 ${formatDuration(timeoutMs)}没结束，已自动中断（常见原因：某条命令卡住）`, "warn");
+			options.notice(
+				`回合超过 ${formatDuration(timeoutMs)}没结束，已自动中断（常见原因：某条命令卡住）`,
+				"warn",
+				conversationId,
+			);
 			void options.engine.interrupt(conversationId);
 		},
 	});

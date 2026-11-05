@@ -120,6 +120,45 @@ function buildTurnSegments(blocks: UiMessage["blocks"]): {
 	return { segments, thinkingCount, toolCount };
 }
 
+/** 用户消息里的图片引用：Composer 发送时追加在正文末尾的 `![名](/api/uploads/<id>)` */
+const USER_IMAGE_REF = /!\[([^\]]*)\]\((\/api\/uploads\/[a-z0-9-]{8,64})\)/g;
+
+/**
+ * 用户消息：正文按原文纯文字显示（不走 markdown，避免贴进来的 HTML 被吞掉）；
+ * 图片引用从正文里拎出来，画成缩略图，点开用图片查看器放大。
+ * 以前整段当文字，`![名](/api/uploads/…)` 就原样露出来，图本身不见了。
+ */
+function UserMessageText({ text }: { text: string }) {
+	const t = useT();
+	const images: { src: string; alt: string }[] = [];
+	const body = text
+		.replace(USER_IMAGE_REF, (_match, alt: string, src: string) => {
+			images.push({ src, alt });
+			return "";
+		})
+		.trim();
+	return (
+		<>
+			{body !== "" ? <div className="msg-user-text">{body}</div> : null}
+			{images.length > 0 ? (
+				<div className="msg-user-images">
+					{images.map((image, index) => (
+						<button
+							key={`${image.src}-${index}`}
+							type="button"
+							className="msg-user-img-btn"
+							title={image.alt || t("查看图片", "View image")}
+							onClick={() => openImageViewer(image.src, image.alt)}
+						>
+							<img className="msg-user-img" src={image.src} alt={image.alt} loading="lazy" />
+						</button>
+					))}
+				</div>
+			) : null}
+		</>
+	);
+}
+
 /** 千分位：5865 → 5,865 */
 function withThousands(value: number): string {
 	return value.toLocaleString("en-US");
@@ -263,6 +302,7 @@ import { useLanguage, useT } from "../use-language.ts";
 import { textOfMessage } from "../message-text.ts";
 import { rememberMessages } from "../store.ts";
 import { setPathOpener } from "../path-tokens.ts";
+import { openImageViewer } from "../image-viewer.ts";
 
 /**
  * 「正文是否已经停下来了。」
@@ -714,12 +754,9 @@ function MessageViewInner({
 			// 不能「最新那句当结论、前面几句当叙述」——那样同一层里大小不一（用户 2026-11-02：「不统一呀」）。
 			// 用户自己发的话：**按原文纯文字**显示。Markdown 开着 skipHtml，原始 HTML（比如贴进来的 <script>）
 			// 会被整段丢掉，于是气泡变成空白（用户 2026-11-05 报的）。用户消息没有排版需求，直接当文字。
+			// 图片引用（Composer 发送时写进正文的 `![名](/api/uploads/<id>)`）单独画成缩略图，不混进文字里。
 			if (message.role === "user") {
-				return segment.text.trim() ? (
-					<div key={segment.index} className="msg-user-text">
-						{segment.text}
-					</div>
-				) : null;
+				return segment.text.trim() ? <UserMessageText key={segment.index} text={segment.text} /> : null;
 			}
 			const narration = isNarrationText({ index, lastAnswerAt, lastProcessAt, running });
 			return segment.text.trim() ? (
@@ -916,6 +953,7 @@ function MessageViewInner({
 								<circle cx="4.4" cy="13.4" r="1.5" />
 								<circle cx="12.2" cy="12.2" r="1.5" />
 							</svg>
+							<span>{t("分叉", "Fork")}</span>
 						</button>
 					)}
 					<span className="topbar-spacer" />

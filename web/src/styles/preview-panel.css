@@ -136,13 +136,6 @@
 	container-type: inline-size;
 }
 
-/* 窄到装不下时先让掉「字节数 · 类型」这块说明：文件名与源码 / 预览 / 文件列表开关都比它重要。
-   不这么做的话，最后那颗「文件列表」会自己折到第二行，看着像多出来一个孤零零的按钮。 */
-@container (max-width: 470px) {
-	.file-preview-head .file-preview-meta {
-		display: none;
-	}
-}
 
 /* 收起/展开：一个圆角浅底箭头（对齐你给的截图），展开在标签栏右侧、收起是独立的小块 */
 .preview-arrow {

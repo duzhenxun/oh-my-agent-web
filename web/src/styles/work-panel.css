@@ -281,6 +281,12 @@
 	padding-bottom: 8px;
 }
 
+/* 临时聊天顶部的提示条：贴着面板顶边，不要再用主对话那套底部留白 */
+.work-chat-main > .notices {
+	margin: 0;
+	padding: 2px 2px 0;
+}
+
 .work-chat-main .composer-wrap {
 	/* 输入框自带边框，贴着滚动条太挤 */
 	margin-top: 6px;

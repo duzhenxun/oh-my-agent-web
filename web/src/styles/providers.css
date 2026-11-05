@@ -543,35 +543,6 @@
 	gap: 6px;
 }
 
-.subs-model-list {
-	margin-top: 8px;
-	padding: 8px 10px;
-	border: 1px solid var(--border);
-	border-radius: 8px;
-	background: var(--surface);
-}
-
-.subs-model-list > strong {
-	display: block;
-	margin-bottom: 5px;
-	color: var(--text);
-	font-size: 12px;
-}
-
-.subs-model-row {
-	display: flex;
-	justify-content: space-between;
-	gap: 10px;
-	padding: 3px 0;
-	color: var(--text-secondary);
-	font-size: 12px;
-}
-
-.subs-model-row code {
-	color: var(--text-faint);
-	font-size: 11px;
-}
-
 .subs-state {
 	font-size: 13px;
 	color: var(--text-faint);

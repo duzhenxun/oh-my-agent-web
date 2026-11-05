@@ -6,8 +6,8 @@
  * 为什么要抽成组件：以前这套菜单只活在 `SessionRow` 里，顶栏要复用就只能抄一遍 ——
  * 抄一份就容易出现「侧栏有、顶栏没有」或者两边文案/可用性不一致。
  *
- * 纪律（跟侧栏那份一致）：**不做假按钮**。还没有能力支撑的项（比如标为未读）
- * 就明确禁用并写清原因，而不是点下去没反应。
+ * 纪律（跟侧栏那份一致）：**不做假按钮**。还没有能力支撑的项不放进菜单，
+ * 而不是点下去没反应。
  */
 import { ProjectMenuPopover, type MenuPoint } from "./ProjectMenuPopover.tsx";
 import { useT } from "../use-language.ts";
@@ -117,14 +117,6 @@ export function SessionMenu({
 				onClick={fork?.enabled ? act(fork.onFork) : undefined}
 			>
 				🌿 {t("分叉", "Fork")}
-			</button>
-			<button
-				type="button"
-				className="proj-menu-item"
-				disabled
-				title={t("需要已读状态（下一步）", "Needs read state (next step)")}
-			>
-				● {t("标为未读", "Mark unread")}
 			</button>
 			{/*
 			 * 归档紧挨删除（用户 2026-10-29：“归档图标放到删除上面”）：

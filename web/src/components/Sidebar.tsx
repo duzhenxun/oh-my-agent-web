@@ -60,6 +60,8 @@ function SidebarInner({
 	onOpenChangedFile,
 	onSearchContents,
 	onOpenBottomTerminal,
+	onFork,
+	canFork,
 	onFindInFolder,
 	fileOpen: fileOpenProp,
 	onFileOpenChange,
@@ -89,6 +91,10 @@ function SidebarInner({
 	onSearchContents?: () => void;
 	/** 文件树右键「在集成终端中打开」：在底部终端新开一个标签，cwd = 该目录（绝对路径） */
 	onOpenBottomTerminal?: (absDir: string) => void;
+	/** 侧栏会话右键「分叉」：从这条会话的当前叶子派生新会话（原会话不动） */
+	onFork?: (conversationId: string) => void;
+	/** 引擎支不支持分叉（`engineCapabilities.forkChat`） */
+	canFork?: boolean;
 	/** 文件树右键「在文件夹中查找」：传项目内的相对目录 */
 	onFindInFolder?: (relDir: string) => void;
 	/**
@@ -740,6 +746,8 @@ function SidebarInner({
 			}}
 			onArchive={() => archiveSession(session.id, titleOf(session))}
 			onOpenInNewTab={() => window.open(sessionUrlFor(window.location.href, session.id), "_blank", "noopener")}
+			onFork={onFork ? () => onFork(session.id) : undefined}
+			canFork={canFork}
 			onDelete={() => deleteSession(session.id, titleOf(session) || session.id)}
 			onCloseMenu={() => setSessionMenu(null)}
 			/* 「已隐藏」里的会话不可拖：那里不接拖放（拖过去等于把会话搬进一个看不见的项目） */

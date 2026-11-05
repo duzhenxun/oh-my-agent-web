@@ -518,6 +518,13 @@ export function ProvidersPanel() {
 						<SubscriptionDetail
 							key={subscription.id}
 							entry={subscription}
+							/* 勾选态 = 左栏那个启用开关的同一份数据（pi settings.json 的 enabledModels） */
+							enabledModels={allowlist}
+							/*
+							 * 测速走 `/api/providers/:p/models/:id/test`，前提是工作台里有这个 provider 的配置；
+							 * 没有就别画按钮（点了只会 404）—— 没连接 / 还没导入模型时就是这种情况。
+							 */
+							canTest={providerOfSubscription(subscription.id) !== null}
 							onClose={() => setSubscribing(null)}
 							onChanged={() => {
 								loadSubscriptions();

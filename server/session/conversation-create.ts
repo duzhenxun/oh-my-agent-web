@@ -25,8 +25,8 @@ type ConversationFactory = {
 export type ConversationSeed = {
 	/** 临时会话：只在内存里跑、不落盘，之后可以「保存为正式对话」 */
 	ephemeral?: boolean;
-	/** 派生：新会话的历史 = 源会话「根 → messageId」那条路径 */
-	fork?: { sourceConversationId: string; messageId: string };
+	/** 派生：新会话的历史 = 源会话「根 → messageId」那条路径；messageId 缺省 = 源会话当前叶子 */
+	fork?: { sourceConversationId: string; messageId?: string };
 };
 
 export function createConversationFactory(options: {

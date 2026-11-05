@@ -37,7 +37,7 @@ function relativeTime(ts: number, now = Date.now()): string {
  * 回车保存 / Esc 取消 / 点外面也保存 —— 不弹系统 prompt（那个窗口既丑又挡视线）。
  * 名字写进 pi 的会话文件（session_info），由外层负责发请求。
  *
- * 未实现但保留入口的：分叉、标为未读 —— 都明确禁用并写清原因，不做假按钮。
+ * 「分叉」接的是真能力：`onFork` 由外层给（服务端从这条会话的当前叶子派生，不必先打开它）。
  *
  * 「跑完了、你还没看」的**小蓝点**（`unseen`）：被 `session-unseen.ts` 记住，
  * 点开这条会话（切过去）就抹掉 —— 圆点自己不是按钮，点击落在整行上，
@@ -62,6 +62,8 @@ export function SessionRow({
 	onArchive,
 	onDelete,
 	onOpenInNewTab,
+	onFork,
+	canFork = false,
 	onCloseMenu,
 	draggable,
 	onDragStart,
@@ -97,6 +99,10 @@ export function SessionRow({
 	onDelete: () => void;
 	/** 在新标签页打开这条会话（多开几个标签对照着看时用） */
 	onOpenInNewTab: () => void;
+	/** 从这条会话派生分支（不传 = 菜单里「分叉」保持禁用占位） */
+	onFork?: () => void;
+	/** 引擎支不支持分叉（`engineCapabilities.forkChat`）；不支持时菜单项禁用并说明 */
+	canFork?: boolean;
 	onCloseMenu: () => void;
 	/** 拖动：可拖起（把会话拖到别的项目） */
 	draggable?: boolean;
@@ -314,6 +320,15 @@ export function SessionRow({
 					onPin={onPin}
 					onRename={() => setEditing(true)}
 					onOpenInNewTab={onOpenInNewTab}
+					fork={
+						onFork
+							? {
+									enabled: canFork,
+									reason: canFork ? undefined : t("当前引擎不支持分叉", "The current engine does not support forking"),
+									onFork,
+								}
+							: undefined
+					}
 					onArchive={onArchive}
 					onDelete={onDelete}
 				/>

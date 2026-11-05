@@ -7,6 +7,7 @@
  * 与 SDK 的对接方式（M3 侦察结论）：
  */
 import {
+	CONFIG_DIR_NAME,
 	DefaultResourceLoader,
 	SessionManager,
 	createAgentSession,
@@ -26,6 +27,7 @@ import { chatModels, isChatModel } from "../providers/model-kind.js";
 import { classifyScope } from "../approval/scope.js";
 import { mapSessionEvent } from "./pi-events.js";
 import { RETRY_MAX_ATTEMPTS, classifyProviderError, retryDelayMs, retryOmitTargets } from "./pi-retry.js";
+import { resourceSignature, type WatchedPath } from "./resource-signature.js";
 import { createPiSubagents } from "./pi-subagents.js";
 import { makeSubagentToolExtension } from "./pi-subagent-tool.js";
 import { enabledSubagentSpecs, readSubagentSettings } from "../subagents/profile-store.js";
@@ -126,6 +128,8 @@ type SessionHandle = {
 		getHeader: () => AnyRecord | null;
 		/** 从 `leafId` 往上走到根的整条路径（派生分支就是把它抄进新会话） */
 		getBranch: (leafId?: string) => ForkEntry[];
+		/** 当前叶子 entry id（派生不指定消息时，就从它分叉 = 源会话最后一条） */
+		getLeafId: () => string | null;
 		/** 把某条 entry 从**模型上下文**里去掉（重试时抹掉那条失败的回复；见 pi-retry.ts） */
 		appendContextEdit?: (targetId: string, replacement: null) => string;
 		getChildren: (parentId: string) => ForkEntry[];
@@ -133,7 +137,49 @@ type SessionHandle = {
 	};
 	/** 会话文件路径（新建后由 SDK 告知；打开时即入参） */
 	sessionPath: string | null;
+	/** 会进提示词的那些路径（建会话时定一次，见 `resourceWatchFor`） */
+	resourceWatch: WatchedPath[];
+	/** 路径之外、同样改提示词的输入（「想想」条数这类），每次现读 */
+	resourceExtra: () => string[];
+	/** 上一次重载时的指纹：跟现在的比，不同才重载 */
+	resourceSignature: string;
 };
+
+/**
+ * 「会进系统提示词 / 工具清单」的路径清单。
+ *
+ * 列全而不是靠猜 `resourceLoader` 读什么：漏一条的后果就是用户改了它、提示词却没跟着变 ——
+ * 那正是这套指纹要解决的问题（技能启停 / MCP 增删 / AGENTS.md 改一行）。
+ */
+function resourceWatchFor(workspace: string, agentDir: string, skillPaths: readonly string[]): WatchedPath[] {
+	const watched: WatchedPath[] = [
+		// pi 自己的配置目录（全局作用域）
+		{ path: join(agentDir, "AGENTS.md") },
+		{ path: join(agentDir, "SYSTEM.md") },
+		{ path: join(agentDir, "APPEND_SYSTEM.md") },
+		{ path: join(agentDir, "mcp.json") },
+		{ path: join(agentDir, "settings.json") },
+		// 技能与子代理模板：启停是**改名**（`SKILL.md` ↔ `.SKILL.md.disabled`），变的是技能自己那层目录
+		{ path: join(agentDir, "skills"), depth: 2 },
+		{ path: join(agentDir, "agents"), depth: 2 },
+	];
+	// 项目作用域：`<workspace>/.pi/` 里的那几份（项目覆盖全局）
+	const projectDir = join(workspace, CONFIG_DIR_NAME);
+	for (const name of ["AGENTS.md", "SYSTEM.md", "APPEND_SYSTEM.md", "mcp.json"]) {
+		watched.push({ path: join(projectDir, name) });
+	}
+	watched.push({ path: join(projectDir, "skills"), depth: 2 });
+	// AGENTS.md 是从 cwd 一层层往上找的（pi 的 `loadProjectContextFiles`）：祖先目录改一行也算变
+	for (let dir = workspace; ; ) {
+		watched.push({ path: join(dir, "AGENTS.md") });
+		const parent = dirname(dir);
+		if (parent === dir) break;
+		dir = parent;
+	}
+	// 本工作台自己的技能目录（默认 `~/.agents/skills`，不在 pi 默认扫描路径里）
+	for (const path of skillPaths) watched.push({ path, depth: 2 });
+	return watched;
+}
 
 type AnyRecord = Record<string, unknown>;
 
@@ -520,6 +566,9 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 		});
 
 		const subscriptions = new Set<() => void>();
+		// 指纹清单在会话级别用一个：路径不会变，变的只有「内容 / 启停」
+		const resourceWatch = resourceWatchFor(workspace, agentDir, options.skillPaths ?? []);
+		const resourceExtra = () => [`think:${options.thinkCount?.() ?? ""}`];
 		const handle: SessionHandle = {
 			session: session as unknown as SessionHandle["session"],
 			workspace,
@@ -533,12 +582,64 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 			turnSeq: 0,
 			sessionManager: sessionManager as unknown as SessionHandle["sessionManager"],
 			sessionPath: sessionPath ?? sessionManager.getSessionFile() ?? null,
+			resourceWatch,
+			resourceExtra,
+			resourceSignature: resourceSignature(resourceWatch, resourceExtra()),
 		};
 		sessions.set(sessionId, handle);
 		return handle;
 	}
 
 	const PREWARM_ID = "__prewarm__";
+
+	/**
+	 * 资源变了就重开这个句柄（技能启停 / MCP 增删 / AGENTS.md 改一行 / 「想想」条数改掉）。
+	 *
+	 * 为什么必要：pi 的系统提示词与工具清单是 `startSession` 那一下拼的，之后一直不变 ——
+	 * 用户关了技能、加了 MCP，已经打开的会话还拿着旧的那份（提示词必须跟界面上看到的一致）。
+	 *
+	 * 为什么是「重开」而不是 `session.reload()`：SDK 的 reload 里重新 emit `session_start`
+	 * 那一步有 `hasBindings` 门槛（uiContext / commandContext / shutdownHandler / onError），
+	 * 无界面接进来的会话一个都没有 —— 而 MCP 正是在 `session_start` 里连服务器的。
+	 * 只调 reload 的结果是：技能刷新了，MCP 工具却全没了。所以走 `persistSession` 已经
+	 * 验证过的那条路：**用同一个 sessionManager 重开**（历史在 manager 里，上下文不丢）。
+	 *
+	 * 两处调用：**每轮提交前**（这一轮就用最新的）与**点开「系统提示词」时**
+	 * （面板里看到的就是下一次真会发出去的那份）。指纹没变时只是几十次 stat，不值得省。
+	 */
+	async function refreshResources(sessionId: string, handle: SessionHandle, force = false): Promise<SessionHandle> {
+		// 正在跑的那一轮里不能换扩展 / 重连 MCP：会把工具从它脚下抽走（插队消息也走这条路径）
+		if (handle.session.isStreaming) return handle;
+		const current = () => resourceSignature(handle.resourceWatch, handle.resourceExtra());
+		// force = 「不管变没变，现在就重载」（网页刷新时前端会主动要一次）
+		if (!force && current() === handle.resourceSignature) return handle;
+		try {
+			// 先建新的（startSession 会把 map 里的条目换成新的），成功了才关旧的：
+			// 反过来的话，重开一旦抛错，这条会话就从表里消失了（之后发消息只能 engine.no_session）。
+			const next = await startSession(
+				sessionId,
+				handle.workspace,
+				handle.sessionManager as unknown as ReturnType<typeof SessionManager.inMemory>,
+				handle.sessionPath,
+			);
+			handle.unsubscribe();
+			try {
+				handle.session.dispose();
+			} catch {
+				// 已经关掉了
+			}
+			next.resourceSignature = resourceSignature(next.resourceWatch, next.resourceExtra());
+			log("info", "按新配置重开了会话（技能 / MCP / 提示词文件）", { sessionId, forced: force });
+			return next;
+		} catch (error) {
+			// 重开失败不该拦住这条消息：旧句柄还在（还能用，只是提示词是旧的），界面上说一句
+			notice(`重载技能 / MCP 失败，这一轮仍用旧的：${errorMessageOf(error)}`, "warn");
+			// 失败也记下指纹：否则每说一句话就重连一次坏掉的 MCP，卡得没法用
+			handle.resourceSignature = current();
+			return handle;
+		}
+	}
+
 
 	async function warmUp() {
 		if (sessions.has(PREWARM_ID)) return;
@@ -720,7 +821,7 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 				const source = sessions.get(fork.sourceSessionId);
 				// pi 原生的拒绝理由就是这句：没落盘的会话不能 fork（`/clone` 前先说话）
 				if (!source?.sessionPath) throw new Error("这条会话还没存过盘（临时对话），不能从它派生分支");
-				const leafId = resolveForkLeaf(source.sessionManager, fork.leafId);
+				const leafId = resolveForkLeaf(source.sessionManager, fork.leafId ?? source.sessionManager.getLeafId() ?? "");
 				if (!leafId) throw new Error("找不到要分叉的那条消息（它可能不在当前分支上）");
 
 				// 新会话的目录跟新工作区走（布局与 pi 自己的完全一致）
@@ -864,9 +965,23 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 		 * 会话没开（历史会话没打开过）时给 null：那种情况引擎手里真的没有这段。
 		 */
 		async readSystemPrompt(sessionId: string) {
-			const handle = sessions.get(sessionId);
+			const before = sessions.get(sessionId);
+			// 点开面板就是要看「现在这一步真会发什么」：先把改过的技能 / MCP 重载进来
+			const handle = before ? await refreshResources(sessionId, before) : undefined;
 			const prompt = handle?.session.systemPrompt;
 			return typeof prompt === "string" && prompt !== "" ? prompt : null;
+		},
+
+		/**
+		 * 网页刷新 / 刚打开时前端会主动要一次：把技能、MCP、AGENTS.md 重载一遒。
+		 *
+		 * 为什么用 force：用户点了刷新就是想让它生效，这时再比指纹反而多一层“赌”。
+		 * 会话没开时直接忽略 —— 下次打开的那一下本来就是按新配置拼的。
+		 */
+		async refreshResources(sessionId: string, refreshOptions?: { force?: boolean }) {
+			const handle = sessions.get(sessionId);
+			if (!handle) return;
+			await refreshResources(sessionId, handle, refreshOptions?.force === true);
 		},
 
 		/**
@@ -921,7 +1036,8 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 				return;
 			}
 			// 换个别名：下面 `runAttempt` 是**函数声明**（会被提升），TS 不会把上面的收窄带进去
-			const handle = found;
+			// 技能 / MCP / AGENTS.md 改过了就用最新的：资源变了会**重开句柄**，所以拿到的可能是新的那个
+			const handle = await refreshResources(sessionId, found);
 
 			handle.aborting = false;
 			handle.running = true;

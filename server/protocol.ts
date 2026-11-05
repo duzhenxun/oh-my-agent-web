@@ -629,6 +629,20 @@ export type SetModelRequest = {
 /** 切换智能体引擎（零重启）：项目 / 模型 / 能力矩阵都换；回合在飞时拒绝（engine.busy）。 */
 export type SetEngineRequest = { id: string; type: "set_engine"; payload: { engine: string } };
 
+/**
+ * 「刷新网页时顺手重载资源」：让引擎把这条会话的技能 / MCP / AGENTS.md 重新读一遒。
+ *
+ * 为什么要一个显式请求：刷新网页只是浏览器重连 WS，引擎那边的会话**并未重开**，
+ * 提示词还停在旧的那份。前端在每次连接就绪时喷一次，用户不用等下一句话才发现
+ * 刚关掉的技能真的不在了。
+ */
+export type RefreshResourcesRequest = {
+	id: string;
+	type: "refresh_resources";
+	/** `force`：不管资源变没变都重载一次（页面刷新）；不传就按指纹判断（断线重连） */
+	payload: { conversationId: string; force?: boolean };
+};
+
 /** 「想一想」：隐藏回合重新要一批建议（count = 这一批几条，手机用 3；1~5） */
 export type RefreshActionsRequest = {
 	id: string;
@@ -638,6 +652,7 @@ export type RefreshActionsRequest = {
 
 export type ClientRequest =
 	| SetEngineRequest
+	| RefreshResourcesRequest
 	| RefreshActionsRequest
 	| SendMessageRequest
 	| InterruptRequest
@@ -714,7 +729,8 @@ type CloseEphemeralRequest = {
 type ForkSessionRequest = {
 	id: string;
 	type: "fork_session";
-	payload: { conversationId: string; messageId: string };
+	/** `messageId` 缺省 = 从源会话的**当前叶子**（最后一条消息）派生；侧栏行右键分叉用它，不必先打开会话 */
+	payload: { conversationId: string; messageId?: string };
 };
 
 /** 切换会话（M2） */

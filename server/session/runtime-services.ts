@@ -76,7 +76,7 @@ export function createRuntimeServices(options: RuntimeServicesOptions): RuntimeS
 		timeoutMs: options.options.turnTimeoutMs,
 		engine: options.options.engine,
 		isWaitingForUser: options.isWaitingForUser,
-		notice: (text, level) => notice(text, level),
+		notice: (text, level, conversationId) => notice(text, level, undefined, conversationId),
 	});
 
 	return { notice, approval, watchdog };

@@ -32,6 +32,7 @@ describe("parseClientRequest 基本形状", () => {
 			interrupt: { conversationId: "c1" },
 			rename_session: { conversationId: "c1", title: "新名字" },
 			suggest_title: { conversationId: "c1" },
+			refresh_resources: { conversationId: "c1" },
 			approve: { requestId: "a1", decision: "once" },
 			get_state: {},
 			new_chat: {},
@@ -73,6 +74,25 @@ describe("parseClientRequest 基本形状", () => {
 });
 
 describe("parseClientRequest 细节分支", () => {
+	it("refresh_resources：非空会话 id + force 只收布尔（页面刷新才带 force）", () => {
+		assert.equal(parse({ id: "1", type: "refresh_resources", payload: { conversationId: "  " } }), null);
+		assert.deepEqual(parse({ id: "1", type: "refresh_resources", payload: { conversationId: "c1" } }), {
+			id: "1",
+			type: "refresh_resources",
+			payload: { conversationId: "c1" },
+		});
+		assert.deepEqual(parse({ id: "1", type: "refresh_resources", payload: { conversationId: "c1", force: true } }), {
+			id: "1",
+			type: "refresh_resources",
+			payload: { conversationId: "c1", force: true },
+		});
+		// force 写错类型就当没给（断线重连那条路：按指纹判断）
+		const wrong = parse({ id: "1", type: "refresh_resources", payload: { conversationId: "c1", force: "yes" } }) as {
+			payload?: { force?: boolean };
+		};
+		assert.equal(wrong.payload?.force, undefined);
+	});
+
 	it("refresh_actions 的 count 只接受 1..5（越界就当没给）", () => {
 		const base = { id: "1", type: "refresh_actions" };
 		assert.equal(parse({ ...base, payload: { count: 3 } })?.type, "refresh_actions");

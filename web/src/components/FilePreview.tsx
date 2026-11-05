@@ -45,6 +45,8 @@ import { FileFindBar } from "./FileFindBar.tsx";
 import { zoomIntent } from "../panel-zoom.ts";
 import { Markdown } from "./Markdown.tsx";
 import { useT } from "../use-language.ts";
+import { formatByteSize } from "../lib/byte-size.ts";
+import { fileTypeOf } from "../file-type.ts";
 
 /** 空数组常量：state 为空/二进制时复用它，保证依赖引用稳定（否则高亮 effect 每次都重跑） */
 const EMPTY_LINES: string[] = [];
@@ -458,6 +460,17 @@ export function FileViewer({
 		total: highlightTotal,
 	} = useProgressiveHighlight(lines, language !== "" && hljs.getLanguage(language) ? language : "", highlightLine);
 
+	/** 全路径：`path` 是相对 `root` 的，有 root 就拼成绝对路径（头部小字显示，方便认出是哪一份） */
+	/** `path` 可能已经是绝对路径（此时直接用，别再拼 root）；只有相对路径才拼到 root 后面 */
+	const fullPath = path.startsWith("/") || !root ? path : `${root.replace(/\/+$/, "")}/${path}`;
+	/** 文件大小：不足 1KB 仍说字节，其余按 KB / MB 显示 */
+	/** 大小标签的颜色跟文件类型走（和文件树小标同一套配色）：CSS 是紫色，JS 是黄色…… */
+	const sizeTone = fileTypeOf(path.split("/").pop() ?? path)?.tone ?? null;
+	const sizeLabel = (bytes: number) => {
+		const size = formatByteSize(bytes);
+		return size.unit === "B" ? t(`${size.value} 字节`, `${size.value} bytes`) : `${size.value} ${size.unit}`;
+	};
+
 	const addToConversation = () => {
 		appendReference(referenceForSelection(path, sel.selection));
 		sel.clear();
@@ -477,15 +490,19 @@ export function FileViewer({
 				 * 这一行只留「多大 · 什么语言」，以及右边那排「怎么显示」的按钮。
 				 */}
 				<span className="file-preview-meta">
-					{mediaSrc
-						? isVideo
-							? t("视频", "Video")
-							: t("音频", "Audio")
-						: state
-							? t(`${state.bytes} 字节`, `${state.bytes} bytes`)
-							: t("读取中…", "Loading…")}
-					{state?.truncated ? t("（已截断）", "(truncated)") : ""}
-					{language ? ` · ${language}` : ""}
+					<span className={`file-preview-size${sizeTone ? ` filetype-${sizeTone}` : ""}`}>
+						{mediaSrc
+							? isVideo
+								? t("视频", "Video")
+								: t("音频", "Audio")
+							: state
+								? sizeLabel(state.bytes)
+								: t("读取中…", "Loading…")}
+						{state?.truncated ? t("（已截断）", "(truncated)") : ""}
+					</span>
+					<span className="file-preview-path" title={fullPath}>
+						{fullPath}
+					</span>
 				</span>
 				<span className="topbar-spacer" />
 				{/* 源码 / 改动（Diff）切换：**一直都在**，点一下就能看对比（有没有改动由视图自己说） */}

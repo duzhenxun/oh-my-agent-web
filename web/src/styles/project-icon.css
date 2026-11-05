@@ -381,7 +381,7 @@
 	position: absolute;
 	top: 8px;
 	right: -10px;
-	z-index: 6;
+	z-index: 7;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -393,7 +393,8 @@
 	background: var(--bg);
 	color: var(--text-dim);
 	cursor: pointer;
-	opacity: 0.92;
+	/* 不透明：以前 0.92 会让下面的蓝色拖拽线透出来，看起来像线压在按钮上 */
+	opacity: 1;
 	box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
 	transition:
 		opacity 0.12s ease,
@@ -410,6 +411,13 @@
 .side-collapse:hover,
 .side-collapse:focus-visible {
 	opacity: 1;
+	color: var(--accent);
+	border-color: var(--accent-dim);
+}
+
+/* 鼠标放到竖线（拖拽条）上时，按钮也要在上方显示并提亮，告诉用户「这里可以点」 */
+.side-host:has(.side-resizer:hover) .side-collapse,
+.side-host:has(.side-resizer:active) .side-collapse {
 	color: var(--accent);
 	border-color: var(--accent-dim);
 }

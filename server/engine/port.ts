@@ -141,7 +141,7 @@ export type EngineSessionOptions = {
 	 * 为什么由引擎做：裁剪得按**引擎自己的会话树**走（entry 的 parentId 关系），
 	 * 宿主手里只有映射好的界面消息，拿不到分叉所需的 entry 结构。
 	 */
-	fork?: { sourceSessionId: string; leafId: string };
+	fork?: { sourceSessionId: string; leafId?: string };
 };
 
 /**
@@ -296,6 +296,17 @@ export type EnginePort = {
 	 * 不实现 = 这个引擎看不到自己的提示词（`capabilities.systemPrompt` 应为 false）。
 	 */
 	readSystemPrompt?: (sessionId: string) => Promise<string | null>;
+	/**
+	 * 让引擎把这条会话的资源（技能 / MCP / AGENTS.md / 设置）**重载**一遒。
+	 *
+	 * 为什么需要它：浏览器里改了页面 → 前端重连，但引擎那边的会话一直开着，
+	 * 提示词还是旧的那份（刷新网页并不等于重开会话）。前面（网页刷新 / 刚打开）时
+	 * 调一次，用户不用等下一句话才发现技能 / MCP 已经生效。
+	 *
+	 * `force`：跳过「资源指纹没变就不动」的判断（刷新这个动作本身就是「我说了算」）。
+	 * 不实现 = 这个引擎没有热重载概念，界面不调。
+	 */
+	refreshResources?: (sessionId: string, options?: { force?: boolean }) => Promise<void>;
 	/** 危险操作前引擎会调用它；宿主负责弹给用户并等待决定（ADR-0006 审批三态） */
 	setApprovalHandler(handler: ApprovalHandler): void;
 	/**

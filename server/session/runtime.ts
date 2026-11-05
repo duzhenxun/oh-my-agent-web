@@ -195,9 +195,8 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 	 */
 	const sessionPathOf = (conversationId: string): string | null =>
 		piOpener.pathOf(conversationId) ??
-		state.piProjects
-			.flatMap((project) => project.sessions)
-			.find((session) => session.id === conversationId)?.sessionPath ??
+		state.piProjects.flatMap((project) => project.sessions).find((session) => session.id === conversationId)
+			?.sessionPath ??
 		null;
 
 	const conversations = createConversationFactory({
@@ -266,7 +265,8 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			if (steer) message.steer = true;
 			state.messages[id] = [...(state.messages[id] ?? []), message];
 		},
-		notice: (text, level) => notice(text, level),
+		// 带上会话：插队 / 排队的提示只挂在它所属的会话上（临时聊天的不跑到主会话里）
+		notice: (text, level, conversationId) => notice(text, level, undefined, conversationId),
 		pushSnapshot,
 		// 插队注入前要确认「这一轮真的还在跑」（见 turn-queue 的 flushSteer）
 		isTurnRunning: (conversationId) => turns.has(conversationId),
@@ -288,7 +288,8 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		touchConversation: (conversationId) => touchConversation(conversationId),
 		refreshStats: (id) => void refreshStats(id),
 		refreshProjects: () => void piRefresher.refresh(true),
-		notice: (text, level) => notice(text, level),
+		// 带上会话：中断 / 失败提示归到那条会话上（临时聊天的不跑到主会话里）
+		notice: (text, level, conversationId) => notice(text, level, undefined, conversationId),
 		pushSnapshot,
 	});
 
@@ -606,7 +607,8 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		setThinkingLevel: (level) => models.setThinking(state.activeId, level),
 		reloadModels: () => models.reload(state.activeId),
 
-		cancelQueued: (queueId) => cancelQueuedWith(queue, queueId, notice),
+		cancelQueued: (queueId) =>
+			cancelQueuedWith(queue, queueId, (text, level, conversationId) => notice(text, level, undefined, conversationId)),
 
 		pushSnapshot, // 供 provider 等模块「只推帧、不造提示」
 
@@ -683,6 +685,26 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 				};
 			}
 			return { ok: true as const, prompt };
+		},
+
+		/**
+		 * 「刷新网页时重载资源」：引擎支持就强制重载一次；不支持就当作没事（前端是“喷一下不管回包”）。
+		 * 失败不抛：这只是个顺手刷新，不能把刷新页面变成一条红条。
+		 */
+		async refreshConversationResources(conversationId, refreshOptions) {
+			if (!engine.refreshResources) return { ok: true as const };
+			try {
+				await engine.refreshResources(conversationId, { force: refreshOptions?.force === true });
+				return { ok: true as const };
+			} catch (error) {
+				return {
+					ok: false as const,
+					error: {
+						code: "session.refresh_failed",
+						message: error instanceof Error ? error.message : String(error),
+					},
+				};
+			}
 		},
 
 		switchConversation: (conversationId, clientId) => switchTo(conversationId, clientId),

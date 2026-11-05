@@ -185,19 +185,40 @@
 	min-width: 0;
 }
 
-.file-preview-path {
-	flex: 0 1 auto;
-	min-width: 0;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-	font-size: 15px;
-}
-
 .file-preview-meta {
-	flex: none;
+	/* 不再自成一块：大小和路径作为文件头的子项排版（大小在按钮行，路径单占一行） */
+	display: contents;
 	color: var(--text-faint);
 	font-size: 14px;
+}
+
+/* 大小：加边框的小方框，和旁边的按钮同高（放在按钮行里）；字号与路径一致。
+ * 颜色只随文件类型变（文字色），不加底色。 */
+.file-preview-head .file-preview-size {
+	background: none;
+}
+.file-preview-size {
+	order: -1;
+	flex: none;
+	box-sizing: border-box;
+	height: 30px;
+	display: inline-flex;
+	align-items: center;
+	padding: 0 10px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	white-space: nowrap;
+	font-size: 11px;
+}
+
+/* 全路径：小一号，**完整显示**（不省略）：窄了就折行，不丢字 */
+.file-preview-path {
+	min-width: 0;
+	flex: 1 1 auto;
+	font-size: 11px;
+	white-space: normal;
+	overflow-wrap: anywhere;
+	word-break: break-all;
 }
 
 /* 文件头里的「文件列表」开关（从标签条挪进来的那颗）：
@@ -214,6 +235,47 @@
 	width: 14px;
 	height: 14px;
 	display: block;
+}
+
+/* 文件头：源码 / 换行 / 文件列表三颖按钮**同高 30px**，靠左排成一排（两个图标钮 30×30 正方形）；
+ * 文件大小 · 路径不再挤在这一排里，单占一行（窄面板里也看得到）。 */
+.file-preview-head {
+	justify-content: flex-start;
+}
+
+.file-preview-head .topbar-spacer {
+	order: 2;
+}
+
+.file-preview-head .file-preview-path {
+	order: 3;
+	flex: 1 1 100%;
+	min-width: 0;
+}
+
+.file-preview-head .preview-mode,
+.file-preview-head .preview-wrap,
+.file-preview-head .preview-tool-btn {
+	box-sizing: border-box;
+	height: 30px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.file-preview-head .preview-mode button {
+	box-sizing: border-box;
+	height: 100%;
+	min-width: 30px;
+	padding: 0 10px;
+	font-size: 13px;
+	line-height: 1;
+}
+
+.file-preview-head .preview-wrap,
+.file-preview-head .preview-tool-btn {
+	width: 30px;
+	padding: 0;
 }
 
 .file-preview-body {
@@ -373,7 +435,8 @@
 	cursor: pointer;
 }
 
-.preview-mode-on {
+/* 选中态要压过 `.preview-mode button` 的背景/颜色（那条选择器更具体），所以写成两个类 */
+.preview-mode .preview-mode-on {
 	background: var(--bg-elev-2);
 	color: var(--text);
 	font-weight: 600;
@@ -386,16 +449,6 @@
 
 .file-preview-line-clickable:hover {
 	background: color-mix(in srgb, var(--accent) 8%, transparent);
-}
-
-/* 头部只显示文件名（完整路径放 title），并让「源码/预览」不被挤成两行 */
-.file-preview-path {
-	flex: 0 1 auto;
-	min-width: 0;
-	max-width: 42%;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
 }
 
 .preview-mode button {

@@ -442,7 +442,7 @@ export function closeEphemeral(conversationId: string): void {
  * 从某条消息派生一条新会话（分支），服务端建好后会自动切过去，原会话不变。
  * `messageId` 是界面消息的 id（= 会话 entry id）。
  */
-export function forkSession(conversationId: string, messageId: string): void {
+export function forkSession(conversationId: string, messageId?: string): void {
 	focusComposer();
 	setAppState({ creating: true });
 	setTimeout(() => setAppState({ creating: false }), 8000);
@@ -548,6 +548,22 @@ export function suggestSessionTitle(conversationId: string): Promise<boolean> {
 /** 把会话拖到另一个项目（改 cwd，id 与历史不变） */
 export function moveSession(conversationId: string, workspace: string): void {
 	send({ id: `req-${++seq}`, type: "move_session", payload: { conversationId, workspace } });
+}
+
+/**
+ * 「刷新网页时顺手重载一次资源」：刷新只是浏览器重连，服务端那条会话并未重开，
+ * 技能 / MCP / `AGENTS.md` 改过的话提示词还是旧的 —— 连上就请服务端重读一遒。
+ *
+ * `force`：页面刷新就是“我说了算”（不管指纹变没变都重载）；
+ * 断线重连不传 —— 那只是网络抖一下，让服务端自己按指纹判断，不要每次抖都重连 MCP。
+ * 不等回包：失败了也不该拦住用户干别的事（服务端会写自己的通知）。
+ */
+export function refreshResources(conversationId: string, options?: { force?: boolean }): void {
+	send({
+		id: `req-${++seq}`,
+		type: "refresh_resources",
+		payload: options?.force ? { conversationId, force: true } : { conversationId },
+	});
 }
 
 export function switchConversation(conversationId: string): void {

@@ -166,7 +166,8 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
 				const source = sessions.get(sessionOptions.fork.sourceSessionId);
 				// 与真引擎一致：没落盘的会话不能 fork
 				if (!source?.sessionPath) throw new Error("这条会话还没存过盘（临时对话），不能从它派生分支");
-				const cut = Number(/-(\d+)$/.exec(sessionOptions.fork.leafId)?.[1] ?? Number.NaN);
+				// 没指定 leafId = 从源会话当前末尾分叉（与真引擎的「当前叶子」一致）
+				const cut = Number(/-(\d+)$/.exec(sessionOptions.fork.leafId ?? "")?.[1] ?? Number.NaN);
 				transcript = Number.isFinite(cut) ? source.transcript.slice(0, cut + 1) : [...source.transcript];
 				// 与真引擎一致（pi 的 `createBranchedSession`）：派生会**另生一个会话 id**，
 				// 不采纳传进来的那个。宿主必须拿回报的 id 当会话 id，否则发消息就会

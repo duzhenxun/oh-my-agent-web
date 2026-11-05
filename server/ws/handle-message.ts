@@ -120,6 +120,16 @@ export async function handleMessage(socket: ClientSink, raw: string, deps: Handl
 				// AI 起名：一次问答 + 改名都在服务端跑完，回包带最终标题（界面拿去做提示）
 				deps.reply(socket, request.id, await deps.runtime.suggestSessionTitle(request.payload.conversationId));
 				return;
+			case "refresh_resources":
+				// 刷新网页时前端喷一次：让引擎把技能 / MCP / AGENTS.md 重读一遒
+				deps.reply(
+					socket,
+					request.id,
+					await deps.runtime.refreshConversationResources(request.payload.conversationId, {
+						force: request.payload.force === true,
+					}),
+				);
+				return;
 			case "move_session":
 				deps.reply(
 					socket,

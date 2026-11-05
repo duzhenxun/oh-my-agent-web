@@ -81,7 +81,8 @@ export function createBusyHandler(deps: {
 	queue: (conversationId: string, text: string, attachments: AttachmentRef[] | undefined, mode: QueuedMode) => number;
 	/** steer = true：这条是「插队」插进来的（界面要标一下） */
 	appendUser: (conversationId: string, text: string, steer?: boolean) => void;
-	notice: (text: string, level: "info" | "warn") => void;
+	/** conversationId 带上：提示只挂在这条消息所属的会话上（临时聊天的提示不能跑到主会话里） */
+	notice: (text: string, level: "info" | "warn", conversationId?: string) => void;
 	pushSnapshot: () => void;
 	/**
 	 * 当前引擎能不能真插队（ADR-0043）。不传按「能」算（老调用方兼容）。
@@ -100,7 +101,7 @@ export function createBusyHandler(deps: {
 	): Promise<BusyResult> => {
 		if (mode === "queue") {
 			const depth = deps.queue(conversationId, text, attachments, "queue");
-			deps.notice(`已排队（第 ${depth} 条）：这一轮结束后自动发送`, "info");
+			deps.notice(`已排队（第 ${depth} 条）：这一轮结束后自动发送`, "info", conversationId);
 			deps.pushSnapshot();
 			return { ok: true };
 		}
@@ -116,11 +117,12 @@ export function createBusyHandler(deps: {
 					? "已插队：等当前这一步结束插进去（还没插进去，可以撤回）"
 					: `这个引擎不支持插队，已改为排队（第 ${depth} 条）：这一轮结束后自动发送`,
 				steerable ? "info" : "warn",
+				conversationId,
 			);
 			deps.pushSnapshot();
 			return { ok: true };
 		}
-		deps.notice("另一个回合还在跑，先等它结束或点「停止」", "warn");
+		deps.notice("另一个回合还在跑，先等它结束或点「停止」", "warn", conversationId);
 		return { ok: false, error: { code: "session.busy", message: "同一会话已有回合在跑" } };
 	};
 }
@@ -177,6 +179,10 @@ function createQueueController(options: {
 			sync();
 			return removed.mode;
 		},
+		/** 查一条待发属于哪个会话（取消时要把提示挂回那个会话） */
+		conversationOf(queueId: string): string | null {
+			return options.turnQueue.views().find((item) => item.id === queueId)?.conversationId ?? null;
+		},
 	};
 }
 
@@ -195,7 +201,7 @@ export function createTurnPlumbing(options: {
 	nextId: (prefix: string) => string;
 	/** steer = true：这条是「插队」插进来的（界面要标一下） */
 	appendUser: (conversationId: string, text: string, steer?: boolean) => void;
-	notice: (text: string, level: "info" | "warn") => void;
+	notice: (text: string, level: "info" | "warn", conversationId?: string) => void;
 	pushSnapshot: () => void;
 	/**
 	 * 这个会话现在真的还有回合在跑吗？注入前先问一句：
@@ -251,7 +257,7 @@ export function createTurnPlumbing(options: {
 		 */
 		if (!(options.supportsSteer?.() ?? true)) {
 			queue.push(held.conversationId, held.text, held.attachments, "queue");
-			options.notice("这个引擎不支持插队，已改为排队：这一轮结束后自动发送", "warn");
+			options.notice("这个引擎不支持插队，已改为排队：这一轮结束后自动发送", "warn", held.conversationId);
 			return;
 		}
 		// 先进消息流再注入：界面与对话记录的顺序与旧行为一致（插队就在当前这一轮里）
@@ -282,13 +288,13 @@ export function createTurnPlumbing(options: {
 			)
 			.then(() => {
 				if (failures.length === 0) return;
-				options.notice(`插队没成功（${failures[0]}）：这条消息还在对话里，可以再发一次`, "warn");
+				options.notice(`插队没成功（${failures[0]}）：这条消息还在对话里，可以再发一次`, "warn", held.conversationId);
 			})
 			.catch((error: unknown) => {
 				const message = error instanceof Error ? error.message : String(error);
-				options.notice(`插队失败：${message}；这条消息还在对话里，可以再发一次`, "warn");
+				options.notice(`插队失败：${message}；这条消息还在对话里，可以再发一次`, "warn", held.conversationId);
 			});
-		options.notice("已插队：插进当前这一轮", "info");
+		options.notice("已插队：插进当前这一轮", "info", held.conversationId);
 		// 还挂着别的话继续等下一个边界（一次只插一条，和队列语义一致）
 		if (queue.hasSteer(conversationId)) scheduleSteerFlush(conversationId);
 	};
@@ -340,13 +346,14 @@ export const STEER_MIN_HOLD_MS = 1200;
 
 /** 取消一条待发消息的对外动作（runtime 里只留一行） */
 export function cancelQueuedWith(
-	queue: { cancel: (queueId: string) => QueuedMode | null },
+	queue: { cancel: (queueId: string) => QueuedMode | null; conversationOf: (queueId: string) => string | null },
 	queueId: string,
-	notice: (text: string, level: "info" | "warn") => void,
+	notice: (text: string, level: "info" | "warn", conversationId?: string) => void,
 ): { ok: true } | { ok: false; error: { code: string; message: string } } {
+	const conversationId = queue.conversationOf(queueId);
 	const kind = queue.cancel(queueId);
 	if (!kind)
 		return { ok: false, error: { code: "queue.not_found", message: "这条待发消息已经不在了（可能已插进去/已发出）" } };
-	notice(kind === "steer" ? "已取消插队：不会插进去了" : "已取消排队", "info");
+	notice(kind === "steer" ? "已取消插队：不会插进去了" : "已取消排队", "info", conversationId ?? undefined);
 	return { ok: true };
 }

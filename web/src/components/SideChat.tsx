@@ -15,6 +15,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { MessageList } from "./MessageList.tsx";
+import { NoticeBar } from "./ApprovalDialog.tsx";
 import { Composer } from "./Composer.tsx";
 import { sideChannelFor, type SideState } from "../side-chat.ts";
 import type { ChatSurface } from "../chat-surface.ts";
@@ -100,6 +101,12 @@ export function SideChat({ itemId }: { itemId: string }) {
 			{...zoom.pointerHandlers}
 			style={{ zoom: zoom.percent / 100 }}
 		>
+			{/* 本会话的提示（插队 / 排队 / 取消）挂在面板顶部，几秒后自己消失（NoticeBar 自带 4s）。
+			    只取带本会话 id 的：全局提示（如连不上服务端）留给主对话那边，不在这里重复。 */}
+			<NoticeBar
+				notices={(snapshot?.notices ?? []).filter((notice) => notice.conversationId === conversationId)}
+				activeConversationId={conversationId}
+			/>
 			<div className="work-chat-stream">
 				{messages.length === 0 ? (
 					<div className="work-chat-empty">{t("问一句就走：这条聊天不落盘，关掉即消失。")}</div>

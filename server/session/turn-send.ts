@@ -30,7 +30,8 @@ type TurnSenderDeps = {
 	turns: Map<string, { messageId: string; filter: ReturnType<typeof createMarkerStreamFilter>; rawText: string }>;
 	watchdog: TurnWatchdog;
 	turnContext: TurnEventContext;
-	notice: (text: string, level?: "info" | "warn" | "error") => void;
+	/** 带会话：提示只挂在这次发送所属的会话上（临时聊天的不跑到主会话里） */
+	notice: (text: string, level?: "info" | "warn" | "error", key?: string, conversationId?: string) => void;
 	pushSnapshot: () => void;
 	/** 兜底收尾：引擎的 sendMessage 已返回却没吐 turn_end 时用它收场（否则 turns 永久留条目） */
 	finishTurn: (conversationId: string, reason: "done" | "interrupted" | "error") => Promise<void>;
@@ -93,8 +94,6 @@ export function createTurnSender(deps: TurnSenderDeps) {
 		options: { hidden?: boolean } = {},
 	): Promise<{ ok: true } | { ok: false; error: ProtocolError }> => {
 		const resolved = await resolveAttachments(text, attachments, deps.uploadStore);
-		for (const name of resolved.missing) deps.notice(`附件已失效（可能过期被清理）：${name}`, "warn");
-		if (resolved.images.length > 0) deps.notice(`已附加 ${resolved.images.length} 张图片（视觉注入）`, "info");
 
 		/**
 		 * 「这条消息发到哪个会话」按**这个客户端自己的视图**算（ADR-0033），不再用全局
@@ -110,6 +109,11 @@ export function createTurnSender(deps: TurnSenderDeps) {
 		 */
 		const own = clientId ? deps.clientView.activeFor(clientId, state.activeId) : state.activeId;
 		const existing = targetConversationId ?? own ?? null;
+		// 附件提示挂在「这条消息要去的会话」上（新建会话时还不知道 id，就不归到任何会话）
+		for (const name of resolved.missing)
+			deps.notice(`附件已失效（可能过期被清理）：${name}`, "warn", undefined, existing ?? undefined);
+		if (resolved.images.length > 0)
+			deps.notice(`已附加 ${resolved.images.length} 张图片（视觉注入）`, "info", undefined, existing ?? undefined);
 		if (existing !== null && deps.turns.has(existing)) {
 			const handled = await deps.busy(mode, text, resolved.promptText, resolved.images, existing, attachments);
 			if (handled) return handled;
@@ -193,7 +197,7 @@ export function createTurnSender(deps: TurnSenderDeps) {
 		} catch (error) {
 			failed = true;
 			const message = error instanceof Error ? error.message : String(error);
-			deps.notice(`回合执行失败：${message}`, "error");
+			deps.notice(`回合执行失败：${message}`, "error", undefined, conversationId ?? undefined);
 			return { ok: false, error: { code: "session.turn_failed", message } };
 		} finally {
 			if (conversationId !== null) {

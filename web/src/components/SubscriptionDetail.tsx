@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { isModelEnabled } from "../model-enabled.ts";
+import { setProviderEnabled } from "../ws.ts";
 import { useT } from "../use-language.ts";
 
 /**
@@ -32,6 +34,8 @@ export function SubscriptionDetail({
 	onClose,
 	onChanged,
 	onImportModels,
+	enabledModels = [],
+	canTest = false,
 }: {
 	entry: SubscriptionEntry;
 	onClose: () => void;
@@ -39,6 +43,16 @@ export function SubscriptionDetail({
 	onChanged: () => void;
 	/** 打开该订阅 provider 的远端模型导入面板（目前仅 Codex 支持） */
 	onImportModels?: () => void;
+	/**
+	 * 启用白名单（pi settings.json 的 `enabledModels`）：勾选态的唯一来源。
+	 * 空数组 = 全开（pi 的语义），与左栏开关、`model-enabled.ts` 的口径完全一致。
+	 */
+	enabledModels?: string[];
+	/**
+	 * 能不能测速：需要工作台里真有这个 provider 的配置（测速走 `/api/providers/:p/models/:id/test`，
+	 * 订阅登录的 OAuth 凭据那条路会转给引擎自己的探测器，见 codex-test.ts）。
+	 */
+	canTest?: boolean;
 }) {
 	const t = useT();
 	const [phase, setPhase] = useState<"idle" | "connecting" | "running" | "done" | "error">("idle");
@@ -54,6 +68,11 @@ export function SubscriptionDetail({
 	const [submitting, setSubmitting] = useState(false);
 	/** 登出请求进行中 */
 	const [busy, setBusy] = useState(false);
+	/** 测速结果：modelId → 一行摘要（完整原因挂 title）；一次只测一个（并发只会打出 429） */
+	const [probeResults, setProbeResults] = useState<Record<string, { ok: boolean; text: string; detail: string }>>({});
+	const [probingModel, setProbingModel] = useState<string | null>(null);
+	const [probeBatch, setProbeBatch] = useState<{ done: number; total: number } | null>(null);
+	const probeAbort = useRef<AbortController | null>(null);
 	const sourceRef = useRef<EventSource | null>(null);
 	/** SSE 的 error 在正常收尾时也会触发，别把成功改写成失败 */
 	const settledRef = useRef(false);
@@ -74,6 +93,12 @@ export function SubscriptionDetail({
 		setValue("");
 		settledRef.current = false;
 		stop();
+		// 换 provider：上一个订阅的测速结果 / 进度不能留在这一栏
+		probeAbort.current?.abort();
+		probeAbort.current = null;
+		setProbeResults({});
+		setProbingModel(null);
+		setProbeBatch(null);
 	}, [entry.id, stop]);
 
 	useEffect(() => stop, [stop]);
@@ -240,6 +265,73 @@ export function SubscriptionDetail({
 	}, [entry.id, onChanged]);
 
 	const running = phase === "connecting" || phase === "running";
+	const models = entry.models ?? [];
+	const canFetch = entry.connected && onImportModels !== undefined;
+	/** 勾选态就是「启用态」：写 pi 的 enabledModels，和左栏那个开关是同一份数据 */
+	const modelOn = (id: string) => isModelEnabled(enabledModels, entry.id, id);
+	const enabledIds = models.filter((model) => modelOn(model.id)).map((model) => model.id);
+	const allOn = models.length > 0 && enabledIds.length === models.length;
+	const noneOn = enabledIds.length === 0;
+
+	/**
+	 * 批量测速：逐个对勾选的模型发一次最小请求（顺序跑，避开 429）。
+	 *
+	 * 走 `/api/providers/:p/models/:id/test`：和非订阅 provider 的批量测速是同一条路由。
+	 * 订阅登录存的是 OAuth access token（不是 api key），服务端会按凭据类型转给 Codex 探测器，
+	 * 鉴权头由它负责（见 server/providers/import-routes.ts）。
+	 * 语义上这是一次真实调用（会消耗订阅额度），所以调用方先让用户确认。
+	 */
+	const runTest = async (ids: string[]) => {
+		// 用 ref 判「已经在跑了」：state 是异步的，连点两下可能两边都看到 probingModel === null
+		if (ids.length === 0 || probeAbort.current !== null) return;
+		const controller = new AbortController();
+		probeAbort.current = controller;
+		setProbeResults({});
+		setProbeBatch({ done: 0, total: ids.length });
+		let done = 0;
+		for (const id of ids) {
+			if (controller.signal.aborted) break;
+			setProbingModel(id);
+			let entryResult: { ok: boolean; text: string; detail: string };
+			try {
+				const response = await fetch(
+					`/api/providers/${encodeURIComponent(entry.id)}/models/${encodeURIComponent(id)}/test`,
+					{ method: "POST", signal: controller.signal },
+				);
+				const body = (await response.json()) as {
+					ok?: boolean;
+					latencyMs?: number;
+					message?: string;
+					error?: { message?: string };
+				};
+				// 引擎侧测出来的会多一段「首字 / 出字速度」；直连 HTTP 只有一个耗时
+				const detail = body.ok
+					? [body.latencyMs === undefined ? null : `${body.latencyMs}ms`, body.message ?? null]
+							.filter((part): part is string => part !== null && part !== "")
+							.join(" · ")
+					: t(
+							`失败：${body.message ?? body.error?.message ?? `HTTP ${response.status}`}`,
+							`Failed: ${body.message ?? body.error?.message ?? `HTTP ${response.status}`}`,
+						);
+				entryResult = {
+					ok: body.ok === true,
+					text: detail.length > 42 ? `${detail.slice(0, 40)}…` : detail,
+					detail,
+				};
+			} catch (cause) {
+				// 用户主动停：不要记一个假的「失败」
+				if (controller.signal.aborted) break;
+				const detail = cause instanceof Error ? cause.message : String(cause);
+				entryResult = { ok: false, text: detail.slice(0, 40), detail };
+			}
+			setProbeResults((results) => ({ ...results, [id]: entryResult }));
+			done += 1;
+			setProbeBatch({ done, total: ids.length });
+		}
+		setProbingModel(null);
+		setProbeBatch(null);
+		probeAbort.current = null;
+	};
 
 	return (
 		<div className="side-panel subs-detail">
@@ -281,24 +373,6 @@ export function SubscriptionDetail({
 							)
 						: ""}
 				</div>
-				{entry.models && entry.models.length > 0 ? (
-					<div className="subs-model-list">
-						<strong>{t("已导入模型", "Imported models")}</strong>
-						{entry.models.map((model) => (
-							<div className="subs-model-row" key={model.id} title={model.id}>
-								<span>{model.name}</span>
-								<code>{model.id}</code>
-							</div>
-						))}
-					</div>
-				) : null}
-				{entry.connected && onImportModels ? (
-					<div className="subs-actions">
-						<button type="button" className="btn btn-tiny" onClick={onImportModels} disabled={busy || running}>
-							⬇️ {t("从订阅获取模型", "Fetch models from subscription")}
-						</button>
-					</div>
-				) : null}
 			</div>
 
 			{authUrl ? (
@@ -427,6 +501,151 @@ export function SubscriptionDetail({
 					</>
 				)}
 			</div>
+
+			{models.length > 0 || canFetch ? (
+				<div className="side-field">
+					<span className="prov-field-head">
+						{t("模型（勾选的才启用）", "Models (only ticked ones are enabled)")}
+						<span className="side-panel-count">
+							{enabledIds.length}/{models.length}
+						</span>
+						<span className="prov-check-actions">
+							<button
+								type="button"
+								className="msg-action"
+								disabled={allOn}
+								onClick={() => setProviderEnabled(entry.id, true)}
+								title={t("全部启用（写进 pi 的 settings.json）", "Enable everything (written to pi's settings.json)")}
+							>
+								{t("全选", "Select all")}
+							</button>
+							<button
+								type="button"
+								className="msg-action"
+								disabled={noneOn}
+								onClick={() => setProviderEnabled(entry.id, false)}
+								title={t("全部停用（对话里就选不到它们了）", "Disable everything (they disappear from the composer)")}
+							>
+								{t("全不选", "Select none")}
+							</button>
+						</span>
+						{canTest ? (
+							<button
+								type="button"
+								className="btn btn-tiny"
+								style={{ marginLeft: "auto" }}
+								disabled={probingModel !== null || enabledIds.length === 0}
+								title={
+									enabledIds.length === 0
+										? t("先勾选要测的模型", "Tick the models you want to test first")
+										: t(
+												`对勾选的 ${enabledIds.length} 个模型各发一次真实请求（消耗少量订阅额度），测首字延迟与出字速度`,
+												`Sends one real request for each of the ${enabledIds.length} ticked models (spends a little subscription quota) and measures time-to-first-token and tokens/s`,
+											)
+								}
+								onClick={() => {
+									const ids = enabledIds.slice();
+									if (
+										!window.confirm(
+											t(
+												`会对 ${ids.length} 个模型各发一次真实请求（消耗少量额度），继续？`,
+												`This sends one real request per model (${ids.length} total) and spends a little quota. Continue?`,
+											),
+										)
+									)
+										return;
+									void runTest(ids);
+								}}
+							>
+								{probeBatch
+									? t(
+											`测速中… ${probeBatch.done}/${probeBatch.total}`,
+											`Testing… ${probeBatch.done}/${probeBatch.total}`,
+										)
+									: t("⏱ 批量测速", "⏱ Test speed")}
+							</button>
+						) : null}
+						{probeBatch ? (
+							<button
+								type="button"
+								className="btn btn-tiny btn-danger"
+								style={{ marginLeft: canTest ? 0 : "auto" }}
+								title={t("停止测速，已测出的结果会保留", "Stop testing and keep the results already measured")}
+								onClick={() => probeAbort.current?.abort()}
+							>
+								■ {t("停止", "Stop")}
+							</button>
+						) : null}
+						{canFetch ? (
+							<button
+								type="button"
+								className="btn btn-tiny"
+								style={{ marginLeft: canTest ? 0 : "auto" }}
+								onClick={onImportModels}
+								disabled={busy || running}
+								title={t(
+									"从订阅拉取可用模型，再勾选要启用的",
+									"Fetch available models from the subscription, then tick the ones to enable",
+								)}
+							>
+								⬇️ {t("从订阅获取模型", "Fetch models from subscription")}
+							</button>
+						) : null}
+					</span>
+					{models.length === 0 ? (
+						<div className="side-panel-hint">
+							{t(
+								"还没有导入模型：点「从订阅获取模型」",
+								"No models imported yet — click “Fetch models from subscription”",
+							)}
+						</div>
+					) : (
+						<div className="prov-checklist">
+							{models.map((model) => {
+								const on = modelOn(model.id);
+								return (
+									<div className={`prov-check-row${on ? " prov-check-on" : ""}`} key={model.id}>
+										<label
+											className="prov-check-label"
+											title={
+												on
+													? t(
+															"已启用：点击停用（写进 pi 的 settings.json）",
+															"Enabled — click to disable (written to pi's settings.json)",
+														)
+													: t("未启用：点击启用", "Disabled — click to enable")
+											}
+										>
+											<input
+												type="checkbox"
+												checked={on}
+												onChange={() => setProviderEnabled(entry.id, !on, model.id)}
+											/>
+											<span className="mono">{model.id}</span>
+										</label>
+										<ProbeCell result={probeResults[model.id]} busy={probingModel === model.id} />
+									</div>
+								);
+							})}
+						</div>
+					)}
+				</div>
+			) : null}
 		</div>
+	);
+}
+
+/** 测速结果：一行耗时/失败原因（完整文本挂 title，单元格窄所以先截一截） */
+function ProbeCell({ result, busy }: { result?: { ok: boolean; text: string; detail: string }; busy: boolean }) {
+	const t = useT();
+	if (busy) return <span className="prov-latency prov-latency-idle">{t("测速中…", "Testing…")}</span>;
+	if (!result) return null;
+	return (
+		<span
+			className={`prov-latency prov-check-latency${result.ok ? " prov-latency-ok" : " prov-latency-fail"}`}
+			title={result.detail}
+		>
+			{result.text}
+		</span>
 	);
 }

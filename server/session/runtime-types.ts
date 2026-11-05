@@ -55,7 +55,7 @@ export type Runtime = {
 	/** 关闭临时会话：内存里的内容直接丢弃（没有磁盘文件，关掉就真没了） */
 	closeEphemeral(conversationId: string): Result;
 	/** 从某条消息派生新会话（分支）；原会话不动，自动切到新的那条 */
-	forkSession(conversationId: string, messageId: string, clientId?: string): Promise<Result>;
+	forkSession(conversationId: string, messageId?: string, clientId?: string): Promise<Result>;
 	/** 改会话显示名（写进 pi 的会话文件；成功后重扫列表把新名字带回来） */
 	renameSession(conversationId: string, title: string): Promise<Result>;
 	/**
@@ -77,6 +77,13 @@ export type Runtime = {
 	sessionSystemPrompt(
 		conversationId: string,
 	): Promise<{ ok: true; prompt: string } | { ok: false; code: string; message: string }>;
+	/**
+	 * 「刷新网页时顺手重载资源」：让引擎把这条会话的技能 / MCP / AGENTS.md 重新读一遒。
+	 *
+	 * 为什么需要：浏览器刷新只是重连 WS，引擎那边的会话并未重开 —— 代理里改了技能、
+	 * 加了 MCP，提示词还停在旧的那份（要等下一句话才生效）。引擎没这个能力就当没事（幂等）。
+	 */
+	refreshConversationResources(conversationId: string, options?: { force?: boolean }): Promise<Result>;
 	/** 删除会话：引擎原生删除（codex）或文件改名（pi）；已经不在的按成功处理（`gone`）。
 	 * `purge` 为真时 pi 那条路是真删（`unlink`），默认只是改名 —— 见 `delete-session.ts` */
 	deleteSession(

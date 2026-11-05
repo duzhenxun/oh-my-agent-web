@@ -179,6 +179,25 @@ test("派生分支：新会话复制历史、原会话不动，且改用引擎�
 	assert.match(state.conversations.find((item) => item.id === forkedId)?.title ?? "", /^分支 · /);
 });
 
+test("派生分支：不指定消息 = 从源会话当前叶子派生（侧栏右键用，不必先打开会话）", async () => {
+	const { engine, state, create, fork } = makeHarness();
+	const sourceId = await create("原对话", WORKSPACE);
+	const transcript = engine.sessions().get(sourceId)?.transcript as { role: string; text: string; ts: number }[];
+	transcript.push({ role: "user", text: "第一问", ts: 1 });
+	transcript.push({ role: "assistant", text: "第一答", ts: 2 });
+
+	// 没传 messageId：整条历史都带过去（叶子 = 最后一条）
+	const result = await fork(sourceId);
+	assert.ok(result.ok, "缺省 messageId 也要能派生");
+	const forkedId = result.ok ? result.conversationId : "";
+	assert.deepEqual(
+		engine.sessions().get(forkedId)?.transcript.map((message) => message.text),
+		["第一问", "第一答"],
+	);
+	assert.equal(state.activeId, forkedId);
+	assert.equal(engine.sessions().get(sourceId)?.transcript.length, 2, "原会话一个字不动");
+});
+
 test("派生分支：临时对话没有会话文件，必须明确拒绝（不是静默失败）", async () => {
 	const { create, fork, notices } = makeHarness();
 	const ephemeralId = await create("新对话", WORKSPACE, { ephemeral: true });

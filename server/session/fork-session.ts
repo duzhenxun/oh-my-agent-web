@@ -28,7 +28,7 @@ export function createForkSession(deps: {
 	pushSnapshot: () => void;
 	refreshSessions: (force?: boolean) => Promise<void>;
 }) {
-	return async (conversationId: string, messageId: string, clientId?: string): Promise<ForkResult> => {
+	return async (conversationId: string, messageId?: string, clientId?: string): Promise<ForkResult> => {
 		const conversation = deps.conversations().find((item) => item.id === conversationId);
 		const info = conversation
 			? { title: conversation.title, workspace: conversation.workspace }

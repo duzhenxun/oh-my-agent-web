@@ -8,6 +8,11 @@
  * 内容由 `/api/sessions/<id>/system-prompt` 现取（服务端问引擎的
  * `session.systemPrompt`，是 pi 的 resourceLoader 拼完的全文，不是我们抄的一份）。
  * 拿不到时**明说为什么**（引擎不提供 / 会话没打开），不画一块空白。
+ *
+ * 为什么要 `active`：右侧面板的标签是**常驻挂载**的（`preview-slot-hidden` 只隐藏不卸载，
+ * 见 PreviewPanel），所以切回来不会重新 mount —— 只靠 useEffect 的 conversationId 依赖，
+ * 用户关掉技能再点回来看到的还是旧的那段。这里每次「变回当前标签」都重取一次，
+ * 服务端那边也会先把改过的技能 / MCP 重载进来（见 `readSystemPrompt`）。
  */
 import { useEffect, useState } from "react";
 import { CopyButton } from "./CopyButton.tsx";
@@ -15,7 +20,7 @@ import { useT } from "../use-language.ts";
 
 type View = { status: "loading" } | { status: "ready"; prompt: string } | { status: "error"; message: string };
 
-export function SystemPromptView({ conversationId }: { conversationId: string | null }) {
+export function SystemPromptView({ conversationId, active = true }: { conversationId: string | null; active?: boolean }) {
 	const t = useT();
 	const [view, setView] = useState<View>({ status: "loading" });
 	/** 重读次数：会话刚切过去、提示词还取不到时，不用关标签重开，点一下「重读」就行 */
@@ -26,6 +31,8 @@ export function SystemPromptView({ conversationId }: { conversationId: string | 
 			setView({ status: "error", message: t("先打开一条会话。", "Open a session first.") });
 			return;
 		}
+		// 不是当前标签（面板里被隐藏着）就不去取：等它被激活时再取一次最新的
+		if (!active) return;
 		let cancelled = false;
 		setView({ status: "loading" });
 		fetch(`/api/sessions/${encodeURIComponent(conversationId)}/system-prompt`)
@@ -49,7 +56,7 @@ export function SystemPromptView({ conversationId }: { conversationId: string | 
 		return () => {
 			cancelled = true;
 		};
-	}, [conversationId, reloadSeq, t]);
+	}, [conversationId, reloadSeq, active, t]);
 
 	if (view.status === "loading") {
 		return <div className="session-view-empty">{t("正在读取系统提示词…", "Reading the system prompt…")}</div>;

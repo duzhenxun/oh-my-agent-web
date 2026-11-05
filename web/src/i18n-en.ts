@@ -278,7 +278,6 @@ export const EN: Record<string, string> = {
 	选择模型: "Choose a model",
 	那一轮自己的: "that turn's own",
 	需要你确认: "Your confirmation is needed",
-	"需要已读状态（下一步）": "Needs read state (next step)",
 	"需要引擎的分叉能力（下一步）": "Needs the engine's fork capability (next step)",
 	"项目菜单（新建会话 / 重命名 / 定位…）": "Project menu (new conversation / rename / reveal…)",
 	"🗂 本地目录": "🗂 Local folders",

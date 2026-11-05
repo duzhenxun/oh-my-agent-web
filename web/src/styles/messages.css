@@ -546,7 +546,8 @@
 	height: 14px;
 	color: var(--accent);
 	opacity: 0.75;
-	animation: msg-activity-sparkle 1.3s ease-in-out infinite;
+	/* 周期必须和 .msg-activity-label 的 pulse 一致（都是 1.6s）：明暗才能同步到达最亮 / 最暗 */
+	animation: msg-activity-sparkle 1.6s ease-in-out infinite;
 	transform-origin: center;
 }
 
@@ -567,6 +568,7 @@
 /* 文字颜色在两档之间来回变（淡 ↔ 正文色）：字始终有颜色，不会因为渐变没铺满而变成透明 */
 .msg-activity-label {
 	color: var(--text-faint);
+	/* 与 .msg-activity-icon 的 sparkle 同周期同缓动，亮暗才同步 */
 	animation: msg-activity-pulse 1.6s ease-in-out infinite;
 }
 
@@ -898,6 +900,9 @@
 .msg-foot .msg-foot-fork {
 	line-height: 1;
 	padding: 1px 2px;
+	display: inline-flex;
+	align-items: center;
+	gap: 3px;
 }
 
 .msg-foot .msg-foot-fork:hover {
@@ -908,4 +913,28 @@
 .msg-user-text {
 	white-space: pre-wrap;
 	word-break: break-word;
+}
+
+/* 用户发的图片：缩略图排在正文下面，点开放大（见 MessageList 的 UserMessageText） */
+.msg-user-images {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-top: 6px;
+}
+
+.msg-user-img-btn {
+	display: block;
+	max-width: 100%;
+	padding: 0;
+	border: 0;
+	background: none;
+	cursor: zoom-in;
+}
+
+.msg-user-img {
+	display: block;
+	max-width: 100%;
+	max-height: 260px;
+	border-radius: 8px;
 }
