@@ -5,11 +5,10 @@
  *   「需要远程访问时，那个密码不用系统变量；密码保存在 ~/.oh-my-agent-web 下面的配置里，
  *     在访问 127.0.0.1 时于 设置/远程 里增加密码输入框进行设置。」
  *
- * 服务端对这两条端点只认「对端回环 + Host 回环」（`server/http/auth-routes.ts` 的
- * `GET/POST /api/auth/password`）：
- *   - GET  只回 `{ set }`，绝不回显密码；
- *   - POST 落盘到 `<dataDir>/password`，立即生效，不用重启。
- * 远程（域名 / 局域网 IP / 隧道）来问只会拿到 403 —— 这里也就不显示表单。
+ * 服务端（`server/http/auth-routes.ts`）：
+ *   - GET  谁都能问，只回 `{ set }` 与登录保护阀值，绝不回显密码；
+ *   - POST 本机直接改（落盘到 `<dataDir>/password`，立即生效）；远程改必须带上 `currentPassword`，
+ *     对不上就 401 并计入登录锁。远程还没设过密码时不许远程来设。
  */
 import { tNow } from "./use-language.ts";
 
@@ -61,14 +60,15 @@ export async function fetchAccessPasswordStatus(): Promise<PasswordResult> {
 
 /**
  * 设置 / 修改访问密码：保存后立即生效（服务端写 `<dataDir>/password` 并换掉内存里的那份）。
+ * 远程改密码要带上 `currentPassword`（当前密码），本机不用。
  * 长度校验服务端也有一份（4–200）；这里先挡一下，省一次往返。
  */
-export async function saveAccessPassword(password: string): Promise<PasswordSaveResult> {
+export async function saveAccessPassword(password: string, currentPassword?: string): Promise<PasswordSaveResult> {
 	try {
 		const response = await fetch("/api/auth/password", {
 			method: "POST",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ password }),
+			body: JSON.stringify(currentPassword === undefined ? { password } : { password, currentPassword }),
 			cache: "no-store",
 			credentials: "same-origin",
 		});

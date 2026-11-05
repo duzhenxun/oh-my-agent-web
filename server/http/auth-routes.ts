@@ -71,6 +71,17 @@ function isLocalRequest(request: Request): boolean {
 }
 
 /**
+ * 远程看登录活动时的 IP 打码：IPv4 留前两段（`203.0.*.*`），IPv6 留前两组（`2400:cb00:*`）。
+ * 本机看到的仍是完整地址；`unknown` 原样给。
+ */
+function maskAddress(address: string): string {
+	if (address.includes(":")) return `${address.split(":").slice(0, 2).join(":")}:*`;
+	const parts = address.split(".");
+	if (parts.length === 4) return `${parts[0]}.${parts[1]}.*.*`;
+	return address === "unknown" ? address : "***";
+}
+
+/**
  * 浏览器跨站请求：挡一道。
  *
  * 这些端点注册在鉴权中间件**之前**，所以 `authMiddleware` 里那道 HTTP 同源门禁管不到它们。
@@ -104,6 +115,14 @@ export function registerAuthRoutes(
 	const activity = options.activity;
 	/** 「改密码 / 设密码」自己的计数（与登录锁无关，见文件头的说明） */
 	const attempts = new Map<string, Attempt>();
+
+	/**
+	 * 能看 / 改「私密」设置（登录活动、登录保护）的人：本机，或者带着有效 cookie 登录进来的远程访问者。
+	 * 这两条端点注册在鉴权中间件**之前**，所以远程在这里自己验一遍 cookie —— 没登录的一律 403。
+	 */
+	function mayManage(request: Request): boolean {
+		return isLocalRequest(request) || isAuthenticatedCookie(request.headers.cookie, options.getPassword());
+	}
 
 	/**
 	 * 独立登录页：一张自包含 HTML（`login-page.ts`），不依赖前端构建产物。
@@ -331,11 +350,11 @@ export function registerAuthRoutes(
 	 * GET 只回「设没设」这个布尔值，**绝不回显密码本身**。
 	 */
 	app.get("/api/auth/password", (request, response) => {
-		// 跨站页面不该能探到「这台机器有没有设密码」——一并挡掉
-		if (crossSite(request) || !isLocalRequest(request)) {
+		// 跨站页面不该能探到「这台机器有没有设密码」——一并挡掉。远程也能问（只回布尔值与阈值，无敏感信息）
+		if (crossSite(request)) {
 			response.setHeader("Content-Type", "application/json; charset=utf-8");
 			response.setHeader("Cache-Control", "no-store");
-			response.status(403).end(JSON.stringify({ ok: false, error: "只能在运行服务的这台机器上查看" }));
+			response.status(403).end(JSON.stringify({ ok: false, error: "跨站请求被拒绝" }));
 			return;
 		}
 		response.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -360,14 +379,18 @@ export function registerAuthRoutes(
 	 */
 	app.get("/api/auth/activity", (request, response) => {
 		response.setHeader("Cache-Control", "no-store");
-		if (crossSite(request) || !isLocalRequest(request)) {
+		if (crossSite(request) || !mayManage(request)) {
 			response.setHeader("Content-Type", "application/json; charset=utf-8");
-			response.status(403).end(JSON.stringify({ ok: false, error: "只能在运行服务的这台机器上查看" }));
+			response.status(403).end(JSON.stringify({ ok: false, error: "需要先登录才能查看登录活动" }));
 			return;
 		}
 		response.setHeader("Content-Type", "application/json; charset=utf-8");
-		// `list()` 已经是「最新的在最前面」
-		response.status(200).end(JSON.stringify({ ok: true, entries: activity?.list() ?? [] }));
+		// `list()` 已经是「最新的在最前面」；远程看到的 IP 打码，本机看完整地址
+		const local = isLocalRequest(request);
+		const entries = (activity?.list() ?? []).map((entry) =>
+			local ? entry : { ...entry, address: maskAddress(entry.address) },
+		);
+		response.status(200).end(JSON.stringify({ ok: true, entries }));
 	});
 
 	/**
@@ -386,8 +409,8 @@ export function registerAuthRoutes(
 			reject(403, "跨站请求被拒绕：这项设置只能在本机页面改");
 			return;
 		}
-		if (!isLocalRequest(request)) {
-			reject(403, "登录保护只能在运行服务的这台机器上（127.0.0.1）设置");
+		if (!mayManage(request)) {
+			reject(403, "需要先登录才能修改登录保护");
 			return;
 		}
 		if (!guard) {
@@ -421,17 +444,36 @@ export function registerAuthRoutes(
 				reject(403, "跨站请求被拒绝：密码只能在本机页面上设置");
 				return;
 			}
-			if (!isLocalRequest(request)) {
-				reject(403, "访问密码只能在运行服务的这台机器上（127.0.0.1）设置");
-				return;
-			}
+			// 本机直接改（老规矩）；远程必须先证明知道当前密码
+			const local = isLocalRequest(request);
 			const address = addressOf(request);
 			const now = Date.now();
 			if (throttled(address, now)) {
 				reject(429, "请求过于频繁，请稍后再试");
 				return;
 			}
-			const body = request.body as { password?: unknown } | undefined;
+			const body = request.body as { password?: unknown; currentPassword?: unknown } | undefined;
+			if (!local) {
+				const current = options.getPassword();
+				// 远程还没设过密码：不许远程来「第一个设」（谁先到谁定），必须先在本机设好
+				if (!current) {
+					reject(403, "还没设访问密码：请先在运行服务的这台机器上设置");
+					return;
+				}
+				// 远程改密码的「当前密码」和登录共用同一道锁：错够次数就暂停，挡住在线爆破
+				const lock = guard?.status(address);
+				if (lock?.locked) {
+					response.setHeader("Retry-After", String(lock.retryAfterSeconds));
+					reject(429, describeLockout(lock));
+					return;
+				}
+				const typed = typeof body?.currentPassword === "string" ? body.currentPassword : "";
+				if (typed === "" || !samePassword(typed, current)) {
+					const after = guard?.noteFailure(address);
+					reject(401, after?.locked ? describeLockout(after) : "当前密码不正确");
+					return;
+				}
+			}
 			const submitted = typeof body?.password === "string" ? body.password.trim() : "";
 			// 空白字符会破坏「密码存一行」的落盘格式，一律不收
 			if (submitted.length < MIN_PASSWORD_CHARS) {

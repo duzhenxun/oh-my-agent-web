@@ -2,7 +2,7 @@
  * 访问密码（用户 2026-10-30）：
  *   1. 密码存在数据目录的 `password` 文件里（不是系统变量），启动时给了 `-P` 也要写进去；
  *   2. 本机（127.0.0.1）可以在 设置 → 远程 里读状态 / 设 / 改，改完立即生效；
- *   3. 远程（对端不是回环，或 Host 不是回环）一律 403；
+ *   3. 远程（对端不是回环，或 Host 不是回环）：改密码必须带上当前密码，登录活动要先登录且 IP 打码；
  *   4. 跨站页面（Origin 与 Host 不同源）也不能改 —— 这两个端点注册在鉴权中间件之前。
  */
 import assert from "node:assert/strict";
@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import express from "express";
 import { applyStoredOptions } from "../../server/cli-config.ts";
+import { authCookieHeader } from "../../server/http/auth.ts";
 import { registerAuthRoutes } from "../../server/http/auth-routes.ts";
 import { createLoginGuard } from "../../server/http/login-guard.ts";
 import { createLoginActivity } from "../../server/http/login-activity.ts";
@@ -183,15 +184,82 @@ describe("/api/auth/password：只认本机", () => {
 		assert.equal(password, "keep-me");
 	});
 
-	it("远程来源（X-Forwarded-For 非回环）→ 403", async () => {
+	it("远程来源（X-Forwarded-For 非回环）：不带当前密码 → 401，密码不变", async () => {
 		password = "keep-me";
 		const response = await fetch(`${base}/api/auth/password`, {
 			method: "POST",
 			headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.9" },
 			body: JSON.stringify({ password: "hijacked" }),
 		});
-		assert.equal(response.status, 403);
+		assert.equal(response.status, 401);
 		assert.equal(password, "keep-me");
+	});
+
+	it("远程来源：带上正确的当前密码 → 改成功，并给这个浏览器种新 cookie", async () => {
+		password = "keep-me";
+		const response = await fetch(`${base}/api/auth/password`, {
+			method: "POST",
+			headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.9" },
+			body: JSON.stringify({ password: "rotated-remote", currentPassword: "keep-me" }),
+		});
+		assert.equal(response.status, 200);
+		assert.match(String(response.headers.get("set-cookie")), /agent-web-auth=/);
+		assert.equal(password, "rotated-remote");
+		password = "keep-me";
+	});
+
+	it("远程来源：当前密码错 → 401 并计入登录锁，密码不变", async () => {
+		password = "keep-me";
+		const response = await fetch(`${base}/api/auth/password`, {
+			method: "POST",
+			headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.10" },
+			body: JSON.stringify({ password: "hijacked", currentPassword: "guess" }),
+		});
+		assert.equal(response.status, 401);
+		assert.equal(password, "keep-me");
+	});
+
+	it("远程还没设过密码：不许远程来设 → 403", async () => {
+		password = null;
+		const response = await fetch(`${base}/api/auth/password`, {
+			method: "POST",
+			headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.11" },
+			body: JSON.stringify({ password: "first-come" }),
+		});
+		assert.equal(response.status, 403);
+		assert.equal(password, null);
+	});
+
+	it("远程看登录活动：没登录 → 403；登录后可看，IP 打码", async () => {
+		password = "keep-me";
+		const anonymous = await fetch(`${base}/api/auth/activity`, { headers: { "x-forwarded-for": "203.0.113.9" } });
+		assert.equal(anonymous.status, 403);
+
+		const cookie = authCookieHeader("keep-me").split(";")[0] ?? "";
+		const signedIn = await fetch(`${base}/api/auth/activity`, {
+			headers: { "x-forwarded-for": "203.0.113.9", cookie },
+		});
+		assert.equal(signedIn.status, 200);
+		const body = (await signedIn.json()) as { entries: { address: string }[] };
+		assert.ok(body.entries.length > 0);
+		for (const entry of body.entries) assert.ok(entry.address.includes("*") || entry.address === "unknown", entry.address);
+	});
+
+	it("远程改登录保护：没登录 → 403；登录后可改", async () => {
+		const anonymous = await fetch(`${base}/api/auth/guard`, {
+			method: "POST",
+			headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.9" },
+			body: JSON.stringify({ maxFailures: 4, lockMinutes: 15 }),
+		});
+		assert.equal(anonymous.status, 403);
+
+		const cookie = authCookieHeader("keep-me").split(";")[0] ?? "";
+		const signedIn = await fetch(`${base}/api/auth/guard`, {
+			method: "POST",
+			headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.9", cookie },
+			body: JSON.stringify({ maxFailures: 3, lockMinutes: 30 }),
+		});
+		assert.equal(signedIn.status, 200);
 	});
 
 	it("跨站页面（Origin 与 Host 不同源）→ 403", async () => {
