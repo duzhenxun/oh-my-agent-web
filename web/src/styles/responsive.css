@@ -447,6 +447,11 @@
 	gap: 4px;
 }
 
+/* 输入框离底部再收一点：桌面端 4px（app-bar.css），手机端同样 4px；加上下内边距 4px 合计约 8px */
+.is-mobile-shell .workspace > .composer-wrap {
+	margin-bottom: 4px;
+}
+
 /* 文件管理区在手机上默认折叠（它太占地，需要时再点开）；展开后一撑到底，见下面那段 */
 
 /* 输入框：单栏时「发送」按钮不要在框内压住文字，

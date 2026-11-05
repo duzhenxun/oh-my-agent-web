@@ -608,8 +608,9 @@
 	/* 固定 24px 高：字 12px（= --statusbar-font-size 的默认值）+ 里面最小 12px 的圆环，正好放得下 */
 	height: 24px;
 	box-sizing: border-box;
-	/* 左右都不留内边距：整条贴满工作区左右两沿（「顶部」开关贴右沿，第一项贴左沿） */
-	padding: 0;
+	/* 左侧留出呼吸带，第一项不要贴着窗口边（用户 2026-11-04：改成 10px）；
+	 * 右侧仍贴边，给「顶部」开关留到最右 */
+	padding: 0 0 0 10px;
 	border-top: 1px solid var(--border);
 	background: var(--bg-elev);
 	color: var(--text-faint);
@@ -660,9 +661,9 @@
 	padding: 0 0 0 20px;
 }
 
-/* 输入框离底部（状态栏，或展开的底部终端）留 10px */
+/* 输入框离底部（状态栏，或展开的底部终端）留 4px（手机端见 responsive.css） */
 .workspace > .composer-wrap {
-	margin-bottom: 10px;
+	margin-bottom: 4px;
 }
 
 .workspace .main {
@@ -823,7 +824,9 @@
 	align-self: stretch;
 	width: 1px;
 	height: auto;
-	margin: calc(-1 * var(--appbar-pad-y)) 0;
+	/* 线往右挪（用户要求）：左边加、右边减同样的量 —— 线右移，后面的分栏按钮位置不动，
+	 * 整排占宽不变，只是线到分栏按钮之间的空隙变小。 */
+	margin: calc(-1 * var(--appbar-pad-y)) calc(-12px * var(--ab)) calc(-1 * var(--appbar-pad-y)) calc(12px * var(--ab));
 	background: var(--border-strong);
 }
 
