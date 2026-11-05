@@ -95,6 +95,14 @@ export function startOnEmptyScreen(): void {
  */
 let source: Stream | null = null;
 let attempt = 0;
+/** 已排好的重连定时器：切到后台 / 手动连上时要能取消，否则后台还会偷偷重连 */
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+function cancelRetry(): void {
+	if (retryTimer === null) return;
+	clearTimeout(retryTimer);
+	retryTimer = null;
+}
 let seq = 0;
 
 /**
@@ -124,6 +132,7 @@ function resyncAfterFailure(): void {
 
 export function connect(): void {
 	if (source) return;
+	cancelRetry();
 
 	setAppState({ connection: "connecting" });
 	// WS 握手带不了自定义头，所以用查询参数把标签页标识带过去；
@@ -160,7 +169,13 @@ export function connect(): void {
 				// 服务重启 / 网络抖动：按退避重连（WS 不会自己重连）
 				const delay = Math.min(BASE_BACKOFF_MS * 2 ** attempt, MAX_BACKOFF_MS);
 				attempt += 1;
-				setTimeout(connect, delay);
+				cancelRetry();
+				retryTimer = setTimeout(() => {
+					retryTimer = null;
+					// 后台标签页不连：回到前台时 watchVisibility 会调 connect() 补上
+					if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+					connect();
+				}, delay);
 			},
 		},
 	});
@@ -183,6 +198,8 @@ export function request(type: ClientRequestType): string {
  * 而「后台跑构建、切回来接着看输出」正是终端的常用姿势。
  */
 function disconnectForBackground(): void {
+	// 后台期间不排重连：回到前台时 `connect()` 会一次性补齐
+	cancelRetry();
 	if (!source) return;
 	source.close();
 	source = null;
@@ -627,8 +644,12 @@ export function setApprovalMode(mode: ApprovalMode, conversationId?: string | nu
 	});
 }
 
-export function setModel(modelId: string): void {
-	send({ id: `req-${++seq}`, type: "set_model", payload: { modelId } });
+export function setModel(modelId: string, conversationId?: string | null): void {
+	send({
+		id: `req-${++seq}`,
+		type: "set_model",
+		payload: conversationId ? { modelId, conversationId } : { modelId },
+	});
 }
 
 /** 列出已配置的 provider（ADR-0025）：结果由服务端以提示形式回传 */

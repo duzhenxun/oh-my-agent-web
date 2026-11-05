@@ -673,10 +673,12 @@ export function Composer({
 		// 以前这里用「首词是不是 agent 类命令」反推，`/skill:smart-charts …` 两头都不匹配，
 		// 结果既没执行也没发送：点发送按钮毫无反应（用户报的 bug）。
 		if ((surface?.hostCommands ?? true) && isAppCommand(value)) {
+			// 命令是异步的：返回时只清掉**提交时的那份**草稿与附件，期间用户新敲的字不能被清掉
+			const sentPending = pending;
 			void runSlashCommand(value, snapshot).then((outcome) => {
 				if (!outcome.handled) return;
-				setDraft("");
-				setPending([]);
+				if (draftRef.current.trim() === value) setDraft("");
+				setPending((current) => (current === sentPending ? [] : current));
 			});
 			return;
 		}
@@ -884,7 +886,10 @@ export function Composer({
 							? t("正在跑…回车排队", "Running… Enter to queue")
 							: draft.trim() === "" && notes !== ""
 								? t(`回车发送 ${pendingNotes} 条注释`, `Enter to send ${pendingNotes} note(s)`)
-								: t("说点什么，回车发送", "Say something — Enter to send")
+								: t(
+										"消息…输入 / 使用命令，输入 @ 查找文件",
+										"Message… type / for commands, @ to find a file",
+									)
 					}
 					onChange={(event) => {
 						const value = event.target.value;

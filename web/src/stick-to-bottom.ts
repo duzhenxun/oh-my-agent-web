@@ -62,7 +62,7 @@ const SELF_SCROLL_EPSILON_PX = 2;
 const ANCHOR_VERIFY_FRAMES = 6;
 
 /** 锚点顶部留出的呼吸：消息不贴着窗框，看着才像「顶上去了」而不是「被裁掉」 */
-const ANCHOR_GAP_PX = 18;
+const ANCHOR_GAP_PX = 10;
 
 /**
  * 用户输入事件之后多久内发生的滚动算「人滚的」。

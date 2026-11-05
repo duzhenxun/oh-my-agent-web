@@ -546,25 +546,51 @@
 	height: 14px;
 	color: var(--accent);
 	opacity: 0.75;
-	animation: msg-activity-breathe 1.8s ease-in-out infinite;
+	animation: msg-activity-sparkle 1.3s ease-in-out infinite;
+	transform-origin: center;
 }
 
-@keyframes msg-activity-breathe {
+/* 图标「闪一下」：放大缩小 + 轻微转一下 + 明暗一起变，比单纯的透明度呼吸看得清 */
+@keyframes msg-activity-sparkle {
 	0%,
 	100% {
+		transform: scale(0.8) rotate(-8deg);
 		opacity: 0.45;
 	}
 
 	50% {
-		opacity: 0.9;
+		transform: scale(1.18) rotate(8deg);
+		opacity: 1;
+	}
+}
+
+/* 文字颜色在两档之间来回变（淡 ↔ 正文色）：字始终有颜色，不会因为渐变没铺满而变成透明 */
+.msg-activity-label {
+	color: var(--text-faint);
+	animation: msg-activity-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes msg-activity-pulse {
+	0%,
+	100% {
+		color: var(--text-faint);
+	}
+
+	50% {
+		color: var(--text);
 	}
 }
 
 @media (prefers-reduced-motion: reduce) {
-	/* 不等动：留一个静态图标就行（它表达的是「在跑」，动效只是辅助） */
+	/* 不等动：留一个静态图标、文字正常颜色就行（它表达的是「在跑」，动效只是辅助） */
 	.msg-activity-icon {
 		animation: none;
 		opacity: 0.8;
+	}
+
+	.msg-activity-label {
+		animation: none;
+		color: var(--text-faint);
 	}
 }
 
@@ -876,4 +902,10 @@
 
 .msg-foot .msg-foot-fork:hover {
 	color: var(--accent);
+}
+
+/* 用户消息正文：纯文字，保留换行与空格（不走 Markdown，贴进来的 HTML 原样显示） */
+.msg-user-text {
+	white-space: pre-wrap;
+	word-break: break-word;
 }

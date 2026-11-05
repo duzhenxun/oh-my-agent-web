@@ -243,6 +243,8 @@ body {
 	flex-direction: column;
 	gap: 4px;
 	min-width: 0;
+	/* 提示条下面紧跟的是输入区那排按钮（项目 / 分支 / 模板…），贴太近看着像挤在一起：留一截距离 */
+	margin-bottom: 8px;
 }
 
 .notice {
@@ -283,7 +285,8 @@ body {
 	align-items: stretch;
 	min-width: 0;
 	background: var(--bg-elev);
-	border: 1px solid var(--border);
+	/* 外框用比分隔线更深的一档：输入框是主要操作区，不能淡到看不出边界（用户 2026-11-05） */
+	border: 1px solid var(--border-strong);
 	border-radius: var(--radius);
 }
 
@@ -491,4 +494,10 @@ select:focus-visible {
 /* `hidden` 属性打不过作者样式里的 display:flex，得显式关掉 */
 .appbar[hidden] {
 	display: none;
+}
+
+/* 输入框占位文字：比默认的灰再深一档，「@ / 命令」这类提示要看得清 */
+.composer-input::placeholder {
+	color: var(--text-dim);
+	opacity: 1;
 }

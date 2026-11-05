@@ -577,7 +577,7 @@ function MessageViewInner({
 	const [toolsDefaultOpen] = useStoredBool(TOOL_OPEN_KEY, false);
 	const [autoCollapse] = useStoredBool(PROCESS_AUTO_COLLAPSE_KEY, true);
 	/** 跑着的时候就收起来（设置 → 过程 → 跑时自动折叠；默认关，铺着看是原来的行为） */
-	const [autoFoldRunning] = useStoredBool(PROCESS_AUTO_FOLD_RUNNING_KEY, false);
+	const [autoFoldRunning] = useStoredBool(PROCESS_AUTO_FOLD_RUNNING_KEY, true);
 	/**
 	 * 过程区怎么画：要么完整时间线（`all`），要么收成一行（`collapsed`）。
 	 * 判断全在 process-fold.ts，这里只喂事实 + 把它翻译成“画到哪”。
@@ -712,6 +712,15 @@ function MessageViewInner({
 			// 它才是「人说的话」，要一眼看得出比机器步骤重要（用户 2026-11-02）。
 			// 判定见 `isNarrationText`：同一片过程里的说明必须**全是**这一档，
 			// 不能「最新那句当结论、前面几句当叙述」——那样同一层里大小不一（用户 2026-11-02：「不统一呀」）。
+			// 用户自己发的话：**按原文纯文字**显示。Markdown 开着 skipHtml，原始 HTML（比如贴进来的 <script>）
+			// 会被整段丢掉，于是气泡变成空白（用户 2026-11-05 报的）。用户消息没有排版需求，直接当文字。
+			if (message.role === "user") {
+				return segment.text.trim() ? (
+					<div key={segment.index} className="msg-user-text">
+						{segment.text}
+					</div>
+				) : null;
+			}
 			const narration = isNarrationText({ index, lastAnswerAt, lastProcessAt, running });
 			return segment.text.trim() ? (
 				<Markdown

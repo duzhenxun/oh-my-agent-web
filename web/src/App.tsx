@@ -1248,18 +1248,6 @@ export function App() {
 		return null;
 	})();
 	/**
-	 * 最新一条**排队 / 插队**消息的 id。
-	 *
-	 * 点建议按钮 / 快捷短语发出时，如果这一轮还在跑，消息先落进 `queued`（排队），
-	 * 而不是 `messages`。以前锚点只盯 `messages` 里的用户消息 —— 于是这种「点出来的」消息
-	 * 完全没人顶，就贴在输入框上方那一格（用户 2026-10-30：「不像我手动回车那样发到上面去」）。
-	 */
-	const lastQueuedId = (() => {
-		const conversation = snapshot?.active.conversationId ?? null;
-		const queued = (snapshot?.queued ?? []).filter((item) => item.conversationId === conversation);
-		return queued.at(-1)?.id ?? null;
-	})();
-	/**
 	 * 自己刚发出消息 → **把这条顶到视口上方**（用户 2026-10-30，照 codex）。
 	 *
 	 * 以前是「回到底部」：于是发出后画面贴着底边，回答是从最下面一行一行往上长，
@@ -1284,22 +1272,25 @@ export function App() {
 		 * 顶到那条消息上方。节点没挂上就下一帧再试 —— 以前 `getElementById` 拿到 null
 		 * 就静默放弃（`anchorTo(null)` 直接 return），表现就是「有时候顶了，有时候没顶」。
 		 */
-		const anchorToId = (id: string, tries = 4): void => {
+		// 按时间而不是按帧数等：消息要等服务端回快照才会渲染，常常超过几帧（以前只试 4 帧就放弃，
+		// 于是发出去的消息没顶上去）。最多等 3 秒，之后就不再锚定。
+		const anchorToId = (id: string, deadline = performance.now() + 3000): void => {
 			const node = document.getElementById(`msg-${id}`);
 			if (node) {
 				scroll.anchorTo(node);
 				return;
 			}
-			if (tries > 0) requestAnimationFrame(() => anchorToId(id, tries - 1));
+			if (performance.now() < deadline) requestAnimationFrame(() => anchorToId(id, deadline));
 		};
 		const next = nextAnchorTarget(anchorRef.current, {
 			conversation: snapshot?.active.conversationId ?? null,
 			messageId: lastUserId,
-			queuedId: lastQueuedId,
+			// 排队 / 插队的消息不锚定：它们还没真正进聊天区，先按默认跟随底部
+			queuedId: null,
 		});
 		anchorRef.current = next.seen;
 		if (next.target !== null) anchorToId(next.target);
-	}, [lastUserId, lastQueuedId, snapshot?.active.conversationId, scroll.anchorTo]);
+	}, [lastUserId, snapshot?.active.conversationId, scroll.anchorTo]);
 
 	/**
 	 * 侧栏 / 抽屉开关：**顶栏里一颗都不画**（桌面和手机一样，用户：「手机版的也一样哦」）。
@@ -2026,6 +2017,8 @@ export function App() {
 								cwd={workspaceRoot}
 								request={bottomTermRequest}
 								onHide={() => setBottomTermOpen(false)}
+								/* 条尾巴那颗齿轮 = 顶栏的「设置」面板（同一个 state，同一张面板） */
+								onOpenSettings={() => setMenuPanel("settings")}
 							/>
 							</div>
 						)}
@@ -2071,6 +2064,8 @@ export function App() {
 				snapshot={snapshot}
 				terminalOpen={bottomTermOpen}
 				onToggleTerminal={() => setBottomTermOpen((current) => !current)}
+				/* 「设置」放在「终端」后面：跟顶栏那颗开同一张设置面板 */
+				onOpenSettings={() => setMenuPanel("settings")}
 				/* 两个入口都**按引擎能力**画：不是 pi 就不画（而不是画一颗点了报错的） */
 				onOpenHistory={
 					snapshot?.engineCapabilities.historyExport ? () => openSessionView("history") : undefined

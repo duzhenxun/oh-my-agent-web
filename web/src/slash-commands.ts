@@ -252,7 +252,7 @@ export async function runSlashCommand(text: string, snapshot: Snapshot | null): 
 				showToast({ text: tNow(`没找到模型「${args}」`, `No model named “${args}”`) });
 				return { handled: true };
 			}
-			setModel(hit.id);
+			setModel(hit.id, snapshot?.active.conversationId ?? null);
 			showToast({ text: tNow(`已切到 ${hit.label}`, `Switched to ${hit.label}`) });
 			return { handled: true };
 		}
