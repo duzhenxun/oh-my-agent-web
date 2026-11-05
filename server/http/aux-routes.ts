@@ -128,10 +128,13 @@ export function registerAuxRoutes(
 			await options.onChange();
 		},
 	});
+	// 「填入模型信息」与导入共用一份 models.dev 缓存（10 分钟），不各拉一次
+	const catalogLookup = createCatalogLookup();
 	registerImportRoutes(app, {
 		store: options.providerStore,
 		onChange: options.onChange,
 		...(options.builtinProviders ? { builtinProviders: options.builtinProviders } : {}),
+		catalog: catalogLookup,
 	});
 	if (options.probeModel) {
 		registerProbeRoutes(app, { probeModel: options.probeModel, log: options.log });
@@ -139,7 +142,7 @@ export function registerAuxRoutes(
 	registerCatalogRoutes(app, {
 		store: options.providerStore,
 		...(options.builtinProviders ? { builtinProviders: options.builtinProviders } : {}),
-		catalog: createCatalogLookup(),
+		catalog: catalogLookup,
 		testModel: (input) => testModel(input),
 		// 凭证不在工作台手里（环境变量 / 引擎自己的登录）时，逐模型测试交给引擎自己跑
 		...(options.probeModel ? { probeModel: options.probeModel } : {}),

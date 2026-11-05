@@ -93,8 +93,8 @@ export type Runtime = {
 	): Promise<{ ok: true; workspace: string } | { ok: false; error: { code: string; message: string } }>;
 	/** 改客户端设置（ADR-0020 §P1）：归一化 → 落盘 → 推快照 */
 	applySettings(patch: unknown): Promise<Result>;
-	/** 切换当前会话的模型（ADR-0020 §P2） */
-	setModel(modelId: string): Promise<Result>;
+	/** 切换指定会话的模型（未传会话 ID 时兼容旧调用，使用当前 active 会话） */
+	setModel(modelId: string, conversationId?: string): Promise<Result>;
 	/** 思考强度（P4）：档位由引擎给，不支持时界面隐藏控件 */
 	setThinkingLevel(level: string): Promise<Result>;
 	/** 「想一想」：隐藏回合重新向模型要一批建议（不进对话区/历史） */

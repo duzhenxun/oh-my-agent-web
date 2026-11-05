@@ -170,7 +170,11 @@ export async function handleMessage(socket: ClientSink, raw: string, deps: Handl
 				deps.reply(socket, request.id, await deps.runtime.setSubagentSettings(request.payload));
 				return;
 			case "set_model": {
-				deps.reply(socket, request.id, await deps.runtime.setModel(request.payload.modelId));
+				deps.reply(
+					socket,
+					request.id,
+					await deps.runtime.setModel(request.payload.modelId, request.payload.conversationId),
+				);
 				return;
 			}
 			case "set_settings": {

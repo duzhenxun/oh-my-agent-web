@@ -601,7 +601,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		refreshActions: (conversationId?: string, count?: number) =>
 			refreshActions(conversationId, count ?? state.settings.thinkCount),
 
-		setModel: (modelId) => models.switchTo(state.activeId, modelId),
+		setModel: (modelId, conversationId) => models.switchTo(conversationId ?? state.activeId, modelId),
 
 		setThinkingLevel: (level) => models.setThinking(state.activeId, level),
 		reloadModels: () => models.reload(state.activeId),

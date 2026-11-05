@@ -242,7 +242,13 @@ export function parseClientRequest(raw: unknown): ClientRequest | null {
 		return nonEmptyString(payload.engine) ? { id, type: "set_engine", payload: { engine: payload.engine } } : null;
 	}
 	if (type === "set_model") {
-		return nonEmptyString(payload.modelId) ? { id, type: "set_model", payload: { modelId: payload.modelId } } : null;
+		if (!nonEmptyString(payload.modelId)) return null;
+		const conversationId = typeof payload.conversationId === "string" ? payload.conversationId.trim() : "";
+		return {
+			id,
+			type: "set_model",
+			payload: conversationId ? { modelId: payload.modelId, conversationId } : { modelId: payload.modelId },
+		};
 	}
 	if (type === "set_settings") {
 		// 结构有意放宽：真正的归一化在服务端 settings 模块（超长/重复/条数都在那里收敛）

@@ -620,7 +620,11 @@ export type InterruptSubagentRequest = {
 };
 
 /** 切换当前会话的模型（ADR-0020 §P2）：写进会话文件，续聊时不变 */
-export type SetModelRequest = { id: string; type: "set_model"; payload: { modelId: string } };
+export type SetModelRequest = {
+	id: string;
+	type: "set_model";
+	payload: { modelId: string; conversationId?: string };
+};
 
 /** 切换智能体引擎（零重启）：项目 / 模型 / 能力矩阵都换；回合在飞时拒绝（engine.busy）。 */
 export type SetEngineRequest = { id: string; type: "set_engine"; payload: { engine: string } };

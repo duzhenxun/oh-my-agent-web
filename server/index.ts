@@ -464,7 +464,11 @@ const auxRoutes = registerAuxRoutes(app, {
 	mcpMarket: createMcpMarket({ dataDir: config.dataDir }),
 	notify: (text, level) => runtime.notify(text, level),
 	log: (message, meta) => logger.info(message, meta),
-	onChange: () => runProviderRequest({ type: "list_providers" }, () => {}),
+	onChange: async () => {
+		await runtime.reloadModels();
+		await runProviderRequest({ type: "list_providers" }, () => {});
+		runtime.pushSnapshot();
+	},
 });
 
 /**

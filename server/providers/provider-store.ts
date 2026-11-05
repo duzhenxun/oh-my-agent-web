@@ -279,8 +279,18 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 			 */
 			const catalog = await readJson<ModelsCatalog>(catalogPath, {});
 			const catalogKeyOf = (provider: string) => catalog.providers?.[provider]?.apiKey;
+			/**
+			 * 同一个 provider 两个文件都有时，模型取**并集**（按 id 去重，models-store 的条目优先）。
+			 *
+			 * 以前只认 models-store.json：`openai-codex`（ChatGPT Plus/Pro）在那里是空数组，
+			 * 用户导入的 gpt-5.6-luna / gpt-6-luna 等写在 models.json 里 → 整份被丢掉，
+			 * 订阅那一行下面什么都没有（deepseek-office 因为只在 models.json，所以一直是好的）。
+			 */
+			const catalogModelsOf = (provider: string): ModelDefinition[] => catalog.providers?.[provider]?.models ?? [];
 			const custom = Object.entries(models).map(([provider, entry]) => {
-				const list = Array.isArray(entry.models) ? entry.models : [];
+				const own = Array.isArray(entry.models) ? entry.models : [];
+				const seenIds = new Set(own.map((model) => model.id));
+				const list = [...own, ...catalogModelsOf(provider).filter((model) => !seenIds.has(model.id))];
 				const headers = list.find((model) => model.headers)?.headers;
 				return {
 					provider,
@@ -409,8 +419,17 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 
 		async updateModel(provider, spec, seed) {
 			const models = await readJson<ModelsStore>(modelsPath, {});
+			/**
+			 * 模型只在 models.json 里（list() 把两边的模型合并展示，所以界面上能看到它）：
+			 * 改的也得是 models.json，否则 models-store 里找不到 → 「这个 provider 下没有模型」。
+			 * 例：ChatGPT Plus/Pro（openai-codex）导入的 gpt-5.6-luna。
+			 */
+			const inStore = (models[provider]?.models ?? []).some((model) => model.id === spec.id);
+			const inCatalogModels = (
+				(await readJson<ModelsCatalog>(catalogPath, {})).providers?.[provider]?.models ?? []
+			).some((model) => model.id === spec.id);
 			// 目录里的 provider（nexita 之类）：直接改 pi 的 models.json，不另建覆盖条目
-			if (!models[provider] && (await inCatalog(provider))) {
+			if ((!models[provider] && (await inCatalog(provider))) || (!inStore && inCatalogModels)) {
 				await writeCatalogModelPatch(options.agentDir, provider, spec.id, spec);
 				return { ok: true };
 			}
@@ -445,11 +464,15 @@ export function createProviderStore(options: { agentDir: string; now: () => numb
 
 		async addModels(provider, ids) {
 			const models = await readJson<ModelsStore>(modelsPath, {});
-			if (!models[provider] && (await inCatalog(provider))) return addCatalogModels(options.agentDir, provider, ids);
 			const entry = models[provider];
-			if (!entry) return { ok: false, error: `没有这个 provider：${provider}` };
-			const list = Array.isArray(entry.models) ? entry.models : [];
+			const list = Array.isArray(entry?.models) ? entry.models : [];
 			const template = list.find((model) => typeof model.api === "string" && typeof model.baseUrl === "string");
+			/**
+			 * 端点配置在 models.json（pi 的目录）里时，store 里即使有同名的空条目（如订阅登录的 openai-codex），
+			 * 也要写进目录：否则会因为「没有可参考的 api / baseUrl」导入失败。
+			 */
+			if (!template && (await inCatalog(provider))) return addCatalogModels(options.agentDir, provider, ids);
+			if (!entry) return { ok: false, error: `没有这个 provider：${provider}` };
 			if (!template)
 				return { ok: false, error: "这个 provider 还没有可参考的 api / baseUrl（先保存一次 provider 配置）" };
 			const existing = new Set(list.map((model) => model.id));

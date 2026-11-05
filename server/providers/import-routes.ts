@@ -61,9 +61,21 @@ export function registerImportRoutes(
 	app: Express,
 	options: {
 		store: ProviderStore;
-		onChange?: () => void;
+		onChange?: () => void | Promise<void>;
 		/** 内置 provider 池：store.get 不传就查不到「官方内置」（opencode-go 这类） */
 		builtinProviders?: () => Promise<BuiltinProvider[]>;
+		/**
+		 * 模型规格查询（models.dev）：导入时顺手把**新加的**模型规格填上。
+		 * 查不到就留空（不猜），结果里用 `notFound` 告诉界面；已存在的模型（skipped）不动，保留用户填过的值。
+		 */
+		catalog?: (modelId: string) => Promise<{
+			name: string;
+			contextWindow: number | null;
+			maxTokens: number | null;
+			reasoning: boolean;
+			imageInput: boolean;
+			cost: { input: number; output: number; cacheRead: number; cacheWrite: number } | null;
+		} | null>;
 	},
 ): void {
 	const views = async (provider: string) => options.store.get(provider, (await options.builtinProviders?.()) ?? []);
@@ -193,13 +205,35 @@ export function registerImportRoutes(
 			response.status(400).json({ error: { code: "import.no_ids", message: "没有勾选任何模型" } });
 			return;
 		}
-		const result = await options.store.addModels(request.params.provider, ids);
+		const provider = request.params.provider;
+		const result = await options.store.addModels(provider, ids);
 		if (!result.ok) {
 			response.status(400).json({ error: { code: "import.failed", message: result.error } });
 			return;
 		}
-		options.onChange?.();
-		response.json(result);
+		// 新加的模型逐个查 models.dev 填规格；查不到的留空，结果里说清楚（不猜）
+		const filled: string[] = [];
+		const notFound: string[] = [];
+		if (options.catalog) {
+			for (const id of result.added) {
+				const spec = await options.catalog(id).catch(() => null);
+				const written = spec
+					? await options.store.updateModel(provider, {
+							id,
+							name: spec.name || id,
+							reasoning: spec.reasoning,
+							imageInput: spec.imageInput,
+							contextWindow: spec.contextWindow,
+							maxTokens: spec.maxTokens,
+							cost: spec.cost,
+							costSchedule: null,
+						})
+					: null;
+				(written?.ok ? filled : notFound).push(id);
+			}
+		}
+		await options.onChange?.();
+		response.json({ ...result, filled, notFound });
 	});
 }
 
