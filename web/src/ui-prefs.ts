@@ -36,7 +36,7 @@ export const PROCESS_AUTO_COLLAPSE_KEY = "agent-web.chat.processAutoCollapse";
  * 「跑时自动折叠过程」：这一轮**还在跑**的时候，就把思考和工具收成顶上那一行，
  * 屏幕上只剩「N 段思考 · N 次工具 · 耗时」+ 底下的实时动作行（正在跑哪条命令）。
  *
- * 默认 **关** = 跑着的时候**完整铺开**（按发生顺序长；用户 2026-11-02：「没勾上这个，应展开才对吧」）。
+ * 默认 **开**（用户 2026-11-05：设置里「会话过程折叠」默认勾选）= 跑着的时候收成顶上那一行；关掉才**完整铺开**（按发生顺序长）。
  * 勾上就只剩顶上那行秒表 + 底下的实时动作行，想安静盯着结果的人用这一档。
  * 跟「跑完自动折叠」是两个时段、各自独立 —— 可以「跑时收 + 跑完也收」，
  * 也可以「跑时看 + 跑完收」（默认）。
@@ -214,28 +214,57 @@ export const COMPOSER_ITEM_LABEL_EN: Record<ComposerToggle, string> = {
 };
 
 /**
- * 「底部状态栏」里三块信息的显隐：排队 / 工作中 / 上下文用量。
- *
- * 审批模式与「顶部」开关**故意不在**可隐藏之列 —— 那是可操作的动作（放行/询问、收起顶栏），
- * 不是单纯的信息；藏掉一个操作入口比藏掉一块数字更容易让人找不到东西。
+ * 「底部状态栏」所有项目的显隐：设置、审批、引擎、模型、思考强度、排队、工作中、上下文、
+ * 完整历史、系统提示词、终端、顶部。数组顺序就是默认的从左到右顺序（用户 2026-11-05 定）；用户拖过的顺序存在 `statusbar-order.ts`，以存的为准。「设置」始终保留。
  */
-export const STATUSBAR_TOGGLES = ["queued", "running", "context"] as const;
+export const STATUSBAR_TOGGLES = [
+	"history",
+	"prompt",
+	"model",
+	"engine",
+	"thinking",
+	"approval",
+	"queued",
+	"running",
+	"context",
+	"terminal",
+	"top",
+	"settings",
+] as const;
 export type StatusbarToggle = (typeof STATUSBAR_TOGGLES)[number];
 
 const STATUSBAR_KEY_PREFIX = "agent-web.statusbar.";
 export const STATUSBAR_ITEM_KEY = (item: StatusbarToggle): string => `${STATUSBAR_KEY_PREFIX}${item}`;
 
 export const STATUSBAR_ITEM_LABEL: Record<StatusbarToggle, string> = {
+	settings: "设置",
+	approval: "审批模式",
+	engine: "引擎",
+	model: "模型",
+	thinking: "思考强度",
 	queued: "排队",
 	running: "工作中",
 	context: "上下文用量",
+	history: "完整历史",
+	prompt: "系统提示词",
+	terminal: "终端",
+	top: "顶部",
 };
 
 /** 上面那张表的英文 */
 export const STATUSBAR_ITEM_LABEL_EN: Record<StatusbarToggle, string> = {
+	settings: "Settings",
+	approval: "Approval mode",
+	engine: "Engine",
+	model: "Model",
+	thinking: "Thinking level",
 	queued: "Queued",
 	running: "Running",
 	context: "Context",
+	history: "Full history",
+	prompt: "System prompt",
+	terminal: "Terminal",
+	top: "Top bar",
 };
 
 /**

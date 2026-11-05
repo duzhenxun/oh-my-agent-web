@@ -61,6 +61,7 @@ import { BRAND_NAME_MAX } from "../brand-name.ts";
 import { BRAND_NAME } from "../brand.ts";
 import { readLogoFile } from "../brand-logo.ts";
 import { showToast } from "../toast.ts";
+import { moveStatusbarItem, useStatusbarOrder } from "../statusbar-order.ts";
 
 /** 产品自带那张图标（public/favicon.svg）：没换过 logo 时预览里显示它 */
 const DEFAULT_LOGO = "/favicon.svg?v=4";
@@ -93,8 +94,8 @@ type SettingsTab = "general" | "appearance" | "theme" | "language" | "ui" | "sho
  *   - **界面**：外框 —— 侧栏、对话里图片的最大宽度、
  *     顶栏（模型 / 技能 / 推送 / 语音 / 插件 / MCP / 子代理）、
  *     顶栏文字与图标（每个入口画不画文案 / 图标，只管顶栏那一排）、
- *     底部状态栏（排队 / 工作中 / 上下文用量）。
- *     全是本机偏好（localStorage）、点一下立刻生效。
+ *     底部状态栏（所有项目的显隐与从左到右排序）。
+ *     全是本机偏好（localStorage）、点一下或拖一下立刻生效。
  *     「设置」与大屏上压根看不见的东西不在可隐藏之列，否则就再也勾不回来了；
  *   - **对话**（原「通用」）：说的是对话区自己长什么样 ——
  *     对话窗口（模板 / 想想 / 快捷指令 的显隐）、快捷短语内容、想想的参数、
@@ -105,9 +106,8 @@ type SettingsTab = "general" | "appearance" | "theme" | "language" | "ui" | "sho
  *     其余全是本机偏好，勾一下就生效。
  *     「快捷指令」的显隐以前写服务端（`quickPhrasesEnabled`，多设备一致），
  *     现在归本机：手机想不想看那一行、桌面想不想看，本来就该能不一样。
- *   - **外观**：只讲尺寸 —— 顶栏自称（显示 / 隐藏 / 改名，排第一：改完顶栏立刻看得见）、
- *     三处字号（聊天正文 / 侧栏项目名 / 侧栏会话名，共用 `font-scale.ts` 那张档位表）、
- *     顶栏高度（整条栏的缩放系数，`appbar-scale.ts`）、内容宽度 4 档。
+ *   - **外观**：只讲尺寸 —— 三处字号（聊天正文 / 侧栏项目名 / 侧栏会话名，共用 `font-scale.ts` 那张档位表）、
+ *     内容宽度 4 档。顶栏的名称与高度挪到了「界面」（挨着顶栏那几块）。
  *   - **主题**：3 浅 + 3 深的色板卡（2026-10-29 从「外观」拆出来的一页）。
  *     这两页都是立刻生效、不用保存，只改本机 `<html data-theme>` / CSS 变量与 `localStorage`。
  *   - **快捷键**：一张表 + 改键 + 冲突提示（`shortcuts.ts`，本机偏好）。
@@ -186,7 +186,7 @@ export function SettingsPanel() {
  *
  * 所以这一页分两半：
  *   - 本机（免密）：密码输入框 + 保存（打 `/api/auth/password`，落盘后立即生效）；
- *   - 远程：只显示状态 + 退出登录（改密码必须在本机做，服务端也只认本机）。
+ *   - 远程：同样能看 / 改（改密码要先输当前密码；登录活动里的 IP 打码）+ 退出登录。
  * 不限制访问的域名 / 外网 IP / 局域网 IP —— 只要有密码，从哪儿来都能进。
  */
 /**
@@ -209,6 +209,8 @@ function RemoteSettings() {
 	const [passwordSet, setPasswordSet] = useState<boolean | null>(null);
 	const [statusError, setStatusError] = useState("");
 	const [draft, setDraft] = useState("");
+	/** 远程改密码时要先输入的「当前密码」（本机不用） */
+	const [currentDraft, setCurrentDraft] = useState("");
 	const [saving, setSaving] = useState(false);
 	/** 「登录保护」：连续错几次 / 暂停多少分钟（服务端默认 3 / 30） */
 	const [guard, setGuard] = useState(DEFAULT_LOGIN_GUARD_SETTINGS);
@@ -232,12 +234,10 @@ function RemoteSettings() {
 	}, []);
 
 	useEffect(() => {
-		if (remote) return;
 		loadActivity();
-	}, [remote, loadActivity]);
+	}, [loadActivity]);
 
 	useEffect(() => {
-		if (remote) return;
 		void fetchAccessPasswordStatus().then((result) => {
 			if (result.ok) {
 				setPasswordSet(result.set);
@@ -279,8 +279,12 @@ function RemoteSettings() {
 			showToast({ text: t("密码至少 4 位", "Use at least 4 characters") });
 			return;
 		}
+		if (remote && passwordSet && currentDraft === "") {
+			showToast({ text: t("先输入当前密码", "Enter the current password first") });
+			return;
+		}
 		setSaving(true);
-		void saveAccessPassword(password).then((result) => {
+		void saveAccessPassword(password, remote ? currentDraft : undefined).then((result) => {
 			setSaving(false);
 			if (!result.ok) {
 				showToast({ text: result.error });
@@ -289,6 +293,7 @@ function RemoteSettings() {
 			setPasswordSet(true);
 			setStatusError("");
 			setDraft("");
+			setCurrentDraft("");
 			showToast({ text: t("访问密码已保存，立即生效", "Password saved — active now") });
 		});
 	};
@@ -315,8 +320,8 @@ function RemoteSettings() {
 			<div className="settings-hint">
 				{remote
 					? t(
-							"远程访问必须输密码；域名 / 外网 IP / 局域网 IP 都能访问，不用再配白名单。改密码请到运行服务的这台机器上（127.0.0.1）的 设置 → 远程。",
-							"Remote access always needs the password. Any domain, public IP or LAN IP works — no allowlist. To change it, open Settings → Remote on the machine running the server (127.0.0.1).",
+							"远程访问必须输密码；域名 / 外网 IP / 局域网 IP 都能访问。这里改密码要先输入当前密码，登录保护与登录活动也在这里查看（活动里的 IP 已打码）。",
+							"Remote access always needs the password. Changing it here needs the current password. Login protection and login activity are here too (IPs in the activity list are masked).",
 						)
 					: t(
 							"本机直连（127.0.0.1）不需要密码。设一个之后，远程用任意域名 / 局域网 IP / 隧道地址打开都要先输它。",
@@ -324,29 +329,32 @@ function RemoteSettings() {
 						)}
 			</div>
 			{remote ? (
-				<>
-					<div className="settings-row">
-						<button type="button" className="btn btn-tiny" onClick={() => logoutRemote()}>
-							{t("退出登录", "Sign out")}
-						</button>
-						<span className="settings-hint">
-							{t(
-								"清掉这台浏览器上的登录 cookie（有效期 7 天，每次访问顺延）。",
-								"Clears the login cookie in this browser (valid 7 days, renewed on every visit).",
-							)}
-						</span>
-					</div>
-					<div className="settings-hint">
+				<div className="settings-row">
+					<button type="button" className="btn btn-tiny" onClick={() => logoutRemote()}>
+						{t("退出登录", "Sign out")}
+					</button>
+					<span className="settings-hint">
 						{t(
-							"登录保护（连续输错几次就暂停多久）只能在运行服务的这台机器上（127.0.0.1）的 设置 → 远程 里改，默认 3 次 / 30 分钟。",
-							"Login protection (attempts / lockout) can only be changed on the machine running the server (127.0.0.1) under Settings → Remote. Default: 3 tries / 30 minutes.",
+							"清掉这台浏览器上的登录 cookie（有效期 7 天，每次访问顺延）。",
+							"Clears the login cookie in this browser (valid 7 days, renewed on every visit).",
 						)}
-					</div>
-				</>
-			) : (
-				<>
+					</span>
+				</div>
+			) : null}
+			<>
 					<div className="settings-row">
 						<span className="settings-field">{t("访问密码", "Password")}</span>
+						{remote && passwordSet ? (
+							<input
+								className="settings-input settings-password-input"
+								type="password"
+								value={currentDraft}
+								autoComplete="current-password"
+								placeholder={t("当前密码", "Current password")}
+								aria-label={t("当前密码", "Current password")}
+								onChange={(event) => setCurrentDraft(event.target.value)}
+							/>
+						) : null}
 						<input
 							className="settings-input settings-password-input"
 							type="password"
@@ -468,8 +476,7 @@ function RemoteSettings() {
 							))
 						)}
 					</div>
-				</>
-			)}
+			</>
 		</div>
 	);
 }
@@ -716,7 +723,7 @@ function ProcessSettings() {
 	const [thinkingOpen, setThinkingOpen] = useStoredBool(THINKING_OPEN_KEY, false);
 	const [toolOpen, setToolOpen] = useStoredBool(TOOL_OPEN_KEY, false);
 	const [autoCollapse, setAutoCollapse] = useStoredBool(PROCESS_AUTO_COLLAPSE_KEY, true);
-	const [autoFoldRunning, setAutoFoldRunning] = useStoredBool(PROCESS_AUTO_FOLD_RUNNING_KEY, false);
+	const [autoFoldRunning, setAutoFoldRunning] = useStoredBool(PROCESS_AUTO_FOLD_RUNNING_KEY, true);
 	return (
 		<>
 			<div className="settings-panel">
@@ -730,33 +737,27 @@ function ProcessSettings() {
 						checked={autoFoldRunning}
 						onChange={(event) => setAutoFoldRunning(event.target.checked)}
 					/>
-					{t("跑时自动折叠思考与工具调用", "Collapse thinking and tool calls while a turn is running")}
+					{t("会话过程折叠", "Collapse session process")}
 				</label>
 				<label className="settings-toggle">
 					<input type="checkbox" checked={autoCollapse} onChange={(event) => setAutoCollapse(event.target.checked)} />
-					{t("跑完自动折叠思考与工具调用", "Collapse thinking and tool calls when a turn ends")}
+					{t("会话完成折叠", "Collapse when the session completes")}
 				</label>
 				<label className="settings-toggle">
-					<input type="checkbox" checked={thinkingOpen} onChange={(event) => setThinkingOpen(event.target.checked)} />
-					{t("默认展开思考块", "Expand thinking blocks by default")}
+					<input type="checkbox" checked={!thinkingOpen} onChange={(event) => setThinkingOpen(!event.target.checked)} />
+					{t("会话思考折叠", "Collapse thinking blocks")}
 				</label>
 				<label className="settings-toggle">
-					<input type="checkbox" checked={toolOpen} onChange={(event) => setToolOpen(event.target.checked)} />
-					{t("默认展开工具卡", "Expand tool cards by default")}
+					<input type="checkbox" checked={!toolOpen} onChange={(event) => setToolOpen(!event.target.checked)} />
+					{t("会话工具折叠", "Collapse tool cards")}
 				</label>
-				<div className="settings-hint">
-					{t(
-						"思考与正文按发生的顺序排（说一句 → 调工具 → 再说一句）。第一条管**跑着的时候**：不勾（默认）就把思考和工具按发生顺序完整铺开，勾上则只留顶上那行秒表 + 最底下的实时动作行（正在跑哪条命令）。第二条管**跑完那一刻**：勾上（默认）就把最后一段结论之前的一切收成一行，外面只留最后的输出；不勾就保持跑完时的样子。下面两个开关决定单独某一块默认是不是展开的。不管哪一条，点那一行都能立刻展开 / 收起。",
-						"The hints run in the order things happened. The first option controls **while the turn runs**: unticked (default), thinking and tool calls are laid out in full, in order; ticked, only the stopwatch line and the live activity row (the command being run) stay. The second controls **the moment the turn ends**: ticked (default), everything before the final conclusion folds into one line, leaving only the last answer; unticked, it stays as it was. The two switches below decide whether an individual block is expanded by default. Either way, clicking the line expands or collapses it immediately.",
-					)}
-				</div>
 			</div>
 		</>
 	);
 }
 
 /**
- * 界面：侧栏 + 顶栏 + 底栏 —— 都是“外框”这类事。
+ * 界面：顶栏名称 / 高度 + 左侧栏 + 顶栏 + 底栏 —— 都是“外框”这类事。
  *
  * 分组跟界面上那几块一一对应，用户找东西的顺序也是这个：先看左边那一栏（侧栏里有几条会话）、
  * 再看上面、再看下面。
@@ -767,8 +768,25 @@ function ProcessSettings() {
  * 那也是"读对话时字和图多大"的事，跟字号是一类，不该留在"壳子"里。
  */
 function UiSettings() {
+	const t = useT();
 	return (
 		<>
+			{/* 顶栏名称 / 高度：挨着顶栏，所以放在「左侧栏」上面（原在「外观」） */}
+			<BrandSettings />
+			<div className="settings-panel">
+				<div className="settings-head">
+					<span>{t("顶栏高度", "Top bar size")}</span>
+					<span className="settings-sub">
+						{t(
+							"整条顶栏连同里面的按钮 / 图标一起缩放（100% = 标准大小，也就是默认值）",
+							"Scales the whole top bar, its buttons and icons (100% = the standard size, also the default)",
+						)}
+					</span>
+				</div>
+				<AppbarScaleControl />
+			</div>
+			{/* 三处字号并排：聊天正文 → 侧栏项目名 → 侧栏会话名。
+			    都是「字多大」这一类，放一起才不用在 tab 里来回找；同一套档位卡片。 */}
 			<SidebarSettings />
 			<AppbarSettings />
 			<AppbarPartsSettings />
@@ -801,7 +819,7 @@ function ChatImageSettings() {
 				<span>{t("图片", "Images")}</span>
 				<span className="settings-sub">{t("对话里图片的最大显示宽度", "Max width of images in the chat")}</span>
 			</div>
-			<div className="settings-langs settings-langs-5">
+			<div className="settings-langs settings-langs-5 settings-langs-compact">
 				{CHAT_IMAGE_OPTIONS.map((option) => (
 					<label
 						key={option.value}
@@ -849,7 +867,7 @@ function SidebarSettings() {
 	return (
 		<div className="settings-panel">
 			<div className="settings-head">
-				<span>{t("侧栏", "Sidebar")}</span>
+				<span>{t("左侧栏", "Left sidebar")}</span>
 				<span className="settings-sub">{t("每个项目摆多少会话", "Sessions per project")}</span>
 			</div>
 			<div className="settings-row">
@@ -960,36 +978,87 @@ function AppbarPartsSettings() {
 	);
 }
 
-/** 底部：状态栏里三块信息的显隐（纯本机偏好）。审批与「顶部」开关不在可隐藏之列 */
+/** 底部：所有状态栏项目的显隐与顺序（纯本机偏好）。设置入口始终保留。 */
 function StatusbarSettings() {
 	const t = useT();
 	const [visible, setVisible] = usePrefFlags(STATUSBAR_TOGGLES, STATUSBAR_ITEM_KEY);
-	const icons: Record<StatusbarToggle, string> = { queued: "⏳", running: "⚙️", context: "◔" };
+	const [order, setOrder] = useStatusbarOrder();
+	const [dragging, setDragging] = useState<StatusbarToggle | null>(null);
+	const [dragOver, setDragOver] = useState<StatusbarToggle | null>(null);
+	const icons: Record<StatusbarToggle, string> = {
+		settings: "⚙️",
+		approval: "🔓",
+		engine: "◉",
+		model: "▣",
+		thinking: "⚡",
+		queued: "⏳",
+		running: "◌",
+		context: "◔",
+		history: "📜",
+		prompt: "🧾",
+		terminal: "🖥️",
+		top: "⬆️",
+	};
 	return (
 		<div className="settings-panel">
 			<div className="settings-head">
 				<span>{t("底部", "Bottom")}</span>
-				<span className="settings-sub">{t("状态栏里那几块信息", "The readouts in the status bar")}</span>
+				<span className="settings-sub">{t("显隐与从左到右的顺序", "Visibility and left-to-right order")}</span>
 			</div>
-			<div className="settings-checks">
-				{STATUSBAR_TOGGLES.map((item) => (
-					<label className="settings-toggle settings-check" key={item}>
-						<input
-							type="checkbox"
-							checked={visible[item]}
-							onChange={(event) => setVisible(item, event.target.checked)}
-						/>
-						<span className="settings-check-icon" aria-hidden="true">
-							{icons[item]}
-						</span>
-						{t(STATUSBAR_ITEM_LABEL[item], STATUSBAR_ITEM_LABEL_EN[item])}
-					</label>
+			<div className="statusbar-settings-list">
+				{order.map((item) => (
+					<div
+						className={`statusbar-setting-row${dragging === item ? " is-dragging" : ""}${dragOver === item && dragging !== item ? " is-drag-over" : ""}`}
+						key={item}
+						draggable
+						onDragStart={(event) => {
+							setDragging(item);
+							setDragOver(null);
+							event.dataTransfer.effectAllowed = "move";
+							event.dataTransfer.setData("text/plain", item);
+						}}
+						onDragOver={(event) => {
+							event.preventDefault();
+							event.dataTransfer.dropEffect = "move";
+							if (dragging !== item) setDragOver(item);
+						}}
+						onDragLeave={() => {
+							if (dragOver === item) setDragOver(null);
+						}}
+						onDrop={(event) => {
+							event.preventDefault();
+							const dragged = event.dataTransfer.getData("text/plain") as StatusbarToggle;
+							const from = order.indexOf(dragged);
+							const to = order.indexOf(item);
+							if (from >= 0 && to >= 0) setOrder(moveStatusbarItem(order, from, to));
+							setDragging(null);
+							setDragOver(null);
+						}}
+						onDragEnd={() => {
+							setDragging(null);
+							setDragOver(null);
+						}}
+					>
+						<span className="statusbar-setting-grip" aria-hidden="true">⠿</span>
+						<label className="settings-toggle settings-check">
+							<input
+								type="checkbox"
+								checked={item === "settings" ? true : visible[item]}
+								disabled={item === "settings"}
+								onChange={(event) => setVisible(item, event.target.checked)}
+							/>
+							<span className="settings-check-icon" aria-hidden="true">
+								{icons[item]}
+							</span>
+							{t(STATUSBAR_ITEM_LABEL[item], STATUSBAR_ITEM_LABEL_EN[item])}
+						</label>
+					</div>
 				))}
 			</div>
 			<div className="settings-hint">
 				{t(
-					"「审批模式」和右边的「顶部」开关始终留着 —— 它们是操作入口，不是一块信息。",
-					"Approval mode and the “Top” toggle on the right always stay: they are controls, not readouts.",
+					"拖动左侧的点状把手可以改变状态栏从左到右的顺序；取消勾选即可隐藏对应项目。「设置」始终保留，避免把自己关掉后找不回来。",
+					"Drag the dotted handle to change the left-to-right order. Uncheck an item to hide it. Settings always stays available so you cannot lock yourself out.",
 				)}
 			</div>
 		</div>
@@ -1107,6 +1176,7 @@ function BrandSettings() {
 					}}
 				/>
 			</div>
+			<div className="brand-name-row">
 			<label className="settings-toggle">
 				<input type="checkbox" checked={shown} onChange={(event) => setShown(event.target.checked)} />
 				{t("在顶栏显示名称", "Show the name in the top bar")}
@@ -1125,7 +1195,7 @@ function BrandSettings() {
 					setName(event.target.value);
 				}}
 			/>
-			{/* 没改过名就不占一行：常驻一个永远灰着的按钮，只会让人以为「还能恢复到别的什么」 */}
+			{/* 没改过名就不占位：常驻一个永远灰着的按钮，只会让人以为「还能恢复到别的什么」 */}
 			{custom === "" ? null : (
 				<div className="settings-actions">
 					<button
@@ -1140,11 +1210,6 @@ function BrandSettings() {
 					</button>
 				</div>
 			)}
-			<div className="settings-hint">
-				{t(
-					"边输边生效，不用保存；换 logo 也一样。两个勾选都只影响顶栏（都关掉就只剩「新会话」，宽度全让它）；名字还会用到浏览器标签页、新会话抬头和推送通知标题（改名后自动同步到这台设备自己的那条推送订阅）。留空 = 用默认名，logo 也能随时用回默认那张。",
-					"Applies as you type, nothing to save — same for the logo. Both checkboxes only affect the top bar (turning both off leaves just “New session”); the name is also used for the browser tab, the new-session header and push notification titles (a rename syncs to this device's own push subscription). Empty = the default name, and the logo can always be restored to the default one.",
-				)}
 			</div>
 		</div>
 	);
@@ -1199,7 +1264,7 @@ function FontSizeControl({
 				</div>
 				<span className="settings-font-value mono">{value}px</span>
 			</div>
-			<div className="settings-langs settings-langs-4">
+			<div className="settings-langs settings-langs-4 settings-langs-compact">
 				{presets.map((item) => (
 					<label
 						key={item.id}
@@ -1274,7 +1339,7 @@ function ChatWidthControl({ value, onChange }: { value: number; onChange: (px: n
 				</div>
 				<span className="settings-font-value mono">{full ? t("满宽", "Full") : `${value}px`}</span>
 			</div>
-			<div className="settings-langs settings-langs-4">
+			<div className="settings-langs settings-langs-4 settings-langs-compact">
 				{CHAT_WIDTHS.map((item) => (
 					<label
 						key={item.id}
@@ -1335,7 +1400,7 @@ function AppbarScaleControl() {
 				</div>
 				<span className="settings-font-value mono">{percent}%</span>
 			</div>
-			<div className="settings-langs settings-langs-4">
+			<div className="settings-langs settings-langs-4 settings-langs-compact">
 				{APPBAR_SCALE_PRESETS.map((item) => (
 					<label
 						key={item.id}
@@ -1450,24 +1515,6 @@ function AppearanceSettings() {
 	const sidebarFonts = useSidebarFonts();
 	return (
 		<>
-			{/* 顶栏名称排第一：它是这个 tab 里唯一「改了就马上在顶栏上看得见」的一项，
-			     比字号 / 宽度更像是"外观"的开头（后两个是读对话时才在意的） */}
-			<BrandSettings />
-			{/* 紧跟着「顶栏高度」：同样改完顶栏立刻变，改的就是上面那一项所在的那条栏 */}
-			<div className="settings-panel">
-				<div className="settings-head">
-					<span>{t("顶栏高度", "Top bar size")}</span>
-					<span className="settings-sub">
-						{t(
-							"整条顶栏连同里面的按钮 / 图标一起缩放（100% = 标准大小，也就是默认值）",
-							"Scales the whole top bar, its buttons and icons (100% = the standard size, also the default)",
-						)}
-					</span>
-				</div>
-				<AppbarScaleControl />
-			</div>
-			{/* 三处字号并排：聊天正文 → 侧栏项目名 → 侧栏会话名。
-			    都是「字多大」这一类，放一起才不用在 tab 里来回找；同一套档位卡片。 */}
 			{/* 终端字号排在三处字号**前面**（用户 2026-10-30：「在聊天字体大小上面加一个」）：
 			 * 它调的是右侧终端面板（xterm）的字，跟下面三处一样都是「字多大」这一类，只是管的地方不同。 */}
 			<TerminalFontSettings />

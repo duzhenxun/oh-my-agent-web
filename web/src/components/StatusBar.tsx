@@ -1,14 +1,15 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Snapshot } from "../types.ts";
-import { currentMobileShell } from "../mobile-shell-dom.ts";
 import { setApprovalMode } from "../ws.ts";
 import { useLanguage, useT } from "../use-language.ts";
 // 花费文案与子代理卡片 / 消息尾注共用一套（<$0.001 / $0.437 / $3.44）
 import { costText } from "../subagent-view.tsx";
-import { STATUSBAR_ITEM_KEY, STATUSBAR_TOGGLES } from "../ui-prefs.ts";
+import { STATUSBAR_ITEM_KEY, STATUSBAR_TOGGLES, type StatusbarToggle } from "../ui-prefs.ts";
+import { useStatusbarOrder } from "../statusbar-order.ts";
 import { usePrefFlags } from "../use-pref-flags.ts";
 import { centeredPopoverAnchor } from "../popover-anchor.ts";
 import { EnginePicker } from "./EnginePicker.tsx";
+import { PanelIcon } from "./PanelIcon.tsx";
 import { ModelChips } from "./ModelChips.tsx";
 
 function formatTokens(value: number): string {
@@ -30,8 +31,8 @@ function formatTokens(value: number): string {
  * 为什么把「模型 / 强度 / 审批」放这里：它们改的是**这一次以及之后怎么跑**，
  * 不是要发出去的内容；放在输入框上方会跟「想说什么」挤在一起。
  *
- * 中间的「排队 / 工作中 / 上下文」三块信息可以在设置 → 界面 → 底部里关掉（纯本机偏好）；
- * 审批模式与右端的「顶部」开关不可关 —— 它们是操作入口。
+ * 底部所有项目都可以在设置 → 界面 → 底部里调整显隐与从左到右的顺序（纯本机偏好）；
+ * 「设置」入口始终保留，避免把自己关掉后找不回来。
  */
 export function StatusBar({
 	snapshot,
@@ -41,6 +42,7 @@ export function StatusBar({
 	onToggleTerminal,
 	onOpenHistory,
 	onOpenPrompt,
+	onOpenSettings,
 }: {
 	snapshot: Snapshot | null;
 	/** 顶部栏是否收起（状态由 App 持有并持久化） */
@@ -56,6 +58,8 @@ export function StatusBar({
 	onOpenHistory?: () => void;
 	/** 「系统提示词」：看这次运行实际拼出的那段（同样只有 pi 有） */
 	onOpenPrompt?: () => void;
+	/** 「设置」：跟顶栏那颗开同一张设置面板（`undefined` = 不画） */
+	onOpenSettings?: () => void;
 }) {
 	const t = useT();
 	const { language } = useLanguage();
@@ -72,9 +76,11 @@ export function StatusBar({
 	const queued = (snapshot?.queued ?? []).length;
 	// 这三块信息的显隐：设置 → 界面 → 底部（默认全显示）
 	const [showInfo] = usePrefFlags(STATUSBAR_TOGGLES, STATUSBAR_ITEM_KEY);
+	const [statusbarOrder] = useStatusbarOrder();
+	const itemOrder = (item: StatusbarToggle) => ({ order: statusbarOrder.indexOf(item) });
 	/**
-	 * 引擎切换：**固定在底座状态栏**（不再放顶栏）。“图标 + 短名 + 箭头” 归回到这里，
-	 * 就排在「放行」那颗（审批模式）后面，跟它一样是「这一步怎么跑」的开关；
+	 * 引擎切换：默认在底座状态栏。“图标 + 短名 + 箭头”归回到这里，
+	 * 默认排在「放行」那颗（审批模式）后面；实际位置由设置 → 界面 → 底部的排序决定；
 	 * 浮层要**向上**弹（状态栏贴着窗口最底，往下就出屏了），由 placement="statusbar" 负责。
 	 * 不再设显隐勾选：它在顶栏时是面板之一，现在跟审批模式并排，是可操作的动作。
 	 */
@@ -106,8 +112,7 @@ export function StatusBar({
 	 * 否则浮层会停在旧坐标上。
 	 */
 	useLayoutEffect(() => {
-		// 手机上不用算坐标：弹层是整宽（左右各 8px），由 CSS 定位
-		if (!usageOpen || currentMobileShell()) {
+		if (!usageOpen) {
 			setUsageAnchor(null);
 			return;
 		}
@@ -155,16 +160,34 @@ export function StatusBar({
 	}, [usageOpen]);
 	return (
 		<footer className="statusbar">
+			{/* 「设置」放最左边（用户 2026-11-04：设置放到最左边）：跟顶栏那颗开同一张设置面板 */}
+			{onOpenSettings ? (
+				<button
+					type="button"
+					className="status-toggle"
+					style={itemOrder("settings")}
+					onClick={onOpenSettings}
+					title={t("设置", "Settings")}
+				>
+					{/* 图标跟顶栏那颗「设置」同一套（PanelIcon 滑杆），不用 emoji */}
+					<span className="status-toggle-icon">
+						<PanelIcon name="settings" />
+					</span>
+					<span className="status-toggle-label">{t("设置", "Settings")}</span>
+				</button>
+			) : null}
 			{/*
 			 * 项目名**不在这条上了**（用户 2026-10-29 定）：它跟分支一起挪到了输入框上方那一排
 			 * （`ProjectBranchChips`），手机上也一样 —— 同一个名字在这儿再写一遍就是重复，
 			 * 而且窄屏上这一条本来就挤。状态栏只留「怎么跑」的开关与整机状态。
 			 */}
 			<span className="status-controls">
+				{/* 每个槽位的 order 来自设置 → 界面 → 底部；`.status-controls` 只作为兼容容器，实际由父级 flex 排序。 */}
 				{/* 审批模式排在这组的最前面：它是「这一步会不会被拦住」的开关，最该一眼看到 */}
 				{snapshot?.engineCapabilities.approvals === false ? (
 					<span
 						className="tool-chip tool-static"
+						style={{ ...itemOrder("approval"), display: showInfo.approval ? undefined : "none" }}
 						title={t(
 							"该引擎自行决定授权，本工作台拦不住它的危险操作",
 							"This engine decides approvals itself; the workbench cannot block its risky operations",
@@ -176,6 +199,7 @@ export function StatusBar({
 					<button
 						type="button"
 						className={`tool-chip${snapshot?.approvalMode === "allow" ? " tool-chip-warn" : ""}`}
+						style={{ ...itemOrder("approval"), display: showInfo.approval ? undefined : "none" }}
 						onClick={() =>
 							setApprovalMode(
 								snapshot?.approvalMode === "allow" ? "ask" : "allow",
@@ -189,19 +213,26 @@ export function StatusBar({
 							"Approval mode (global; resets to allow-all on restart) — click to switch between allow-all and ask",
 						)}
 					>
-						{/* 桌面：「全部放行」（2026-11-04 用户要求）。手机窄栏：只画「放行」两字（见 statusbar.css 的 .approval-label-short），
-						 * 两份文案都在 DOM 里，靠 .is-mobile-shell 切显示。 */}
+						{/* 「全部放行」（2026-11-04 用户要求）：手机和桌面一样，不再缩成「放行」 */}
+						{/* 图标单独成一个 `.status-ico`（跟栏里别的图标同一个方框、同一个间距），文字另起一个节点 */}
 						{snapshot?.approvalMode === "allow" ? (
 							<>
-								<span className="approval-label-full">{t("🔓 全部放行", "🔓 Allow all")}</span>
-								<span className="approval-label-short">{t("🔓 放行", "🔓 Allow")}</span>
+								<span className="status-ico">🔓</span>
+								<span>{t("全部放行", "Allow all")}</span>
 							</>
 						) : (
-							t("🔒 询问", "🔒 Ask")
+							<>
+								<span className="status-ico">🔒</span>
+								<span>{t("询问", "Ask")}</span>
+							</>
 						)}
 					</button>
 				)}
-				<EnginePicker placement="statusbar" />
+				{showInfo.engine ? (
+					<span className="statusbar-slot" style={itemOrder("engine")}>
+						<EnginePicker placement="statusbar" />
+					</span>
+				) : null}
 				{/*
 				 * 「模型 · 强度」：用户 2026-10-29 定 —— 从输入框上方那排**移下来**，放在引擎那颗的**右边**。
 				 * 跟隔壁的审批 / 引擎是同一类开关（「这一步用谁、跑多细」），挤在一条里比挂在
@@ -211,11 +242,21 @@ export function StatusBar({
 				 * 装不下的 排队 / 工作中 / 上下文 继续往右排，滑一下就能看到；
 				 * 模型菜单在手机上本来就是底部抽屉（见 `ModelPicker`），点开不会跑出屏幕。
 				 */}
-				<ModelChips />
+				{showInfo.model ? (
+					<span className="statusbar-slot" style={itemOrder("model")}>
+						<ModelChips part="model" />
+					</span>
+				) : null}
+				{showInfo.thinking ? (
+					<span className="statusbar-slot" style={itemOrder("thinking")}>
+						<ModelChips part="thinking" />
+					</span>
+				) : null}
 			</span>
 			{showInfo.queued ? (
 				<span
 					className="status-item status-queued"
+					style={itemOrder("queued")}
 					title={t("所有项目 / 所有会话的待发队列合计", "Queued messages across all sessions and projects")}
 				>
 					<span className="status-ico">⏳</span> {t("排队", "Queued")} {queued}
@@ -224,6 +265,7 @@ export function StatusBar({
 			{showInfo.running ? (
 				<span
 					className={`status-item status-running${running > 0 ? " is-working" : ""}`}
+					style={itemOrder("running")}
 					title={t("所有项目 / 所有会话里正在跑的回合数", "Turns currently running across all sessions and projects")}
 				>
 					{/* 有回合在跑时转起来（没跑就是个静止的小环） */}
@@ -232,7 +274,7 @@ export function StatusBar({
 				</span>
 			) : null}
 			{showInfo.context ? (
-				<span className="status-context-wrap">
+				<span className="status-context-wrap" style={itemOrder("context")}>
 					<button
 						ref={contextRef}
 						type="button"
@@ -263,20 +305,14 @@ export function StatusBar({
 					{usageOpen ? (
 						<div
 							ref={usagePopRef}
-							className={`status-usage-pop${currentMobileShell() ? " status-usage-pop-full" : ""}`}
+							className="status-usage-pop"
 							role="dialog"
 							aria-label={t("会话信息", "Session info")}
-							// 手机上交给 CSS（整宽）；桌面上先按「不可见」渲染一帧量出宽度，再落到最终位置（避免闪一下）
-							style={
-								currentMobileShell()
-									? undefined
-									: usageAnchor
-										? { left: usageAnchor.left, bottom: usageAnchor.bottom }
-										: { visibility: "hidden" }
-							}
+							// 先按「不可见」渲染一帧量出宽度，再落到最终位置（避免闪一下）
+							style={usageAnchor ? { left: usageAnchor.left, bottom: usageAnchor.bottom } : { visibility: "hidden" }}
 						>
 							{/* 指向下方胶囊的小尾巴：没有它时浮层像凭空浮起来，
-							    看不出是「从哪个按钮长出来的」（手机上浮层是整宽，不渲染） */}
+							    看不出是「从哪个按钮长出来的」 */}
 							{usageAnchor ? (
 								<span className="status-usage-arrow" style={{ left: usageAnchor.arrow }} aria-hidden="true" />
 							) : null}
@@ -345,10 +381,11 @@ export function StatusBar({
 			 * 不同的是它们要拖出一张标签 —— 所以引擎没这个能力时**整颗按钮不画**，
 			 * 而不是画一颗点下去报错的禁按钮。
 			 */}
-			{onOpenHistory ? (
+			{onOpenHistory && showInfo.history ? (
 				<button
 					type="button"
 					className="status-toggle status-view"
+					style={itemOrder("history")}
 					onClick={onOpenHistory}
 					title={t(
 						"完整历史：整份会话（含工具调用、思考与分支）在右侧面板展开",
@@ -359,10 +396,11 @@ export function StatusBar({
 					<span className="status-toggle-label">{t("完整历史", "History")}</span>
 				</button>
 			) : null}
-			{onOpenPrompt ? (
+			{onOpenPrompt && showInfo.prompt ? (
 				<button
 					type="button"
 					className="status-toggle status-view"
+					style={itemOrder("prompt")}
 					onClick={onOpenPrompt}
 					title={t(
 						"系统提示词：这次运行实际在用的那段（AGENTS.md / 技能都拼好了）",
@@ -373,10 +411,11 @@ export function StatusBar({
 					<span className="status-toggle-label">{t("系统提示词", "Prompt")}</span>
 				</button>
 			) : null}
-			<span className="status-spacer" />
+			{showInfo.terminal ? (
 			<button
 				type="button"
 				className="status-toggle"
+				style={itemOrder("terminal")}
 				aria-pressed={terminalOpen}
 				onClick={onToggleTerminal}
 				title={terminalOpen ? t("隐藏终端", "Hide terminal") : t("显示终端", "Show terminal")}
@@ -385,19 +424,24 @@ export function StatusBar({
 				<span className="status-toggle-icon">🖥️</span>
 				<span className="status-toggle-label">{t("终端", "Terminal")}</span>
 			</button>
+			) : null}
+			{showInfo.top ? (
 			<button
 				type="button"
 				className="status-toggle"
+				style={itemOrder("top")}
 				onClick={onToggleAppbar}
 				title={appbarHidden ? t("显示顶部栏", "Show the top bar") : t("隐藏顶部栏", "Hide the top bar")}
 			>
 				{/* 箭头表示「点下去顶部栏往哪儿走」：现在看得见 → 收起（⬆️）；已收起 → 放下来（⬇️） */}
 				<span className="status-toggle-icon">{appbarHidden ? "⬇️" : "⬆️"}</span>
-				{/* 文案回到「东西」（用户 2026-11-04：「改成顶部」）：这颗读作「顶部栏」这一个开关，
-				    动作交给左边那颗箭头（收起 ⬆️ / 放下 ⬇️）和悬停提示，不再让文字跟着状态变长变短 ——
-				    一栏里最右那颗字越短，前面那些读数能多留一点位置。 */}
-				<span className="status-toggle-label">{t("顶部", "Top")}</span>
+				{/* 文案跟着状态走（用户 2026-11-05：「隐藏顶部 / 显示顶部」动态切换）：
+				    顶部可见时写「隐藏顶部」，已收起时写「显示顶部」，和左边的箭头一致。 */}
+				<span className="status-toggle-label">
+					{appbarHidden ? t("显示顶部", "Show top") : t("隐藏顶部", "Hide top")}
+				</span>
 			</button>
+			) : null}
 		</footer>
 	);
 }

@@ -110,6 +110,63 @@ html.is-tab-sort-dragging * {
 	height: 100%;
 }
 
+/* 底部状态栏项目：每行既能勾选显隐，也能拖动改变状态栏从左到右的顺序 */
+.statusbar-settings-list {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	max-width: 520px;
+}
+
+.statusbar-setting-row {
+	display: flex;
+	align-items: center;
+	min-width: 0;
+	min-height: 34px;
+	gap: 8px;
+	padding: 4px 8px 4px 6px;
+	border: 1px solid transparent;
+	border-radius: 6px;
+	cursor: grab;
+	user-select: none;
+}
+
+.statusbar-setting-row:hover {
+	background: var(--bg-elev);
+	border-color: var(--border);
+}
+
+.statusbar-setting-row.is-dragging {
+	opacity: 0.5;
+	border-color: var(--accent-dim, var(--accent));
+	cursor: grabbing;
+}
+
+.statusbar-setting-row.is-drag-over {
+	background: color-mix(in srgb, var(--accent) 10%, var(--bg-elev));
+	border-color: var(--accent-dim, var(--accent));
+	box-shadow: inset 0 2px 0 var(--accent);
+}
+
+.statusbar-setting-grip {
+	flex: none;
+	width: 22px;
+	color: var(--text-dim);
+	font-size: 18px;
+	line-height: 1;
+	text-align: center;
+	cursor: grab;
+}
+
+.statusbar-setting-row:active .statusbar-setting-grip {
+	color: var(--accent);
+}
+
+.statusbar-setting-row .settings-check {
+	min-width: 0;
+	flex: 1 1 auto;
+}
+
 /* ---- 主题卡：3 列，一张卡 = 三色预览 + 名字 + 一句说明 ---- */
 .theme-grid {
 	display: grid;
@@ -325,4 +382,41 @@ html.is-tab-sort-dragging * {
  * 原生文件控件的样式各浏览器一套，跟这里的分区对不上 */
 .brand-logo-file {
 	display: none;
+}
+
+/* 顶栏名称：「在顶栏显示名称」+ 名字输入框 + 「恢复默认」放一行（窄到放不下时才换行） */
+.brand-name-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+}
+
+.brand-name-row .settings-toggle {
+	flex: none;
+	white-space: nowrap;
+}
+
+.brand-name-row .settings-input {
+	flex: 1 1 160px;
+	min-width: 0;
+}
+
+.brand-name-row .settings-actions {
+	flex: none;
+	margin: 0;
+}
+
+/* 外观里的大小档位（字号 / 内容宽度 / 图片宽度）：卡片压矮，名字和 px 放同一行 */
+.settings-langs-compact .settings-lang {
+	flex-direction: row;
+	align-items: baseline;
+	justify-content: center;
+	gap: 6px;
+	padding: 5px 8px;
+}
+
+.settings-langs-compact .settings-lang-name,
+.settings-langs-compact .settings-lang-hint {
+	line-height: 1.3;
 }
