@@ -4,6 +4,7 @@ import { setModel, setSettings } from "../ws.ts";
 import { ModelPicker } from "./ModelPicker.tsx";
 import { ThinkingPicker } from "./ThinkingPicker.tsx";
 import { useT } from "../use-language.ts";
+import { ModelIcon } from "./ModelIcon.tsx";
 
 /**
  * 「这一轮怎么跑」的两颗：**模型 + 思考强度**。
@@ -21,7 +22,14 @@ import { useT } from "../use-language.ts";
  * 所以这一份 UI 有三个落点，抽成一个组件：占位（模型列表还没到）、回退、项目默认模型
  * 这些逻辑只写一遍，不会两边慢慢走形。
  */
-export function ModelChips({ surface }: { surface?: ChatSurface }) {
+export function ModelChips({
+	surface,
+	part = "both",
+}: {
+	surface?: ChatSurface;
+	/** 状态栏可把模型和思考强度拆成两个可排序的项目；输入框上方默认仍然一起画。 */
+	part?: "model" | "thinking" | "both";
+}) {
 	const t = useT();
 	// hook 不能条件调用：这一面自己带快照时也照样订阅（代价只是这一片的订阅，不是全量 state）
 	const appSnapshot = useAppSelector((state) => state.snapshot);
@@ -49,7 +57,7 @@ export function ModelChips({ surface }: { surface?: ChatSurface }) {
 		<>
 			{/* 模型槽位**永远在**：列表没到 / 引擎暂时取不到时显示占位，
 			    免得用户以为功能坏了（"怎么又不见了" 就是清空列表造成的） */}
-			{snapshot && snapshot.models.length > 0 && snapshot.engineCapabilities.modelSwitch ? (
+			{part !== "thinking" && snapshot && snapshot.models.length > 0 && snapshot.engineCapabilities.modelSwitch ? (
 				<ModelPicker
 					models={snapshot.models}
 					// 面板里停用的模型不在选择器里出现（空白名单 = 全开）
@@ -57,9 +65,13 @@ export function ModelChips({ surface }: { surface?: ChatSurface }) {
 					current={snapshot.model}
 					defaultModel={defaultModels[activeWorkspace] ?? null}
 					onSetDefault={setProjectDefault}
-					onSwitch={surface ? surface.switchModel : setModel}
+					onSwitch={
+						surface
+							? surface.switchModel
+							: (modelId) => setModel(modelId, snapshot?.active.conversationId ?? null)
+					}
 				/>
-			) : (
+			) : part !== "thinking" ? (
 				<span
 					className="tool-chip tool-static mono"
 					title={
@@ -69,13 +81,15 @@ export function ModelChips({ surface }: { surface?: ChatSurface }) {
 					}
 				>
 					<span className="tool-icon" aria-hidden="true">
-						🤖
+						<ModelIcon />
 					</span>
 					<span>{snapshot?.model ?? t("模型未就绪", "Model not ready")}</span>
 				</span>
-			)}
+			) : null}
 			{/* 思考强度：只有该模型支持推理（档位列表非空）时才画，不支持就整颗不出现 */}
-			<ThinkingPicker level={snapshot?.thinkingLevel ?? null} levels={snapshot?.thinkingLevels ?? []} />
+			{part !== "model" ? (
+				<ThinkingPicker level={snapshot?.thinkingLevel ?? null} levels={snapshot?.thinkingLevels ?? []} />
+			) : null}
 		</>
 	);
 }

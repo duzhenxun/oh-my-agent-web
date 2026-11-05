@@ -13,6 +13,7 @@ export type SubscriptionEntry = {
 	connected: boolean;
 	supportsApiKey: boolean;
 	modelCount: number;
+	models?: { id: string; name: string }[];
 };
 
 type Ask =
@@ -30,11 +31,14 @@ export function SubscriptionDetail({
 	entry,
 	onClose,
 	onChanged,
+	onImportModels,
 }: {
 	entry: SubscriptionEntry;
 	onClose: () => void;
 	/** 登录 / 登出成功：让上层重拉订阅列表与 provider 列表 */
 	onChanged: () => void;
+	/** 打开该订阅 provider 的远端模型导入面板（目前仅 Codex 支持） */
+	onImportModels?: () => void;
 }) {
 	const t = useT();
 	const [phase, setPhase] = useState<"idle" | "connecting" | "running" | "done" | "error">("idle");
@@ -277,6 +281,24 @@ export function SubscriptionDetail({
 							)
 						: ""}
 				</div>
+				{entry.models && entry.models.length > 0 ? (
+					<div className="subs-model-list">
+						<strong>{t("已导入模型", "Imported models")}</strong>
+						{entry.models.map((model) => (
+							<div className="subs-model-row" key={model.id} title={model.id}>
+								<span>{model.name}</span>
+								<code>{model.id}</code>
+							</div>
+						))}
+					</div>
+				) : null}
+				{entry.connected && onImportModels ? (
+					<div className="subs-actions">
+						<button type="button" className="btn btn-tiny" onClick={onImportModels} disabled={busy || running}>
+							⬇️ {t("从订阅获取模型", "Fetch models from subscription")}
+						</button>
+					</div>
+				) : null}
 			</div>
 
 			{authUrl ? (

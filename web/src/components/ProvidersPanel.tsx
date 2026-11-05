@@ -171,9 +171,8 @@ export function ProvidersPanel() {
 		const active = !creating && addTab === null && !subscription && current?.provider === provider.provider;
 		// 高亮（右侧显示谁）不变；只有「模型列表是否展开」受点第二下控制
 		const inlineOpen = active && collapsed !== provider.provider;
-		// 左栏只列**启用**的模型：没启用的不该在左栏跟对话选择器里出现
-		// （要重新启用就去右边「模型」Tab，那里永远列全量）
-		const inlineModels = provider.models.filter((model) => modelEnabled(provider.provider, model.id));
+		// 左栏显示全量模型，禁用项也保留在列表里，才能直接逐个重新启用。
+		const inlineModels = provider.models;
 		return (
 			<div key={provider.provider} className={`prov-block${active ? " prov-block-on" : ""}`}>
 				<button
@@ -283,33 +282,46 @@ export function ProvidersPanel() {
 									: t("这个 provider 下没有启用的模型", "No enabled models under this provider")}
 						</div>
 					) : null}
-					{inlineModels.map((model) => (
-						<button
-							type="button"
-							key={model.id}
-							className={`prov-inline-row${
-								inlineOpen && editingModel === model.id && current?.provider === provider.provider
-									? " prov-inline-row-on"
-									: ""
-							}`}
-							aria-current={inlineOpen && editingModel === model.id && current?.provider === provider.provider}
-							title={model.id}
-							onClick={() => {
-								// 内置 provider 也能点：右侧同样给模型详情（保存时会落成自定义条目）
-								setImporting(false);
-								setEditingModel(model.id);
-							}}
-						>
-							<span
-								className={`prov-dot${modelEnabled(provider.provider, model.id) ? " prov-dot-on" : ""}`}
-								title={modelEnabled(provider.provider, model.id) ? t("已启用", "Enabled") : t("未启用", "Disabled")}
-							/>
-							<span className="prov-inline-name">
-								{model.name}
-								{model.name === model.id ? null : <em className="prov-inline-id mono">{model.id}</em>}
-							</span>
-						</button>
-					))}
+					{inlineModels.map((model) => {
+						const enabled = modelEnabled(provider.provider, model.id);
+						return (
+							<div
+								className={`prov-inline-row${
+									inlineOpen && editingModel === model.id && current?.provider === provider.provider
+										? " prov-inline-row-on"
+										: ""
+								}`}
+								key={model.id}
+							>
+								<button
+									type="button"
+									className="prov-inline-open"
+									aria-current={inlineOpen && editingModel === model.id && current?.provider === provider.provider}
+									title={model.id}
+									onClick={() => {
+										setImporting(false);
+										setEditingModel(model.id);
+									}}
+								>
+									<span className="prov-inline-name">
+										{model.name}
+										{model.name === model.id ? null : <em className="prov-inline-id mono">{model.id}</em>}
+									</span>
+								</button>
+								<button
+									type="button"
+									className={`prov-model-toggle${enabled ? " prov-model-toggle-on" : ""}`}
+									role="switch"
+									aria-checked={enabled}
+									aria-label={`${enabled ? t("停用", "Disable") : t("启用", "Enable")} ${model.name}`}
+									title={enabled ? t("点击停用", "Click to disable") : t("点击启用", "Click to enable")}
+									onClick={() => setProviderEnabled(provider.provider, !enabled, model.id)}
+								>
+									<span className="prov-dot" />
+								</button>
+							</div>
+						);
+					})}
 				</CollapsibleModels>
 			</div>
 		);
@@ -370,7 +382,7 @@ export function ProvidersPanel() {
 							) : null}
 							{loggedInSubscriptions.map((entry) => {
 								const linked = providerOfSubscription(entry.id);
-								const models = (linked?.models ?? []).filter((model) => modelEnabled(linked!.provider, model.id));
+								const models = linked?.models ?? [];
 								const active = !creating && addTab === null && subscribing === entry.id;
 								const expanded = active && expandedSub === entry.id;
 								return (
@@ -411,33 +423,42 @@ export function ProvidersPanel() {
 											</span>
 										</button>
 										<CollapsibleModels open={expanded && models.length > 0}>
-											{models.map((model) => (
-												<button
-													type="button"
-													key={model.id}
-													className={`prov-inline-row${
-														editingModel === model.id && subscribing === entry.id ? " prov-inline-row-on" : ""
-													}`}
-													aria-current={editingModel === model.id && subscribing === entry.id}
-													title={model.id}
-													onClick={() => {
-														// 模型明细挂在 provider 上：切右栏，但保留订阅行选中和展开，方便继续点别的模型
-														if (linked) setSelected(linked.provider);
-														setCreating(false);
-														setImporting(false);
-														setEditingModel(model.id);
-													}}
-												>
-													<span
-														className={`prov-dot${modelEnabled(entry.id, model.id) ? " prov-dot-on" : ""}`}
-														title={t("已启用", "Enabled")}
-													/>
-													<span className="prov-inline-name">
-														{model.name}
-														{model.name === model.id ? null : <em className="prov-inline-id mono">{model.id}</em>}
-													</span>
-												</button>
-											))}
+											{models.map((model) => {
+												const enabled = modelEnabled(entry.id, model.id);
+												return (
+													<div className="prov-inline-row" key={model.id}>
+														<button
+															type="button"
+															className={`prov-inline-open${
+																editingModel === model.id && subscribing === entry.id ? " prov-inline-open-on" : ""
+															}`}
+															title={model.id}
+															onClick={() => {
+																if (linked) setSelected(linked.provider);
+																setCreating(false);
+																setImporting(false);
+																setEditingModel(model.id);
+															}}
+														>
+															<span className="prov-inline-name">
+																{model.name}
+																{model.name === model.id ? null : <em className="prov-inline-id mono">{model.id}</em>}
+															</span>
+														</button>
+														<button
+															type="button"
+															className={`prov-model-toggle${enabled ? " prov-model-toggle-on" : ""}`}
+															role="switch"
+															aria-checked={enabled}
+															aria-label={`${enabled ? t("停用", "Disable") : t("启用", "Enable")} ${model.name}`}
+															title={enabled ? t("点击停用", "Click to disable") : t("点击启用", "Click to enable")}
+															onClick={() => setProviderEnabled(entry.id, !enabled, model.id)}
+														>
+															<span className="prov-dot" />
+														</button>
+													</div>
+												);
+											})}
 										</CollapsibleModels>
 									</div>
 								);
@@ -493,7 +514,7 @@ export function ProvidersPanel() {
 								setCreating(true);
 							}}
 						/>
-					) : subscription && !editingModel ? (
+					) : subscription && !editingModel && !importing ? (
 						<SubscriptionDetail
 							key={subscription.id}
 							entry={subscription}
@@ -502,6 +523,16 @@ export function ProvidersPanel() {
 								loadSubscriptions();
 								requestProviders();
 							}}
+							{...(subscription.id === "openai-codex" && subscription.connected
+								? {
+										onImportModels: () => {
+											const linked = providerOfSubscription(subscription.id);
+											if (!linked) return;
+											setSelected(linked.provider);
+											setImporting(true);
+										},
+									}
+								: {})}
 						/>
 					) : editingModel && current ? (
 						<ModelEditor
@@ -514,7 +545,11 @@ export function ProvidersPanel() {
 						<ImportModels
 							provider={current}
 							onClose={() => setImporting(false)}
-							onImported={() => setImporting(false)}
+							onImported={() => {
+								setImporting(false);
+								loadSubscriptions();
+								requestProviders();
+							}}
 						/>
 					) : (
 						<>

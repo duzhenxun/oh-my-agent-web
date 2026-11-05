@@ -5,6 +5,7 @@ import { filterEnabledModels, groupModels } from "../model-groups.ts";
 import type { ModelOption } from "../types.ts";
 import { setModel } from "../ws.ts";
 import { tNow, useT } from "../use-language.ts";
+import { ModelIcon } from "./ModelIcon.tsx";
 
 /**
  * 模型选择器（P6）：点开是「筛选框 + 按厂家分组」的列表，而不是原生 select。
@@ -130,7 +131,7 @@ export function ModelPicker({
 				title={current ?? t("选择模型", "Choose a model")}
 			>
 				<span className="tool-icon" aria-hidden="true">
-					🤖
+					<ModelIcon />
 				</span>
 				<span className="model-trigger-label">{currentLabel}</span>
 				<span className="model-caret" aria-hidden="true">

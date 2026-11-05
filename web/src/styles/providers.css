@@ -543,6 +543,35 @@
 	gap: 6px;
 }
 
+.subs-model-list {
+	margin-top: 8px;
+	padding: 8px 10px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--surface);
+}
+
+.subs-model-list > strong {
+	display: block;
+	margin-bottom: 5px;
+	color: var(--text);
+	font-size: 12px;
+}
+
+.subs-model-row {
+	display: flex;
+	justify-content: space-between;
+	gap: 10px;
+	padding: 3px 0;
+	color: var(--text-secondary);
+	font-size: 12px;
+}
+
+.subs-model-row code {
+	color: var(--text-faint);
+	font-size: 11px;
+}
+
 .subs-state {
 	font-size: 13px;
 	color: var(--text-faint);
@@ -802,4 +831,63 @@
 
 .engine-model-probe .prov-latency {
 	max-width: none;
+}
+
+/* ---- 左栏模型：名称可点编辑，右侧独立开关控制启用 ---- */
+.prov-inline-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+	padding: 0 4px 0 0;
+	border-radius: 6px;
+}
+
+.prov-inline-row:hover {
+	background: var(--bg-soft);
+}
+
+.prov-inline-row-on {
+	background: var(--accent-soft, var(--bg-soft));
+}
+
+.prov-inline-open {
+	flex: 1 1 auto;
+	min-width: 0;
+	padding: 3px 6px;
+	border: none;
+	background: none;
+	color: inherit;
+	cursor: pointer;
+	text-align: left;
+	font-size: 14px;
+}
+
+.prov-model-toggle {
+	flex: none;
+	width: 22px;
+	height: 16px;
+	padding: 0;
+	border: none;
+	border-radius: 999px;
+	background: var(--border);
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	justify-content: flex-start;
+	padding-left: 3px;
+	transition: background 0.15s;
+}
+
+.prov-model-toggle-on {
+	background: var(--accent);
+	justify-content: flex-end;
+	padding-left: 0;
+	padding-right: 3px;
+}
+
+.prov-model-toggle .prov-dot {
+	width: 10px;
+	height: 10px;
+	background: #fff;
 }
