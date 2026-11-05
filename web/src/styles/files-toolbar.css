@@ -8,7 +8,7 @@
 	 * 4px 是「看得出是分开的、又不至于散」的那一档：
 	 * 现在一排 6 颗（「全部收起」那颗已按用户要求删了），默认 260px 侧栏里还剩四十几 px。
 	 * 侧栏被拖窄时自动收回 1px（见下面两条 @container），否则一排会被挤出右边缘。 */
-	gap: 4px;
+	gap: 2px;
 	flex: none;
 	/* 紧跟在「文件管理」标题后面（原来 margin-left: auto 把它推到最右边，
 	 * 标题和按钮之间空出一大截，看着像两组东西）。留 8px 就够分开。 */
@@ -75,6 +75,13 @@
 .files-tool-tip[data-tip]:focus-within::after {
 	opacity: 1;
 	visibility: visible;
+}
+
+/* 绑了快捷键的图标：键位写在提示的第一行（上面），文案在第二行 */
+.files-tool-tip[data-key]::after {
+	content: attr(data-key) "\A" attr(data-tip);
+	white-space: pre;
+	text-align: center;
 }
 
 .files-tool svg {

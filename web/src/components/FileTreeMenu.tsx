@@ -43,20 +43,24 @@ export function FileTreeMenu({
 		onClose();
 	};
 	return (
-		<ProjectMenuPopover point={point} className="proj-menu ctx-menu" onClose={onClose}>
+		<ProjectMenuPopover point={point} pointerTail className="proj-menu ctx-menu" onClose={onClose}>
 			<button type="button" className="proj-menu-item" onClick={run(onReveal)}>
-				{t("在文件夹中显示", "Show in folder")}
+				<span className="proj-menu-ico" aria-hidden="true">📂</span>
+				{t("打开", "Open")}
 			</button>
 			{isDir && onTerminal ? (
 				<button type="button" className="proj-menu-item" onClick={run(onTerminal)}>
+					<span className="proj-menu-ico" aria-hidden="true">⌨️</span>
 					{t("在集成终端中打开", "Open in integrated terminal")}
 				</button>
 			) : null}
 			<button type="button" className="proj-menu-item" onClick={run(onAddToConversation)}>
+				<span className="proj-menu-ico" aria-hidden="true">💬</span>
 				{t("添加到对话", "Add to conversation")}
 			</button>
 			{onChanges ? (
 				<button type="button" className="proj-menu-item" onClick={run(onChanges)}>
+					<span className="proj-menu-ico" aria-hidden="true">{changesOnly ? "📄" : "📝"}</span>
 					{changesOnly ? t("所有文件", "All files") : t("改动过的文件", "Changed files")}
 				</button>
 			) : null}
@@ -64,6 +68,7 @@ export function FileTreeMenu({
 				<>
 					<div className="proj-menu-sep" aria-hidden="true" />
 					<button type="button" className="proj-menu-item" onClick={run(onFind)}>
+						<span className="proj-menu-ico" aria-hidden="true">🔍</span>
 						{isDir ? t("在文件夹中查找…", "Find in folder…") : t("在所在文件夹中查找…", "Find in its folder…")}
 					</button>
 				</>

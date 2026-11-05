@@ -316,6 +316,21 @@
 	box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 16%, transparent);
 }
 
+/* 项目行尾巴上的两格指示器：**同宽**，缺哪格就放一个空占位（`.proj-ind-slot`）。
+ * 以前是「有什么就摆什么」—— 有 📌 的行多占一格，那颗转圈就被往左挤一截，
+ * 和没置顶的行对不齐（用户 2026-11-04：「置顶的转圈圈怎么还不齐」）。
+ * 13px = 那颗 12px 的图钉 / 9px 的转圈居中放得下。 */
+.proj-busy,
+.proj-unseen,
+.proj-pin,
+.proj-ind-slot {
+	flex: none;
+	width: 13px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
 /* 项目行：折叠时把组内的「在跑」顶上来 —— **只画一颗转圈，不写文字**
    （用户 2026-10-29：「运行中」几个字去掉就行；项目名本来就长，多这三个字会把名字挤没）。
    状态同时给了 `title` + `aria-label`，鼠标悬停和读屏都还能知道它在跑。 */
@@ -342,8 +357,14 @@
 }
 
 /* 项目行：折叠时提示「跑完了、还没看」——同色的小蓝点，点击项目行就消失 */
+/* 「跑完了没看」的小蓝点：格子 13px（跟那颗转圈同一列），**点本身**用伪元素画在正中。
+ * 以前整个盒子就是 7px，盒子一宽就把点拉成椭圆 / 贴边 —— 所以拆成「格子 + 点」。 */
 .proj-unseen {
-	flex: none;
+	height: 13px;
+}
+
+.proj-unseen::after {
+	content: "";
 	width: 7px;
 	height: 7px;
 	border-radius: 50%;
@@ -510,4 +531,12 @@
 .is-mobile-shell .side-expand:hover,
 .is-mobile-shell .side-expand:focus-visible {
 	width: 20px;
+}
+
+/* 铺开 / 分栏时：右侧面板（z-index 6）整块贴在侧栏右边，会盖住侧栏边缘这 8px，
+ * 于是「拖宽侧栏」的手柄点不动（用户 2026-11-05 报的）。这两种形态下把手柄抬到面板之上；
+ * 仍低于弹窗（60）与提示（120），不会挡住模态。 */
+.app-wide-lift .side-resizer,
+.app-split .side-resizer {
+	z-index: 8;
 }

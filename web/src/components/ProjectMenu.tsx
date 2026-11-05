@@ -114,7 +114,7 @@ export function ProjectMenu({
 				title={t("在系统文件管理器里定位这个目录（只定位，不执行任何文件）")}
 				onClick={act(onReveal)}
 			>
-				🔍 {t("在 Finder 中显示", "Reveal in Finder")}
+				🔍 {t("在文件夹中打开", "Open in folder")}
 			</button>
 			{/* 隐藏 / 取消隐藏在「Finder 中显示」之后、破坏性操作之前：它不删任何东西，
 			 * 但因为「项目当场从主列表消失」，所以放在最后这一组、给一句「会话都还在」的说明。

@@ -1147,37 +1147,59 @@ function SidebarInner({
 									<span className="proj-name">{name}</span>
 								)}
 								{/*
-								 * 折叠时把「在跑」顶到项目行上，而且**只留那颗转圈**（用户 2026-10-29：「运行中」几个字去掉）：
-								 * 项目名本来就长，再跟三个字进去会把名字挤没；转圈 + 悬浮提示已经够说清楚。
+								 * 项目行尾巴上的指示器：**两格固定**（① 在跑 / 未读 ② 已置顶）。
+								 *
+								 * 为什么要补空占位：以前是「有什么就摆什么」—— 有 📌 的行会多占一格，
+								 * 于是那颗转圈被往左挤一截，跟没置顶的行**对不齐**（用户 2026-11-04 报的
+								 * 「置顶的转圈圈怎么还不齐」）。现在只要这一行有任何一个指示器，
+								 * 两格都占上，缺的那格留空；一格都不需要时整组不渲染（名字能多显示几个字）。
+								 *
+								 * 折叠时把「在跑」顶到项目行上，而且**只留那颗转圈**（用户 2026-10-29：
+								 * 「运行中」几个字去掉）：项目名本来就长，再跟三个字进去会把名字挤没；
+								 * 转圈 + 悬浮提示已经够说清楚。
 								 */}
-								{!projectOpen && projectRunning ? (
-									<span
-										className="proj-busy"
-										role="img"
-										aria-label={t("这个项目里有会话正在跑", "A session in this project is running")}
-										title={t(
-											"这个项目里有会话正在跑（展开就能看到是哪一条）",
-											"A session in this project is running (expand to see which)",
-										)}
-									>
-										<span className="proj-busy-ring" aria-hidden="true" />
-									</span>
-								) : !projectOpen && projectUnseen.length > 0 ? (
-									<span
-										className="proj-unseen"
-										role="img"
-										aria-label={t("有会话跑完了、你还没看", "A session finished and is not reviewed yet")}
-										title={t(
-											`有 ${projectUnseen.length} 条会话跑完了、你还没看（点一下这个项目就消失）`,
-											`${projectUnseen.length} session(s) finished and unreviewed (click the project to clear)`,
-										)}
-									/>
-								) : null}
-								{pinned.includes(project.cwd) ? (
-									<span className="proj-pin" title={t("已置顶")} aria-label={t("已置顶")}>
-										📌
-									</span>
-								) : null}
+								{(() => {
+									const showRunning = !projectOpen && projectRunning;
+									const showUnseen = !projectOpen && !projectRunning && projectUnseen.length > 0;
+									const showPin = pinned.includes(project.cwd);
+									if (!showRunning && !showUnseen && !showPin) return null;
+									return (
+										<>
+											{showRunning ? (
+												<span
+													className="proj-busy"
+													role="img"
+													aria-label={t("这个项目里有会话正在跑", "A session in this project is running")}
+													title={t(
+														"这个项目里有会话正在跑（展开就能看到是哪一条）",
+														"A session in this project is running (expand to see which)",
+													)}
+												>
+													<span className="proj-busy-ring" aria-hidden="true" />
+												</span>
+											) : showUnseen ? (
+												<span
+													className="proj-unseen"
+													role="img"
+													aria-label={t("有会话跑完了、你还没看", "A session finished and is not reviewed yet")}
+													title={t(
+														`有 ${projectUnseen.length} 条会话跑完了、你还没看（点一下这个项目就消失）`,
+														`${projectUnseen.length} session(s) finished and unreviewed (click the project to clear)`,
+													)}
+												/>
+											) : (
+												<span className="proj-ind-slot" aria-hidden="true" />
+											)}
+											{showPin ? (
+												<span className="proj-pin" title={t("已置顶")} aria-label={t("已置顶")}>
+													📌
+												</span>
+											) : (
+												<span className="proj-ind-slot" aria-hidden="true" />
+											)}
+										</>
+									);
+								})()}
 								<button
 									type="button"
 									className="proj-more"

@@ -35,9 +35,10 @@ import { useShortcuts } from "../use-shortcuts.ts";
  * title（元素收不到鼠标事件），项目没打开时那几个灰掉的图标就成了「看着有功能、问不出
  * 是什么」；原生气泡还要等一秒多，样式也不跟主题。
  */
-function Tip({ text, children }: { text: string; children: ReactNode }) {
+function Tip({ text, keys, children }: { text: string; keys?: string; children: ReactNode }) {
+	// 绑了快捷键的：键位画在第一行、文案在第二行（CSS 里 `data-key` 那条规则负责排版）
 	return (
-		<span className="files-tool-tip" data-tip={text}>
+		<span className="files-tool-tip" data-tip={text} {...(keys ? { "data-key": keys } : {})}>
 			{children}
 		</span>
 	);
@@ -213,7 +214,7 @@ export function FilesToolbar({
 					</svg>
 				</button>
 			</Tip>
-			<Tip text={t(searchLabel.zh, searchLabel.en)}>
+			<Tip text={t("搜索文件内容", "Search file contents")} keys={searchCombo || undefined}>
 				{/* 搜**内容**：放大镜里裹一道横线（「在文件里面找」的意思）。
 				    它开的是浮层（见 ContentSearch.tsx），不在这列下面展开 —— 结果要带行号 + 原文，
 				    挤在侧栏里每行只剩二十来字。 */}

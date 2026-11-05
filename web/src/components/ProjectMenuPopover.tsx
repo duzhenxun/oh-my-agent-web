@@ -20,9 +20,18 @@ export type MenuPoint = { x: number; y: number };
  */
 const LEAVE_CLOSE_MS = 400;
 
+/**
+ * 只给**右键位置**画小尾巴时（`pointerTail`）用的两个尺寸：
+ *  - `POINT_TAIL_PAD`：浮层左边缘比鼠标往左让出这么多，尾巴正好落在鼠标的正下方（/上方）；
+ *  - `POINT_GAP`：浮层离鼠标的距离，尾巴尖刚好指到鼠标旁边、不压住指针。
+ */
+const POINT_TAIL_PAD = 14;
+const POINT_GAP = 6;
+
 export function ProjectMenuPopover({
 	anchor,
 	point,
+	pointerTail = false,
 	className,
 	style,
 	align,
@@ -34,6 +43,11 @@ export function ProjectMenuPopover({
 	anchor?: HTMLElement | null;
 	/** 右键位置（优先于 anchor）：菜单就从鼠标那儿弹出来 */
 	point?: MenuPoint | null;
+	/**
+	 * 只有 `point`（没有锚点按钮）时，也画一截小尾巴指着鼠标那一点（文件管理的右键菜单用）。
+	 * 不开就跟以前一样：右键菜单直接贴着鼠标长出来，看不出它「从哪儿弹的」。
+	 */
+	pointerTail?: boolean;
 	/** 额外的样式类（会话菜单用 `.pi-menu` 的配色，定位仍走 `.proj-menu-floating`） */
 	className?: string;
 	/** 额外的内联样式（文件区那个下拉要按按钮宽度铺开，见 FilesRootSelect） */
@@ -95,8 +109,14 @@ export function ProjectMenuPopover({
 		let left = margin;
 		let top = margin;
 		if (point) {
-			left = point.x;
-			top = point.y;
+			if (pointerTail) {
+				// 让尾巴正好落在鼠标下面：浮层左边缘往左让出 `POINT_TAIL_PAD`，离鼠标 `POINT_GAP`
+				left = point.x - POINT_TAIL_PAD;
+				top = point.y + POINT_GAP;
+			} else {
+				left = point.x;
+				top = point.y;
+			}
 		} else if (anchored && align === "center") {
 			// **一律往上长**（跟模型选择器那颗一样）：这两颗胶囊就坐在工具行里，往下弹会盖住输入框。
 			left = anchored.left + anchored.width / 2 - size.width / 2;
@@ -114,7 +134,9 @@ export function ProjectMenuPopover({
 			top = anchored.bottom + GAP;
 			below = true;
 		} else if (below && top + size.height > window.innerHeight - margin) {
-			top = point ? point.y - size.height : (anchored as DOMRect).top - size.height - GAP;
+			top = point
+				? point.y - size.height - (pointerTail ? POINT_GAP : 0)
+				: (anchored as DOMRect).top - size.height - GAP;
 			below = false;
 		}
 		if (top < margin) top = margin;
@@ -131,9 +153,14 @@ export function ProjectMenuPopover({
 			arrow = Math.min(Math.max(pad, center), Math.max(pad, size.width - pad));
 			// 浮层在锚点上方还是下方：按两者的实际上下关系算（翻上去之后尾巴就挂底边）
 			below = top >= anchored.top + anchored.height / 2;
+		} else if (point && pointerTail) {
+			// 只有鼠标点：尾巴指着鼠标那一点（同样夹进圆角之内）；浮层在鼠标下方就挂顶边，翻上去就挂底边
+			const pad = POINT_TAIL_PAD;
+			arrow = Math.min(Math.max(pad, point.x - left), Math.max(pad, size.width - pad));
+			below = top >= point.y;
 		}
 		setPos({ left, top, width: size.width, height: size.height, visible: true, arrow, below });
-	}, [anchor, point, align]);
+	}, [anchor, point, align, pointerTail]);
 
 	useEffect(
 		() => () => {

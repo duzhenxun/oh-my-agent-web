@@ -296,6 +296,8 @@
 	gap: 0;
 	flex: none;
 	min-width: 0;
+	/* 与上方内容的顶间距（用户 2026-11-05：5px） */
+	margin-top: 5px;
 	/* 这一行自己就是**尺寸容器**：右边那排小工具的间距要跟着「侧栏拖多宽」松 / 紧
 	   （宽了才敢把图标摆松，窄了得收回去，否则一排会被挤出去）。
 	   量的是这一行自己的宽度，不是窗口宽度 —— 侧栏是可拖宽的。
@@ -607,4 +609,15 @@
 
 .ctx-menu .proj-menu-item {
 	white-space: nowrap;
+}
+
+/* 右键菜单项前的图标：固定一个 18px 的方框居中，文字才能左对齐（⌨️ 与 📂 的宽度不一样） */
+.proj-menu-ico {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 18px;
+	font-size: 13px;
+	line-height: 1;
 }
