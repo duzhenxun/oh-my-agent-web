@@ -7,8 +7,10 @@
 	min-height: 0;
 	/* 与上面的输入框的间距由 .composer-wrap 的 margin-bottom 提供（app-bar.css）；跟底部状态栏贴齐 */
 	margin-top: 0;
-	border-top: 1px solid var(--border);
-	background: #0d1117;
+	/* 白底之后左右两边和背景融在一起，画一道边框把终端框出来（跟输入框的外框同一个颜色） */
+	border: 1px solid var(--border);
+	border-bottom: none;
+	background: #ffffff;
 }
 
 .bottom-term[hidden],
@@ -110,6 +112,14 @@
 	cursor: default;
 }
 
+/* 设置那颗：PanelIcon 是 16 格线性 SVG（不是字符），给它一个明确的边长，
+ * 免得跟着 `.bottom-term-btn` 的 14px 字号乱飘 */
+.bottom-term-settings svg {
+	width: 13px;
+	height: 13px;
+	display: block;
+}
+
 .bottom-term-spacer {
 	flex: 1 1 auto;
 }
@@ -137,12 +147,12 @@
 }
 
 .bottom-term-pane + .bottom-term-pane {
-	border-left: 1px solid #30363d;
+	border-left: 1px solid #d0d7de;
 }
 
 /* xterm 的 viewport 默认是纯黑，会在终端底部露出一条黑带（padding 区）；盖成终端自己的背景色 */
 .bottom-term .terminal-host {
-	background: #0d1117;
+	background: #ffffff;
 }
 
 .bottom-term .terminal-host .xterm {
@@ -151,5 +161,25 @@
 }
 
 .bottom-term .terminal-host .xterm .xterm-viewport {
-	background-color: #0d1117;
+	background-color: #ffffff;
+}
+
+/*
+ * 终端跟输入框同宽（用户 2026-11-05：「下面的终端宽度跟上面的一样，上面改了，下面也跟着改」）：
+ * 左右留白与 chat.css 里 `.composer-wrap` 那一组完全一致（同一个 `--chat-max-width`、同一套
+ * max()），所以设置 → 外观 → 内容宽度 怎么调，终端的左右边界就跟着输入框走。
+ * 用 margin 而不是 padding：背景、边框都只占对话列，不会在两侧留出一截深色底。
+ */
+.workspace .bottom-term {
+	margin-left: max(16px, calc((100% - var(--chat-max-width, 100%)) / 2));
+	margin-right: max(30px, calc((100% - var(--chat-max-width, 100%)) / 2));
+}
+
+:root[data-chat-width="full"] .workspace .bottom-term {
+	margin-left: 12px;
+}
+
+.is-mobile-shell .workspace .bottom-term {
+	margin-left: max(12px, calc((100% - var(--chat-max-width, 100%)) / 2));
+	margin-right: max(14px, calc((100% - var(--chat-max-width, 100%)) / 2));
 }

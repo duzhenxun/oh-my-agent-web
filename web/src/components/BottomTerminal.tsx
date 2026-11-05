@@ -3,6 +3,7 @@ import type { PointerEvent as ReactPointerEvent } from "react";
 import { useT } from "../use-language.ts";
 import { useStoredNumber } from "../use-stored-number.ts";
 import { TerminalPanel } from "./TerminalPanel.tsx";
+import { PanelIcon } from "./PanelIcon.tsx";
 
 /**
  * 底部终端（VSCode 那种）：挂在对话框**下面**，一排标签 + 可拖高 + 分屏。
@@ -57,9 +58,15 @@ export function BottomTerminal({
 	cwd,
 	onHide,
 	request = null,
+	onOpenSettings,
 }: {
 	/** 是否显示（收起时仍挂着，shell 不断） */
 	open: boolean;
+	/**
+	 * 条尾巴上那颗「设置」：打开工作台的设置面板（和顶栏那颗同一个面板）。
+	 * 不传就不画 —— 换到别的宿主（单测、嵌入）时不该凭空多一颗点不动的按钮。
+	 */
+	onOpenSettings?: () => void;
 	/** 新分组的起始目录：当前会话工作区 */
 	cwd: string | null;
 	/** 点 ⌄ 或最后一个分组被关掉：收起整条 */
@@ -213,6 +220,18 @@ export function BottomTerminal({
 					+
 				</button>
 				<span className="bottom-term-spacer" />
+				{/* 设置：齿轮图标跟顶栏那颗同一套（PanelIcon），开的是同一个设置面板 */}
+				{onOpenSettings ? (
+					<button
+						type="button"
+						className="bottom-term-btn bottom-term-settings"
+						title={t("设置", "Settings")}
+						aria-label={t("设置", "Settings")}
+						onClick={onOpenSettings}
+					>
+						<PanelIcon name="settings" />
+					</button>
+				) : null}
 				<button
 					type="button"
 					className="bottom-term-btn"

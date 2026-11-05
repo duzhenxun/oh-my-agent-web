@@ -8,6 +8,16 @@ import { openStream, type Stream } from "../stream.ts";
 import { TERMINAL_FONT_DEFAULT, TERMINAL_FONT_KEY, TERMINAL_FONT_MAX, TERMINAL_FONT_MIN } from "../ui-prefs.ts";
 import { useStoredNumber } from "../use-stored-number.ts";
 
+/** 未发送输入的显示位置（相对 .terminal-panel，左上角） */
+interface PendingEcho {
+	text: string;
+	left: number;
+	top: number;
+	cellH: number;
+	fontSize: number;
+	fontFamily: string;
+}
+
 /**
  * 终端面板（ADR-0027）：xterm + SSE。
  *
@@ -42,6 +52,8 @@ export function TerminalPanel({
 	const hostRef = useRef<HTMLDivElement>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [ready, setReady] = useState(false);
+	/** 还没回车 / Tab 发出去的输入：只在本地画在光标处（不写进 shell），位置由 xterm 光标算出 */
+	const [pending, setPending] = useState<PendingEcho | null>(null);
 	/**
 	 * 字号（设置 → 外观 → 「终端字号」里也能改，⚠ 同一个 key）：默认 12px。
 	 *
@@ -90,7 +102,30 @@ export function TerminalPanel({
 			 * **不会**影响列数：列宽只看字符宽度，行高只管纵向。
 			 */
 			lineHeight: 1.2,
-			theme: { background: "#0d1117", foreground: "#c9d1d9" },
+			// 白底深字（用户 2026-11-05：终端换成白色样式）。ANSI 颜色按浅底取深一档，保证白底上看得清
+			theme: {
+				background: "#ffffff",
+				foreground: "#24292f",
+				cursor: "#24292f",
+				cursorAccent: "#ffffff",
+				selectionBackground: "rgb(9 105 218 / 22%)",
+				black: "#24292f",
+				red: "#cf222e",
+				green: "#116329",
+				yellow: "#7d4e00",
+				blue: "#0969da",
+				magenta: "#8250df",
+				cyan: "#1b7c83",
+				white: "#6e7781",
+				brightBlack: "#57606a",
+				brightRed: "#a40e26",
+				brightGreen: "#1a7f37",
+				brightYellow: "#633c01",
+				brightBlue: "#218bff",
+				brightMagenta: "#a475f9",
+				brightCyan: "#3192aa",
+				brightWhite: "#8c959f",
+			},
 			cursorBlink: true,
 			scrollback: 2000,
 		});
@@ -146,16 +181,90 @@ export function TerminalPanel({
 		let started = false;
 		// 先注册输入：/api/terminal/start 是异步的，等它回来之前敲的字不能丢
 		const pending: string[] = [];
-		term.onData((data) => {
-			if (!started) {
-				pending.push(data);
-				return;
-			}
+		/**
+		 * 输入合并（用户 2026-11-05：「用户输入完，回车或是 tab 时再调 api，这样会快一些」）：
+		 * 可见字符只攒在本地 `inputBuf` 里（不发请求），由 `.terminal-pending` 把正在输入的字显示在终端底部；
+		 * 回车 / Tab 时把整行合并成**一次**请求发出。缓冲非空时退格只删本地缓冲，不发。
+		 * 其它控制键（Ctrl+C、方向键、ESC 序列等）要即时生效，所以把缓冲与它合并后立即发出。
+		 */
+		const sendInput = (chunk: string) => {
 			void fetch("/api/terminal/input", {
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ id: termId, data }),
+				body: JSON.stringify({ id: termId, data: chunk }),
 			});
+		};
+		const emitInput = (chunk: string) => {
+			if (started) sendInput(chunk);
+			else pending.push(chunk);
+		};
+		/** 可见字符（不含 C0 控制字符与 DEL）：才进本地缓冲 */
+		const isPlainText = (data: string): boolean => {
+			if (!data) return false;
+			for (const ch of data) {
+				const code = ch.codePointAt(0) ?? 0;
+				if (code < 0x20 || code === 0x7f) return false;
+			}
+			return true;
+		};
+		let inputBuf = "";
+		/** 把未发送的字画到光标所在的格子上：格子尺寸取 .xterm-screen 的实际大小 ÷ 行列数 */
+		const showPending = (text: string) => {
+			if (!text) {
+				setPending(null);
+				return;
+			}
+			const screen = host.querySelector<HTMLElement>(".xterm-screen");
+			const aside = host.parentElement;
+			if (!screen || !aside || term.cols <= 0 || term.rows <= 0) {
+				setPending({ text, left: 0, top: 0, cellH: 16, fontSize: term.options.fontSize ?? 12, fontFamily: String(term.options.fontFamily ?? "monospace") });
+				return;
+			}
+			const cellW = screen.clientWidth / term.cols;
+			const cellH = screen.clientHeight / term.rows;
+			const origin = aside.getBoundingClientRect();
+			const at = screen.getBoundingClientRect();
+			const cursor = term.buffer.active;
+			setPending({
+				text,
+				left: at.left - origin.left + cursor.cursorX * cellW,
+				top: at.top - origin.top + cursor.cursorY * cellH,
+				cellH,
+				fontSize: term.options.fontSize ?? 12,
+				fontFamily: String(term.options.fontFamily ?? "monospace"),
+			});
+		};
+		// 光标挪动 / 尺寸变了（输出到来、拖高、字号）：未发送的字跟着光标走
+		term.onCursorMove(() => {
+			if (inputBuf) showPending(inputBuf);
+		});
+		term.onResize(() => {
+			if (inputBuf) showPending(inputBuf);
+		});
+		term.onData((data) => {
+			// 全屏程序（vim / less / top 等，xterm 的 alternate buffer）：按键必须逐个即时送达，
+			// 不能攒在本地（否则 vim 里的 j/k 之类收不到）。先把攒着的字补发出去，保持顺序。
+			if (term.buffer.active.type === "alternate") {
+				const pendingChunk = inputBuf;
+				inputBuf = "";
+				setPending(null);
+				emitInput(pendingChunk + data);
+				return;
+			}
+			if (isPlainText(data)) {
+				inputBuf += data;
+				showPending(inputBuf);
+				return;
+			}
+			if (data === "\x7f" && inputBuf) {
+				inputBuf = Array.from(inputBuf).slice(0, -1).join("");
+				showPending(inputBuf);
+				return;
+			}
+			const chunk = inputBuf + data;
+			inputBuf = "";
+			showPending("");
+			emitInput(chunk);
 		});
 		// 尺寸变化 → 服务端（否则 vim / top 的布局会错）
 		term.onResize(
@@ -183,13 +292,7 @@ export function TerminalPanel({
 			// start 成功：把「输入已就绪」打开，并把启动前敲的字补发出去
 			// （之前漏了这句：所有按键都被当成"未启动"塞进 pending，永远发不出去 → 输入丢失）
 			started = true;
-			for (const chunk of pending.splice(0)) {
-				void fetch("/api/terminal/input", {
-					method: "POST",
-					headers: { "content-type": "application/json" },
-					body: JSON.stringify({ id: termId, data: chunk }),
-				});
-			}
+			for (const chunk of pending.splice(0)) sendInput(chunk);
 			// 预置命令（如有）：补一个回车 = 人自己敲了一遍。必须等 start 回来后再发，
 			// 否则 PTY 还没起来，这句只会被塞进 pending（顺序也对，排在用户已敲的字之后）
 			if (initialCommand) {
@@ -294,6 +397,22 @@ export function TerminalPanel({
 			) : null}
 			{error ? <div className="file-preview-error">{error}</div> : null}
 			<div className="terminal-host" ref={hostRef} />
+			{pending ? (
+				<div
+					className="terminal-pending"
+					aria-live="polite"
+					style={{
+						left: pending.left,
+						top: pending.top,
+						fontSize: pending.fontSize,
+						fontFamily: pending.fontFamily,
+						lineHeight: `${pending.cellH}px`,
+						maxWidth: `calc(100% - ${Math.round(pending.left)}px)`,
+					}}
+				>
+					{pending.text}
+				</div>
+			) : null}
 		</aside>
 	);
 }

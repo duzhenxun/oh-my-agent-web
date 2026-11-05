@@ -25,10 +25,30 @@
 	min-height: 0;
 	border-radius: 0;
 	overflow: hidden;
-	background: #0d1117;
+	background: #ffffff;
 }
 
 .terminal-host .xterm {
 	height: 100%;
 	padding: 4px;
+}
+
+/* 终端输入合并：还没回车 / Tab 发出去的字，悬在终端底部给个提示（只显示在本地，不写进 shell） */
+.terminal-panel {
+	position: relative;
+}
+
+.terminal-pending {
+	position: absolute;
+	z-index: 1;
+	padding: 0 1px;
+	/* 当前光标格上的一小段字：背景盖住光标那一格，用虚下划线表示「还没发出去」 */
+	background: #ffffff;
+	color: #24292f;
+	text-decoration: underline dotted #8b949e;
+	text-underline-offset: 3px;
+	font-family: "Cascadia Mono", Consolas, ui-monospace, SFMono-Regular, Menlo, "Courier New", monospace;
+	white-space: pre-wrap;
+	word-break: break-all;
+	pointer-events: none;
 }
