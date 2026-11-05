@@ -202,7 +202,11 @@ export function createJsonRpcStdioClient(options: JsonRpcStdioOptions): JsonRpcS
 		 * 而本仓只注册了 unhandledRejection（index.ts），于是整个工作台跟着退出。
 		 * 处理方式与进程退出一致：拒掉在飞请求、通知 onExit（上层会标记引擎不可用）。
 		 */
-		process.stdin.on("error", (error: Error) => onGone(`${prefix} 写入失败：${error.message}`));
+		// 连带把子进程杀掉：stdin 断了的进程没法再收请求，留着只会变成孤儿（再启动时又多一份）
+		process.stdin.on("error", (error: Error) => {
+			onGone(`${prefix} 写入失败：${error.message}`);
+			killTree(process);
+		});
 	};
 
 	const requestRaw = <T>(method: string, params?: unknown, timeoutMs = baseTimeout): Promise<T> => {

@@ -580,15 +580,21 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 		return runtime
 			.getProviders()
 			.filter((provider) => Boolean(provider.auth.oauth))
-			.map((provider) => ({
-				id: provider.id,
-				name: OAUTH_LABELS[provider.id] ?? provider.auth.oauth?.name ?? provider.name,
-				subscription: provider.auth.oauth?.isSubscription === true,
-				connected: credentials.get(provider.id) === "oauth",
-				supportsApiKey: Boolean(provider.auth.apiKey),
-				// 只数聊天模型：分类器 / 出图模型登不登录都用不了（见 providers/model-kind.ts）
-				modelCount: chatModels(runtime.getModels(provider.id) as Array<{ type?: string; api?: string }>).length,
-			}))
+			.map((provider) => {
+				// 订阅详情展示与计数共用同一份聊天模型目录，分类器 / 出图模型不纳入。
+				const models = chatModels(
+					runtime.getModels(provider.id) as Array<{ id: string; name?: string; type?: string; api?: string }>,
+				).map((model) => ({ id: model.id, name: model.name ?? model.id }));
+				return {
+					id: provider.id,
+					name: OAUTH_LABELS[provider.id] ?? provider.auth.oauth?.name ?? provider.name,
+					subscription: provider.auth.oauth?.isSubscription === true,
+					connected: credentials.get(provider.id) === "oauth",
+					supportsApiKey: Boolean(provider.auth.apiKey),
+					modelCount: models.length,
+					models,
+				};
+			})
 			.sort((left, right) => left.id.localeCompare(right.id));
 	}
 

@@ -409,6 +409,8 @@ export type ProviderAuthEntry = {
 	supportsApiKey: boolean;
 	/** 现在能用的模型数（登录前后会变） */
 	modelCount: number;
+	/** 当前 provider 的聊天模型目录，用于订阅详情展示 */
+	models?: { id: string; name: string }[];
 };
 
 /** 登录过程中引擎要问用户的一句话 */
