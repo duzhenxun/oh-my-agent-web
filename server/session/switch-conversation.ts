@@ -18,7 +18,8 @@ type SwitchDeps = {
 	refreshSessions: (force: boolean) => Promise<void>;
 	refreshModels: (conversationId: string) => Promise<void>;
 	refreshThinking: (conversationId: string) => Promise<void>;
-	refreshStats: () => void;
+	/** 刷新某条会话的统计（不传则刷当前活跃会话） */
+	refreshStats: (conversationId?: string) => void;
 	/** 上一个会话不再看了：让引擎放开写锁（codex）；有回合在跑时不调用 */
 	parkPrevious: (conversationId: string) => void;
 	/**
@@ -110,6 +111,11 @@ export function createSwitchConversation(deps: SwitchDeps) {
 				state.activeId = conversationId;
 				state.files = { root: fromPi.workspace, treeVersion: (state.files?.treeVersion ?? 0) + 1 };
 			}
+			/**
+			 * 这类会话不在本进程的 conversations 里，统计从来没算过（`mine` 分支的 refreshStats 走不到这里）。
+			 * 不刷的话 statsByConversation 里没有它 → 快照里 sessionStats 为 null → 上下文一直显示 0。
+			 */
+			deps.refreshStats(conversationId);
 			// 无论有没有真的换（已是当前会话也推）：客户端靠这份快照把乐观高亮退掉，
 			// 否则点一下当前会话就变成「正在打开…」卡在那里 —— 看着就是「点了没反应」。
 			deps.pushSnapshot();

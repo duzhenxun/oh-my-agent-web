@@ -301,7 +301,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		refreshSessions: (force) => piRefresher.refresh(force),
 		refreshModels: (id) => models.refresh(id),
 		refreshThinking: (id) => models.refreshThinking(id),
-		refreshStats: () => void refreshStats(),
+		refreshStats: (id) => void refreshStats(id),
 		// 切走的那条会话放开引擎写锁（codex）：否则 Codex 桌面端打不开它
 		parkPrevious: (id) => {
 			if (turns.has(id)) return;

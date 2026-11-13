@@ -29,6 +29,7 @@ function harness(options: {
 	opened: UiMessage[];
 	mine?: boolean;
 	log?: (message: string, ctx?: Record<string, unknown>) => void;
+	statsCalls?: (string | undefined)[];
 }) {
 	const state = createServerState(WORKSPACE);
 	// 这条会话只存在于引擎侧（pi 历史会话）：不在本进程的 conversations 里
@@ -48,7 +49,9 @@ function harness(options: {
 		refreshSessions: async () => {},
 		refreshModels: async () => {},
 		refreshThinking: async () => {},
-		refreshStats: () => {},
+		refreshStats: (id) => {
+			options.statsCalls?.push(id);
+		},
 		parkPrevious: () => {},
 		isTurnActive: () => options.inFlight,
 		pushSnapshot: () => {
@@ -105,6 +108,17 @@ describe("切到一条正在跑的历史会话", () => {
  * 只要这些字段还在，就能从日志直接读出「是打开会话贵、模型回读贵，还是快照构建贵」——
  * 少了哪一格，就只能靠猜。所以这里把日志形状也当契约锁住。
  */
+describe("切到一条不在运行中的历史会话：统计要重算", () => {
+	it("切过去时按该会话 id 刷新统计，不然上下文用量一直是 0", async () => {
+		const statsCalls: (string | undefined)[] = [];
+		const { switchTo } = harness({ inFlight: false, opened: [], statsCalls });
+
+		await switchTo(CONV, "client-1");
+
+		assert.deepEqual(statsCalls, [CONV]);
+	});
+});
+
 describe("切会话的分段计时日志", () => {
 	function collector() {
 		const lines: Record<string, unknown>[] = [];
