@@ -29,6 +29,7 @@ import { ActionSuggestions } from "./ActionSuggestions.tsx";
 import { ChangedFiles } from "./ChangedFiles.tsx";
 import { CopyButton } from "./CopyButton.tsx";
 import { Markdown } from "./Markdown.tsx";
+import { urlTokens } from "../url-tokens.ts";
 import { SelectionToolbar, type SelectionAddInput } from "./SelectionToolbar.tsx";
 import { AnnotationMarks } from "./AnnotationMarks.tsx";
 import type { Annotation } from "../annotations.ts";
@@ -139,7 +140,11 @@ function UserMessageText({ text }: { text: string }) {
 		.trim();
 	return (
 		<>
-			{body !== "" ? <div className="msg-user-text">{body}</div> : null}
+			{body !== "" ? (
+				<div className="msg-user-text">
+					<UserTextWithLinks text={body} />
+				</div>
+			) : null}
 			{images.length > 0 ? (
 				<div className="msg-user-images">
 					{images.map((image, index) => (
@@ -155,6 +160,37 @@ function UserMessageText({ text }: { text: string }) {
 					))}
 				</div>
 			) : null}
+		</>
+	);
+}
+
+/**
+ * 用户消息里的网址：气泡仍按原文显示，但 http(s) 地址要能点开 —— **新标签页**（用户 2026-11-10：
+ * 「这种 http/https 的连接要在新标签中打开，这属于网址」）。这里不整段上 markdown，
+ * 只把网址那几段换成 `<a>`：贴进来的 HTML 依旧原样当文字（见上面那段的理由）。
+ * 没有网址时原样返回字符串，别给每句话都套一层 Fragment。
+ */
+function UserTextWithLinks({ text }: { text: string }) {
+	const parts = urlTokens(text);
+	if (parts.every((part) => part.url === undefined)) return <>{text}</>;
+	return (
+		<>
+			{parts.map((part, index) =>
+				part.url ? (
+					<a
+						key={index}
+						className="msg-user-link"
+						href={part.url}
+						target="_blank"
+						rel="noopener noreferrer"
+						title={tNow("在新标签页打开", "Open in a new tab")}
+					>
+						{part.text}
+					</a>
+				) : (
+					<Fragment key={index}>{part.text}</Fragment>
+				),
+			)}
 		</>
 	);
 }
@@ -298,7 +334,7 @@ function LiveOutput({ message }: { message: UiMessage }) {
 }
 
 import { describeTool, skillOf, ToolKindIcon } from "./tool-activity.tsx";
-import { useLanguage, useT } from "../use-language.ts";
+import { tNow, useLanguage, useT } from "../use-language.ts";
 import { textOfMessage } from "../message-text.ts";
 import { rememberMessages } from "../store.ts";
 import { setPathOpener } from "../path-tokens.ts";

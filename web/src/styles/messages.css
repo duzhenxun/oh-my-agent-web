@@ -915,6 +915,15 @@
 	word-break: break-word;
 }
 
+/* 用户消息里的网址（新标签页打开，见 UserTextWithLinks）：气泡里只给下划线 + 主色，
+   别用默认的蓝色——深色主题下气泡底色和浏览器默认蓝打架。 */
+.msg-user-link {
+	color: var(--accent);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+	word-break: break-all;
+}
+
 /* 用户发的图片：缩略图排在正文下面，点开放大（见 MessageList 的 UserMessageText） */
 .msg-user-images {
 	display: flex;

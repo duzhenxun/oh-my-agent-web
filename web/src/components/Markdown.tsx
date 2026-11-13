@@ -1,5 +1,5 @@
 import type { Components } from "react-markdown";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
@@ -18,11 +18,15 @@ import { CHAT_IMAGE_WIDTH_DEFAULT, CHAT_IMAGE_WIDTH_KEY } from "../ui-prefs.ts";
 import { MermaidDiagram } from "./MermaidDiagram.tsx";
 import { tNow } from "../use-language.ts";
 import { looksLikePath, looksLikePathListing, openPathFromMessage, pathTokens } from "../path-tokens.ts";
+import { isUrl } from "../url-tokens.ts";
 
 /**
  * markdown 渲染（ADR-0008 §Markdown 安全渲染）。
  *  - `skipHtml`：模型输出里的原始 HTML 一律当文本，杜绝 `<script>`/`onerror` 之类；
- *  - 链接只放行 http(s)，且一律新窗口 + noopener；
+ *  - 链接只放行 http(s)，且**一律新窗口 + noopener**；正文里裸写的地址 remark-gfm 会自动转成链接，
+ *    但**行内代码 / 网址清单里的地址**绕过了它，那两处单独认（`isUrl` / `pathTokens().url`），
+ *    也是新窗口——用户 2026-11-10：「这种 http/https 的连接要在新标签中打开，这属于网址」
+ *    （以前 `.html` 后缀让它落进路径白名单，被当成工作区文件点进右侧面板，还找不到）；
  *  - 图片：远程图 / 已上传图 / **工作区里的图片文件**（走 /api/files/raw，受项目约束），
  *    点击在**原地弹预览浮层**（不开新标签页，见 image-viewer.ts）；
  *    模型只写了路径（裸路径 / 行内代码 / 本地路径链接）的，`promoteImagePaths` 先提升成图片，
@@ -192,6 +196,21 @@ function isImageOnlyParagraph(node: unknown): boolean {
 	return images > 0;
 }
 
+/** 消息里的一条网址：正文 / 行内代码 / 网址清单共用同一条规则 —— 一律新标签页打开 */
+function UrlLink({ href, children }: { href: string; children: ReactNode }) {
+	return (
+		<a
+			className="md-link"
+			href={href}
+			target="_blank"
+			rel="noopener noreferrer"
+			title={tNow("在新标签页打开", "Open in a new tab")}
+		>
+			{children}
+		</a>
+	);
+}
+
 const components: Components = {
 	a: ({ href, children }) => {
 		// 链接指向本地图片（`[shot.png](/abs/shot.png)`）：直接当图显示，不用用户再点一次
@@ -200,8 +219,10 @@ const components: Components = {
 			if (local) return <MessageImage src={local} path={href} alt={typeof children === "string" ? children : ""} />;
 		}
 		const safe = typeof href === "string" && /^https?:\/\//i.test(href);
+		// 正文里的链接与行内代码里的网址走同一个组件：一律新标签页 + noopener
+		if (safe) return <UrlLink href={href}>{children}</UrlLink>;
 		return (
-			<a href={safe ? href : undefined} target="_blank" rel="noopener noreferrer" className="md-link">
+			<a className="md-link" target="_blank" rel="noopener noreferrer">
 				{children}
 			</a>
 		);
@@ -238,6 +259,9 @@ const components: Components = {
 		if (language === "mermaid") return <MermaidDiagram code={text} />;
 		const isBlock = language !== "" || (typeof children === "string" && children.includes("\n"));
 		if (!isBlock) {
+			// 行内代码整段就是个网址（`https://host/a/index.html`）→ 就是个网址，新标签页打开。
+			// 必须排在 looksLikePath 前面：`.html` 这类后缀在路径白名单里，晚了就变成路径按钮了
+			if (isUrl(text)) return <UrlLink href={text.trim()}>{children}</UrlLink>;
 			// 行内代码整段就是个路径（`docs/report.html`）→ 点它直接在右侧预览
 			if (looksLikePath(text)) {
 				return (
@@ -267,7 +291,11 @@ const components: Components = {
 						{text.split("\n").map((line, index) => (
 							<span className="md-path-line" key={index}>
 								{pathTokens(line).map((part, partIndex) =>
-									part.path ? (
+									part.url ? (
+										<UrlLink key={partIndex} href={part.url}>
+											{part.text}
+										</UrlLink>
+									) : part.path ? (
 										<button
 											type="button"
 											key={partIndex}
