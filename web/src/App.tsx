@@ -1212,10 +1212,39 @@ export function App() {
 	// （跟顶栏中间那颗标题用的是同一份 `activeHeading`）。
 	// 顺序**对话名在前**：标签页宽度有限，浏览器从头截断，项目名放前面时
 	// 一眼看到的全是同一个项目名，对话名反而被省略号吃掉。
+	//
+	// 菜单栏 / 别的标签里也要看得出「这条还在跑」（2026-11-13）：侧栏那颗转圈只有回到窗口才看得到，
+	// 所以跑着的时候在标题最前面加一颗 `●` —— 标签宽 120px 时它不会先被截断，隔着别的窗口也认得。
+	// 跑完就自己变回原样，不必手动清。
+	//
+	// 再补一步（同日）：「一颗不动的圆点容易被当成标记，不知道是静态还是卡住」——
+	// 所以它**一闪一闪**地实心/空心交替（`●` / `○`），一眼就能看出这一轮真的在动。
+	// 节奏 900ms：比心跳快一点、比跑马灯慢，不抢眼睛；标签页隐藏时浏览器会按自己的节奏
+	// 降频，但值仍然在变，切回来不会停在半路（比如一直停在空心）。
+	const activeTurnRunning =
+		preview === null &&
+		snapshot !== null &&
+		snapshot.running.status !== "idle" &&
+		snapshot.running.conversationId === snapshot.active.conversationId;
 	useEffect(() => {
 		const { project, title } = activeHeading;
-		document.title = project && title ? `${title} - ${project}` : brandName;
-	}, [activeHeading.project, activeHeading.title, brandName]);
+		const base = project && title ? `${title} - ${project}` : brandName;
+		if (!activeTurnRunning) {
+			document.title = base;
+			return;
+		}
+		let filled = true;
+		document.title = `● ${base}`;
+		const timer = window.setInterval(() => {
+			filled = !filled;
+			document.title = `${filled ? "●" : "○"} ${base}`;
+		}, 900);
+		// 跑完（或切到别的会话）就把定时器停掉，标题回到干净的一行
+		return () => {
+			window.clearInterval(timer);
+			document.title = base;
+		};
+	}, [activeHeading.project, activeHeading.title, brandName, activeTurnRunning]);
 
 	// 粘底滚动：条数、末条正文长度、流式文本任一变化都算「内容更新」
 	const lastTextLength =

@@ -218,6 +218,93 @@
 	border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
 }
 
+/* ---- 运行中的会话行（用户 2026-11-13：「在运行中的这个图标放这里不是很明显」）----
+ *
+ * 光把行尾那颗转圈放大还不够 —— 它只有 11px，在一列标题里还是得靠运气才能扫到。
+ * 所以整行给一整套「正在干活」的语言，三个层次都不靠文字（文字会把标题挤短）：
+ *  ① 底色：主色 7% 的淡底，**呼吸**（4s 一周期，幅度 5%→11%，很轻，不抢标题）；
+ *  ② 左侧竖条：主色实心条，上下躲猫猫（`pi-run-slide`）——几何跟「选中」那道竖条一致，
+ *    所以看起来是「同一条竖条在动」，而不是多出来一个元素；
+ *  ③ 描边：略深一档，行与行之间一眼能分出边界。
+ * 只动 `opacity` / `transform`：不重排、不影响标题量宽度（SessionRow 量的那个 64px 也没变）。
+ * 动效全在 `prefers-reduced-motion` 下静止（底色和竖条留着，只是不动）。 */
+.pi-row-wrap-running {
+	--pi-row-fill: color-mix(in srgb, var(--accent) 7%, var(--bg-elev));
+}
+
+.pi-row-wrap-running > .pi-row,
+.pi-row-wrap-running:focus-within > .pi-row {
+	background: var(--pi-row-fill);
+	border-top-color: var(--border);
+	border-right-color: var(--border);
+	border-bottom-color: var(--border);
+	animation: pi-run-breathe 4s ease-in-out infinite;
+}
+
+/* 左侧那道「在跑」的竖条：压在选中 / 当前会话那道之上（选择器更具体，不打乱它们的定义） */
+.pi-row-wrap-running > .pi-row::before {
+	content: "";
+	position: absolute;
+	left: 1px;
+	width: 3px;
+	border-radius: 2px;
+	background: var(--accent);
+	pointer-events: none;
+	/* 从「上半段」开始，靠 `pi-run-slide` 顺着行往下跑 */
+	top: 2px;
+	height: 45%;
+	animation: pi-run-slide 1.8s ease-in-out infinite;
+}
+
+/* 悬停 / 聚焦时**把呼吸停住**、换一档更浓的底（2026-11-13）。
+ * 不这么写的话，鼠标停上去行毫无反应 —— `background` 被动画盖着（CSS 动画比普通声明优先），
+ * 而「点了 / 停在这里」的反馈在列表里很重要。停下动画后左边那道竖条继续跑，状态不会丢。 */
+.pi-row-wrap-running:hover > .pi-row,
+.pi-row-wrap-running:focus-within > .pi-row {
+	animation: none;
+	background: color-mix(in srgb, var(--accent) 15%, var(--bg-elev));
+}
+
+/* 底色呼吸：幅度刻意做到「余光能看见、盯着不烦」 */
+@keyframes pi-run-breathe {
+	0%,
+	100% {
+		background: var(--pi-row-fill);
+	}
+	50% {
+		background: color-mix(in srgb, var(--accent) 12%, var(--bg-elev));
+	}
+}
+
+/* 竖条上下跑：`top` 用百分比而不是位移 —— 行高会随字号变，百分比自己跟着走 */
+@keyframes pi-run-slide {
+	0%,
+	100% {
+		top: 2px;
+		opacity: 0.45;
+	}
+	50% {
+		top: calc(55% - 2px);
+		opacity: 1;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.pi-row-wrap-running > .pi-row,
+	.pi-row-wrap-running:focus-within > .pi-row {
+		animation: none;
+	}
+
+	.pi-row-wrap-running > .pi-row::before {
+		/* 不跑就整条亮着：状态仍然看得出（只是不动） */
+		top: 2px;
+		height: auto;
+		bottom: 2px;
+		opacity: 1;
+		animation: none;
+	}
+}
+
 /* 左边竖条与 `.pi-row-active` 同一套几何（两者同时命中时长得一模一样也无所谓） */
 .pi-row-selected::before {
 	content: "";

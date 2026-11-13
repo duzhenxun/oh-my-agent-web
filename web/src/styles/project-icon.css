@@ -279,12 +279,18 @@
 	color: var(--accent);
 }
 
+/* 大小与描边（2026-11-13 用户：「在运行中的这个图标放这里不是很明显」）——
+   9px/1.5px 在 13px 的格子里等于一颗灰点，扫过去看不见。
+   现在 11px / 2px，并且外面套一圈**主色淡光晕**（跟 `.pi-unseen` 的小蓝点同一套语言），
+   静止时也是一块清楚的色块，动起来更容易被余光抓到。 */
 .pi-ring {
-	width: 9px;
-	height: 9px;
+	width: 11px;
+	height: 11px;
 	border-radius: 50%;
-	border: 1.5px solid color-mix(in srgb, var(--accent) 30%, transparent);
+	border: 2px solid color-mix(in srgb, var(--accent) 22%, transparent);
 	border-top-color: var(--accent);
+	border-right-color: color-mix(in srgb, var(--accent) 60%, transparent);
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent);
 	animation: pi-spin 0.8s linear infinite;
 }
 
@@ -341,12 +347,15 @@
 	color: var(--accent);
 }
 
+/* 项目行那颗跟会话行同一套（2026-11-13）：8px 太小，放大到 10px + 光晕 */
 .proj-busy-ring {
-	width: 8px;
-	height: 8px;
+	width: 10px;
+	height: 10px;
 	border-radius: 50%;
-	border: 1.5px solid color-mix(in srgb, var(--accent) 30%, transparent);
+	border: 2px solid color-mix(in srgb, var(--accent) 22%, transparent);
 	border-top-color: var(--accent);
+	border-right-color: color-mix(in srgb, var(--accent) 60%, transparent);
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent);
 	animation: pi-spin 0.8s linear infinite;
 }
 
