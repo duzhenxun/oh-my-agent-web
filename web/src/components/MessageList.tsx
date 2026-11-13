@@ -21,6 +21,7 @@ import {
 	shouldForgetManual,
 } from "../process-fold.ts";
 import type { ActionItem, SubagentRunView, UiMessage } from "../types.ts";
+import { buildTurnSegments, type TurnSegment } from "../turn-segments.ts";
 import type { QueuedView } from "../pending-sends.ts";
 import { firstLine, readExpanded, toggleExpanded, writeExpanded } from "../steer-collapsed.ts";
 import { liftSteeredMessages } from "../steer-order.ts";
@@ -38,88 +39,6 @@ import { AgentsRunStrip } from "./AgentsRunStrip.tsx";
 import { assignRunsToMessages, isActive, subagentUsageOf } from "../subagent-view.tsx";
 
 /** 消息里的纯文本（复制 / 从此处编辑都用它） */
-
-/** 过程里的一项（思考或工具调用） */
-type ProcessItem = Extract<UiMessage["blocks"][number], { kind: "thinking" } | { kind: "tool" }>;
-type ToolItem = Extract<ProcessItem, { kind: "tool" }>;
-type ErrorItem = Extract<UiMessage["blocks"][number], { kind: "error" }>;
-
-/**
- * 过程里的一小块：**一段思考 + 它后面跟着的那些工具调用**。
- *
- * 为什么要分块：过程一长（五六个思考、十几次工具），扁平地排下来分不清
- * 「哪几次工具是这次想完之后干的」。分块后每段思考前面有编号，读起来是
- * 「想 ① → 试一下 → 再想 ② → 再试」的节奏。
- */
-type ProcessGroupView = {
-	key: string;
-	thinking: { text: string } | null;
-	tools: ToolItem[];
-};
-
-/**
- * 一轮回复的一个渲染单元：连续的过程、一段正文、或一个错误块。
- *
- * 「连续」是关键：中间只要插了一段正文，过程就在那里断开 —— 那正是模型
- * 「说一句 → 调工具 → 再说一句」的时间线，不能把它们再缝到一起去。
- */
-type TurnSegment =
-	| { kind: "process"; groups: ProcessGroupView[] }
-	| { kind: "text"; text: string; index: number }
-	| { kind: "error"; block: ErrorItem; index: number };
-
-/**
- * 把这一轮的 blocks 切成**按发生顺序**排的渲染单元（用户 2026-10-30：照 codex 那样显示）。
- *
- * 以前是「所有思考/工具收进一个折叠容器、整体提到正文上方」—— 于是「说一句 → 调工具 → 再说一句」
- * 的顺序全丢了：十几次工具挤在最上面，中间那几段说明被甩到最下面，读起来像两件事。
- * 现在过程只在**它发生的位置**成段：`groups` 里仍是「一段思考 + 它后面的工具」，
- * 正文留在原位 —— 流式期间看到的就是一条时间线。
- *
- * 分块规则：
- *   - 碰到 thinking 就开新块（后续工具都归它）；
- *   - 第一个 thinking 之前就有工具（少见，但不是不可能）→ 单独成一块，`thinking` 为 null。
- *
- * 顺带数出两个计数：思考段数 / 工具调用次数 —— 折叠行要报给人看。
- */
-function buildTurnSegments(blocks: UiMessage["blocks"]): {
-	segments: TurnSegment[];
-	thinkingCount: number;
-	toolCount: number;
-} {
-	const segments: TurnSegment[] = [];
-	let current: Extract<TurnSegment, { kind: "process" }> | null = null;
-	let thinkingCount = 0;
-	let toolCount = 0;
-	for (let index = 0; index < blocks.length; index += 1) {
-		const block = blocks[index];
-		if (!block) continue;
-		if (block.kind === "thinking" || block.kind === "tool") {
-			if (!current) {
-				current = { kind: "process", groups: [] };
-				segments.push(current);
-			}
-			if (block.kind === "thinking") {
-				thinkingCount += 1;
-				current.groups.push({ key: `think-${index}`, thinking: { text: block.text }, tools: [] });
-				continue;
-			}
-			toolCount += 1;
-			const lastGroup = current.groups[current.groups.length - 1];
-			if (lastGroup) lastGroup.tools.push(block);
-			else current.groups.push({ key: `lead-${index}`, thinking: null, tools: [block] });
-			continue;
-		}
-		// 正文 / 错误块：过程在这里断开
-		current = null;
-		if (block.kind === "text") {
-			segments.push({ kind: "text", text: block.text, index });
-			continue;
-		}
-		segments.push({ kind: "error", block, index });
-	}
-	return { segments, thinkingCount, toolCount };
-}
 
 /** 用户消息里的图片引用：Composer 发送时追加在正文末尾的 `![名](/api/uploads/<id>)` */
 const USER_IMAGE_REF = /!\[([^\]]*)\]\((\/api\/uploads\/[a-z0-9-]{8,64})\)/g;
@@ -804,11 +723,21 @@ function MessageViewInner({
 				/>
 			) : null;
 		}
-		// 错误块永远画（收起时也不藏）：它是这一轮真正要说的话
+		// 错误块永远画（收起时也不藏）：它是这一轮真正要说的话。
+		// 同一条错误只会剩一个块（见 `buildTurnSegments` 末尾的合并），次数多了挂一个 `×4` 尾巴。
+		const repeat = segment.block.count ?? 1;
 		return (
 			<div key={segment.index} className="block-error">
 				<span className="block-error-code">{segment.block.code}</span>
 				<span className="block-error-text">{segment.block.message}</span>
+				{repeat > 1 ? (
+					<span
+						className="block-error-count"
+						title={t(`这条错误出现了 ${repeat} 次（重试都失败了）`, `This error occurred ${repeat} times (every retry failed)`)}
+					>
+						{`×${repeat}`}
+					</span>
+				) : null}
 			</div>
 		);
 	};

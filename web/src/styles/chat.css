@@ -326,6 +326,22 @@
 	color: var(--red);
 }
 
+/* 同一条错误出现了不止一次时的小尾巴（`×4`）：只报次数，不再把所有条都排一遍
+   （2026-11-13 用户：「这种出来一条提示就行」）。放在最右，不挡消息正文的换行宽度。 */
+.block-error-count {
+	flex: none;
+	margin-left: auto;
+	align-self: flex-start;
+	padding: 0 6px;
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--red) 18%, transparent);
+	color: var(--red);
+	font-family: var(--mono);
+	font-size: 12px;
+	line-height: 18px;
+	white-space: nowrap;
+}
+
 /* ---- 快捷短语行 + 设置面板（ADR-0020 §P1）---- */
 .composer-wrap {
 	position: relative; /* 斜杠命令面板贴着它上沿绝对定位（见 composer-actions.css） */

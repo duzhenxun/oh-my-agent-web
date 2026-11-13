@@ -87,8 +87,29 @@ export function finishTool(
 	return { ...message, blocks };
 }
 
+/**
+ * 追加一条错误提示。
+ *
+ * **同一条错误只留一个块**（2026-11-13 用户：「这种出来一条提示就行，不用这么多」）：
+ * 一次连接抖动会被重试好几次（pi 自己重试 + 宿主补试），每一跳失败都发一次 `error` 事件，
+ * 于是对话里摞出四、五条一模一样的红条 —— 人只想知道「连不上，已经试了几次」。
+ * 所以这里改成：同 code + 同 message 就**就地合并**，次数累加进 `count`，不再往后 append。
+ *
+ * 就地（而不是「删掉前面的、补到最后」）是为了不抖动：块的位置一旦跳，
+ * 下面那些正文和工具卡会跟着位移，看起来像在闪。
+ */
 export function appendError(message: UiMessage, code: string, text: string): UiMessage {
-	return { ...message, blocks: [...message.blocks, { kind: "error", code, message: text }] };
+	const blocks = [...message.blocks];
+	const existing = blocks.findIndex(
+		(block) => block.kind === "error" && block.code === code && block.message === text,
+	);
+	const current = existing >= 0 ? blocks[existing] : undefined;
+	if (current && current.kind === "error") {
+		blocks[existing] = { ...current, count: (current.count ?? 1) + 1 };
+		return { ...message, blocks };
+	}
+	blocks.push({ kind: "error", code, message: text, count: 1 });
+	return { ...message, blocks };
 }
 
 /** 追加思考文本（与正文分开：正文说结论，思考说过程） */

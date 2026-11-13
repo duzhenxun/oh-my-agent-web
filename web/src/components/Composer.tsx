@@ -12,6 +12,7 @@ import {
 import { imagesMarkdown, pickUploadableFiles, uploadFile } from "../attachments.ts";
 import { annotationsAsMessage, type Annotation } from "../annotations.ts";
 import { PLAIN_TEXT_INPUT } from "../plain-text-input.ts";
+import { currentMobileShell } from "../mobile-shell-dom.ts";
 import { ModelChips } from "./ModelChips.tsx";
 import { ProjectBranchChips } from "./ProjectBranchChips.tsx";
 import { ThinkButton } from "./ThinkButton.tsx";
@@ -886,10 +887,12 @@ export function Composer({
 							? t("正在跑…回车排队", "Running… Enter to queue")
 							: draft.trim() === "" && notes !== ""
 								? t(`回车发送 ${pendingNotes} 条注释`, `Enter to send ${pendingNotes} note(s)`)
-								: t(
-										"消息…输入 / 使用命令，输入 @ 查找文件",
-										"Message… type / for commands, @ to find a file",
-									)
+								: currentMobileShell()
+									? t("消息…", "Message…")
+									: t(
+											"消息…输入 / 使用命令，输入 @ 查找文件",
+											"Message… type / for commands, @ to find a file",
+										)
 					}
 					onChange={(event) => {
 						const value = event.target.value;

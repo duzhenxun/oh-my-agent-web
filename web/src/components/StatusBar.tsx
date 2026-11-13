@@ -12,10 +12,15 @@ import { EnginePicker } from "./EnginePicker.tsx";
 import { PanelIcon } from "./PanelIcon.tsx";
 import { ModelChips } from "./ModelChips.tsx";
 
+/** 去掉小数尾部多余的 0：1.00M → 1M，1.50M → 1.5M，1.0K → 1K */
+function trimZeros(text: string): string {
+	return text.replace(/\.?0+$/, "");
+}
+
 function formatTokens(value: number): string {
 	if (value < 1000) return String(value);
-	if (value < 1_000_000) return `${(value / 1000).toFixed(1)}K`;
-	return `${(value / 1_000_000).toFixed(2)}M`;
+	if (value < 1_000_000) return `${trimZeros((value / 1000).toFixed(1))}K`;
+	return `${trimZeros((value / 1_000_000).toFixed(2))}M`;
 }
 
 /**
@@ -300,7 +305,7 @@ export function StatusBar({
 							/>
 						</svg>
 						<span className="status-context-used">{formatTokens(contextUsed)}</span>
-						<span className="status-context-total">/ {contextWindow ? formatTokens(contextWindow) : "—"}</span>
+						<span className="status-context-total">/{contextWindow ? formatTokens(contextWindow) : "—"}</span>
 					</button>
 					{usageOpen ? (
 						<div

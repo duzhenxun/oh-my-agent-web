@@ -28,7 +28,16 @@ export type ToolBlock = {
 	endedAt?: number;
 };
 
-export type ErrorBlock = { kind: "error"; code: string; message: string };
+/**
+ * 一条错误提示。
+ *
+ * `count` = 同一条错误（同 code + 同 message）在这一轮里重复出现了几次。
+ * 为什么要它（2026-11-13）：每次重试失败都会追加一个错误块，于是一次连接抖动
+ * 就在对话里摞出四条一模一样的红条（用户：「这种出来一条提示就行」）。
+ * 现在**同一条只留一个块、次数记在这里**（`×4`），历史里的旧数据由前端合并。
+ * 可缺省：老快照 / 老会话没有这个字段，当 1 看。
+ */
+export type ErrorBlock = { kind: "error"; code: string; message: string; count?: number };
 
 export type MessageBlock = TextBlock | ThinkingBlock | ToolBlock | ErrorBlock;
 export type UiMessage = {
