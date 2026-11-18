@@ -27,6 +27,7 @@ import { chatModels, isChatModel } from "../providers/model-kind.js";
 import { classifyScope } from "../approval/scope.js";
 import { mapSessionEvent } from "./pi-events.js";
 import { RETRY_MAX_ATTEMPTS, classifyProviderError, retryDelayMs, retryOmitTargets } from "./pi-retry.js";
+import { isCleanAssistantEnd, turnFailed } from "./pi-turn-outcome.js";
 import { resourceSignature, type WatchedPath } from "./resource-signature.js";
 import { createPiSubagents } from "./pi-subagents.js";
 import { makeSubagentToolExtension } from "./pi-subagent-tool.js";
@@ -1056,6 +1057,8 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 				producedOutput: boolean;
 				/** 这条消息是被「插进正在跑的那一轮」的 */
 				steered: boolean;
+				/** 这一轮是否已经正常说完（出现过 stopReason=stop 的助手消息）：之后的 provider 报错不再算失败 */
+				completed: boolean;
 			};
 
 			// 图片走 SDK 的 images 参数（视觉注入）；没有图片时不传，避免空数组影响提示词缓存
@@ -1075,6 +1078,7 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 				let producedOutput = false;
 				let steered = false;
 				let failed: AttemptOutcome["failed"] = null;
+				let completed = false;
 				const errors: AttemptOutcome["errors"] = [];
 				let markSettled: (() => void) | null = null;
 				const settled = new Promise<void>((resolve) => {
@@ -1083,6 +1087,7 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 
 				// 订阅**按次**持有：steer 会并发再进一次 sendMessage，两轮各自摘自己的监听器
 				const off = handle.session.subscribe((event: unknown) => {
+					if (isCleanAssistantEnd(asRecord(event))) completed = true;
 					const mapped = mapSessionEvent(event);
 					if (mapped) {
 						// provider 报错也要算「这一轮失败」：不能最后还发 turn_end: done。
@@ -1170,7 +1175,7 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 					handle.subscriptions.delete(off);
 				}
 
-				return { failed, errors, interrupted, producedOutput, steered };
+				return { failed, errors, interrupted, producedOutput, steered, completed };
 			}
 
 			let attempt = 0;
@@ -1200,6 +1205,7 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 				!outcome.interrupted &&
 				!handle.aborting &&
 				!outcome.producedOutput &&
+				!outcome.completed &&
 				!outcome.steered
 			) {
 				const transient = outcome.errors.find((error) => classifyProviderError(error.message) === "transient");
@@ -1232,17 +1238,29 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 			// `handle.aborting` 是兵底：中断时它已经被 interrupt() 置 true，
 			// 即使 agent_settled 没来得及到，也不要把「点停」报成「完成」
 			const aborted = outcome.interrupted || handle.aborting;
+			// 按「这一轮最终是不是出错」收尾：已经正常说完的回合，迟到的报错不算失败
+			const turnErrored = turnFailed({
+				aborted,
+				errorCount: outcome.errors.length,
+				completed: outcome.completed,
+			});
 			// 用户自己停的不再往界面上扔红条：他已经知道这一轮停了（日志里留一笔就够复盘）；
 			// 真正失败（重试用尽 / 不可重试）才把最后那条错发出去。
-			if (!aborted) {
+			if (turnErrored) {
 				for (const error of outcome.errors) {
 					onEvent({ type: "error", code: error.code, message: error.message });
 				}
 			}
 			if (aborted) {
 				log("info", "这一轮被中断", { sessionId, attempt });
-			} else if (outcome.errors.length > 0) {
+			} else if (turnErrored) {
 				log("error", "模型调用失败", { sessionId, attempt, message: outcome.errors.at(-1)?.message });
+			} else if (outcome.errors.length > 0) {
+				// 正常说完之后的报错：只留日志，不改判这一轮
+				log("warn", "回合已正常完成，忽略其后的 provider 报错", {
+					sessionId,
+					message: outcome.errors.at(-1)?.message,
+				});
 			} else if (attempt > 0) {
 				log("info", "自动重试成功", { sessionId, attempt });
 				onEvent({
@@ -1252,7 +1270,7 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 					text: `模型调用已自动恢复（重试 ${attempt} 次）`,
 				});
 			}
-			onEvent({ type: "turn_end", reason: aborted ? "interrupted" : outcome.errors.length > 0 ? "error" : "done" });
+			onEvent({ type: "turn_end", reason: aborted ? "interrupted" : turnErrored ? "error" : "done" });
 		},
 
 		async interrupt(sessionId: string) {
