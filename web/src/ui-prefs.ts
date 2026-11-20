@@ -94,17 +94,26 @@ export const TERMINAL_FONT_MAX = 24;
 
 /**
  * 顶栏那一排入口的显隐：**勾上才显示**（见设置里的「顶栏」tab）。
- * 覆盖七个面板入口：模型 / 技能 / 推送 / 语音 / 插件 / MCP / 子代理。
+ * 覆盖八个面板入口：模型 / 技能 / 推送 / 语音 / 插件 / MCP / 子代理 / 定时任务。
  *
  * 「设置」故意不在这张表里：它是唯一能把这些入口重新勾回来的地方，
  * 一旦允许把它藏掉，用户全取消勾选之后就再没有入口能回去了。
  * 引擎切换也不在：它在底部状态栏（跟审批模式并排），不属于顶栏这一排。
  */
-export const APPBAR_ITEMS = ["models", "skills", "push", "voice", "plugins", "mcp", "agents"] as const;
+export const APPBAR_ITEMS = [
+	"models",
+	"skills",
+	"push",
+	"voice",
+	"plugins",
+	"mcp",
+	"agents",
+	"cron",
+] as const;
 type AppbarItem = (typeof APPBAR_ITEMS)[number];
 export type AppbarToggle = AppbarItem;
 
-/** 设置里那排勾选框的顺序：就是这七个面板入口 */
+/** 设置里那排勾选框的顺序：就是这些面板入口 */
 export const APPBAR_TOGGLES: AppbarToggle[] = [...APPBAR_ITEMS];
 
 /**
@@ -159,6 +168,7 @@ export const APPBAR_ITEM_LABEL: Record<AppbarToggle, string> = {
 	plugins: "插件",
 	mcp: "MCP",
 	agents: "子代理",
+	cron: "定时任务",
 };
 
 /** 上面那张表的英文（和顶栏按钮同一套叫法） */
@@ -170,6 +180,7 @@ export const APPBAR_ITEM_LABEL_EN: Record<AppbarToggle, string> = {
 	plugins: "Plugins",
 	mcp: "MCP",
 	agents: "Subagents",
+	cron: "Cron",
 };
 
 /**
@@ -201,14 +212,14 @@ export const COMPOSER_ITEM_KEY = (item: ComposerToggle): string => `agent-web.co
 
 /** 勾选框上的名字（和输入框上方那颗按钮同一套叫法） */
 export const COMPOSER_ITEM_LABEL: Record<ComposerToggle, string> = {
-	templates: "模板",
+	templates: "提示词",
 	think: "想想",
 	quick: "快捷指令",
 };
 
-/** 上面那张表的英文（`Templates` 是模板库那颗按钮的叫法，`Quick phrases` 同「快捷短语」） */
+/** 上面那张表的英文（`Prompts` 是提示词库那颗按钮的叫法，`Quick phrases` 同「快捷短语」） */
 export const COMPOSER_ITEM_LABEL_EN: Record<ComposerToggle, string> = {
-	templates: "Templates",
+	templates: "Prompts",
 	think: "Think",
 	quick: "Quick phrases",
 };

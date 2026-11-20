@@ -136,3 +136,60 @@
 .is-mobile-shell .newchat-hello {
 	font-size: 21px;
 }
+
+/* 空会话的提示词列表：居中的卡片网格，每张卡就是一个模板，点击即编辑 */
+.newchat-tpls {
+	width: min(960px, 100%);
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+	gap: 10px;
+}
+
+/* 按钮当卡片用：复位按钮默认样式，内容竖排、左对齐。
+   带上 .tpl-card 提高权重，否则会被 templates.css 里的 .tpl-card { display: flex } 覆盖 */
+.tpl-card.newchat-tpl {
+	display: grid;
+	grid-template-columns: 24px minmax(0, 1fr);
+	align-content: start;
+	align-items: center;
+	column-gap: 6px;
+	row-gap: 4px;
+	min-height: 72px;
+	padding: 10px 12px;
+	background: var(--bg-elev);
+	color: var(--text);
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+
+.newchat-tpl > .tpl-icon {
+	grid-column: 1;
+	grid-row: 1;
+}
+
+.newchat-tpl > .tpl-name {
+	grid-column: 2;
+	grid-row: 1;
+	min-width: 0;
+	line-height: 1.3;
+}
+
+.newchat-tpl > .tpl-desc {
+	grid-column: 1 / -1;
+	grid-row: 2;
+}
+
+.newchat-tpl:hover {
+	border-color: var(--accent-dim);
+}
+
+.newchat-tpl.tpl-card-new {
+	background: none;
+	color: var(--text-dim);
+	border-style: dashed;
+}
+
+.is-mobile-shell .newchat-tpls {
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+}

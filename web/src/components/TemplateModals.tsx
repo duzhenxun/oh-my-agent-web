@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { setDraft } from "../store.ts";
 import type { PromptTemplate } from "../types.ts";
-import { setSettings, sendMessage } from "../ws.ts";
+import { setSettings, generateTemplatePrompt } from "../ws.ts";
 
 import { isBuiltin, removeTemplate, visibleTemplates } from "../templates-lib.ts";
 import { useT } from "../use-language.ts";
@@ -81,11 +81,14 @@ export function TemplateGallery({
 export function TemplateEditor({
 	template,
 	library,
+	conversationId,
 	onClose,
 }: {
 	template: PromptTemplate | null;
 	/** 当前模板库（保存时在这个基础上改，不能凭空从空数组开始） */
 	library: PromptTemplate[];
+	/** 当前会话：AI 生成时优先用它正在用的模型（没有会话就自动挑一个可用的） */
+	conversationId?: string | null;
 	onClose: () => void;
 }) {
 	const t = useT();
@@ -93,6 +96,27 @@ export function TemplateEditor({
 	const [description, setDescription] = useState(template?.description ?? "");
 	const [text, setText] = useState(template?.text ?? "");
 	const [error, setError] = useState<string | null>(null);
+	const [generating, setGenerating] = useState(false);
+	/** AI 覆盖正文前的原文；用户手动再改正文后即清空（那时撤销会吃掉他的改动） */
+	const [previous, setPrevious] = useState<string | null>(null);
+
+	const generate = async () => {
+		setError(null);
+		setGenerating(true);
+		const result = await generateTemplatePrompt({ name, description, text, conversationId: conversationId ?? null });
+		setGenerating(false);
+		if (!result.ok) {
+			setError(result.message);
+			return;
+		}
+		setPrevious(text);
+		setText(result.text);
+	};
+
+	const undoGenerate = () => {
+		if (previous !== null) setText(previous);
+		setPrevious(null);
+	};
 
 	// 当前库由父组件持有；保存时通过 onSaved 把它交回去（避免这里再读一次全局状态）
 	const commit = (next: PromptTemplate[]) => {
@@ -155,18 +179,44 @@ export function TemplateEditor({
 						placeholder={t("一句话：这个模板用来做什么", "One line: what this template is for")}
 					/>
 				</label>
-				<label className="tpl-field tpl-field-grow">
-					<span className="tpl-label">{t("提示词", "Prompt")}</span>
+				<div className="tpl-field tpl-field-grow">
+					<div className="tpl-label-row">
+						<label className="tpl-label" htmlFor="tpl-prompt-text">
+							{t("提示词", "Prompt")}
+						</label>
+						<span className="topbar-spacer" />
+						{previous !== null ? (
+							<button type="button" className="btn btn-tiny" onClick={undoGenerate}>
+								↶ {t("撤销", "Undo")}
+							</button>
+						) : null}
+						<button
+							type="button"
+							className="btn btn-tiny"
+							disabled={generating}
+							onClick={() => void generate()}
+							title={t(
+								"根据标题、说明和已有草稿，写一份标准提示词（会覆盖当前正文，可撤销）",
+								"Write a standard prompt from the title, description and draft (replaces the prompt; undo available)",
+							)}
+						>
+							✨ {generating ? t("生成中…", "Generating…") : t("AI 生成", "Generate with AI")}
+						</button>
+					</div>
 					<textarea
+						id="tpl-prompt-text"
 						className="tpl-textarea"
 						value={text}
-						onChange={(event) => setText(event.target.value)}
+						onChange={(event) => {
+							setText(event.target.value);
+							setPrevious(null);
+						}}
 						placeholder={t(
 							"写清楚要 agent 做什么、输出什么、不做什么",
 							"Be explicit about what the agent should do, output, and not do",
 						)}
 					/>
-				</label>
+				</div>
 				{error ? <div className="tpl-error">{error}</div> : null}
 
 				<div className="tpl-foot tpl-foot-editor">
@@ -206,7 +256,7 @@ export function TemplateEditor({
 					</button>
 					<button
 						type="button"
-						className="btn btn-tiny"
+						className="btn btn-tiny btn-primary"
 						onClick={() => {
 							const next = save();
 							if (!next) return;
@@ -216,19 +266,6 @@ export function TemplateEditor({
 						}}
 					>
 						{t("填入输入框", "Fill the input")}
-					</button>
-					<button
-						type="button"
-						className="btn btn-tiny btn-primary"
-						onClick={() => {
-							const next = save();
-							if (!next) return;
-							commit(next);
-							sendMessage(text.trim());
-							onClose();
-						}}
-					>
-						➤ {t("直接发送", "Send now")}
 					</button>
 				</div>
 			</div>

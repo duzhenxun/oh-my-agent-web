@@ -32,6 +32,14 @@ type ApprovalBridgeOptions = {
 	 * `conversationId` 拿不到（引擎没给归属）时按兜底值走。
 	 */
 	modeOf: (conversationId: string | null) => ApprovalMode;
+	/**
+	 * 无人值守的自动裁决（定时任务的 agent 运行注入）。
+	 *
+	 * 在「问用户」之前调用：返回决定就直接用，返回 null 才继续走人工流程。
+	 * 语义上它是「替不在场的用户答题」，所以**不能**用来放行用户没同意过的写操作 ——
+	 * 具体策略放在 `approval/unattended.ts`，这里只留一个钩子。
+	 */
+	autoDecide?: (request: ApprovalRequest) => ApprovalDecision | null;
 };
 
 export type ApprovalBridge = {
@@ -98,6 +106,9 @@ export function createApprovalBridge(options: ApprovalBridgeOptions): ApprovalBr
 		async handler(request) {
 			// 本会话全部放行：不问，直接 once（不记忆、不写盘，重启即恢复询问）
 			if (options.modeOf(request.conversationId ?? null) === "allow") return "once";
+			// 无人值守（cron 的 agent 任务）：在排队之前裁决，绝不把请求挂在一个没人的弹窗上
+			const auto = options.autoDecide?.(request) ?? null;
+			if (auto) return auto;
 			if (sessionRules.has(request.scopeKey) || hasRule(rules, request.scopeKey)) return "always";
 
 			const requestId = options.nextId("appr");

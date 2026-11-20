@@ -76,6 +76,7 @@ import { ApprovalDialog, NoticeBar } from "./components/ApprovalDialog.tsx";
 import { Composer } from "./components/Composer.tsx";
 import { MessageList } from "./components/MessageList.tsx";
 import { NewChatMeta } from "./components/NewChatMeta.tsx";
+import { NewChatTemplates } from "./components/NewChatTemplates.tsx";
 import { ConversationOutline } from "./components/ConversationOutline.tsx";
 import { SidebarMenu, type Panel as MenuPanel } from "./components/SidebarMenu.tsx";
 import { APPBAR_ITEMS, APPBAR_TEMPCHAT_DEFAULT, APPBAR_TEMPCHAT_KEY } from "./ui-prefs.ts";
@@ -1859,7 +1860,10 @@ export function App() {
 												outdated={snapshot.versions.outdated}
 												onUpgrade={() => upgradeInTerminal(UPGRADE_COMMAND)}
 											/>
-											<p className="newchat-hello">{t("有什么我能帮你的吗？", "What can I help you with?")}</p>
+											<NewChatTemplates
+												templates={snapshot.settings.templates ?? []}
+												conversationId={snapshot.active.conversationId}
+											/>
 										</div>
 									) : snapshot ? (
 										<MessageList

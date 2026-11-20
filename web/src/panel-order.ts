@@ -23,12 +23,14 @@ export const DEFAULT_PANEL_ORDER: readonly PanelKey[] = [
 	"mcp",
 	"models",
 	"agents",
+	"cron",
+	"computer",
 	"settings",
 ];
 
 const PANEL_KEYS = new Set<string>(DEFAULT_PANEL_ORDER);
 
-/** 清洗持久化 / 外部传入的顺序；返回值永远恰好包含八个面板且各一次。 */
+/** 清洗持久化 / 外部传入的顺序；返回值永远包含所有当前面板且各一次。 */
 export function normalizePanelOrder(value: unknown): PanelKey[] {
 	const input = Array.isArray(value) ? value : [];
 	const valid = input.filter(

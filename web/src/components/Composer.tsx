@@ -746,7 +746,7 @@ export function Composer({
 								onClick={() => setGalleryOpen(true)}
 								title={t("提示词模板库", "Prompt template library")}
 							>
-								🧩 {t("模板", "Templates")}
+								🧩 {t("提示词", "Prompts")}
 							</button>
 						</>
 					) : null}
@@ -889,10 +889,7 @@ export function Composer({
 								? t(`回车发送 ${pendingNotes} 条注释`, `Enter to send ${pendingNotes} note(s)`)
 								: currentMobileShell()
 									? t("消息…", "Message…")
-									: t(
-											"消息…输入 / 使用命令，输入 @ 查找文件",
-											"Message… type / for commands, @ to find a file",
-										)
+									: t("消息…输入 / 使用命令，输入 @ 查找文件", "Message… type / for commands, @ to find a file")
 					}
 					onChange={(event) => {
 						const value = event.target.value;
@@ -1060,11 +1057,14 @@ export function Composer({
 				/>
 			) : null}
 			{editing ? (
-				<TemplateEditor template={editing.template} library={templates} onClose={() => setEditing(null)} />
+				<TemplateEditor
+					template={editing.template}
+					library={templates}
+					conversationId={conversationId}
+					onClose={() => setEditing(null)}
+				/>
 			) : null}
-			{quickEditOpen ? (
-				<QuickPhraseEditor phrases={quickPhrases} onClose={() => setQuickEditOpen(false)} />
-			) : null}
+			{quickEditOpen ? <QuickPhraseEditor phrases={quickPhrases} onClose={() => setQuickEditOpen(false)} /> : null}
 		</div>
 	);
 }

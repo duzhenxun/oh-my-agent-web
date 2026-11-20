@@ -204,12 +204,11 @@
 .side-resizer:hover::after,
 .side-resizer:active::after,
 .is-resizing .side-resizer::after {
-	/* 4px：去了把手之后靠粗一点的线来吸住眼睛（原来 3px 更像「高亮了一下」） */
-	width: 4px;
-	margin-left: -2px;
+	/* 2px：悬停只是把线染成主色，不再加粗、也不加外圈晕光（用户：线别这么粗） */
+	width: 2px;
+	margin-left: -1px;
 	background: var(--accent);
-	/* 一圈同色淡晕：单染 4px 在深色主题下还不够显眼 */
-	box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
+	box-shadow: none;
 }
 
 /* 收起后的小竖条按钮 */
@@ -388,13 +387,15 @@
  * 现在底色、边框、箭头都提亮一档，默认就能看清，hover 再变主色。 */
 .side-collapse {
 	position: absolute;
-	top: 8px;
-	right: -10px;
-	z-index: 7;
+	top: 0;
+	/* 以分割线为中心（14px 宽 → 线两边各 7px），不再往侧栏里多伸，免得盖住行尾的 📌 与「⋯」 */
+	right: -7px;
+	/* 要压过分栏模式下抬到 8 的拖拽线（`.app-split .side-resizer`），否则线会盖住收起按钮 */
+	z-index: 9;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: 18px;
+	width: 14px;
 	height: 34px;
 	padding: 0;
 	border: 1px solid var(--border-strong, var(--border));

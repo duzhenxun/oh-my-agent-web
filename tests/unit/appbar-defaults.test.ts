@@ -22,10 +22,14 @@ describe("顶栏默认勾选", () => {
 		assert.deepEqual(on, ["models", "skills", "voice", "mcp"]);
 	});
 
-	it("推送 / 插件 / 子代理默认不勾", () => {
-		for (const item of ["push", "plugins", "agents"] as const) {
+	it("推送 / 插件 / 子代理 / Cron 默认不勾", () => {
+		for (const item of ["push", "plugins", "agents", "cron"] as const) {
 			assert.equal(appbarItemDefault(item), false, `${item} 不该默认勾上`);
 		}
+	});
+
+	it("Cron 提供独立的可配置顶栏入口", () => {
+		assert.ok(APPBAR_ITEMS.includes("cron"));
 	});
 
 	it("「临时会话」默认不显示（它不是面板入口，单独一个 key）", () => {

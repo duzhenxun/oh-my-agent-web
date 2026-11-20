@@ -272,10 +272,13 @@ export type EnginePort = {
 	 */
 	renameSession?: (handle: string, name: string) => Promise<void>;
 	/**
-	 * 跑一次**一次性问答**（独立内存会话、无工具、不进当前会话历史）：
-	 * 「让 AI 按会话内容起个名」用它。拿不到可用模型时返回 null（而非抛错）。
+	 * 用**这条会话的模型与鉴权**直连 API 跑一次补全：不走回合、不带工具、不进历史。
+	 *
+	 * 与「一次性内存会话」的区别：不需要新建 AgentSession，也不给模型任何工具定义 ——
+	 * 模型没有工具可调，就不会把工具调用语法漏进正文里。
+	 * 拿不到可用模型 / 会话句柄时返回 null（而非抛错），调用方再退到工作台直连。
 	 */
-	suggestTitle?: (prompt: string) => Promise<string | null>;
+	completeText?: (sessionId: string, prompt: string, systemPrompt: string) => Promise<string | null>;
 	/** 删除会话（引擎原生删除）；没有这个能力时宿主退回到「把文件改名」 */
 	deleteSession?: (handle: string) => Promise<void>;
 	/** 读转录并映射成界面消息（text / tool 块）——侧栏与对话区都靠它 */

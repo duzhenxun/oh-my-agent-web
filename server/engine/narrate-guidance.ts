@@ -21,4 +21,5 @@ export const NARRATE_GUIDANCE = [
 	"- Before modifying, writing or deleting files, say which files and why (1-2 sentences), then call the tools.",
 	"- When a tool result changes your plan (failure, unexpected output, a discovery), say what it means before the next call.",
 	"- Keep it short and in the user's language; never paste tool arguments back as prose.",
+	"- End with the answer in prose: only text outside `thinking` is visible; markers alone look empty.",
 ].join("\n");

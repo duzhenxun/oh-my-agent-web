@@ -10,6 +10,8 @@ import { McpPanel } from "./McpPanel.tsx";
 import { PushPanel } from "./PushPanel.tsx";
 import { VoicePanel } from "./VoicePanel.tsx";
 import { AgentsPanel } from "./AgentsPanel.tsx";
+import { CronPanel } from "./CronPanel.tsx";
+import { ComputerPanel } from "./ComputerPanel.tsx";
 import { PanelIcon, type PanelIconName } from "./PanelIcon.tsx";
 import { SortablePanelTabs } from "./SortablePanelTabs.tsx";
 import { PanelOrderRow } from "./PanelOrderRow.tsx";
@@ -32,6 +34,8 @@ const PANEL_LABEL: Record<Exclude<Panel, null>, string> = {
 	mcp: "MCP",
 	voice: "语音",
 	agents: "子代理",
+	cron: "定时任务",
+	computer: "电脑控制",
 	settings: "设置",
 };
 /** 顶栏 / 弹窗 tab 的英文名（设置面板里那几组勾选框用的是另一张，见 SettingsPanel） */
@@ -43,6 +47,8 @@ const PANEL_LABEL_EN: Record<Exclude<Panel, null>, string> = {
 	mcp: "MCP",
 	voice: "Voice",
 	agents: "Subagents",
+	cron: "Cron",
+	computer: "Computer",
 	settings: "Settings",
 };
 
@@ -331,6 +337,8 @@ export function SidebarMenu({
 									) : null}
 									{panel === "voice" ? <VoicePanel /> : null}
 									{panel === "agents" ? <AgentsPanel /> : null}
+									{panel === "cron" ? <CronPanel /> : null}
+									{panel === "computer" ? <ComputerPanel /> : null}
 									{panel === "settings" ? <SettingsPanel /> : null}
 								</div>
 

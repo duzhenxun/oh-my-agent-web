@@ -12,6 +12,7 @@ import type { EnginePort } from "../engine/port.js";
 import type { RuleStore } from "../approval/rules.js";
 import type { ApprovalMode, Notice, PendingApproval } from "../protocol.js";
 import { createApprovalBridge, type ApprovalBridge } from "./approval-bridge.js";
+import { unattendedDecision } from "../approval/unattended.js";
 import { createNoticeSink } from "./notices.js";
 import { createRuntimeTurnWatchdog, type TurnWatchdog } from "./turn-watchdog.js";
 
@@ -69,6 +70,7 @@ export function createRuntimeServices(options: RuntimeServicesOptions): RuntimeS
 		onPending: options.onPending,
 		onNotice: (text, level) => notice(text, level),
 		modeOf: options.modeOf,
+		autoDecide: unattendedDecision,
 	});
 	options.options.engine.setApprovalHandler(approval.handler);
 

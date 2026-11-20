@@ -14,6 +14,10 @@ import { startUpstreamVersionWatch } from "../util/upstream-version.js";
 import { newConversationWith } from "./conversation-create.js";
 import { renameSessionWith } from "./rename-session.js";
 import { createTitleSuggester } from "./suggest-title.js";
+import { TITLE_SYSTEM_PROMPT } from "./title-prompt.js";
+import { createTemplatePromptGenerator } from "./template-prompt.js";
+import { createCronPromptGenerator } from "./cron-prompt.js";
+import { messagesForTitle } from "./title-prompt.js";
 import { createSnapshotFor } from "./snapshot-for.js";
 import { createSubagentBridge } from "./subagents.js";
 import { createSwitchConversation } from "./switch-conversation.js";
@@ -316,11 +320,22 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 
 	const refreshActions = createRefreshActions({
 		state,
-		turns,
-		engine,
 		notice,
 		pushSnapshot,
-		sendTurn: (prompt, conv) => sendTurn(prompt, undefined, "now", conv, undefined, { hidden: true }),
+		// 与标题 / 模板同一个补全入口：不走回合，因此不再需要 turns / sendTurn
+		completeText: (input) =>
+			options.completeText
+				? options.completeText(input)
+				: Promise.resolve({ ok: false as const, code: "oneshot.unsupported", message: "当前引擎不支持一次性补全" }),
+		transcriptOf: async (conversationId) => {
+			const loaded = state.messages[conversationId];
+			const messages =
+				loaded && loaded.length > 0 ? loaded : await engine.readUiMessages(conversationId).catch(() => []);
+			return messagesForTitle(messages)
+				.map((message) => `${message.role === "user" ? "用户" : "助手"}：${message.text}`)
+				.join("\n");
+		},
+		nextId: () => nextId("action"),
 		// 设置里的「最大超时」优先；没有/非法就退回启动参数（默认 20s）
 		timeoutMs: () => {
 			const seconds = state.settings.thinkTimeoutSec;
@@ -490,15 +505,37 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			if (loaded && loaded.length > 0) return loaded;
 			return engine.readUiMessages(conversationId).catch(() => []);
 		},
-		suggest: async (prompt) => {
-			if (!engine.suggestTitle) throw new Error("当前引擎不支持 AI 起名");
-			return engine.suggestTitle(prompt);
+		suggest: async (prompt, conversationId) => {
+			// 没有注入补全能力时明确说「不支持」，别让上层以为是模型坏了
+			if (!options.completeText) throw new Error("当前引擎不支持 AI 起名");
+			const result = await options.completeText({ conversationId, prompt, system: TITLE_SYSTEM_PROMPT });
+			if (result.ok) return result.text;
+			// 「没有可用模型」交给上层的专用文案；其余按失败处理
+			if (result.code === "oneshot.no_model") return null;
+			throw new Error(result.message);
 		},
 		rename: async (conversationId, title) => {
 			const result = await renameSession(conversationId, title);
 			return result.ok ? { ok: true, title } : result;
 		},
 	});
+
+	/** 「AI 生成」类按钮共用的一次性问答：同一个补全入口，各自的系统提示词由调用方传入 */
+	const askOneShot = async (prompt: string, systemPrompt: string, conversationId: string | null) => {
+		if (!options.completeText) throw new Error("当前引擎不支持 AI 生成");
+		const result = await options.completeText({
+			...(conversationId ? { conversationId } : {}),
+			prompt,
+			system: systemPrompt,
+		});
+		if (result.ok) return result.text;
+		if (result.code === "oneshot.no_model") return null;
+		throw new Error(result.message);
+	};
+	/** 提示词模板的「AI 生成」：系统提示词是「标准提示词」那一套 */
+	const generateTemplatePrompt = createTemplatePromptGenerator({ ask: askOneShot });
+	/** 定时任务的「AI 生成」：按任务标题写一段任务描述 */
+	const generateCronPrompt = createCronPromptGenerator({ ask: askOneShot });
 
 	const api: Runtime = {
 		async init() {
@@ -602,6 +639,23 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		refreshActions: (conversationId?: string, count?: number) =>
 			refreshActions(conversationId, count ?? state.settings.thinkCount),
 
+		// 打开一条历史会话（定时任务续跑、以及「先开再切模型」都要它）
+		async openConversation(conversationId) {
+			try {
+				await piOpener.open(conversationId, async () => undefined);
+				pushSnapshot();
+				return { ok: true as const };
+			} catch (error) {
+				return {
+					ok: false as const,
+					error: {
+						code: "session.open_failed",
+						message: error instanceof Error ? error.message : String(error),
+					},
+				};
+			}
+		},
+
 		setModel: (modelId, conversationId) => models.switchTo(conversationId ?? state.activeId, modelId),
 
 		setThinkingLevel: (level) => models.setThinking(state.activeId, level),
@@ -652,6 +706,18 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		renameSession: (conversationId, title) => renameSession(conversationId, title),
 
 		suggestSessionTitle: (conversationId) => suggestSessionTitle(conversationId),
+		generateTemplatePrompt: (input, conversationId) => generateTemplatePrompt(input, conversationId ?? null),
+		generateCronPrompt: (name, conversationId) => generateCronPrompt(name, conversationId ?? null),
+		/** 「想想」也走同一个补全入口：不再发隐藏回合，不占会话、不进历史 */
+		completeText: (input) => {
+			if (!options.completeText)
+				return Promise.resolve({
+					ok: false as const,
+					code: "oneshot.unsupported",
+					message: "当前引擎不支持一次性补全",
+				});
+			return options.completeText(input);
+		},
 
 		/** 「完整历史」：交给引擎自己的导出器；引擎没有这个能力时直说，不让界面白转一圈 */
 		async sessionHistoryHtml(conversationId) {

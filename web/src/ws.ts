@@ -684,6 +684,51 @@ type UpsertProviderPayload = {
 	previousProvider?: string;
 };
 
+/**
+ * 提示词模板「AI 生成」（`POST /api/templates/generate-prompt`）：按标题 / 说明 / 已有草稿，
+ * 让当前引擎一次性写出一份标准提示词。提示词本身在服务端，这里只传原料、拿结果。
+ */
+export async function generateTemplatePrompt(input: {
+	name: string;
+	description: string;
+	text: string;
+	/** 当前会话：服务端按它的模型优先（可没有） */
+	conversationId?: string | null;
+}): Promise<{ ok: true; text: string } | { ok: false; message: string }> {
+	try {
+		const response = await fetch("/api/templates/generate-prompt", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(input),
+		});
+		const body = (await response.json()) as { ok?: boolean; text?: string; message?: string };
+		if (body.ok === true && typeof body.text === "string") return { ok: true, text: body.text };
+		return { ok: false, message: body.message ?? `HTTP ${response.status}` };
+	} catch (cause) {
+		return { ok: false, message: cause instanceof Error ? cause.message : String(cause) };
+	}
+}
+
+/** 定时任务「AI 生成」（`POST /api/cron/generate-prompt`）：按任务标题写一段任务描述，结果交回表单 */
+export async function generateCronPrompt(input: {
+	name: string;
+	/** 当前会话：服务端按它的模型优先（可没有） */
+	conversationId?: string | null;
+}): Promise<{ ok: true; text: string } | { ok: false; message: string }> {
+	try {
+		const response = await fetch("/api/cron/generate-prompt", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(input),
+		});
+		const body = (await response.json()) as { ok?: boolean; text?: string; message?: string };
+		if (body.ok === true && typeof body.text === "string") return { ok: true, text: body.text };
+		return { ok: false, message: body.message ?? `HTTP ${response.status}` };
+	} catch (cause) {
+		return { ok: false, message: cause instanceof Error ? cause.message : String(cause) };
+	}
+}
+
 /** 逐模型测试（ADR-0026 C 期）：会发一次真实请求，所以用 HTTP 拿结构化结果 */
 export async function testModel(
 	provider: string,

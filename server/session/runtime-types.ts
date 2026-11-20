@@ -19,6 +19,9 @@ import type {
 } from "../protocol.js";
 import type { ServerState } from "../snapshot/state.js";
 import type { SuggestTitleResult } from "./suggest-title.js";
+import type { GenerateTemplatePromptResult, TemplatePromptInput } from "./template-prompt.js";
+import type { GenerateCronPromptResult } from "./cron-prompt.js";
+import type { CompleteTextInput, TextCompletion } from "./one-shot.js";
 import type { EnginePort } from "../engine/port.js";
 import type { EngineCatalog } from "../engine/catalog.js";
 import type { RuleStore } from "../approval/rules.js";
@@ -48,8 +51,20 @@ export type Runtime = {
 	): Promise<Result>;
 	/** 中断某个会话的回合；不给就挑「当前会话 / 第一个在跑的」 */
 	interrupt(conversationId?: string): Promise<Result>;
+	/**
+	 * 打开一条会话（历史里的也行），让它进入「已打开」状态。
+	 *
+	 * 为什么需要这一条：切模型是按引擎会话句柄走的（pi 的 `switchModel` 要先 `sessions.get(id)`），
+	 * 定时任务续跑一条**历史会话**时得先把它打开，否则「选了模型却没生效」。
+	 */
+	openConversation(conversationId: string): Promise<Result>;
 	approve(requestId: string, decision: ApprovalDecision): Result;
-	newConversation(workspace?: string, clientId?: string, seed?: ConversationSeed): Promise<Result>;
+	/** 新建会话：成功时带回新会话 id（定时任务要往它里面发第一条提示词） */
+	newConversation(
+		workspace?: string,
+		clientId?: string,
+		seed?: ConversationSeed,
+	): Promise<{ ok: true; conversationId: string } | { ok: false; error: ProtocolError }>;
 	/** 临时会话转正：把内存里的内容写成真正的会话文件（id 不变） */
 	persistConversation(conversationId: string): Promise<Result>;
 	/** 关闭临时会话：内存里的内容直接丢弃（没有磁盘文件，关掉就真没了） */
@@ -63,6 +78,18 @@ export type Runtime = {
 	 * 成功时把最终用的标题带回来，界面可直接拿来提示。
 	 */
 	suggestSessionTitle(conversationId: string): Promise<SuggestTitleResult>;
+	/**
+	 * 提示词模板「AI 生成」：按标题 / 说明 / 已有草稿写一份标准提示词（不落盘，结果交回界面）。
+	 * `conversationId` 只用来挑模型（该会话在用的那个优先），可以没有。
+	 */
+	generateTemplatePrompt(
+		input: Partial<Record<keyof TemplatePromptInput, unknown>>,
+		conversationId?: string | null,
+	): Promise<GenerateTemplatePromptResult>;
+	/** 定时任务「AI 生成」：按任务标题写一段任务描述（不落盘，结果交回界面） */
+	generateCronPrompt(name: unknown, conversationId?: string | null): Promise<GenerateCronPromptResult>;
+	/** 一次性文本补全（标题 / 模板 / 想想共用）：给「想想」路由之外的直连入口 */
+	completeText(input: CompleteTextInput): Promise<TextCompletion>;
 	/**
 	 * 「完整历史」：把这条会话导成 pi 的 HTML 导出页（整份转录，含工具调用 / 思考 / 分支）。
 	 *
@@ -181,6 +208,11 @@ export type RuntimeOptions = {
 	}) => void;
 	/** 读 provider 列表（index 注入：它同时知道内置 provider 的分组） */
 	loadProviders?: () => Promise<ProviderView[]>;
+	/**
+	 * 一次性文本补全（index 注入）：标题 / 模板 / 想想三处共用。
+	 * 引擎直连优先、工作台凭证兜底 —— 具体怎么选模型在 `session/one-shot.ts` 里。
+	 */
+	completeText?: (input: CompleteTextInput) => Promise<TextCompletion>;
 	/** 两次扫描的最小间隔（默认 10s） */
 	piSessionsMinIntervalMs?: number;
 	workspace: string;

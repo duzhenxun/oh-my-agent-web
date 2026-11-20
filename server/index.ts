@@ -22,7 +22,13 @@ import { createProviderWiring } from "./providers/provider-handlers.js";
 import { providerPool } from "./providers/provider-pool.js";
 import { probeProvider } from "./providers/probe.js";
 import { createProviderStore } from "./providers/provider-store.js";
-import { createEnabledStore } from "./providers/enabled-models.js";
+import { completeOnce } from "./providers/one-shot.js";
+import { createCronRouter, createCronService } from "./cron/index.js";
+import { createComputerRouter } from "./computer/routes.js";
+import { approvalModeOf } from "./snapshot/state.js";
+import { createAgentRunner } from "./cron/agent-run.js";
+import { createTextCompleter, type OneShotTarget } from "./session/one-shot.js";
+import { createEnabledStore, isModelEnabled } from "./providers/enabled-models.js";
 import { createPluginStore, type PluginStore } from "./engine/pi-plugins.js";
 import { createMcpLogin } from "./mcp/mcp-auth.js";
 import { createCodexMcpStore, codexConfigPath } from "./mcp/codex-mcp-store.js";
@@ -261,11 +267,89 @@ const providerList = async () => {
 	return list;
 };
 
+/**
+ * 一次性文本补全：给「标题 / 模板 / 想想」三块共用（不跑 agent 回合）。
+ *
+ * 两层：
+ *   ① 当前引擎直连（pi 有 `completeText`）：用该会话的模型与鉴权，订阅登录 / token 刷新均由引擎自己管；
+ *   ② 工作台直连：拿 `providerStore` 里的 key / access token 发请求，**任何引擎都适用**。
+ * 模型选择顺序：该会话在用的模型 → 其余有凭证的模型（最多试 3 个）。
+ */
+const listOneShotTargets = async (): Promise<OneShotTarget[]> => {
+	const providers = await providerStore.list();
+	const targets: OneShotTarget[] = [];
+	for (const view of providers) {
+		const credential = await providerStore.readCredential(view.provider);
+		// 没凭证 / 订阅 token 已过期：发了也是 401，不如跳过（错误会在“没有可用模型”里体现）
+		if (credential.kind === "none") continue;
+		if (credential.kind === "oauth" && credential.expiresAt !== null && credential.expiresAt <= Date.now()) continue;
+		const secret = credential.kind === "apiKey" ? credential.key : credential.access;
+		const headers = await providerStore.readHeaders(view.provider);
+		const accountId = credential.kind === "oauth" ? credential.accountId : null;
+		for (const model of view.models) {
+			targets.push({
+				provider: view.provider,
+				model: model.id,
+				api: model.api ?? view.api,
+				baseUrl: model.baseUrl ?? view.baseUrl,
+				credential: secret,
+				accountId,
+				headers,
+			});
+		}
+	}
+	return targets;
+};
+
+const completeText = createTextCompleter({
+	engineComplete: async (conversationId, prompt, system) => {
+		// 切引擎后代理会落到当前引擎：没有这个能力时就是 undefined
+		if (!engine.completeText) return null;
+		return engine.completeText(conversationId, prompt, system);
+	},
+	sessionModelOf: (conversationId) => {
+		const live = runtime?.state();
+		if (!live) return null;
+		return live.modelByConversation[conversationId] ?? live.model ?? null;
+	},
+	availableTargets: listOneShotTargets,
+	send: async (target, input) => {
+		const result = await completeOnce({
+			api: target.api,
+			baseUrl: target.baseUrl,
+			modelId: target.model,
+			credential: target.credential,
+			...(target.accountId ? { accountId: target.accountId } : {}),
+			...(target.headers ? { headers: target.headers } : {}),
+			system: input.system,
+			prompt: input.prompt,
+		});
+		if (!result.ok)
+			logger.info("一次性补全失败", { provider: target.provider, model: target.model, message: result.message });
+		return result;
+	},
+});
+
+/**
+ * 「回合结束」的额外订阅者（cron 的 agent 任务靠它收尾）。
+ *
+ * 为什么不在 runtime 里加钩子：runtime 已经通过 `onTurnFinished` 把这件事广播出来了，
+ * 这里只是多一个进程内的旁听者，改动面最小。
+ */
+const turnEndListeners = new Set<
+	(info: { conversationId: string; failed: boolean; interrupted: boolean }) => void
+>();
+
 const runtime = createRuntime({
 	engine,
 	// 自定义 provider 来自 models-store.json；不主动读一次，界面上就只剩内置的那几个
 	loadProviders: providerList,
-	onTurnFinished: (info) => notifyTurnFinished(pushStore, info),
+	// 标题 / 模板 / 想想三处共用：引擎直连优先，工作台凭证兜底
+	completeText,
+	onTurnFinished: (info) => {
+		notifyTurnFinished(pushStore, info);
+		for (const listener of turnEndListeners) listener(info);
+	},
 	rules: createFileRuleStore(config.dataDir),
 	// 启动信息只进日志，不进对话流
 	onStartupInfo: (text) => logger.info(text),
@@ -385,7 +469,138 @@ app.use(
 		originPolicy: policy,
 	}),
 );
+/**
+ * cron 的 agent 任务：开一个新会话、发一条提示词、等回合结束，取最后一条 assistant 正文。
+ * 权限策略在 `cron/agent-run.ts` + `approval/unattended.ts`：默认只读，写操作直接被拒。
+ */
+/**
+ * 「这台机器上有哪些会话」= 已打开的 + 历史清单里的。
+ *
+ * 只列已打开的会有个坑：定时任务想续跑一条上个月的会话，但它在内存里没开过 ——
+ * 界面上选不到，或者选了之后 `conversationExists` 判成不存在。
+ */
+const knownSessionIds = (): string[] => {
+	const state = runtime.state();
+	const ids = new Set(state.conversations.map((item) => item.id));
+	for (const project of state.piProjects) for (const session of project.sessions) ids.add(session.id);
+	return [...ids];
+};
+
+const runAgentTask = createAgentRunner({
+	newConversation: (workspace) => runtime.newConversation(workspace),
+	setApprovalMode: (mode, conversationId) => {
+		runtime.setApprovalMode(mode, conversationId);
+	},
+	// 续跑一个已有会话时，跑完要把审批模式还原 —— 不能因为一次定时任务把用户的会话永久改成 ask
+	getApprovalMode: (conversationId) => approvalModeOf(runtime.state(), conversationId),
+	conversationExists: (conversationId) => knownSessionIds().includes(conversationId),
+	openConversation: async (conversationId) => {
+		const result = await runtime.openConversation(conversationId);
+		return result.ok ? { ok: true as const } : { ok: false as const, error: { message: result.error.message } };
+	},
+	conversationBusy: (conversationId) => {
+		const status = runtime.state().runningByConversation[conversationId]?.status ?? "idle";
+		return status !== "idle" && status !== "error";
+	},
+	setModel: async (model, conversationId) => {
+		const result = await runtime.setModel(model, conversationId);
+		return result.ok ? { ok: true as const } : { ok: false as const, error: { message: result.error.message } };
+	},
+	sendMessage: async (text, conversationId) => {
+		const result = await runtime.sendMessage(text, undefined, undefined, conversationId);
+		return result.ok ? { ok: true as const } : { ok: false as const, error: { message: result.error.message } };
+	},
+	interrupt: (conversationId) => runtime.interrupt(conversationId),
+	messages: (conversationId) => runtime.state().messages[conversationId] ?? [],
+	subscribeTurnEnd: (listener) => {
+		turnEndListeners.add(listener);
+		return () => turnEndListeners.delete(listener);
+	},
+});
+
+const cron = createCronService({
+	dataDir: config.dataDir,
+	workspaces: () => [config.workspace, ...runtime.state().piProjects.map((project) => project.cwd)],
+	async execute(job, signal) {
+		// agent 任务：真开会话干活（能读文件、跑命令；写操作要任务上显式开启）
+		if (job.mode === "agent") {
+			return runAgentTask({
+				prompt: job.prompt,
+				workspace: job.workspace,
+				allowWrites: job.allowWrites === true,
+				// 这两个不传下去，界面上选了会话/模型也没用（总是新建、总是跟随默认）
+				...(job.sessionId ? { sessionId: job.sessionId } : {}),
+				...(job.model ? { model: job.model } : {}),
+				signal,
+				timeoutMs: config.turnTimeoutMs,
+			});
+		}
+		const [patterns, targets] = await Promise.all([enabledStore.read(), listOneShotTargets()]);
+		signal.throwIfAborted();
+		const supported = new Set([
+			"openai-completions", "openai-responses", "openai-codex-responses",
+			"anthropic-messages", "google-generative-ai",
+		]);
+		const target = targets.find((item) => supported.has(item.api) && isModelEnabled(patterns, item.provider, item.model));
+		if (!target) throw new Error("没有可用的直连模型，请在「模型」中启用并配置一个支持文本补全的模型");
+		const result = await completeOnce({
+			api: target.api,
+			baseUrl: target.baseUrl,
+			modelId: target.model,
+			credential: target.credential,
+			accountId: target.accountId,
+			headers: target.headers,
+			system: "你正在执行无人值守的定时文本任务。只根据提示词生成文本，不声称读取过文件、访问过网络或执行过外部操作。缺少信息时明确说明。",
+			prompt: job.prompt,
+			signal,
+		});
+		signal.throwIfAborted();
+		if (!result.ok) throw new Error(`${target.provider}/${target.model}：${result.message}`);
+		return result.text;
+	},
+});
+
 app.use(express.json()); // 终端/技能/导入要读 body
+app.use("/api/computer", createComputerRouter());
+app.use(
+	"/api/cron",
+	createCronRouter(cron, {
+		// 编辑器里的「会话 / 模型」选择器：读当前引擎的内存清单（不需要扫盘，量也小）
+		options: () => {
+			const state = runtime.state();
+			const sessions = new Map<
+				string,
+				{ id: string; title: string; workspace: string; model: string | null }
+			>();
+			// 已打开的会话：标题 / 模型都以内存里的为准（刚改过名也能看到新名字）
+			for (const item of state.conversations) {
+				if (item.ephemeral === true) continue;
+				sessions.set(item.id, {
+					id: item.id,
+					title: item.title,
+					workspace: item.workspace,
+					model: state.modelByConversation[item.id] ?? null,
+				});
+			}
+			// 历史清单：让定时任务能续跑没打开过的旧会话（同 id 时上面那份优先）
+			for (const project of state.piProjects) {
+				for (const session of project.sessions) {
+					if (sessions.has(session.id)) continue;
+					sessions.set(session.id, {
+						id: session.id,
+						title: session.title,
+						workspace: session.cwd || project.cwd,
+						model: session.model ?? null,
+					});
+				}
+			}
+			return {
+				sessions: [...sessions.values()],
+				models: state.models.map((model) => ({ id: model.id, label: model.label })),
+			};
+		},
+	}),
+);
 const webDist = pickExisting(webDistCandidates(HERE), existsSync);
 // 压缩 + 缓存头必须在 **API 路由注册之前** 挂：Express 按注册顺序匹配中间件，
 // 挂在后面就只影响之后注册的路由 —— `/api/rpc`（快照帧）这类大包会一直裸奔。
@@ -454,6 +669,13 @@ const auxRoutes = registerAuxRoutes(app, {
 	providerAuth: engine.providerAuth,
 	// 模型测速（模型面板的「测速」按钮）：交给当前引擎开一次性会话跑 ping
 	probeModel: (modelId) => runtime.probeModel(modelId),
+	// 提示词模板的「AI 生成」：当前引擎跑一次一次性问答（标准提示词的系统提示词在服务端）
+	// 前端会带上「用户正看着的那条会话」；没有（还没开会话）就回退到当前会话，
+	// 这样模板也能先走引擎直连（与标题 / 想想同一条路）
+	generateTemplatePrompt: (input, conversationId) =>
+		runtime.generateTemplatePrompt(input, conversationId ?? runtime.state().activeId),
+	// 定时任务表单的「AI 生成」：按任务标题写任务描述；同样回退到当前会话挑模型
+	generateCronPrompt: (name, conversationId) => runtime.generateCronPrompt(name, conversationId ?? runtime.state().activeId),
 	// 引擎当前报上来的模型：逐模型测试碰到「工作台没凭证」时靠它判断能不能交给引擎自己跑
 	engineModels: () => runtime.state().models,
 	// 插件 / MCP：按当前引擎分发（见上面 pluginStores / mcpStores 的注释）
@@ -650,6 +872,7 @@ async function main(): Promise<void> {
 	}
 
 	const { conversations } = await runtime.init().then(() => ({ conversations: runtime.state().conversations }));
+	await cron.start();
 	// 分时价格索引（ADR-0026 D 期）：要在读历史 / 算账之前就绪；读不到就是空表 = 全部走引擎给的 cost
 	await catalogMigration.catch(() => undefined);
 	await refreshPriceIndex(piAgentDir());
@@ -757,6 +980,11 @@ async function shutdown(signal: string): Promise<void> {
 	if (shuttingDown) return;
 	shuttingDown = true;
 	logger.info("收到退出信号，正在关闭", { signal });
+	try {
+		await cron.stop();
+	} catch (error) {
+		logger.error("关闭定时任务失败", { message: error instanceof Error ? error.message : String(error) });
+	}
 	sender.flush(Date.now());
 	engineWiring.close(); // 收掉 codex app-server 子进程（不给它留孤儿）
 	httpServer.close();

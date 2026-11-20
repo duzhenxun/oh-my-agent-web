@@ -3,7 +3,17 @@
  *
  * 独立成文件是为了避开循环依赖：SidebarMenu 引 SettingsPanel，SettingsPanel 又要用它。
  */
-export type PanelIconName = "models" | "skills" | "push" | "voice" | "plugins" | "mcp" | "agents" | "settings";
+export type PanelIconName =
+	| "models"
+	| "skills"
+	| "push"
+	| "voice"
+	| "plugins"
+	| "mcp"
+	| "agents"
+	| "cron"
+	| "computer"
+	| "settings";
 
 /**
  * 一套线性小图标（16 格），替掉原来的大彩 emoji：
@@ -73,6 +83,20 @@ export function PanelIcon({ name }: { name: PanelIconName }) {
 				<circle cx="6" cy="8.6" r="0.7" fill="currentColor" stroke="none" />
 				<circle cx="10" cy="8.6" r="0.7" fill="currentColor" stroke="none" />
 				<path d="M6.2 10.9h3.6" />
+			</svg>
+		);
+	if (name === "computer")
+		return (
+			<svg {...common}>
+				<rect x="1.8" y="2.6" width="12.4" height="8.6" rx="1.3" />
+				<path d="M5.6 13.6h4.8M8 11.2v2.4" />
+			</svg>
+		);
+	if (name === "cron")
+		return (
+			<svg {...common}>
+				<circle cx="8" cy="8" r="5.8" />
+				<path d="M8 4.5V8l2.5 1.5" />
 			</svg>
 		);
 	if (name === "mcp")

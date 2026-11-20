@@ -1065,7 +1065,7 @@ function StatusbarSettings() {
 	);
 }
 
-/** 对话窗口：输入框上方那三块（模板 / 想想 / 快捷指令）的显隐 —— 都是本机偏好 */
+/** 对话窗口：输入框上方那三块（提示词 / 想想 / 快捷指令）的显隐 —— 都是本机偏好 */
 function ComposerSettings() {
 	const t = useT();
 	const [visible, setVisible] = usePrefFlags(COMPOSER_TOGGLES, COMPOSER_ITEM_KEY);

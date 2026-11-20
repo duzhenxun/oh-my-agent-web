@@ -1,0 +1,286 @@
+/* Cron shares the workbench modal on desktop and mobile. */
+.cron-panel {
+	container-type: inline-size;
+	min-width: 0;
+	padding: 2px 8px 12px 2px;
+	font-size: 13px;
+}
+
+.cron-head,
+.cron-job-heading,
+.cron-actions,
+.cron-delete {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.cron-head,
+.cron-job-heading {
+	justify-content: space-between;
+}
+
+.cron-panel h2,
+.cron-panel h3,
+.cron-panel h4,
+.cron-panel p {
+	margin: 0;
+}
+
+.cron-panel h2 {
+	font-size: 15px;
+}
+
+.cron-panel h3 {
+	font-size: 14px;
+	overflow-wrap: anywhere;
+}
+
+.cron-panel h4 {
+	font-size: 13px;
+	margin-top: 10px;
+}
+
+.cron-panel > .cron-hint {
+	margin: 10px 0 14px;
+}
+
+.cron-hint {
+	color: var(--text-dim);
+	font-size: 12px;
+	line-height: 1.5;
+}
+
+.cron-layout {
+	display: grid;
+	grid-template-columns: minmax(190px, 2fr) minmax(0, 3fr);
+	gap: 16px;
+	align-items: start;
+}
+
+.cron-jobs,
+.cron-detail,
+.cron-history {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	min-width: 0;
+}
+
+.cron-job,
+.cron-editor,
+.cron-run {
+	min-width: 0;
+	padding: 12px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--bg-elev);
+	overflow-wrap: anywhere;
+}
+
+.cron-job {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.cron-job-selected {
+	border-color: var(--accent);
+}
+
+.cron-workspace,
+.cron-expression {
+	overflow-wrap: anywhere;
+	white-space: pre-wrap;
+}
+
+.cron-editor,
+.cron-editor fieldset {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.cron-editor fieldset {
+	min-width: 0;
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+
+.cron-field {
+	display: flex;
+	flex-direction: column;
+	gap: 5px;
+	min-width: 0;
+}
+
+.cron-field input,
+.cron-field select,
+.cron-field textarea {
+	box-sizing: border-box;
+	min-width: 0;
+	width: 100%;
+	padding: 7px 8px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--bg);
+	color: var(--text);
+	font: inherit;
+}
+
+.cron-field textarea {
+	resize: vertical;
+}
+
+/* 「提示词」标题行：左侧标题，右侧 AI 生成按钮 */
+.cron-prompt-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.cron-form-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+}
+
+.cron-form-row > .cron-field {
+	flex: 1 1 100px;
+}
+
+.cron-fields {
+	display: grid;
+	grid-template-columns: repeat(5, minmax(0, 1fr));
+	gap: 6px;
+}
+
+.cron-toggle {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.cron-preview {
+	font-size: 12px;
+	line-height: 1.6;
+	overflow-wrap: anywhere;
+}
+
+.cron-preview ul {
+	margin: 6px 0 0;
+	padding-left: 20px;
+}
+
+.cron-error {
+	color: var(--red, #c33);
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	margin-bottom: 10px;
+}
+
+.cron-delete {
+	border-top: 1px solid var(--border);
+	padding-top: 8px;
+}
+
+.cron-run summary {
+	cursor: pointer;
+	line-height: 1.8;
+}
+
+.cron-run summary > * {
+	margin-right: 8px;
+}
+
+.cron-status {
+	font-weight: 600;
+}
+
+.cron-status-failed,
+.cron-status-interrupted {
+	color: var(--red, #c33);
+}
+
+.cron-status-running,
+.cron-status-queued {
+	color: var(--accent);
+}
+
+.cron-run dl {
+	font-size: 12px;
+	color: var(--text-dim);
+}
+
+.cron-run dt {
+	font-weight: 600;
+}
+
+.cron-run dd {
+	margin: 0 0 6px;
+}
+
+.cron-result {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	max-height: 360px;
+	overflow: auto;
+	padding: 10px;
+	background: var(--bg);
+	font-size: 12px;
+}
+
+/* Also stack when the desktop modal is resized narrower. */
+@container (max-width: 620px) {
+	.cron-layout {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+
+@media (max-width: 640px) {
+	.cron-layout {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.cron-field input,
+	.cron-field select,
+	.cron-field textarea {
+		font-size: 16px;
+	}
+
+	.cron-actions .btn,
+	.cron-delete .btn {
+		min-height: 36px;
+	}
+}
+
+/* agent 任务与文本任务在列表里要一眼分开：前者能改文件，后者只发一段提示词 */
+.cron-job-tags {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.cron-badge {
+	border: 1px solid var(--accent, #5b6bff);
+	border-radius: 999px;
+	padding: 1px 8px;
+	font-size: 11px;
+	color: var(--accent-strong, #3b46c8);
+	white-space: nowrap;
+}
+
+.cron-badge-plain {
+	border-color: var(--border, #d6d6de);
+	color: var(--text-dim);
+}
+
+/* 开启「允许改动文件」时的风险提示：用醒目的颜色，别让它在正文里混过去 */
+.cron-panel .cron-warn,
+.cron-editor .cron-warn {
+	color: var(--danger, #b42318);
+}

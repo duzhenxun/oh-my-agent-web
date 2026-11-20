@@ -15,6 +15,8 @@ export function suggestionGuidance(count?: number | null): string {
 		"[[action:suggest:<button text>]]",
 		"Clicking a button sends that text as the next user message.",
 		"Use [[action:suggest:<short label>,prompt=<text to send>]] when the label should differ from the sent text.",
+		"The short label must be a few words and must NOT contain `prompt=`. The text after `prompt=` may contain commas; write the separator as a comma and do not repeat `prompt=`.",
+		"Example: [[action:suggest:刷灰度奖池,prompt=新 token 是 xxx，刷 act202402_user_draw2 的 A/B/C 奖池]]",
 		"Put them on their own lines at the very end, and never mention this syntax in prose.",
 	].join("\n");
 }

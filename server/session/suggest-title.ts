@@ -17,8 +17,11 @@ export type SuggestTitleResult = { ok: true; title: string } | { ok: false; erro
 export function createTitleSuggester(deps: {
 	/** 这条会话的界面消息（已加载就用内存里的，否则让引擎读转录） */
 	messagesOf: (conversationId: string) => Promise<UiMessage[]>;
-	/** 跑一次一次性问答，返回模型的原始输出（拿不到 / 没有可用模型时返回 null） */
-	suggest: (prompt: string) => Promise<string | null>;
+	/**
+	 * 跑一次一次性补全，返回模型的原始输出。
+	 * 带上 conversationId：模型按「这条会话在用的那个」选，而不是进程默认的。
+	 */
+	suggest: (prompt: string, conversationId: string) => Promise<string | null>;
 	/** 落盘改名（与双击改名同一个动作） */
 	rename: (conversationId: string, title: string) => Promise<SuggestTitleResult>;
 }): (conversationId: string) => Promise<SuggestTitleResult> {
@@ -36,7 +39,7 @@ export function createTitleSuggester(deps: {
 
 		let raw: string | null = null;
 		try {
-			raw = await deps.suggest(buildTitlePrompt(transcript));
+			raw = await deps.suggest(buildTitlePrompt(transcript), conversationId);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			return { ok: false, error: { code: "session.title_failed", message: `起名失败：${message}` } };

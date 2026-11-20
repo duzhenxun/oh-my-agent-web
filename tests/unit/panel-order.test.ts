@@ -26,7 +26,35 @@ describe("panel order preferences", () => {
 			"plugins",
 			"models",
 			"agents",
+			"cron",
+			"computer",
 		]);
+	});
+
+	it("已删除的面板（如旧版的「工具」）不会残留：写入的顺序被清洗掉", () => {
+		// 「工具」面板已整体移除（2026-11-19）：老用户存过的顺序里还带着它，读出来必须丢掉
+		const legacy = ["voice", "skills", "push", "plugins", "tools", "mcp", "models", "agents", "settings"];
+		assert.deepEqual(normalizePanelOrder(legacy), [
+			"voice",
+			"skills",
+			"push",
+			"plugins",
+			"mcp",
+			"models",
+			"agents",
+			"settings",
+			"cron",
+			"computer",
+		]);
+	});
+
+	it("电脑控制紧跟在定时任务后面（设置仍在最后），旧偏好也会补齐", () => {
+		assert.equal(DEFAULT_PANEL_ORDER.indexOf("computer"), DEFAULT_PANEL_ORDER.indexOf("cron") + 1);
+		assert.equal(DEFAULT_PANEL_ORDER.indexOf("computer"), DEFAULT_PANEL_ORDER.indexOf("settings") - 1);
+		const legacy = DEFAULT_PANEL_ORDER.filter((key) => key !== "cron");
+		const normalized = readPanelOrder(JSON.stringify(legacy));
+		assert.deepEqual(normalized, [...legacy, "cron"]);
+		assert.equal(normalized.filter((key) => key === "cron").length, 1);
 	});
 
 	it("移动、越界夹取和顺序比较", () => {

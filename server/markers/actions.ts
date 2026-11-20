@@ -35,7 +35,7 @@ export function buildRefreshActionsPrompt(labels: string[], count?: number | nul
 	const amount = wanted === null ? "4 到 5 条" : `${wanted} 条`;
 	// **一行**：这条指令在引擎侧会作为一条真实用户消息落盘（DSH web / pi CLI 里也看得见），
 	// 所以压到最短，同时语法自包含（dsh / codex 没有系统提示教它这个格式）。
-	return `${REFRESH_ACTIONS_SENTINEL} 再给 ${amount}不同的下一步建议${avoid}，每行一条 [[action:suggest:]]（把按钮文字填在 suggest: 后面），只输出标记，不要正文。`;
+	return `${REFRESH_ACTIONS_SENTINEL} 再给 ${amount}不同的下一步建议${avoid}，每行一条 [[action:suggest:]]（把按钮文字填在 suggest: 后面），只输出标记，不要正文。按钮文字要短，不要把 prompt= 写进按钮文字；需要不同发送内容时用 [[action:suggest:按钮文字,prompt=完整指令]]。`;
 }
 
 /** 这条用户消息是不是「想一想」的隐藏请求 */
@@ -59,23 +59,47 @@ const TRAILING_INCOMPLETE_RE = /[ \t]*\[\[\s*(?:action|suggest)(?:\s*:[^\]]*)?$/
 
 type ParsedActionToken = { kind: "suggest"; label: string; prompt: string } | { kind: "clear" };
 
-function splitBody(body: string): { args: string[]; kwargs: Record<string, string> } {
-	const args: string[] = [];
-	const kwargs: Record<string, string> = {};
-	let rest = body;
-	// 先把 kwargs 抽出来（`prompt=xxx` 可能含逗号 → 按 `,key=` 切）
-	const segments = rest.split(",");
-	for (const segment of segments) {
-		const trimmed = segment.trim();
-		if (trimmed === "") continue;
-		const index = trimmed.indexOf("=");
-		const key = index > 0 ? trimmed.slice(0, index).trim() : "";
-		if (key !== "" && /^[A-Za-z][A-Za-z0-9_-]*$/.test(key)) kwargs[key.toLowerCase()] = trimmed.slice(index + 1).trim();
-		else args.push(trimmed);
+/**
+ * 拆 `按钮文字,prompt=完整指令`。
+ *
+ * **不能按逗号切**：按钮文字和指令里本来就可能有逗号
+ * （「接着刷灰度仲夏爱恋, prompt=新 token 是 xxx, 刷灰度 act202402 的奖池」），
+ * 按逗号切会把指令腰斩，也不能识别中文逗号 —— 于是整段（含 `prompt=`）被当成按钮文字显示出来。
+ *
+ * 改成**按 `label=` / `prompt=` 关键字定位**：
+ *   - 第一个关键字之前的文字 = 隐式按钮文字；
+ *   - 每个关键字的值一直读到下一个关键字（或结尾），里面的逗号原样保留；
+ *   - 中文逗号与英文逗号都认。
+ */
+function splitBody(body: string): { label: string; prompt: string } {
+	const text = body.trim();
+	const keys: { key: "label" | "prompt"; start: number; valueStart: number }[] = [];
+	const pattern = /(?:^|[,，])\s*(label|prompt)\s*=\s*/gi;
+	for (let match = pattern.exec(text); match !== null; match = pattern.exec(text)) {
+		keys.push({
+			key: match[1]!.toLowerCase() as "label" | "prompt",
+			start: match.index,
+			valueStart: pattern.lastIndex,
+		});
 	}
-	rest = "";
-	void rest;
-	return { args, kwargs };
+	if (keys.length === 0) return { label: text, prompt: text };
+
+	const head = text.slice(0, keys[0]!.start).trim();
+	const values: Record<"label" | "prompt", string> = { label: "", prompt: "" };
+	keys.forEach((entry, index) => {
+		const end = index + 1 < keys.length ? keys[index + 1]!.start : text.length;
+		const value = text
+			.slice(entry.valueStart, end)
+			.trim()
+			.replace(/[,，]$/, "")
+			.trim();
+		if (value !== "") values[entry.key] = value;
+	});
+	// 只有一种值时另一个跟着用（`[[suggest:继续]]` 这种没有关键字的上面已经返回了）
+	return {
+		label: values.label || head || values.prompt,
+		prompt: values.prompt || values.label || head,
+	};
 }
 
 /** 纯函数：解析文本里的建议操作标记（畸形标记直接忽略，不当成错误） */
@@ -98,10 +122,7 @@ function parseActionMarkers(text: string): ParsedActionToken[] {
 		}
 		if (!["suggest", "add", "next", "reply", "choice", "option"].includes(opName)) continue;
 
-		const { args, kwargs } = splitBody(body);
-		const argText = args.join(",").trim();
-		const label = (kwargs.label ?? argText).trim();
-		const prompt = (kwargs.prompt ?? argText).trim();
+		const { label, prompt } = splitBody(body);
 		if (label === "" && prompt === "") continue;
 		tokens.push({
 			kind: "suggest",

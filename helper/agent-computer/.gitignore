@@ -1,0 +1,6 @@
+# SwiftPM 产物
+.build/
+dist/
+
+# 构建时自动生成（scripts/make-icon.swift）
+Resources/AppIcon.icns

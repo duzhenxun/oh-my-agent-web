@@ -23,6 +23,10 @@ import { registerFileRoutes } from "../files/files-routes.js";
 import { registerSessionRoutes, type SessionDeleteResult } from "../sessions/session-routes.js";
 import type { PushStore } from "../push/push.js";
 import { registerPushRoutes } from "../push/push-routes.js";
+import { registerTemplatePromptRoutes } from "../session/template-prompt-routes.js";
+import type { GenerateTemplatePromptResult, TemplatePromptInput } from "../session/template-prompt.js";
+import { registerCronPromptRoutes } from "../session/cron-prompt-routes.js";
+import type { GenerateCronPromptResult } from "../session/cron-prompt.js";
 
 export function registerAuxRoutes(
 	app: Express,
@@ -62,6 +66,13 @@ export function registerAuxRoutes(
 		 * 不给就不挂这条路由 —— 界面按 `capabilities.modelProbe` 决定画不画按钮。
 		 */
 		probeModel?: (modelId: string) => Promise<import("../engine/port.js").ModelProbeResult>;
+		/** 提示词模板的「AI 生成」：交给运行时（当前引擎的一次性问答） */
+		generateTemplatePrompt?: (
+			input: Partial<Record<keyof TemplatePromptInput, unknown>>,
+			conversationId: string | null,
+		) => Promise<GenerateTemplatePromptResult>;
+		/** 定时任务的「AI 生成」：按任务标题写一段任务描述（交给运行时的一次性问答） */
+		generateCronPrompt?: (name: unknown, conversationId: string | null) => Promise<GenerateCronPromptResult>;
 		/**
 		 * 引擎**当前**报上来的模型 id（`provider/model`）。
 		 *
@@ -99,6 +110,12 @@ export function registerAuxRoutes(
 			: {}),
 	});
 	registerPushRoutes(app, { store: options.pushStore });
+	if (options.generateTemplatePrompt) {
+		registerTemplatePromptRoutes(app, { generate: options.generateTemplatePrompt, log: options.log });
+	}
+	if (options.generateCronPrompt) {
+		registerCronPromptRoutes(app, { generate: options.generateCronPrompt, log: options.log });
+	}
 	registerFileRoutes(app, { workspaceOf: options.workspaceOf });
 	const terminal = registerTerminalRoutes(app, { workspaceOf: options.workspaceOf });
 	registerProjectActions(app, { workspaceOf: options.workspaceOf });

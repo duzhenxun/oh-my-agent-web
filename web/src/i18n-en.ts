@@ -12,6 +12,19 @@
  * （服务端消息目前原样显示中文，那属于另一件事）。
  */
 export const EN: Record<string, string> = {
+	// ---- Cron ----
+	定时任务: "Cron",
+	新建任务: "New job",
+	任务设置: "Job settings",
+	每天: "Daily",
+	每周: "Weekly",
+	"高级（五字段）": "Advanced (five fields)",
+	下次运行: "Next run",
+	下次运行预览: "Upcoming runs",
+	运行历史: "Run history",
+	选择已注册的工作目录: "Select a registered workspace",
+	"自动刷新。运行历史和结果仅以文本显示，不会打开普通代理会话。":
+		"Refreshes automatically. Run history and results are shown as text; no regular agent session is opened.",
 	// ---- 通用按钮 / 角色 ----
 	保存: "Save",
 	取消: "Cancel",
@@ -427,7 +440,6 @@ export const EN: Record<string, string> = {
 	恢复默认模板: "Restore the default templates",
 	保存修改: "Save changes",
 	填入输入框: "Fill the input",
-	直接发送: "Send now",
 	标题和提示词都要填: "Both the title and the prompt are required",
 	新建提示词模板: "New prompt template",
 	编辑提示词模板: "Edit a prompt template",

@@ -1,0 +1,215 @@
+/* 电脑控制面板：沿用定时任务面板的排版（见 cron.css），只加本面板需要的几块。 */
+.computer-panel {
+	min-width: 0;
+	padding: 2px 8px 12px 2px;
+	font-size: 13px;
+}
+
+.computer-panel h2,
+.computer-panel h3,
+.computer-panel p {
+	margin: 0;
+}
+
+.computer-panel h2 {
+	font-size: 15px;
+}
+
+.computer-panel h3 {
+	font-size: 13px;
+	margin: 14px 0 6px;
+}
+
+.computer-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.computer-hint {
+	color: var(--text-dim);
+	font-size: 12px;
+	line-height: 1.5;
+	margin-top: 4px;
+}
+
+.computer-hint:first-child {
+	margin-top: 8px;
+}
+
+.computer-section {
+	margin-top: 12px;
+	padding-top: 6px;
+	border-top: 1px solid var(--border, rgba(127, 127, 127, 0.2));
+}
+
+.computer-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 6px 0;
+	cursor: pointer;
+}
+
+.computer-row-label {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+}
+
+.computer-status {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: grid;
+	gap: 4px;
+}
+
+.computer-status li {
+	display: flex;
+	justify-content: space-between;
+	gap: 12px;
+	overflow-wrap: anywhere;
+}
+
+.computer-ok {
+	color: var(--success, #2e9d5b);
+	text-align: right;
+}
+
+.computer-bad {
+	color: var(--danger, #c0392b);
+	text-align: right;
+}
+
+.computer-error {
+	margin-top: 8px;
+	padding: 6px 8px;
+	border-radius: 6px;
+	color: var(--danger, #c0392b);
+	background: rgba(192, 57, 43, 0.08);
+}
+
+.computer-num {
+	width: 88px;
+}
+
+.computer-block {
+	display: grid;
+	gap: 6px;
+	padding: 6px 0;
+}
+
+.computer-apps {
+	width: 100%;
+	font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+	font-size: 12px;
+}
+
+.computer-btn {
+	padding: 4px 10px;
+	border-radius: 6px;
+	font-size: 12px;
+}
+
+/* 「解除保护」输入框的应用联想：输入「微信」也能对上 bundle id */
+.computer-app-search {
+	position: relative;
+}
+
+.computer-app-input {
+	width: 100%;
+	padding: 6px 8px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--bg-elev-2);
+	color: var(--text);
+	font: inherit;
+	font-size: 13px;
+}
+
+.computer-app-input:focus {
+	outline: none;
+	border-color: var(--accent-dim);
+}
+
+.computer-app-options {
+	position: absolute;
+	z-index: 30;
+	left: 0;
+	right: 0;
+	top: calc(100% + 4px);
+	margin: 0;
+	padding: 4px;
+	list-style: none;
+	max-height: 260px;
+	overflow: auto;
+	background: var(--bg-elev);
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	box-shadow: 0 10px 30px rgb(0 0 0 / 18%);
+}
+
+.computer-app-option {
+	display: flex;
+	align-items: baseline;
+	gap: 10px;
+	width: 100%;
+	padding: 7px 9px;
+	border: none;
+	border-radius: 7px;
+	background: none;
+	color: var(--text);
+	font: inherit;
+	font-size: 13px;
+	text-align: left;
+	cursor: pointer;
+}
+
+.computer-app-option.is-active,
+.computer-app-option:hover {
+	background: var(--bg-elev-2);
+}
+
+.computer-app-name {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.computer-app-option small {
+	flex: 0 1 auto;
+	color: var(--text-faint);
+	font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+	font-size: 11px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* 未安装 helper 时的下载引导 */
+.computer-install-steps {
+	margin: 6px 0 10px;
+	padding-left: 20px;
+	color: var(--text-dim);
+	font-size: 13px;
+	line-height: 1.7;
+}
+
+.computer-install-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-bottom: 8px;
+}
+
+.computer-install-actions .computer-btn {
+	text-decoration: none;
+	display: inline-flex;
+	align-items: center;
+}

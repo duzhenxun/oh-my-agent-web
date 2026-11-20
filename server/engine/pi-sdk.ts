@@ -15,7 +15,7 @@ import {
 	getPackageDir,
 	initTheme,
 } from "@earendil-works/pi-coding-agent";
-import type { ExtensionAPI, InlineExtension, ToolCallEventResult } from "@earendil-works/pi-coding-agent";
+import type { AgentSession, ExtensionAPI, InlineExtension, ToolCallEventResult } from "@earendil-works/pi-coding-agent";
 import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
@@ -899,56 +899,19 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 
 		renameSession: (sessionPath, name) => renameSessionIn(sessions, sessionPath, name, options.sessionDir),
 
-		/**
-		 * 「按会话内容起个名」：一次**独立**的一次性问答。
-		 *
-		 * 为什么自己开一个会话而不是往当前会话里塞一句提示词：起名不该出现在用户的
-		 * 对话里（不能污染历史、不能算一轮、不能被用户看到）。所以用 `inMemory()` 的
-		 * SessionManager（不落盘、不进 session 列表）+ `noTools`（不调工具）。
-		 *
-		 * 模型跟**当前全局选择**走：拿预热会话的 `model` / `modelRuntime` 直接用，
-		 * 不重新解析凭据 —— 因此「没有可用模型」时返回 null，交给上层提示文案。
-		 */
-		async suggestTitle(prompt) {
-			const handle = sessions.get(PREWARM_ID) ?? [...sessions.values()].at(-1);
-			const source = handle?.session as unknown as { modelRuntime?: unknown; model?: unknown } | undefined;
-			if (!source?.modelRuntime || !source.model) {
-				// 没有预热会话（从未发过消息 / 刚启动）→ 现场预热一次再说
-				await warmUp();
-			}
-			const warm = sessions.get(PREWARM_ID) ?? handle;
-			const from = warm?.session as unknown as { modelRuntime?: unknown; model?: unknown } | undefined;
-			if (!from?.modelRuntime || !from.model) return null;
-
-			const disposable = await createAgentSession({
-				cwd: process.cwd(),
-				sessionManager: SessionManager.inMemory(),
-				noTools: "all",
-				/**
-				 * 故意用一只「空资源」的 loader：起名不需要技能 / 扩展 / 上下文文件 / 主题，
-				 * 全关掉只剩一句系统提示词 —— 否则点一下图标就要白扫一遍 skill 与 AGENTS.md，
-				 * 既慢又白烧 token。
-				 */
-				resourceLoader: new DefaultResourceLoader({
-					cwd: process.cwd(),
-					agentDir: options.agentDir ?? getAgentDir(),
-					noExtensions: true,
-					noSkills: true,
-					noPromptTemplates: true,
-					noThemes: true,
-					noContextFiles: true,
-					systemPrompt: "你是一个给会话起标题的助手。只输出标题本身，不要解释。",
-				}),
-				modelRuntime: from.modelRuntime as never,
-				model: from.model as never,
-			});
-			try {
-				await disposable.session.prompt(prompt);
-				return disposable.session.getLastAssistantText() ?? null;
-			} finally {
-				// 一次性会话：问完就丢（dispose 会 abort 掉还在跑的东西）
-				disposable.session.dispose();
-			}
+		/** 用指定会话的有效模型和鉴权直连 API，只送这次生成需要的文本。 */
+		async completeText(sessionId, prompt, systemPrompt) {
+			const session = sessions.get(sessionId)?.session as Pick<AgentSession, "modelRuntime" | "model"> | undefined;
+			if (!session?.model) return null;
+			const signal = AbortSignal.timeout(45_000);
+			const result = await session.modelRuntime.completeSimple(
+				session.model,
+				{ systemPrompt, messages: [{ role: "user", content: prompt, timestamp: Date.now() }] },
+				{ signal, sessionId: randomUUID() },
+			);
+			if (signal.aborted) throw new Error("模型请求超时，请重试");
+			if (result.stopReason !== "stop") throw new Error("模型没有正常完成输出，请重试");
+			return result.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("");
 		},
 		async readUiMessages(sessionId) {
 			const handle = sessions.get(sessionId);

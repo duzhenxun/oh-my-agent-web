@@ -74,6 +74,9 @@ function transcript(messages: TitleMessage[]): string {
 	return parts.join("\n");
 }
 
+/** 起名时的系统提示词：只让模型回一个标题，别的什么都不说 */
+export const TITLE_SYSTEM_PROMPT = "你是一个给会话起标题的助手。只输出标题本身，不要解释。";
+
 /**
  * 起名提示词。
  *
