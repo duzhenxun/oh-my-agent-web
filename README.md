@@ -16,7 +16,7 @@ Single user, loopback only, and **the engine's own on-disk files are always the 
 ![A real session: projects and sessions on the left, thinking blocks and tool cards in the middle, a file preview of the same repo on the right](docs/site/assets/en/hero.webp)
 
 > Every screenshot below is a real UI capture of this repo — pi engine + DeepSeek, on a small `demo-app` project.
-> Most are the 1.1.0 build (shared with the landing page under `docs/site/assets/en/`); the terminal and side-chat shots are from the 0.8.0 run under `docs/screenshots/`.
+> Most are the 1.1.0 build (shared with the landing page under `docs/site/assets/en/`); the terminal and side-chat shots are from the 0.8.0 run under `docs/screenshots/`; the voice, scheduled-task and computer-control shots are the 1.5.x build.
 > Directories, commands, diffs, tokens and cost all come from actual runs — no collages, no mockups.
 > How the 1.1.0 shots were taken: [`docs/site/README.md`](docs/site/README.md).
 
@@ -367,19 +367,67 @@ A subagent's session file is archived next to the parent session (`<parent sessi
 
 ---
 
-## Push and voice
+## Push
 
-<table><tr>
-<td width="50%"><img src="docs/site/assets/en/push.webp" alt="Push: local push state, target devices, test push"></td>
-<td width="50%"><img src="docs/site/assets/en/voice.webp" alt="Voice: four event sounds plus local TTS"></td>
-</tr></table>
+![Push: local push state, target devices, test push](docs/site/assets/en/push.webp)
 
 **Push**: Web Push (VAPID) subscriptions, one notification per finished turn — title is the project, body is the session, with a ❌ / ⏹ prefix for failures and interrupts. Multiple devices, a test push, and a one-click clear-all. Needs https or localhost.
 
 The VAPID key pair and the contact (subject) are managed in the same panel: the pair is generated on first start into `<dataDir>/vapid-keys.json` (0600, overridable with `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`), the contact is stored in `<dataDir>/push-config.json` (overridable with `VAPID_SUBJECT`).
 **The subject must be a real email or an https site**: the default `mailto:noreply@localhost` is rejected by Apple with `403 BadJwtToken` (Chrome/FCM ignores it, so the usual symptom is “works on the desktop, silent on the iPhone”). Replacing the key pair invalidates every subscription (the panel clears them; re-register each device). Changing the contact invalidates nothing.
 
-**Voice**: four event sounds (start / finish / error / waiting for approval) with preview and adjustable volume; local TTS reads the final reply using the browser's built-in voices, with adjustable rate and voice, and never touches the network.
+## Voice
+
+![The voice panel: four event sounds with preview and volume, cue volume and rate, speech in and out](docs/site/assets/en/voice.webp)
+
+Four event sounds (start / finish / error / waiting for approval) with preview and adjustable volume; TTS reads the final reply, with adjustable rate and voice. By default speech output is the **browser's built-in voices** — offline, nothing leaves the machine; switch the speech engine to `edge` (Microsoft, needs network) or point it at your own `kokoro` / `qwen3` in the same panel.
+
+Speech input lives here too: tap the mic bubble to dictate and the text lands in the composer as you speak (drag the bubble anywhere); "send when I stop talking", the silence threshold, how long to wait before sending and continuous dictation are all in this panel.
+
+### Which engines are the default (read this before handing the project to someone)
+
+| | Default | What the other machine needs |
+|---|---|---|
+| **Voice input** (speech → text) | `Auto`: local on-device first (macOS `SFSpeechRecognizer`); when the local engine isn't built or fails it goes **straight to Chrome's built-in** recognizer (no toast, no wasted round) | Local: the machine **running the server** is macOS and `./helper/asr/build.sh` was executed (one “Speech Recognition” prompt on first use). Chrome: the browser can reach Google |
+| **Voice output** (text → speech) | The **browser's built-in** voices (macOS system voices / Windows SAPI), offline | Pick `edge` (Microsoft, needs network) or host `kokoro` / `qwen3` yourself (Voice → Remote) |
+
+So “the defaults are Google + Microsoft” is only half true: input is **not** Google by default (local first, Google is the fallback), and output is **not** Microsoft by default (system voices; edge-tts is opt-in).
+
+Three things people trip on:
+
+- **Local recognition runs on the server machine** (the browser only streams audio), so on a Linux / Windows host the local engine simply isn't available and Chrome's engine is all that's left;
+- Opening the app over plain LAN `http://` on a phone gives you **no microphone** (`getUserMedia` requires `localhost` or HTTPS);
+- Voice-input settings (near-field gate, silence threshold, keep-listening…) are stored **once per server**, shared by everyone using it — the last edit wins; voice and rate preferences stay in each browser's `localStorage`.
+
+---
+
+## Scheduled tasks: say it once, it runs every morning
+
+![The scheduled-tasks panel: three tasks with mode, next run time and switch, plus the run history on the right](docs/site/assets/en/cron.webp)
+
+A task is a prompt plus a five-field cron expression and a timezone. The panel's schedule picker covers every-N-minutes / every-N-hours / daily / weekdays / weekly / monthly, and anything else goes in as a raw expression (`0 9 * * *` = 09:00 every day).
+
+- **Two kinds of task**: `Text` calls the model directly — no tools, no repo access, the cheapest way to draft something; `Agent` runs a real turn in the workspace (read files, run commands, change code).
+- **Where it runs**: every run can open a new session, or continue an existing one you pick from the list (same context, model and workspace); the model follows that session's model, or the project default.
+- **Unattended means unattended**: an agent run is registered as `deny-writes`, because an approval prompt at 3 a.m. has nobody to answer it. Writes are refused unless the task explicitly ticks "allow file writes", and a run that reaches the 20-minute timeout is interrupted and recorded as a **failure** — never as half a result.
+- **Created from the chat as well**: on the pi engine the agent has a `cron` tool (`add / list / update / remove / enable / disable / run_now / preview`). Say "check this repo's changes every morning at 9" and it fills in name, workspace and timezone from the conversation — defaulting to **this** session, so the task keeps your context. `list` / `preview` are read-only, the rest ask for approval, and `run_now` is always explicit: it won't "just try it once".
+- **One source of data**: `<dataDir>/cron.json` (`jobs` + `runs`). The panel refreshes every 5 s, so tasks the agent created appear on their own, and each run keeps its trigger (manual / scheduled), status and text result.
+
+> The `cron` tool is pi-only (ACP engines have no `registerTool`); the panel itself works with every engine. And a task's own turn can't create tasks — unattended cron calls are denied.
+
+---
+
+## Computer control: let the agent drive your Mac
+
+![The computer-control panel: master switch, helper status with its two permissions, and what shows on screen while it works](docs/site/assets/en/computer.webp)
+
+**macOS only**, and it needs a local helper — *Agent Computer.app* — which the panel looks for in `/Applications` and `~/Applications`. When it's missing the panel says so and links the download; when it's there you get a real status block: installed path, running + version, **Accessibility**, **Screen recording**.
+
+- **The master switch is the skill**: turning it on writes `~/.agents/skills/agent-computer`, so *any* engine that has bash can drive the Mac — not just pi. Turning it off renames the skill to disabled; nothing is deleted.
+- **What it can do**: read the numbered accessibility tree plus a window screenshot, click by element number (`AXPress`, coordinates as fallback), type / fill / paste (long text goes through the clipboard and your clipboard is restored afterwards), send key combos (`cmd+s`), scroll, drag in steps, run menu commands, and wait for the UI to settle between steps.
+- **What it refuses**: password fields (`AXSubrole` is secure, or the placeholder looks like a password) are never typed for you; apps that system authentication and System Settings protect stay protected unless you list them under "unprotected apps", and password managers still ask you inside the helper.
+- **What shows on screen**: an optional live preview window, an activity watermark and a pointer ring following the cursor, plus "borrow the foreground briefly" and "activate the target app while you are idle". Pointer speed and the delay between typed keys are adjustable — too fast is exactly what makes an app drop input.
+- **Settings live with the helper**: the panel writes the helper's own `~/Library/Application Support/AgentComputer/settings.json`, with no second copy. The file is the truth and the panel is just a form.
 
 ---
 
@@ -387,19 +435,22 @@ The VAPID key pair and the contact (subject) are managed in the same panel: the 
 
 ![Settings → Appearance: three font sizes, content width in 4 steps, 6 palettes](docs/site/assets/en/settings.webp)
 
-The top bar is the entry point for every panel, and **each entry can be hidden in Settings → Interface** (settings and the split toggle are exempt — they're the only way back to the others). The sidebar and the right pane both drag wider and collapse, and their widths are remembered locally in `localStorage`.
+The top bar is the entry point for every panel, and **each entry can be hidden in Settings → Interface** (settings and the split toggle are exempt — they're the only way back to the others). A fresh install ticks only **models / skills / voice / MCP**; push, plugins, subagents, scheduled tasks and the temp session are ticked back on when you want them. The sidebar and the right pane both drag wider and collapse, and their widths are remembered locally in `localStorage`.
 
-The "settings" button opens five pages:
+The "settings" button opens six pages, and the tabs themselves drag to reorder — **whichever sits first is the page that opens next time**:
 
 | Page | Contents |
 |---|---|
-| **Interface** | Which top-bar entries show (text and icon ticked separately), which status-bar chunks show (queue / working / context usage), whether cost shows in the conversation, which blocks sit above the composer (templates / thinking / quick commands), and whether thinking blocks and tool cards start expanded |
-| **General** | The text of your quick phrases and the default thinking level — saved server-side, identical on every device |
-| **Appearance** | Three font sizes (chat body / sidebar project names / sidebar session names, slider 2–20px), content width in 4 steps (720 / 900 / 1100 / full), 6 palettes (bright white, warm paper, mist teal, Tokyo night, mocha, nord), and the top-bar name and logo (hideable, or replaced with your own) |
+| **Interface** | The frame: which top-bar entries show (text and icon ticked separately), which status-bar chunks show (queue / working / context usage), how many sessions each project lists in the sidebar, and the max width of images in the chat |
+| **Conversation** | What the chat area itself looks like: which blocks sit above the composer (templates / think / quick commands), the text of your quick phrases and the default thinking level (these two are saved server-side, identical on every device), whether cost shows in the conversation, and whether thinking blocks and tool cards start expanded |
+| **Appearance** | Sizes only: three font sizes (chat body / sidebar project names / sidebar session names, slider 2–20px), content width in 4 steps (720 / 900 / 1100 / full), top-bar height, and the top-bar name and logo (hideable, or replaced with your own) |
+| **Theme** | 6 palettes (bright white, warm paper, mist teal, Tokyo night, mocha, nord) — one click and it applies |
 | **Language** | Chinese / English, applied immediately |
-| **Shortcuts** | 11 actions, rebindable, clearable and restorable to defaults, plus a cheat sheet |
+| **Shortcuts** | 12 actions, rebindable, clearable and restorable to defaults, plus a cheat sheet |
 
-Appearance, interface and language preferences stay on the device only (`localStorage`, with the `agent-web.` prefix) — one copy per phone, tablet and desktop. Only the quick phrases in "General" are shared across devices.
+A seventh tab, **Remote**, is where the access password, the login guard (3 tries / 30 minutes by default) and the sign-in activity list live — see the phone and security sections.
+
+Appearance, theme, interface and language preferences stay on the device only (`localStorage`, with the `agent-web.` prefix) — one copy per phone, tablet and desktop. Only the quick phrases in "Conversation" are shared across devices.
 
 ---
 
@@ -450,6 +501,8 @@ Sorting is a deliberate choice: **newest-created first inside a group** — a ne
 | New terminal | `Mod+Alt+T` | Search file contents | `Mod+Shift+F` |
 | Shortcut cheat sheet | `Mod+/` | | |
 
+The mic key does both, with no extra setting: **press to keep listening, press again to stop**; or **hold it, say one short thing, release to stop**.
+
 **Slash commands** pop up when you type `/` in the composer. There are two kinds — `local` ones the workbench runs itself, and `to the agent` ones handed to the engine verbatim as a message:
 
 | Command | Kind | What it does |
@@ -493,8 +546,9 @@ Process model: `cli.ts` parses the flags → `session/lock.ts` grabs `<dataDir>/
 | Codex sessions | Codex's own thread store (`thread/list \| resume \| delete`) |
 | opencode / DSH / claude sessions | Their own data dirs (opencode lists per cwd with `session/list`; DSH reads `~/.dsh`; claude reads `~/.claude`) |
 | Session titles | For pi, the first user message (reads only the first 60 lines); renaming appends `session_info.name` |
-| Workbench state | `<dataDir>/settings.json`, `approval-rules.json`, `server.lock`, `logs/`, `uploads/`, `push-subscriptions.json`, `vapid-keys.json`, `push-config.json` |
+| Workbench state | `<dataDir>/settings.json`, `approval-rules.json`, `cron.json`, `server.lock`, `logs/`, `uploads/`, `push-subscriptions.json`, `vapid-keys.json`, `push-config.json` |
 | Skills / subagent templates / MCP | `~/.agents/skills/`, `~/.pi/agent/agents/`, `~/.pi/agent/mcp.json` |
+| Computer control | `~/.agents/skills/agent-computer/` (the skill), `~/Library/Application Support/AgentComputer/` (helper config, allowlist, socket, screenshots) |
 | Local UI preferences | Browser `localStorage` (`agent-web.` prefix: theme, font sizes, widths, shortcuts, notes, tabs) |
 
 ---
@@ -503,7 +557,7 @@ Process model: `cli.ts` parses the flags → `session/lock.ts` grabs `<dataDir>/
 
 - Binds `127.0.0.1` by default and decides identity from the real peer address (`X-Forwarded-For` when a local proxy is in front) plus the `Host` header.
 - Identity: a loopback peer **and** a loopback Host → allowed. With no password set, remote requests always get 403. The password is stored in `<data dir>/password` (one plaintext line, 0600) and can be set/changed **only locally** (Settings → Remote, `/setup`, or `-P`); changes apply immediately without a restart. With a password, either the cookie (`agent-web-auth`, 7 days, HttpOnly) or HTTP Basic will do; failed logins are paused for 30 minutes after 3 wrong tries by default (change it in Settings → Remote: 1–20 tries, 1–1440 minutes; locks are persisted and survive a restart).
-- **No domain / IP allowlist**: any domain, public IP, LAN IP or tunnel works once the password is in. The cross-origin check only guards requests that genuinely come from **this machine** (loopback needs no password, so that is the CSRF target); remote requests are already behind the password gate.
+- **No domain / IP allowlist**: any domain, public IP, LAN IP or tunnel works once the password is in. The cross-origin check only guards requests that genuinely come from **this machine** (loopback needs no password, so that is the CSRF target); remote requests are already behind the password gate. It judges by the real source address (`X-Forwarded-For` included), so a reverse proxy that rewrites `Host` to `127.0.0.1` does not lock out its own domain.
 - Tools and commands go through approvals: **read-only tools** (read / grep / find / ls) and read-only commands pass automatically, everything else is asked per `scopeKey` (tool + executable name or target directory). Choosing "always allow" writes the rule into `approval-rules.json` (atomic write; a corrupt file counts as empty).
 - When a turn ends, every pending approval for that session is cleared, so nothing hangs waiting for a human.
 - Uploaded temp files and session caches live in the data directory, never in your project.
@@ -552,6 +606,9 @@ Unit tests are run locally: `node --import tsx --test tests/unit/*.test.ts`.
 4. It won't start but `oh-my-agent-web status` mentions a stale lock → a previous process didn't exit cleanly; the next `start` takes over automatically. If it's truly stuck, delete `<dataDir>/server.lock`.
 5. Port already in use → `oh-my-agent-web -p 25258`, or run `oh-my-agent-web stop` first.
 6. The built-in web page is blank → that site needs a login or heavy scripts, and the proxy does not tunnel cookies; hit `⧉` to use the system browser.
+7. `engine.provider_error: This operation was aborted` (occasional) → the **transport** was cut (the model had just connected, a proxy swapped connections, the request body was reclaimed), not the model refusing. Transient errors like this are now retried twice automatically (1 s / 3 s backoff, with only one "retrying" line in the UI) and a successful retry ends with no error at all. If it still fails, search `<dataDir>/logs/agent-web.log` for `provider 报错` / `模型调用失败` — every entry carries `sessionId`, `attempt`, `code` and the raw `message` (before this, such errors left nothing in the log at all). Interrupts you caused by pressing Stop are never retried and never turn into a red bar.
+8. To see what the engine is actually doing → `AGENT_WEB_LOG=info aw`: the SDK's own retry (`pi 自动重试`), a successful retry (`自动重试成功`) and `这一轮被中断` all land in the log.
+9. `请求失败：HTTP 502` (or "the backend is restarting or not up yet (HTTP 502)") → this is the **frontend → backend** hop, not a model error: under `npm run dev`, Vite (25257) proxies the backend (25258), and saving a file under `server/` restarts the backend — in that one-or-two-second window `POST /api/rpc` returns 502 (the terminal shows `http proxy error: connect ECONNREFUSED 127.0.0.1:25258`), and the running turn is cut with it (the tell: the last message in the session is a `toolUse` with no `errorMessage`). In dev the backend now retries for 6 seconds when the port isn't released yet, and the red bar clears itself once SSE reconnects; **run long turns with `aw`** (the built `dist`, with no watch restart).
 
 Windows differences in shell resolution, process-tree teardown, path handling, permissions and CRLF are all centralised in three modules: `server/util/spawn-cli.ts` (PATH/PATHEXT, `.cmd` via `cmd.exe`, `killTree`), `server/util/paths.ts` and `web/src/path-utils.ts` (separators and absolute paths), and `server/util/file-mode.ts` (`icacls` on Windows). Read those headers before touching cross-platform code.
 
