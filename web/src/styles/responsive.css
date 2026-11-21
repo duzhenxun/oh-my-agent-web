@@ -466,6 +466,7 @@
 	/* 右侧同样按按钮组实测宽度让位（变量由 Composer 的 ResizeObserver 写进 .composer）：
 	   手机上一个「发送」约 56px，而「排队 + 插队 + 停止」三个并排要 180px 左右，
 	   写死一个数就会出现文字被按钮压住 —— 和桌面那次修的是同一个坑。 */
+	/* 左边那颗麦克风由 `.composer-row` 占位（见 base.css），这里只留常规内边距 */
 	padding: 10px calc(var(--composer-actions-w, 104px) + 12px) 10px 12px;
 	min-height: 52px;
 	/* iOS 上小于 16px 会触发「聚焦自动放大」 */

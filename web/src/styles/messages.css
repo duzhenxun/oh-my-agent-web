@@ -890,14 +890,16 @@
  * 尺寸跟**同一个字号 token** 走（用户：「这个图标太大了，比复制都高了」）：
  * 以前写死 13×13 —— 而旁边「⧉ 复制」的字号只有 `12 × 0.7931 ≈ 9.5px`，字形墨高又只有 ~7px，
  * 13px 的圆点图标压在那一行里就显得高出一头。现在 ≈10px，跟文字的视觉高度对得上。 */
-.msg-foot .msg-foot-fork svg {
+.msg-foot .msg-foot-fork svg,
+.msg-foot .msg-foot-read-aloud svg {
 	width: calc(var(--chat-ui-font-size, 12px) * 0.83);
 	height: calc(var(--chat-ui-font-size, 12px) * 0.83);
 	display: block;
 }
 
 /* 图标本身不带行盒：对顶到底会让按钮比「复制」高一个半像素，掰正 */
-.msg-foot .msg-foot-fork {
+.msg-foot .msg-foot-fork,
+.msg-foot .msg-foot-read-aloud {
 	line-height: 1;
 	padding: 1px 2px;
 	display: inline-flex;
@@ -905,8 +907,15 @@
 	gap: 3px;
 }
 
-.msg-foot .msg-foot-fork:hover {
+.msg-foot .msg-foot-fork:hover,
+.msg-foot .msg-foot-read-aloud:not(:disabled):hover,
+.msg-foot .msg-foot-read-aloud[aria-pressed="true"] {
 	color: var(--accent);
+}
+
+.msg-foot .msg-foot-read-aloud:disabled {
+	cursor: not-allowed;
+	opacity: 0.5;
 }
 
 /* 用户消息正文：纯文字，保留换行与空格（不走 Markdown，贴进来的 HTML 原样显示） */

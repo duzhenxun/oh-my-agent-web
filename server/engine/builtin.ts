@@ -41,6 +41,13 @@ export function createBuiltinEngineRegistry(options: {
 	 * dsh 吃不到它 —— 它只能靠进程级 patch，启动时定型（见 dsh-prompt-patch.ts）。
 	 */
 	thinkCount?: () => number;
+	/**
+	 * 定时任务工具的宿主端口（ADR-0049）：只给 pi（工具是 SDK 的扩展点）。
+	 * 不给就不注册这个工具。
+	 */
+	cron?: () => import("../cron/tool.js").CronToolPort | null;
+	/** 外观字号工具（ADR-0050）：只给 pi（工具是 SDK 的扩展点） */
+	appearance?: () => import("../session/appearance.js").AppearancePort | null;
 	/** pi 的告警同时要进日志（引擎层的 notify 不带 logger） */
 	onLog?: (text: string, meta?: Record<string, unknown>) => void;
 	/**
@@ -80,6 +87,8 @@ export function createBuiltinEngineRegistry(options: {
 						: {}),
 					...(options.skillPaths ? { skillPaths: options.skillPaths } : {}),
 					...(options.thinkCount ? { thinkCount: options.thinkCount } : {}),
+					...(options.cron ? { cron: options.cron } : {}),
+					...(options.appearance ? { appearance: options.appearance } : {}),
 				}),
 		},
 		...(options.codex

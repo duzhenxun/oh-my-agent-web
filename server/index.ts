@@ -24,7 +24,13 @@ import { probeProvider } from "./providers/probe.js";
 import { createProviderStore } from "./providers/provider-store.js";
 import { completeOnce } from "./providers/one-shot.js";
 import { createCronRouter, createCronService } from "./cron/index.js";
+import { createCronToolPort, type CronToolPort } from "./cron/tool.js";
+import type { AppearancePort } from "./session/appearance.js";
+import type { AppearanceView } from "./protocol.js";
+import { DEFAULT_APPEARANCE } from "./session/settings.js";
 import { createComputerRouter } from "./computer/routes.js";
+import { createTtsRouter, ttsJsonErrorHandler } from "./tts/routes.js";
+import { createTtsService } from "./tts/service.js";
 import { approvalModeOf } from "./snapshot/state.js";
 import { createAgentRunner } from "./cron/agent-run.js";
 import { createTextCompleter, type OneShotTarget } from "./session/one-shot.js";
@@ -52,6 +58,8 @@ import { registerHealthAndStatic } from "./http/health-and-static.js";
 import { registerWebSocketRoutes } from "./http/ws-routes.js";
 import { decide, effectiveAddress, isCrossOriginRejected, isLoopback } from "./http/auth.js";
 import { registerUploadRoutes } from "./uploads/upload-routes.js";
+import { AsrBridge, resolveAsrAppPath } from "./asr/bridge.js";
+import { asrRawErrorHandler, registerAsrRoutes } from "./asr/routes.js";
 import { readConfig, validateConfig } from "./util/env.js";
 import { createLogger } from "./util/log.js";
 import { createRotatingFileSink, logFileName, type RotatingFileSink } from "./util/log-file.js";
@@ -65,6 +73,8 @@ import { createLoginGuard } from "./http/login-guard.js";
 import { createLoginActivity } from "./http/login-activity.js";
 import { BRAND_NAME } from "./brand.js";
 import { registerLiveRoutes, type Sink } from "./http/live-routes.js";
+import { registerClientLogRoutes } from "./http/client-log-routes.js";
+import { registerVoiceSettingsRoutes } from "./http/voice-settings-routes.js";
 import { compressText, immutableAssets } from "./http/compress.js";
 import { fanOutSnapshot } from "./snapshot/fan-out.js";
 import { checkDataDirWritable, describeListenError } from "./util/startup.js";
@@ -182,6 +192,18 @@ const sender = createSender({
 
 const piSessions = createPiSessionsProvider({ agentDir: piAgentDir(), dataDir: config.dataDir });
 
+/**
+ * 会话里的 `cron` 工具（ADR-0049）：引擎先建、定时任务服务后建，
+ * 所以给引擎的是一个惰性 getter，真正取端口发生在建会话的时候（那时已经赋过值）。
+ */
+let cronToolPort: CronToolPort | null = null;
+
+/**
+ * 会话里的 `appearance` 工具（ADR-0050）：它要调 runtime.applySettings（落盘 + 推快照），
+ * 而 runtime 在引擎之后才建 —— 所以这里也是惰性 getter。
+ */
+let appearancePort: AppearancePort | null = null;
+
 /** 引擎接线：注册表 + codex 客户端 + 每个引擎的会话来源（engine/wiring.ts） */
 const engineWiring = createEngineWiring({
 	engineName: config.engine,
@@ -206,6 +228,10 @@ const engineWiring = createEngineWiring({
 	// 「下一步建议」要几条 = 设置里「想想」的那个数：pi / codex 建会话时现读（读的是盘上的
 	// settings.json，改了设置下一条会话就生效）；dsh 只能在启动时取一次（进程级 patch）
 	thinkCount: () => readSettingsSync(config.dataDir).thinkCount,
+	// 会话里的 cron 工具（建任务默认绑当前会话，见 cron/tool.ts）
+	cron: () => cronToolPort,
+	// 外观字号工具（在对话里改字，ADR-0050）
+	appearance: () => appearancePort,
 	workspace: config.workspace,
 	piSessions,
 	onNotice: (text, level) => runtimeRef.current?.notify(text, level),
@@ -380,6 +406,27 @@ const runtime = createRuntime({
 
 runtimeRef.current = runtime;
 
+/**
+ * 外观字号的窄端口（ADR-0050）：
+ *   - `read()` 把当前三处字号给 agent（用户说「字太小」时它先看现在是多少）；
+ *   - `set()` 走 runtime.applySettings —— 和设置面板 `set_settings` 那一条 RPC **同一条路**：
+ *     SettingsStore 落盘 settings.json + `pushSnapshot()`，浏览器收到快照自己应用。
+ *     所以不需要新接口，也不需要轮询。
+ */
+const appearanceOf = (): AppearanceView =>
+	runtime.state().settings.appearance ?? { ...DEFAULT_APPEARANCE };
+
+appearancePort = {
+	// 从来没设过时按默认 14 报（工具因此能说清「现在是默认值」）
+	read: () => appearanceOf(),
+	async set(patch) {
+		// 没设过就从默认值起算：agent 说「大一点（+2）」时不该算出一个 NaN
+		await runtime.applySettings({ appearance: { ...appearanceOf(), ...patch } });
+		// 归一化（夹到 2–30、取双数）发生在 applySettings 里，所以回读一次再返回，报的就是真实值
+		return appearanceOf();
+	},
+};
+
 /** SSE 连接（纯 HTTP 通道）：clientId → 写入函数（每客户端一份快照，ADR-0033） */
 const sinks = new Map<string, Sink>();
 
@@ -520,7 +567,12 @@ const runAgentTask = createAgentRunner({
 
 const cron = createCronService({
 	dataDir: config.dataDir,
-	workspaces: () => [config.workspace, ...runtime.state().piProjects.map((project) => project.cwd)],
+	// 已打开的会话也算工作区：在另一个目录里开的会话，用户可能直接让它建定时任务
+	workspaces: () => [
+		config.workspace,
+		...runtime.state().piProjects.map((project) => project.cwd),
+		...runtime.state().conversations.map((item) => item.workspace),
+	],
 	async execute(job, signal) {
 		// agent 任务：真开会话干活（能读文件、跑命令；写操作要任务上显式开启）
 		if (job.mode === "agent") {
@@ -559,8 +611,13 @@ const cron = createCronService({
 		return result.text;
 	},
 });
+// 会话里的 `cron` 工具（ADR-0049）：到这里引擎、运行时都就绪了，再交给它一份窄接口
+cronToolPort = createCronToolPort(cron);
 
 app.use(express.json()); // 终端/技能/导入要读 body
+const tts = createTtsService();
+app.use("/api/tts", ttsJsonErrorHandler);
+app.use("/api/tts", createTtsRouter(tts));
 app.use("/api/computer", createComputerRouter());
 app.use(
 	"/api/cron",
@@ -609,8 +666,17 @@ app.use(compressText());
 app.use(immutableAssets());
 const uploadStore = createUploadStore({ dataDir: config.dataDir });
 registerUploadRoutes(app, { uploadStore, logger }); // 附件（ADR-0020 §P3）
+// 本地语音识别（macOS 原生、离线）：桥由 `open` 拉起，首次会弹一次系统授权
+const asrBridge = new AsrBridge({ appPath: resolveAsrAppPath(), log: logger });
+registerAsrRoutes(app, asrBridge);
+app.use("/api/asr", asrRawErrorHandler);
+process.once("exit", () => asrBridge.dispose());
 // 网页代理（ADR-0047）：必须挂在鉴权之后 —— 它是「拿你的网络身份去取任意网页」的入口
 registerWebProxyRoutes(app, { log: (text) => logger.warn(text) });
+// 网页诊断日志（语音状态机那几个节点）：只写日志，见 client-log-routes.ts 的说明
+registerClientLogRoutes(app, logger);
+// 语音设置的宿主侧副本：手机 / 电脑 / 换浏览器共用一套（见 voice-settings-routes.ts）
+registerVoiceSettingsRoutes(app, { dataDir: config.dataDir, logger });
 
 const workspaceOf = () => runtime.state().files?.root ?? config.workspace;
 
@@ -980,6 +1046,7 @@ async function shutdown(signal: string): Promise<void> {
 	if (shuttingDown) return;
 	shuttingDown = true;
 	logger.info("收到退出信号，正在关闭", { signal });
+	tts.close();
 	try {
 		await cron.stop();
 	} catch (error) {

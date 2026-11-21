@@ -31,6 +31,8 @@ import { isCleanAssistantEnd, turnFailed } from "./pi-turn-outcome.js";
 import { resourceSignature, type WatchedPath } from "./resource-signature.js";
 import { createPiSubagents } from "./pi-subagents.js";
 import { makeSubagentToolExtension } from "./pi-subagent-tool.js";
+import { makeCronToolExtension } from "./pi-cron-tool.js";
+import { makeAppearanceToolExtension } from "./pi-appearance-tool.js";
 import { enabledSubagentSpecs, readSubagentSettings } from "../subagents/profile-store.js";
 import { readSessionModel } from "./pi-session-model.js";
 import { entriesToUiMessages } from "./pi-transcript.js";
@@ -76,6 +78,17 @@ type PiSdkEngineOptions = {
 	 * 不给就按默认 4~5 条教模型（见 suggestion-guidance.ts）。
 	 */
 	thinkCount?: () => number;
+	/**
+	 * 会话里的 `cron` 工具（ADR-0049）：让模型在聊天里直接建/查/改定时任务。
+	 * 惰性 getter：宿主先建运行时、后建 cron 服务，建会话时两边都好了。
+	 * 不给 = 不注册这个工具（最小启动 / 单测）。
+	 */
+	cron?: () => import("../cron/tool.js").CronToolPort | null;
+	/**
+	 * 会话里的 `appearance` 工具（ADR-0050）：在聊天里读/改字号。
+	 * 同样惰性：宿主设置存储先建、会话后建。
+	 */
+	appearance?: () => import("../session/appearance.js").AppearancePort | null;
 };
 
 type SessionHandle = {
@@ -530,6 +543,16 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 		const subagentReady =
 			sessionId !== PREWARM_ID && readSubagentSettings(agentDir).enabled && enabledSubagentSpecs(agentDir).length > 0;
 		// 预热会话不暴露 Agent 工具：它不下发提示词，给它一个委派入口只会误伤
+		// 定时任务工具：只给真会话（预热会话不下发提示词，给它一个建任务的入口只会误伤）
+		if (sessionId !== PREWARM_ID && options.cron) {
+			extensionFactories.push(
+				makeCronToolExtension({ port: options.cron, conversationId: sessionId, workspace }),
+			);
+		}
+		// 外观字号工具：同样只给真会话
+		if (sessionId !== PREWARM_ID && options.appearance) {
+			extensionFactories.push(makeAppearanceToolExtension({ port: options.appearance }));
+		}
 		if (sessionId !== PREWARM_ID) {
 			extensionFactories.push(
 				makeSubagentToolExtension({

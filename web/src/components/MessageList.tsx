@@ -29,12 +29,15 @@ import { changedFilesIn } from "../changed-files.ts";
 import { ActionSuggestions } from "./ActionSuggestions.tsx";
 import { ChangedFiles } from "./ChangedFiles.tsx";
 import { CopyButton } from "./CopyButton.tsx";
+import { ReadAloudButton } from "./ReadAloudButton.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { urlTokens } from "../url-tokens.ts";
 import { SelectionToolbar, type SelectionAddInput } from "./SelectionToolbar.tsx";
 import { AnnotationMarks } from "./AnnotationMarks.tsx";
 import type { Annotation } from "../annotations.ts";
 import { ToolCard } from "./ToolCard.tsx";
+import { SpeechStopBadge } from "./SpeechStopBadge.tsx";
+import { useVoiceInputSettings } from "../voice-input.ts";
 import { AgentsRunStrip } from "./AgentsRunStrip.tsx";
 import { assignRunsToMessages, isActive, subagentUsageOf } from "../subagent-view.tsx";
 
@@ -459,6 +462,7 @@ function MessageViewInner({
 	onOpenFile,
 	subagentRuns,
 	onFork,
+	withSpeechDock = false,
 }: {
 	message: UiMessage;
 	modelLabel: string;
@@ -476,6 +480,11 @@ function MessageViewInner({
 	onOpenPath?: (path: string) => void;
 	/** 「从这里创建分支」：给了才画那枚图标（引擎不支持 / 临时对话时不给） */
 	onFork?: (messageId: string) => void;
+	/**
+	 * 在这条消息的尾注末尾画朗读控制（只有**最后一条**给）。
+	 * 用户 2026-11-21：朗读控制要放在「in/out/cache/$」那行的右端、固定位置、一直显示。
+	 */
+	withSpeechDock?: boolean;
 }) {
 	const t = useT();
 	/**
@@ -733,7 +742,10 @@ function MessageViewInner({
 				{repeat > 1 ? (
 					<span
 						className="block-error-count"
-						title={t(`这条错误出现了 ${repeat} 次（重试都失败了）`, `This error occurred ${repeat} times (every retry failed)`)}
+						title={t(
+							`这条错误出现了 ${repeat} 次（重试都失败了）`,
+							`This error occurred ${repeat} times (every retry failed)`,
+						)}
 					>
 						{`×${repeat}`}
 					</span>
@@ -859,7 +871,7 @@ function MessageViewInner({
 			</div>
 			{message.role === "assistant" ? (
 				<footer className="msg-foot">
-					{/* 尾注：用量 · 复制 · 分支 · 时间（用户 2026-10-30 定：**放回底部**，抬头只留模型与流式计数）
+					{/* 尾注：用量 · 复制 · 分支 · 朗读 · 时间（用户 2026-10-30 定：**放回底部**，抬头只留模型与流式计数）
 					 * 数字每调完一次模型就多一份、跑着的时候一直在涨（以前这些在尾注，
 					 * 和复制按钮挤在一行）。 */}
 					{message.usage ? (
@@ -921,7 +933,10 @@ function MessageViewInner({
 							<span>{t("分叉", "Fork")}</span>
 						</button>
 					)}
+					{live || !text.trim() ? null : <ReadAloudButton text={text} />}
 					<span className="topbar-spacer" />
+					{/* 朗读控制：这一行的**右端**（用户 2026-11-21 指定位置），一直显示 */}
+					{withSpeechDock ? <SpeechStopBadge docked /> : null}
 					{/* 时间：**一开始就显示**（先给开始时间），跑完再换成完成时间 —— 不再等结束才出现 */}
 					<FootStamp
 						ts={finishedAt ?? message.ts}
@@ -1062,6 +1077,15 @@ const MessageView = memo(MessageViewInner);
  */
 const NO_SUBAGENT_RUNS: readonly SubagentRunView[] = [];
 
+/** 最后一条助手消息的 id：朗读控制条挂在它尾注的右端（没有助手消息时另起一行） */
+function lastAssistantIdOf(messages: readonly UiMessage[]): string | null {
+	for (let index = messages.length - 1; index >= 0; index -= 1) {
+		const message = messages[index];
+		if (message && message.role === "assistant") return message.id;
+	}
+	return null;
+}
+
 export function MessageList({
 	messages,
 	hasMoreBefore,
@@ -1147,6 +1171,9 @@ export function MessageList({
 	 * **必须在下面那个早退之前调**（hooks 不能有条件地调用）。
 	 */
 	const shown = useMemo(() => liftSteeredMessages(messages), [messages]);
+	const lastAssistantId = useMemo(() => lastAssistantIdOf(shown), [shown]);
+	// 「显示朗读控制条」由设置决定（默认显示）；关掉后消息下面那条就不画了
+	const voiceSettings = useVoiceInputSettings();
 	// 子代理卡片挂在哪条消息上：按「开始时间落在哪条助手消息」分配（见 assignRunsToMessages）
 	const runsByMessage = useMemo(() => assignRunsToMessages(subagentRuns, shown), [subagentRuns, shown]);
 	// 空会话（新会话）什么都不画：标题/引导在输入框上方那块（NewChatMeta），这里留白
@@ -1176,9 +1203,17 @@ export function MessageList({
 					<AgentsRunStrip runs={orphanRunning} />
 				</div>
 			) : null}
+			{lastAssistantId === null && voiceSettings.showReadingDock ? (
+				/* 还没有助手消息（新会话 / 只发了消息还没回）：单独一行右对齐，保证一直可见 */
+				<div className="msg-foot msg-foot-solo">
+					<SpeechStopBadge docked />
+				</div>
+			) : null}
 			{shown.map((message) => (
 				<MessageView
 					key={message.id}
+					/* 朗读控制挂**最后一条助手消息**的尾注上（和 in/out/cache/$ 同一行、右端） */
+					withSpeechDock={voiceSettings.showReadingDock && message.id === lastAssistantId}
 					message={message}
 					modelLabel={labelOf(message.model)}
 					live={message.id === liveId}

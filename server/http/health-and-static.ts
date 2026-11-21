@@ -34,6 +34,19 @@ export function registerHealthAndStatic(
 	});
 
 	if (options.webDist) {
+		/**
+		 * `/index.html` 与 `/` 一律 `no-store`。
+		 *
+		 * 为什么：`index.html` 里写着带哈希的资源名，**它自己不能缓存** —— 否则改完前端、
+		 * 用户刷新一次仍拿到旧 HTML，进而加载旧 JS/CSS（实测踩过：界面上还显示已经删掉的浮动
+		 * 麦克风按钮，看起来像「改了没生效」）。带哈希的 assets 仍然长缓存（见 immutableAssets）。
+		 */
+		app.use((request, response, next) => {
+			if (request.path === "/" || request.path === "/index.html") {
+				response.setHeader("Cache-Control", "no-store, must-revalidate");
+			}
+			next();
+		});
 		app.use(express.static(options.webDist));
 		return;
 	}

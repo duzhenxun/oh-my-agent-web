@@ -8,7 +8,7 @@
 import { readFileSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
-import type { ProjectPrefs, PromptTemplate, SessionPrefs } from "../protocol.js";
+import type { AppearanceView, ProjectPrefs, PromptTemplate, SessionPrefs } from "../protocol.js";
 
 const SETTINGS_FILE = "settings.json";
 const SETTINGS_VERSION = 1;
@@ -30,6 +30,15 @@ const DEFAULT_THINK_COUNT = 5;
 const MIN_THINK_TIMEOUT_SEC = 5;
 const MAX_THINK_TIMEOUT_SEC = 180;
 const DEFAULT_THINK_TIMEOUT_SEC = 20;
+
+/**
+ * 外观字号的合法区间：与 `web/src/font-scale.ts` 保持一致（2–30px，且**只收双数**）。
+ * 界面滑杆步长是 2，这里归一化也走双数 —— 否则手改过的 settings.json 会让滑杆停在两个格之间。
+ */
+const MIN_FONT_PX = 2;
+const MAX_FONT_PX = 30;
+/** 三处字号的默认值 = 各自的「标准」档（见 `font-scale.ts`） */
+export const DEFAULT_APPEARANCE: AppearanceView = { chatPx: 14, projectPx: 14, sessionPx: 14 };
 
 const MAX_TEMPLATES = 40;
 const MAX_TEMPLATE_NAME_CHARS = 24;
@@ -146,6 +155,8 @@ type ClientSettings = {
 	thinkCount: number;
 	/** 「想想」隐藏回合的最大等待（秒） */
 	thinkTimeoutSec: number;
+	/** 外观字号（ADR-0050）：`null` = 还没人显式设过（走 `set_settings` + 快照回推） */
+	appearance: AppearanceView | null;
 };
 
 const MAX_DEFAULT_MODELS = 200;
@@ -215,6 +226,26 @@ function normalizeSessionPrefs(input: unknown): SessionPrefs {
 	return { pinned: ids(record.pinned), archived: ids(record.archived), order: ids(record.order) };
 }
 
+/**
+ * 纯函数：单处字号的归一化 —— 只收有限数字，夹到 2–30 并取**双数**（与界面滑杆同刻度）。
+ * 坏值（字符串、NaN、越界）回落到 fallback，不抛错：这是用户能手改的 settings.json。
+ */
+export function normalizeFontPx(value: unknown, fallback: number): number {
+	const raw = typeof value === "number" ? value : typeof value === "string" ? Number(value.trim()) : Number.NaN;
+	if (!Number.isFinite(raw)) return fallback;
+	const even = Math.round(raw / 2) * 2;
+	return Math.min(MAX_FONT_PX, Math.max(MIN_FONT_PX, even));
+}
+
+/** 纯函数：外观部分合并（没传的那一处原样保留） */
+export function normalizeAppearance(input: unknown, current: AppearanceView = DEFAULT_APPEARANCE): AppearanceView {
+	if (typeof input !== "object" || input === null) return { ...current };
+	const record = input as Record<string, unknown>;
+	const pick = (key: keyof AppearanceView): number =>
+		key in record ? normalizeFontPx(record[key], current[key]) : current[key];
+	return { chatPx: pick("chatPx"), projectPx: pick("projectPx"), sessionPx: pick("sessionPx") };
+}
+
 export function defaultSettings(): ClientSettings {
 	return {
 		quickPhrases: [...DEFAULT_QUICK_PHRASES],
@@ -225,6 +256,7 @@ export function defaultSettings(): ClientSettings {
 		defaultModels: {},
 		thinkCount: DEFAULT_THINK_COUNT,
 		thinkTimeoutSec: DEFAULT_THINK_TIMEOUT_SEC,
+		appearance: null,
 	};
 }
 
@@ -314,6 +346,10 @@ function mergeSettings(current: ClientSettings, patch: unknown): ClientSettings 
 			MAX_THINK_TIMEOUT_SEC,
 			DEFAULT_THINK_TIMEOUT_SEC,
 		);
+	// 外观：只传一处也算合法（agent 说「对话文字大一点」时不会把侧栏一起带上）
+	// null = 回到「没设过」（浏览器继续用本机那份）；对象 = 部分合并
+	if ("appearance" in record)
+		next.appearance = record.appearance === null ? null : normalizeAppearance(record.appearance, current.appearance ?? DEFAULT_APPEARANCE);
 	return next;
 }
 

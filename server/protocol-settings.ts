@@ -38,6 +38,23 @@ export type PromptTemplate = {
 	hidden?: boolean;
 };
 
+/**
+ * 外观尺寸（ADR-0050）：聊天正文 / 侧栏项目名 / 侧栏会话名的**像素字号**。
+ *
+ * 为什么放进客户端设置（而不是像以前一样只存浏览器 localStorage）：
+ * 只有服务端有一份，agent 才能在对话里改它 —— 用户说一句「对话文字设大一点」
+ * 才有落点（走现有 `set_settings` RPC + 快照回推，不需要新接口）。
+ * 浏览器那边仍以 localStorage 为第一来源（离线可用），服务端这份是共享权威副本。
+ */
+export type AppearanceView = {
+	/** 聊天正文字号（2–30，双数） */
+	chatPx: number;
+	/** 侧栏项目名字号 */
+	projectPx: number;
+	/** 侧栏会话名字号 */
+	sessionPx: number;
+};
+
 export type SettingsView = {
 	quickPhrases: string[];
 	/** @deprecated 仅老客户端兼容 / 一次性回落用，真正的显隐在本机偏好（见 `web/src/ui-prefs.ts`） */
@@ -54,4 +71,12 @@ export type SettingsView = {
 	thinkCount: number;
 	/** 「想想」最多等多久（秒，5–180）：超时就中断那个隐藏回合 */
 	thinkTimeoutSec: number;
+	/**
+	 * 外观字号（ADR-0050）：对话里说一句就能改，改完由快照回推给浏览器。
+	 *
+	 * `null` = **还没人显式设过**（老用户 / 新装的机器）：这时浏览器继续用本机 localStorage 里
+	 * 那份字号，服务端不下发、也不把用户自己调过的值按回去。一旦 agent 或面板设过一次，
+	 * 这里就不再是 null，之后以它为准（换设备也一致）。
+	 */
+	appearance: AppearanceView | null;
 };

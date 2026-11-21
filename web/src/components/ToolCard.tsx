@@ -43,45 +43,6 @@ function fullTextOf(block: ToolBlock): string | null {
 }
 
 /**
- * 从工具参数原文里抠出「一行能看的那段」：JSON 就取 command / path 字段，否则原样。
- *
- * 给「正在运行 bash…」这类实时动作提示用：抬头那边 `{"command":"cd …"}` 很吵，
- * 用户想看的是一行命令（或者被改的文件）。截断过的 JSON parse 不出来 → 原样退回。
- */
-export function argsPreview(raw: string): string | null {
-	const trimmed = raw.trim();
-	if (trimmed === "") return null;
-	/**
-	 * 一律压成**一行**：
-	 *   - 多行命令（`python3 - <<'PY'` 那种 heredoc）只取第一行，后头的脚本体对「它在跑什么」没有帮助，
-	 *     摊在一行里还会被 CSS 省略号从中间切断，看着像乱码（用户 2026-10-30 的截图就是这个）；
-	 *   - 多余空白合并：换行/缩进在单行里只会变成一串突兀的空格。
-	 * 只给一个宽松上限（240 字）：剩下交给 CSS 省略号按实际宽度决定 —— 固定字数截断会在
-	 * 还有余量时提前断掉（用户 2026-11-02：「应按宽度显示到能显示的位置」）。
-	 */
-	const oneLine = (text: string): string => {
-		const first = text.split(/\r?\n/, 1)[0] ?? "";
-		const flat = first.replace(/\s+/g, " ").trim();
-		return flat.length > 240 ? `${flat.slice(0, 240)}…` : flat;
-	};
-	try {
-		const parsed: unknown = JSON.parse(trimmed);
-		if (typeof parsed === "string") return oneLine(parsed);
-		if (parsed && typeof parsed === "object") {
-			const record = parsed as Record<string, unknown>;
-			for (const key of ["command", "path", "pattern", "query"]) {
-				const value = record[key];
-				if (typeof value === "string" && value.trim() !== "") return oneLine(value);
-			}
-			return oneLine(JSON.stringify(parsed));
-		}
-	} catch {
-		// 不是 JSON（或已被摘要截断）→ 原样显示
-	}
-	return oneLine(trimmed);
-}
-
-/**
  * 「完整命令」块：展开才出现，带一个复制按钮。
  *
  * 只在这些时候出现：摘要被截断了（`argsFull` 比 `argsSummary` 长），或者本来就是个跑命令的工具 ——

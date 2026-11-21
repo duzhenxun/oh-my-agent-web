@@ -27,9 +27,18 @@ import type { AttachmentRef, PromptTemplate, SendMode } from "../types.ts";
 import { interrupt, sendMessage, createSessionAndSend } from "../ws.ts";
 import type { ChatSurface } from "../chat-surface.ts";
 import { useT } from "../use-language.ts";
+import {
+	bindVoiceBridge,
+	isVoiceListening,
+	loadVoiceInputSettings,
+	reanchorVoiceInput,
+	stopVoiceInput,
+} from "../voice-input.ts";
+import { voiceLog } from "../voice-log.ts";
 import { showToast } from "../toast.ts";
 import { openImageViewer } from "../image-viewer.ts";
 import { SlashPalette } from "./SlashPalette.tsx";
+import { VoiceInputBadge } from "./VoiceInputBadge.tsx";
 import { MentionPalette } from "./MentionPalette.tsx";
 import {
 	applyMention,
@@ -153,6 +162,16 @@ export function Composer({
 		setPending([]);
 		setUploadError(null);
 		setUploading(false);
+	}, [conversationId]);
+	/**
+	 * 切会话就把听写停掉（用户 2026-11-21：「在别的会话里发语音文字会串会话」）。
+	 *
+	 * 语音听写是**模块级单例**，但草稿正文和光标锤点都归**上一条会话**：不断开的话，
+	 * 下一个中间结果会拿旧锤点整段替换新会话的草稿，静音到点还会替他发给新会话。
+	 * 已经写进旧会话草稿的字由 `handoffDraft` 存回它自己那一格，不会丢。
+	 */
+	useEffect(() => {
+		if (isVoiceListening()) stopVoiceInput();
 	}, [conversationId]);
 	const inputRef = useRef<HTMLTextAreaElement>(null);
 	/** 输入框外面那层（用来写 --composer-actions-w） */
@@ -349,6 +368,102 @@ export function Composer({
 		document.addEventListener("selectionchange", syncCaret);
 		return () => document.removeEventListener("selectionchange", syncCaret);
 	}, []);
+	/**
+	 * 语音输入浮条 ↔ 这个输入框的桥（`voice-input.ts`）。
+	 *
+	 * 只接**主输入框**：临时聊天也是同一个 `Composer`，两边都注册的话浮条会插到
+	 * 「最后挂载的那一个」里，用户在左边说话、字却跑进右边那条。
+	 *
+	 * 插入点用**开始听写时的光标**当锚点，之后每次都是 `head + 整段转写 + tail` 整段替换 ——
+	 * Web Speech 的中间结果是累积的，往后追加会把同一句话重复好几遍。
+	 */
+	const voiceAnchor = useRef<{ head: string; tail: string } | null>(null);
+	/**
+	 * 自动发送要调**最新那一版** `submit`：它读的是这一帧的 `draft` / `running`，
+	 * 而倒计时是在定时器里回调的 —— 拿闭包里那份旧 `submit`，发出去的就是上一版草稿。
+	 */
+	const submitRef = useRef<((mode?: "now" | "queue" | "steer") => void) | null>(null);
+	const runningRef = useRef(running);
+	runningRef.current = running;
+	const snapshotRef = useRef(snapshot);
+	snapshotRef.current = snapshot;
+	/** 引擎不支持插队时只提醒一次：每次都弹就成了噪声 */
+	const steerFallbackNotified = useRef(false);
+	useEffect(() => {
+		if (surface) return;
+		bindVoiceBridge({
+			/**
+			 * 用 getter 读**当前**会话：桥只在挂载时注册一次（切会话不重建），
+			 * 写死一个值的话每次切完都是旧 id，语音听写的会话判定就全不准了。
+			 */
+			get conversationId() {
+				return conversationRef.current ?? null;
+			},
+			/** `base` = 调用方手里最新的一版草稿（听写中打字时传进来：这一拍 `draftRef` 还没跟上） */
+			onStart: (base) => {
+				const element = inputRef.current;
+				const text = base ?? draftRef.current;
+				const caret = element?.selectionStart ?? text.length;
+				voiceAnchor.current = { head: text.slice(0, caret), tail: text.slice(caret) };
+			},
+			onText: (text) => {
+				const anchor = voiceAnchor.current;
+				if (!anchor) return;
+				const next = `${anchor.head}${text}${anchor.tail}`;
+				setDraft(next);
+				const caret = anchor.head.length + text.length;
+				caretRef.current = caret;
+				// 光标跟着语音走：说完直接按回车就是发这句话
+				const element = inputRef.current;
+				if (element && document.activeElement === element) element.setSelectionRange(caret, caret);
+			},
+			onEnd: () => {
+				voiceAnchor.current = null;
+			},
+			/** 静音判定到点：和回车同一套落点（回合在跑就排队，否则直接发） */
+			submitVoice: () => {
+				const runningNow = runningRef.current;
+				const steerCapable = snapshotRef.current?.engineCapabilities?.steer !== false;
+				const draftLen = draftRef.current.trim().length;
+				voiceLog("submit:decide", {
+					running: runningNow,
+					steerCapable,
+					submitMode: loadVoiceInputSettings().submitMode,
+					draftLen,
+				});
+				if (!runningNow) {
+					submitRef.current?.("now");
+					return;
+				}
+				/**
+				 * 回合进行中：按设置决定排队还是插队。
+				 * 插队需要引擎真的支持（pi 有 steer 语义，codex/opencode 没有）——
+				 * 不支持时**不能默默不动**：用户刚在设置里选了插队，什么都没发生会很困惑。
+				 */
+				if (loadVoiceInputSettings().submitMode === "steer") {
+					if (steerCapable) {
+						submitRef.current?.("steer");
+						return;
+					}
+					if (!steerFallbackNotified.current) {
+						steerFallbackNotified.current = true;
+						showToast({
+							text: t(
+								"当前引擎不支持插队（只有 Pi 引擎有），这句改成排队发送",
+								"This engine can't steer (only Pi can) — sending this one as queued instead",
+							),
+						});
+					}
+				}
+				submitRef.current?.("queue");
+			},
+		});
+		return () => {
+			bindVoiceBridge(null);
+			// 输入框都要卸了，还开着麦就没意义（而且没有地方写字）
+			if (isVoiceListening()) stopVoiceInput();
+		};
+	}, [surface, setDraft, t]);
 	/** Esc 关掉的是**哪一个** `@`（按它的起点记）：继续打同一个词不再弹，换一处打照常弹 */
 	const [mentionOff, setMentionOff] = useState<number | null>(null);
 	const [mentionActive, setMentionActive] = useState(0);
@@ -665,8 +780,15 @@ export function Composer({
 	const canSend = draft.trim() !== "" || pending.length > 0 || notes !== "";
 
 	const submit = (mode: "now" | "queue" | "steer" = "now") => {
+		// 还在听写 / 倒计时就按了回车：先把语音收尾（已经写进草稿的字留着），再照常发。
+		// 倒计时中点也一样：在这里收尾等于「用户已经手动发了」，别等 0.6s 后再空发一次。
+		stopVoiceInput();
 		const value = draft.trim();
-		if (!value && pending.length === 0 && notes === "") return;
+		if (!value && pending.length === 0 && notes === "") {
+			// 发了个空：语音自动发送最常碰到这种（识别没出字），无声无息就没了，必须留一笔
+			voiceLog("submit:empty", { mode });
+			return;
+		}
 		// 技能名对不上是最常见的「发了但没生效」，先把话说清楚（不影响发送）
 		if (/^\/skill:/i.test(value)) void checkSkillName(value);
 		// 斜杠命令：**只有宿主自己做得动的那些**就地做完、不回显成一条聊天消息。
@@ -688,6 +810,7 @@ export function Composer({
 		const body = value === "" ? notes : notes === "" ? value : `${value}\n\n${notes}`;
 		// 图片引用写进正文（刷新后仍显示）；附件本体走 references
 		const text = body + imagesMarkdown(pending);
+		voiceLog("submit:send", { mode, running, len: text.length, attachments: pending.length });
 		deliver(text, pending.length > 0 ? pending : undefined, mode);
 		setDraft(""); // 高度由上面那个 effect 跟着 draft 一起收回一行
 		// 发出去了：历史游标复位（刚发的这条已经进了历史）
@@ -697,6 +820,8 @@ export function Composer({
 		setUploadError(null);
 		if (notes !== "") onAnnotationsSent?.();
 	};
+	// 语音输入的自动发送拿这里的最新一版（见上面 submitRef 的注释）
+	submitRef.current = submit;
 
 	return (
 		<div className="composer-wrap">
@@ -872,117 +997,124 @@ export function Composer({
 
 			<div className="composer" ref={composerRef}>
 				{annotationSummary}
-				<textarea
-					ref={inputRef}
-					className="composer-input"
-					/* 手机点进来时，键盘上方那排「系统猜出来的」东西（密码钥匙 / 联想条）能少一点：
+				{/* 麦克风与输入框同一个 flex 行：对齐交给布局，不用绝对定位去凑像素 */}
+				<div className="composer-row">
+					{surface ? null : <VoiceInputBadge inline />}
+					<textarea
+						ref={inputRef}
+						className="composer-input"
+						/* 手机点进来时，键盘上方那排「系统猜出来的」东西（密码钥匙 / 联想条）能少一点：
 					   属性包见 plain-text-input.ts（含「网页到底能压掉什么、压不掉什么」的说明）。
 					   回车键印字跟着状态走：空闲时就是「发送」（跟 Enter 直接发一致），
 					   跑的时候是「排队」——手感与真正的动作对齐，不在这儿许诺做不到的事。 */
-					{...PLAIN_TEXT_INPUT}
-					enterKeyHint={running ? "enter" : "send"}
-					value={draft}
-					placeholder={
-						running
-							? t("正在跑…回车排队", "Running… Enter to queue")
-							: draft.trim() === "" && notes !== ""
-								? t(`回车发送 ${pendingNotes} 条注释`, `Enter to send ${pendingNotes} note(s)`)
-								: currentMobileShell()
-									? t("消息…", "Message…")
-									: t("消息…输入 / 使用命令，输入 @ 查找文件", "Message… type / for commands, @ to find a file")
-					}
-					onChange={(event) => {
-						const value = event.target.value;
-						const position = event.target.selectionStart ?? value.length;
-						// 正在翻历史时手动改字：退出历史浏览，改过的这段就当成「自己的草稿」
-						//（否则再按 ↓ 会把它换回翻历史之前那一版，刚打的字白丢）
-						if (historyAt !== null) {
-							setHistoryAt(null);
-							draftBeforeHistory.current = value;
+						{...PLAIN_TEXT_INPUT}
+						enterKeyHint={running ? "enter" : "send"}
+						value={draft}
+						placeholder={
+							running
+								? t("正在跑…回车排队", "Running… Enter to queue")
+								: draft.trim() === "" && notes !== ""
+									? t(`回车发送 ${pendingNotes} 条注释`, `Enter to send ${pendingNotes} note(s)`)
+									: currentMobileShell()
+										? t("消息…", "Message…")
+										: t("消息…输入 / 使用命令，输入 @ 查找文件", "Message… type / for commands, @ to find a file")
 						}
-						setDraft(value);
-						caretRef.current = position;
-						setCaret(position);
-						// 那个 `@` 已经被删掉/改掉了：之前按 Esc 的「关掉」不再算数
-						if (mentionOff !== null && value[mentionOff] !== "@") setMentionOff(null);
-					}}
-					onPaste={onPaste}
-					onKeyDown={(event: KeyboardEvent<HTMLTextAreaElement>) => {
-						// 「@ 提及」面板开着：方向键 / Tab / Enter 归它用（Esc 只关面板，不动已经打的字）
-						if (mention !== null && !event.nativeEvent.isComposing) {
-							if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-								event.preventDefault();
-								const step = event.key === "ArrowDown" ? 1 : -1;
-								const count = Math.max(1, mentionRows.length);
-								setMentionActive((value) => (value + step + count) % count);
-								return;
+						onChange={(event) => {
+							const value = event.target.value;
+							const position = event.target.selectionStart ?? value.length;
+							// 正在翻历史时手动改字：退出历史浏览，改过的这段就当成「自己的草稿」
+							//（否则再按 ↓ 会把它换回翻历史之前那一版，刚打的字白丢）
+							if (historyAt !== null) {
+								setHistoryAt(null);
+								draftBeforeHistory.current = value;
 							}
-							// 没有候选时 Enter 不该被吃掉：那就是「把这句话发出去」
-							if ((event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) && mentionRows.length > 0) {
-								event.preventDefault();
-								const picked = mentionRows[mentionIndex];
-								if (picked) pickMentionRow(picked);
-								return;
-							}
-							if (event.key === "Escape") {
-								event.preventDefault();
-								setMentionOff(mention.start);
-								return;
-							}
-						}
-						// 斜杠命令面板开着：方向键 / Tab / Enter 归它用（Esc 关掉面板，文本不动）
-						if (slashOpen && !event.nativeEvent.isComposing) {
-							if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-								event.preventDefault();
-								const step = event.key === "ArrowDown" ? 1 : -1;
-								setSlashActive((value) => (value + step + Math.max(1, slashCount)) % Math.max(1, slashCount));
-								return;
-							}
-							if (event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) {
-								event.preventDefault();
-								if (slashSkills !== null) {
-									const picked = slashSkills[slashActive];
-									if (picked) pickSkill(picked.name);
-									return;
-								}
-								const picked = slashCommands[slashActive];
-								if (picked) pickCommand(picked);
-								return;
-							}
-							if (event.key === "Escape") {
-								// 只关面板、不动已经打的字（和 `@` 面板一致，见 slashDismissed 的注释）
-								event.preventDefault();
-								setSlashDismissed(true);
-								return;
-							}
-						}
-						/*
-						 * ↑ / ↓ 翻「上次发过的话」：只在光标处于**第一行（↑）/ 最后一行（↓）**且没有选区时接管。
-						 * 「@ 提及」「/ 命令」面板开着时不让位给这里（上面那两段已经 return 了）。
-						 */
-						if (
-							!event.nativeEvent.isComposing &&
-							(event.key === "ArrowUp" || event.key === "ArrowDown") &&
-							event.currentTarget.selectionStart === event.currentTarget.selectionEnd
-						) {
-							const before = event.currentTarget.value.slice(0, event.currentTarget.selectionStart ?? 0);
-							const after = event.currentTarget.value.slice(event.currentTarget.selectionEnd ?? 0);
-							const atEdge = event.key === "ArrowUp" ? !before.includes("\n") : !after.includes("\n");
-							if (atEdge) {
-								// 有候选面板开着时方向键归面板（上面已经处理），走到这里说明没有面板
-								if (recallHistory(event.key === "ArrowUp" ? -1 : 1)) {
+							setDraft(value);
+							caretRef.current = position;
+							setCaret(position);
+							// 听写期间用户自己打了字：把已说的定稿，从新光标重新起一段
+							//（否则下一次中间结果会拿旧锚点整段替换，把他刚打的字盖掉）
+							if (isVoiceListening()) reanchorVoiceInput(value);
+							// 那个 `@` 已经被删掉/改掉了：之前按 Esc 的「关掉」不再算数
+							if (mentionOff !== null && value[mentionOff] !== "@") setMentionOff(null);
+						}}
+						onPaste={onPaste}
+						onKeyDown={(event: KeyboardEvent<HTMLTextAreaElement>) => {
+							// 「@ 提及」面板开着：方向键 / Tab / Enter 归它用（Esc 只关面板，不动已经打的字）
+							if (mention !== null && !event.nativeEvent.isComposing) {
+								if (event.key === "ArrowDown" || event.key === "ArrowUp") {
 									event.preventDefault();
+									const step = event.key === "ArrowDown" ? 1 : -1;
+									const count = Math.max(1, mentionRows.length);
+									setMentionActive((value) => (value + step + count) % count);
+									return;
+								}
+								// 没有候选时 Enter 不该被吃掉：那就是「把这句话发出去」
+								if ((event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) && mentionRows.length > 0) {
+									event.preventDefault();
+									const picked = mentionRows[mentionIndex];
+									if (picked) pickMentionRow(picked);
+									return;
+								}
+								if (event.key === "Escape") {
+									event.preventDefault();
+									setMentionOff(mention.start);
 									return;
 								}
 							}
-						}
-						if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
-						event.preventDefault();
-						// 回车默认：空闲时直接发；回合进行中默认「排队」（想插队再点「插队」）
-						submit(running ? "queue" : "now");
-					}}
-					rows={1}
-				/>
+							// 斜杠命令面板开着：方向键 / Tab / Enter 归它用（Esc 关掉面板，文本不动）
+							if (slashOpen && !event.nativeEvent.isComposing) {
+								if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+									event.preventDefault();
+									const step = event.key === "ArrowDown" ? 1 : -1;
+									setSlashActive((value) => (value + step + Math.max(1, slashCount)) % Math.max(1, slashCount));
+									return;
+								}
+								if (event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) {
+									event.preventDefault();
+									if (slashSkills !== null) {
+										const picked = slashSkills[slashActive];
+										if (picked) pickSkill(picked.name);
+										return;
+									}
+									const picked = slashCommands[slashActive];
+									if (picked) pickCommand(picked);
+									return;
+								}
+								if (event.key === "Escape") {
+									// 只关面板、不动已经打的字（和 `@` 面板一致，见 slashDismissed 的注释）
+									event.preventDefault();
+									setSlashDismissed(true);
+									return;
+								}
+							}
+							/*
+							 * ↑ / ↓ 翻「上次发过的话」：只在光标处于**第一行（↑）/ 最后一行（↓）**且没有选区时接管。
+							 * 「@ 提及」「/ 命令」面板开着时不让位给这里（上面那两段已经 return 了）。
+							 */
+							if (
+								!event.nativeEvent.isComposing &&
+								(event.key === "ArrowUp" || event.key === "ArrowDown") &&
+								event.currentTarget.selectionStart === event.currentTarget.selectionEnd
+							) {
+								const before = event.currentTarget.value.slice(0, event.currentTarget.selectionStart ?? 0);
+								const after = event.currentTarget.value.slice(event.currentTarget.selectionEnd ?? 0);
+								const atEdge = event.key === "ArrowUp" ? !before.includes("\n") : !after.includes("\n");
+								if (atEdge) {
+									// 有候选面板开着时方向键归面板（上面已经处理），走到这里说明没有面板
+									if (recallHistory(event.key === "ArrowUp" ? -1 : 1)) {
+										event.preventDefault();
+										return;
+									}
+								}
+							}
+							if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+							event.preventDefault();
+							// 回车默认：空闲时直接发；回合进行中默认「排队」（想插队再点「插队」）
+							submit(running ? "queue" : "now");
+						}}
+						rows={1}
+					/>
+				</div>
 				<div className="composer-actions" ref={actionsRef}>
 					{running && canSend ? (
 						<>

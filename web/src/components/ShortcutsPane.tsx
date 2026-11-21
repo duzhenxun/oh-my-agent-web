@@ -22,6 +22,7 @@ import {
 	isMacPlatform,
 	isReservedCombo,
 	shortcutLabel,
+	noteModifierKeys,
 	type ShortcutId,
 } from "../shortcuts.ts";
 import { openShortcutSheet } from "../shortcut-sheet.ts";
@@ -46,6 +47,8 @@ export function ShortcutsPane() {
 	useEffect(() => {
 		if (!recording) return;
 		const onKey = (event: KeyboardEvent) => {
+			// 先记左右修饰键（右 ⌘ / 右 ⌥）：主键事件本身看不出是哪一边
+			noteModifierKeys(event);
 			event.preventDefault();
 			event.stopPropagation();
 			// 光按 Esc（不带修饰键）= 放弃录制

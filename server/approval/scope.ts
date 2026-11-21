@@ -34,6 +34,7 @@ const RISK_NOTES: Record<string, string> = {
 	write: "写文件会改动磁盘内容，确认后才能执行",
 	edit: "改文件会改动已有内容，确认后才能执行",
 	powershell: "跑 PowerShell 命令会修改你的机器，确认后才能执行",
+	cron: "定时任务会在你不在的时候自己跑（启用了写入还会改代码），确认后才会创建或修改",
 };
 
 function truncate(text: string, limit = SUMMARY_CHARS): string {
@@ -124,9 +125,22 @@ function pickString(args: unknown, keys: string[]): string | null {
 	return null;
 }
 
+/**
+ * 定时任务工具里只看不改的两个动作（`list` / `preview`）：它们只读 `cron.json`、
+ * 只算下次时间，没有任何副作用。
+ *
+ * 为什么要特判：工具名不在 `READ_ONLY_TOOLS` 里，不特判的话每问一句「现在有哪些定时任务」
+ * 都要弹一次确认，而用户的直觉里“看一眼列表”从来不是危险操作（和 bash 的纯读命令同理）。
+ */
+function isReadOnlyCronCall(toolName: string, args: unknown): boolean {
+	if (toolName !== "cron") return false;
+	const action = pickString(args, ["action"]) ?? "list";
+	return action === "list" || action === "preview";
+}
+
 export function classifyScope(input: ScopeInput): ApprovalScope {
 	const { toolName, args, workspace } = input;
-	const dangerous = !READ_ONLY_TOOLS.has(toolName);
+	const dangerous = !READ_ONLY_TOOLS.has(toolName) && !isReadOnlyCronCall(toolName, args);
 	const argsSummary = truncate(typeof args === "string" ? args : JSON.stringify(args ?? {}));
 
 	if (toolName === "bash" || toolName === "powershell") {

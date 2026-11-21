@@ -6,7 +6,8 @@
 .voice-panel {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr);
-	gap: 18px;
+	/* 18 → 10：整块设置以前一屏放不下，滚起来才发现「占地方太多」（用户 2026-11-21） */
+	gap: 10px;
 	align-items: start;
 	min-height: 0;
 	/* 只让外层 .big-modal-body 滚：两处都 overflow 会出现两条滚动条、还会互相抢滚轮 */
@@ -24,9 +25,9 @@
 .voice-row {
 	display: flex;
 	align-items: center;
-	gap: 10px;
+	gap: 8px;
 	min-width: 0;
-	padding: 7px 2px;
+	padding: 4px 2px;
 	border-radius: 8px;
 	cursor: pointer;
 }
@@ -46,15 +47,17 @@
 	flex: 1 1 auto;
 	min-width: 0;
 	color: var(--text-dim);
-	font-size: 15px;
+	font-size: 14px;
 }
 
 /* 说明小字：跟在标题右边，窄屏会换行（不截断 —— 说不清还不如不显示） */
 .voice-row-hint {
 	color: var(--text-faint);
-	font-size: 13px;
+	font-size: 12px;
 	font-weight: 400;
-	line-height: 1.4;
+	line-height: 1.35;
+	/* 说明是「一句带过」的东西：窄屏时换行也别把行高撑开 */
+	white-space: normal;
 }
 
 .voice-row input[type="checkbox"] {
@@ -109,23 +112,467 @@
 	font-size: 14px;
 }
 
+/* 两列并排：语速 + 提示音音量（都是滑杆，横着放省半屏）。窄屏自动落回一列。 */
+.voice-row-pair {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 4px 16px;
+	min-width: 0;
+}
+
+@media (max-width: 620px) {
+	.voice-row-pair {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+
+/* 竖排行（「语音播报」的引擎 / 音色 / 语速 / 音量）：标题与说明占满一行，控件换到下一行铺开。
+ * 原来是「左标题右控件」—— 说明小字一长，右边只剩 140px 最小宽，音色名整条被截断。 */
+.voice-row-stacked {
+	flex-direction: column;
+	align-items: stretch;
+	gap: 4px;
+}
+
+.voice-row-stacked > .voice-row-label {
+	/* 标题自己也竖起来：标题一行、说明一行，别挤在同一行抢占宽度 */
+	flex: none;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 2px;
+}
+
+/* column 方向下 flex-basis 会变成**高度**：下拉必须清掉 `flex: 0 1 320px`，否则拉成 320px 高 */
+.voice-row-stacked .voice-select {
+	flex: none;
+	width: 100%;
+	min-width: 0;
+}
+
+/* 竖排里的勾选框：靠左对齐，不能被 stretch 拉成一条 */
+.voice-row-stacked > input[type="checkbox"] {
+	align-self: flex-start;
+}
+
+/* 滑杆行：滑杆和数值同一行，数值贴右，滑杆吃掉剩下的宽度 */
+.voice-slider-line {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	min-width: 0;
+}
+
+.voice-slider-line input[type="range"] {
+	/* 盖掉 `.voice-row-slider` 的 `flex: 0 1 260px`：铺满这一行 */
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
 .voice-select {
 	flex: 0 1 320px;
 	min-width: 140px;
-	height: 30px;
+	height: 26px;
 	padding: 0 8px;
 	border: 1px solid var(--border);
 	border-radius: 8px;
 	background: var(--bg);
 	color: var(--text);
 	font: inherit;
-	font-size: 14px;
+	font-size: 13px;
 	cursor: pointer;
 }
 
 .voice-actions {
 	display: flex;
 	justify-content: flex-end;
-	gap: 8px;
-	margin-top: 8px;
+	gap: 6px;
+	margin-top: 4px;
+}
+
+/* 朗读中的浮条：**可拖到任意位置**，默认贴右侧中部。
+   以前是底部居中（bottom: 78px + translateX），正好压住输入框和状态栏。 */
+.speech-badge {
+	position: fixed;
+	/* 默认落在**右下、输入框上方**：以前是右侧垂直居中，正好压在正文中间（用户 2026-11-21：
+	   「这个位置改改」）。右下这一小块是空的，也不和麦克风浮条打架（麦克风在 96px 处）。 */
+	top: auto;
+	bottom: 150px;
+	/* 右边缘和麦克风浮条对齐（都是 16px）：两个浮钮排成同一列，看着才像一套 */
+	right: 16px;
+	transform: none;
+	z-index: 60;
+	display: inline-flex;
+	/* 竖排：握把 / 状态 + 图标 / 两个按钮 / 快捷键，从上往下叠。
+	   竖排本来就窄，尺寸一律收紧：宽度只留给「正在朗读」四个字，不再撑到 104px */
+	flex-direction: column;
+	align-items: stretch;
+	gap: 3px;
+	/* 只剩图标 + 两个按钮：宽度压到 46px（按钮文字「暂停 / 停止」两位数是硬下限） */
+	min-width: 46px;
+	padding: 5px;
+	/* 磨砂玻璃：底色半透明 + 背后模糊（用户 2026-11-21：「做成一点那种透明的内容感觉」）。
+	   边框也用半透明，不然一圈实线会把「玻璃」的感觉破坏掉。 */
+	border: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+	border-radius: 12px;
+	background: color-mix(in srgb, var(--bg-raised, var(--bg)) 42%, transparent);
+	color: var(--text);
+	font: inherit;
+	font-size: 12px;
+	line-height: 1.15;
+	box-shadow: 0 6px 24px color-mix(in srgb, #000 18%, transparent);
+	/* 拖动的手感：不许选中文字、不许浏览器拿触摸事件去滚页面 */
+	user-select: none;
+	touch-action: none;
+	cursor: grab;
+	max-width: calc(100vw - 2 * 8px);
+}
+
+/* 拖动中：抬起来一点，光标换成「抓着」 */
+/* 背景模糊由组件写成**行内样式**（见 SpeechStopBadge 的 GLASS 常量）：
+   放在 CSS 里会被压缩器合并成只剩 `-webkit-` 前缀，而 Chrome 只认标准写法 ——
+   表现就是「样式写了、真机上没模糊」。这里只负责不支持时的降级（见下面的 @supports not）。 */
+
+.speech-badge.is-dragging {
+	cursor: grabbing;
+	box-shadow: 0 12px 36px color-mix(in srgb, #000 26%, transparent);
+}
+
+.speech-badge:hover {
+	border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+	background: color-mix(in srgb, var(--bg-raised, var(--bg)) 62%, transparent);
+}
+
+/* 拖动中：更实一点，看得清它跟着手走 */
+.speech-badge.is-dragging {
+	background: color-mix(in srgb, var(--bg-raised, var(--bg)) 80%, transparent);
+}
+
+/* 暂停中：整条转暖色，一眼看出「还在，只是没在念」 */
+.speech-badge.is-paused {
+	border-color: color-mix(in srgb, var(--yellow, #d9a441) 55%, var(--border));
+}
+
+/* 图标 + 状态文字：竖排里的第一行，仍然横着排（图标不该被挤到单独一行） */
+.speech-badge-head {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 3px;
+	font-size: 11px;
+}
+
+.speech-badge-text {
+	white-space: nowrap;
+}
+
+.speech-badge-btn {
+	/* 拖动层不能把按钮的点击吃掉：按钮自己恢复成正常指针 */
+	cursor: pointer;
+	/* 竖排里两个按钮等宽、撑满一列，点起来比横条上一串小胶囊准 */
+	width: 100%;
+	text-align: center;
+	border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+	border-radius: 999px;
+	padding: 2px 6px;
+	background: color-mix(in srgb, var(--bg-elev-2, #000) 42%, transparent);
+	color: var(--text);
+	font: inherit;
+	font-size: 12px;
+	line-height: 1.3;
+}
+
+.speech-badge-btn:hover {
+	border-color: color-mix(in srgb, var(--accent) 70%, transparent);
+	background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.speech-badge-stop {
+	color: var(--accent);
+	font-weight: 600;
+}
+
+/* 快捷键那颗 kbd 已经不再渲染（用户 2026-11-21：「这个不用显示快捷键」），
+   对应的样式和手机上「藏起来」的 media 规则一起删掉了。 */
+
+/* 没有 backdrop-filter（老浏览器 / 关了硬件加速）：退成「基本不透明」，别让字糊在正文上 */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+	.speech-badge {
+		background: color-mix(in srgb, var(--bg-raised, var(--bg)) 94%, transparent);
+	}
+}
+
+/* ---- 语音输入浮条（Phase 1）----
+   一颗可拖动的圆形麦克风：点一下听写、再点一下停，说的话实时写进输入框。
+   默认落在右下、输入框上方一点 —— 那里不压发送键，也不挡状态栏。 */
+.voice-mic {
+	position: fixed;
+	right: 16px;
+	bottom: 96px;
+	z-index: 58;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 46px;
+	height: 46px;
+	padding: 0;
+	border: 1px solid var(--border);
+	border-radius: 50%;
+	background: var(--bg-elev);
+	color: var(--text);
+	font-size: 20px;
+	line-height: 1;
+	box-shadow: 0 6px 20px color-mix(in srgb, #000 18%, transparent);
+	/* 拖动的手感：别选中文字、别让浏览器把触摸拿去滚页面 */
+	user-select: none;
+	touch-action: none;
+	cursor: grab;
+}
+
+.voice-mic:hover {
+	border-color: var(--accent);
+}
+
+.voice-mic.is-dragging {
+	cursor: grabbing;
+}
+
+/* 静音等待的进度环：外圈按「静音了多久 / 1.2 秒」填充，填满就进撤销窗口。
+   用 conic-gradient + mask 画环（一条声明，不用 SVG）；
+   `--voice-progress` 由浮条按 0–1 传进来。 */
+.voice-mic-ring {
+	position: absolute;
+	inset: -4px;
+	border-radius: 50%;
+	pointer-events: none;
+	background: conic-gradient(
+		from -90deg,
+		color-mix(in srgb, var(--red) 75%, transparent) calc(var(--voice-progress, 0) * 1turn),
+		transparent 0
+	);
+	/* 只留最外那一圈（中间挖空），别把麦克风图标糊住 */
+	mask: radial-gradient(closest-side, transparent 79%, #000 81%, #000 100%);
+	-webkit-mask: radial-gradient(closest-side, transparent 79%, #000 81%, #000 100%);
+}
+
+/* 放进输入框的那颗（左下角）：不再固定定位、不拖动，尺寸压到 24px，
+   正文左边留出的位置由 `.composer-input` 的 padding-left 给（见 base.css） */
+.voice-mic.is-inline {
+	/* 与输入框同一个 flex 行（`.composer-row`），靠 `align-items: center` **永远垂直居中** ——
+	   输入框长成多行时它还在中间（用户 2026-11-21：「应该是他永远在中间」）。
+	   不再用绝对定位 + top/bottom 凑像素：那样换字号/换行高就会偏。
+	   注意必须是 `relative` 而不是 `static`：里面的进度环（`.voice-mic-ring`）是绝对定位的，
+	   `static` 会让它去找更外层的定位父级 —— 结果那个环被拉成罩住整个输入框的大椭圆。 */
+	position: relative;
+	/* 基础样式是给**浮动款**写的（`right: 16px; bottom: 96px`）。
+	   在 relative 下这些会变成「相对自身偏移」—— 不重置的话按钮会被顶到输入框上面去。 */
+	top: auto;
+	right: auto;
+	bottom: auto;
+	left: auto;
+	flex: none;
+	width: 24px;
+	height: 24px;
+	margin: 0 0 0 9px;
+	align-self: center;
+	font-size: 13px;
+	border-color: transparent;
+	background: transparent;
+	box-shadow: none;
+	cursor: pointer;
+}
+
+.voice-mic.is-inline:hover {
+	border-color: var(--border);
+}
+
+/**
+ * 讲话中（在听）：一圈**温和的呼吸灯** —— 用户 2026-11-21：「我不说话的时候，它一点一闪一闪、
+ * 呼吸灯的感觉最好」。幅度压小（2→5px），周期放宽到 2.6 秒，避免抢注意力；
+ * 说话时的进度环仍是另一层（`.voice-mic-ring`），两者叠在一起不冲突。
+ */
+.voice-mic.is-inline.is-listening {
+	animation: voice-mic-breathe 2.6s ease-in-out infinite;
+}
+
+@keyframes voice-mic-breathe {
+	0%,
+	100% {
+		box-shadow: 0 0 0 2px color-mix(in srgb, var(--red) 20%, transparent);
+	}
+	50% {
+		box-shadow: 0 0 0 6px color-mix(in srgb, var(--red) 8%, transparent);
+	}
+}
+
+/* 系统开了「减少动态效果」就停在中间那档：别让闪烁变成不适 */
+@media (prefers-reduced-motion: reduce) {
+	.voice-mic.is-inline.is-listening,
+	.voice-mic.is-listening {
+		animation: none;
+		box-shadow: 0 0 0 3px color-mix(in srgb, var(--red) 16%, transparent);
+	}
+}
+
+.voice-mic.is-inline .voice-mic-ring {
+	inset: -2px;
+}
+
+/* 撤销胶囊也一起压小，别把输入框那一行顶高 */
+.voice-mic.is-inline.is-sending {
+	width: auto;
+	height: 22px;
+	padding: 0 8px;
+	font-size: 11px;
+}
+
+/* 正在听：变红 + 一圈呼吸光，隔着屏幕也能看出「它在听」 */
+.voice-mic.is-listening {
+	border-color: var(--red);
+	color: var(--red);
+	background: color-mix(in srgb, var(--red) 12%, var(--bg-elev));
+	animation: voice-mic-pulse 2.6s ease-in-out infinite;
+}
+
+@keyframes voice-mic-pulse {
+	50% {
+		box-shadow: 0 0 0 7px color-mix(in srgb, var(--red) 12%, transparent);
+	}
+}
+
+/* 手机上麦克风浮条在 120px，朗读浮条跟着往上让，别叠在一起 */
+.is-mobile-shell .speech-badge {
+	bottom: 176px;
+	right: 12px;
+}
+
+/* 手机上小一档，尽量别压在输入框的字上（真挡住了还能拖） */
+/* 只作用于**浮动款**（`:not(.is-inline)`）：这组样式是给「右下角那颗浮动麦克风」用的，
+   以前没排除 inline 款，手机壳下会把输入框里那颗也抬成 42px 并顶到框外（用户 2026-11-21
+   「麦克风跑到输入框外面去了」）。 */
+.is-mobile-shell .voice-mic:not(.is-inline) {
+	width: 42px;
+	height: 42px;
+	bottom: 120px;
+}
+
+/* 手机壳下输入框里那颗：比桌面再小一圈，位置仍贴左下 */
+.is-mobile-shell .voice-mic.is-inline {
+	width: 22px;
+	height: 22px;
+	margin-left: 8px;
+	align-self: center;
+	font-size: 12px;
+}
+
+/* 倒计时里（0.6s）：从圆点变成一顆小胶囊「⏳ 撤销」。
+   这 0.6s 是用户唯一能反悔的窗口，光换个颜色不够 —— 得明说「点它可以撤销」。 */
+.voice-mic.is-sending {
+	width: auto;
+	height: 34px;
+	padding: 0 14px;
+	border-radius: 999px;
+	border-color: color-mix(in srgb, var(--yellow, #d9a441) 60%, var(--border));
+	color: color-mix(in srgb, var(--yellow, #d9a441) 80%, var(--text));
+	background: color-mix(in srgb, var(--yellow, #d9a441) 14%, var(--bg-elev));
+	font-size: 13px;
+	animation: none;
+}
+
+.is-mobile-shell .voice-mic:not(.is-inline).is-sending {
+	width: auto;
+	height: 34px;
+	padding: 0 12px;
+}
+
+/* 行内滑杆（右侧那一小段）：标题/说明在左，滑杆不铺满，避免把说明挤成两行 */
+.voice-slider-compact {
+	flex: 0 1 300px;
+}
+
+.voice-slider-compact input[type="range"] {
+	min-width: 120px;
+}
+
+/* ---- 朗读控制（常驻横排，钉在输入框顶栏） ----
+   用户 2026-11-21：不要悬浮球，改成「放在快捷短语那一排后面、横向、固定位置、一直显示」。
+   没在朗读时整块置灰、按钮不可点 —— 一直显示是为了位置固定、不用找，而不是假装在念。 */
+/* 用户 2026-11-21：「也不需要描边」。所以这里**不画边框**（透明 1px 只占位，
+   免得加/去掉时高矮跳一下），「在念 / 暂停」靠背景色区分，不再用一圈彩色描边。 */
+.speech-dock {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	flex: none;
+	padding: 2px 6px 2px 4px;
+	border: 1px solid transparent;
+	/* 用户 2026-11-21：「弧（圆角）感觉小点」—— 原来 999px 的胶囊配着无描边像一个光秃的椭圆，
+	   收成小圆角矩形；里面的按钮跟着收，两级弧度才不打架 */
+	border-radius: 7px;
+	/* 去掉描边之后整块容易「秃」：底色加实一档（用 elev-2）+ 顶部一条内高光把块面抬起来，
+	   这不是外描边（用户不要描边），只是光感 */
+	background: color-mix(in srgb, var(--bg-elev-2, var(--bg-elev)) 78%, transparent);
+	box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text) 7%, transparent);
+	color: var(--text-faint);
+	font-size: 12px;
+	line-height: 1.2;
+	user-select: none;
+	transition: color 120ms ease, background-color 120ms ease;
+}
+
+/* 正在念：恢复成正常前景色 + 底色偏暖，一眼能看出「它在工作」 */
+.speech-dock.is-reading {
+	color: var(--text);
+	background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.speech-dock.is-paused {
+	background: color-mix(in srgb, var(--yellow, #d9a441) 14%, transparent);
+}
+
+.speech-dock-icon {
+	font-size: 12px;
+	opacity: 0.9;
+}
+
+.speech-dock-btn {
+	border: 1px solid transparent;
+	border-radius: 5px;
+	padding: 1px 7px;
+	background: color-mix(in srgb, var(--bg-elev-2, #000) 45%, transparent);
+	color: inherit;
+	font: inherit;
+	font-size: 12px;
+	cursor: pointer;
+}
+
+.speech-dock-btn:hover:enabled {
+	border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+/* 没在朗读：按钮点不动（位置仍然占着，布局不会跳） */
+.speech-dock-btn:disabled {
+	cursor: default;
+	opacity: 0.45;
+}
+
+.speech-dock-stop:enabled {
+	color: var(--accent);
+	font-weight: 600;
+}
+
+.speech-dock kbd {
+	padding: 0 3px;
+	border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+	border-radius: 4px;
+	color: var(--text-faint);
+	font-family: inherit;
+	font-size: 10px;
+}
+
+/* 快捷键 kbd 已不再渲染（用户 2026-11-21），上面的 kbd 样式保留给别的面板用的是同名规则，
+   这里只把「手机上藏起来」那条删掉（没东西可藏）。 */
+
+/* 尾注里的朗读控制：位置由 JSX 定（spacer 之后、时间之前），这里只留一点右间距 */
+.msg-foot > .speech-dock {
+	flex: none;
 }

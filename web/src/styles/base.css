@@ -295,6 +295,18 @@ body {
 	outline: 1px solid var(--accent-dim);
 }
 
+/* 麦克风 + 输入框的一行：让按钮按**垂直居中**对齐（多行时仍然在中间） */
+.composer-row {
+	display: flex;
+	align-items: center;
+	min-width: 0;
+	flex: 1 1 auto;
+}
+
+.composer-row > .composer-input {
+	flex: 1 1 auto;
+}
+
 .composer-input {
 	flex: 1 1 auto;
 	min-width: 0;
@@ -307,6 +319,7 @@ body {
 	/* 右侧给右下角那组按钮让位：按钮是绝对定位的，文字不会自己绕开它。
 	   宽度由 Composer 里的 ResizeObserver 实测写进 --composer-actions-w：
 	   1 个按钮（发送 / 停止）与 3 个按钮（排队 + 插队 + 停止）宽度差一倍多，写死一个数必被压字。 */
+	/* 左边那颗麦克风由 `.composer-row` 占位（见上），这里不再补 padding-left */
 	padding: 10px calc(var(--composer-actions-w, 104px) + 14px) 10px 12px;
 	/* 单行起步，随内容向上长（JS 控制 height，这里给上下限与滚动） */
 	min-height: 44px;

@@ -26,9 +26,19 @@ import {
 	startNewSession,
 	useAppSelector,
 } from "./store.ts";
-import { shortcutFor, type ShortcutId } from "./shortcuts.ts";
+import {
+	keyTokenOfEvent,
+	micPressResult,
+	noteModifierKeys,
+	resetModifierSides,
+	shortcutFor,
+	MIC_HOLD_DELAY_MS,
+	type ShortcutId,
+} from "./shortcuts.ts";
 import { toggleProjects } from "./projects-panel.ts";
 import { toggleShortcutSheet } from "./shortcut-sheet.ts";
+import { isSpeechPausedNow, requestStopSpeech, setSpeechPaused } from "./speech-control.ts";
+import { isVoiceListening, startVoiceInput, stopVoiceInput, toggleVoiceInput } from "./voice-input.ts";
 import { useShortcuts } from "./use-shortcuts.ts";
 import { SPLIT_CHAT_SIDE_KEY, readStored, writeStored } from "./ui-prefs.ts";
 import { PANEL_STATE_KEY, parsePanelState, restorePanelItems, serializePanelState } from "./preview-tabs-pref.ts";
@@ -98,6 +108,7 @@ import { StatusBar } from "./components/StatusBar.tsx";
 import { BottomTerminal } from "./components/BottomTerminal.tsx";
 import { useT } from "./use-language.ts";
 import { useBrandName } from "./use-brand-name.ts";
+import { syncAppearanceFromSnapshot } from "./appearance-sync.ts";
 
 /**
  * 两个「缺省空数组」常置。
@@ -533,6 +544,17 @@ export function App() {
 	 * 全量订阅会把侧栏（几百行项目 / 会话）和整屏消息一起重渲染 —— 打字先卡住输入框自己。
 	 */
 	const snapshot = useAppSelector((state) => state.snapshot);
+	/**
+	 * 外观字号（ADR-0050）：服务端那份变了就应用到浏览器。
+	 *
+	 * agent 在对话里改字号时（`appearance` 工具 → `set_settings` → 快照回推），
+	 * 这条 effect 就是“把服务端的值变成屏幕上的字”的那一环。
+	 * 第一次只记基线不应用，所以本机已经调过的字号不会被旧快照按回去。
+	 */
+	const appearance = snapshot?.settings.appearance;
+	useEffect(() => {
+		syncAppearanceFromSnapshot(appearance);
+	}, [appearance?.chatPx, appearance?.projectPx, appearance?.sessionPx]);
 	const creating = useAppSelector((state) => state.creating);
 	const newSession = useAppSelector((state) => state.newSession);
 	const pendingActive = useAppSelector((state) => state.pendingActive);
@@ -600,9 +622,7 @@ export function App() {
 	const openSessionView = useCallback((kind: "history" | "prompt") => {
 		setPreviewVisible(true);
 		setPanelLanding(false);
-		setPanelItems((current) =>
-			current.some((item) => item.id === kind) ? current : [...current, { id: kind, kind }],
-		);
+		setPanelItems((current) => (current.some((item) => item.id === kind) ? current : [...current, { id: kind, kind }]));
 		setActiveItem(kind);
 	}, []);
 	/** 文件树右键「在集成终端中打开」：底部终端新开一个标签到这个目录，顶手展开 */
@@ -726,6 +746,17 @@ export function App() {
 				case "contentSearch":
 					setContentSearchOpen(true);
 					return;
+				case "toggleMic":
+					// 这里只管「按一下开 / 再按一下关」（hold 手感由监听器里的按下 / 松开两步处理）
+					toggleVoiceInput();
+					return;
+				case "pauseSpeech":
+					// 暂停 / 继续同一个键：没在念的时候按它也无害（tts 那边直接拒）
+					setSpeechPaused(!isSpeechPausedNow());
+					return;
+				case "stopSpeech":
+					requestStopSpeech();
+					return;
 				case "cheatSheet":
 					toggleShortcutSheet();
 					return;
@@ -735,6 +766,53 @@ export function App() {
 	);
 	const runShortcutRef = useRef(runShortcutAction);
 	runShortcutRef.current = runShortcutAction;
+	/**
+	 * 麦克风那颗键：**一个键两种用法**（参照用户 2026-11-21 给的那个 App：
+	 * 「按下开始和停止语音输入，或长按说一些简短的话」）。
+	 *
+	 *  - 轻按：开麦后**一直听着**，再轻按一下才关；
+	 *  - 长按（≥ `MIC_HOLD_DELAY_MS`）：按住就一直听，松手就停。
+	 *
+	 * 做法：按下时先起一个 350ms 的定时器 —— 没到点就松手 = 轻按，到点还按着 = 长按。
+	 * 不另外要用户选模式（那种下拉框没人想学，两个行为本来就能共存）。
+	 */
+	const micPressRef = useRef<{
+		at: number;
+		timer: ReturnType<typeof setTimeout> | null;
+		/** 按下时那颗主键（`M`）：keyup 靠它认「松手了」，修饰键先松也能对上 */
+		key: string | null;
+	} | null>(null);
+	const startMicPress = useCallback((key: string | null) => {
+		if (micPressRef.current) return; // 已经按着了（焦点抖动后重复派发）
+		const press: { at: number; timer: ReturnType<typeof setTimeout> | null; key: string | null } = {
+			at: Date.now(),
+			timer: null,
+			key,
+		};
+		micPressRef.current = press;
+		// 已经在听：这一下注定是「关」，不必等定时器
+		if (isVoiceListening()) return;
+		press.timer = setTimeout(() => {
+			if (micPressRef.current !== press) return;
+			if (micPressResult(MIC_HOLD_DELAY_MS, isVoiceListening()) !== "startHold") return;
+			startVoiceInput();
+		}, MIC_HOLD_DELAY_MS);
+	}, []);
+	/** 松手：小于阈值 = 轻按开关，大于阈值（已经开了）= 停 */
+	const endMicPress = useCallback(() => {
+		const press = micPressRef.current;
+		if (!press) return;
+		micPressRef.current = null;
+		if (press.timer) clearTimeout(press.timer);
+		const result = micPressResult(Date.now() - press.at, isVoiceListening());
+		if (result === "stop") stopVoiceInput();
+		else if (result === "start") toggleVoiceInput();
+		// `startHold`：长按的定时器已经开过了，松手不该再开一次
+	}, []);
+	const startMicPressRef = useRef(startMicPress);
+	startMicPressRef.current = startMicPress;
+	const endMicPressRef = useRef(endMicPress);
+	endMicPressRef.current = endMicPress;
 	/**
 	 * 全局快捷键派发（全部可改：设置 → 快捷键）。
 	 *
@@ -746,14 +824,44 @@ export function App() {
 	 */
 	useEffect(() => {
 		const onKey = (event: KeyboardEvent) => {
+			// 先记左右修饰键（右 ⌘ / 右 ⌥）：主键事件本身看不出是哪一边
+			noteModifierKeys(event);
 			if (event.repeat || event.defaultPrevented) return;
 			const id = shortcutFor(shortcutsRef.current, event);
 			if (!id) return;
 			event.preventDefault();
-			runShortcutRef.current(id);
+			// 麦克风：按下只记账 + 起定时器，松手时才知道是「轻按」还是「长按」
+			if (id === "toggleMic") startMicPressRef.current(keyTokenOfEvent(event));
+			else runShortcutRef.current(id);
+		};
+		/*
+		 * 松开：麦克风那一下要在这里收尾（轻按 = 开 / 关，长按 = 停）。
+		 * 不比对组合键：用户可能先松 ⌘/⌥ 再松 M，那时 `shortcutFor` 已经匹配不到原组合了；
+		 * 只认「松的是主键 or 修饰键」，松别的键不动。
+		 */
+		const onKeyUp = (event: KeyboardEvent) => {
+			noteModifierKeys(event);
+			const press = micPressRef.current;
+			if (!press) return;
+			const released = keyTokenOfEvent(event);
+			if (released !== null && released !== press.key) return;
+			endMicPressRef.current();
+		};
+		// 松手事件丢了（⌘Tab 切走、最小化、锁屏）：别让长按开起来的麦一直开着
+		const onBlur = () => {
+			// 修饰键的 keyup 也收不到了：侧别状态必须清，否则下次左 ⌘ 会被当成右 ⌘
+			resetModifierSides();
+			if (!micPressRef.current) return;
+			endMicPressRef.current();
 		};
 		window.addEventListener("keydown", onKey);
-		return () => window.removeEventListener("keydown", onKey);
+		window.addEventListener("keyup", onKeyUp);
+		window.addEventListener("blur", onBlur);
+		return () => {
+			window.removeEventListener("keydown", onKey);
+			window.removeEventListener("keyup", onKeyUp);
+			window.removeEventListener("blur", onBlur);
+		};
 	}, []);
 
 	/**
@@ -2057,14 +2165,14 @@ export function App() {
 											: null
 									}
 								/>
-							<BottomTerminal
-								open={bottomTermOpen}
-								cwd={workspaceRoot}
-								request={bottomTermRequest}
-								onHide={() => setBottomTermOpen(false)}
-								/* 条尾巴那颗齿轮 = 顶栏的「设置」面板（同一个 state，同一张面板） */
-								onOpenSettings={() => setMenuPanel("settings")}
-							/>
+								<BottomTerminal
+									open={bottomTermOpen}
+									cwd={workspaceRoot}
+									request={bottomTermRequest}
+									onHide={() => setBottomTermOpen(false)}
+									/* 条尾巴那颗齿轮 = 顶栏的「设置」面板（同一个 state，同一张面板） */
+									onOpenSettings={() => setMenuPanel("settings")}
+								/>
 							</div>
 						)}
 
@@ -2112,12 +2220,8 @@ export function App() {
 				/* 「设置」放在「终端」后面：跟顶栏那颗开同一张设置面板 */
 				onOpenSettings={() => setMenuPanel("settings")}
 				/* 两个入口都**按引擎能力**画：不是 pi 就不画（而不是画一颗点了报错的） */
-				onOpenHistory={
-					snapshot?.engineCapabilities.historyExport ? () => openSessionView("history") : undefined
-				}
-				onOpenPrompt={
-					snapshot?.engineCapabilities.systemPrompt ? () => openSessionView("prompt") : undefined
-				}
+				onOpenHistory={snapshot?.engineCapabilities.historyExport ? () => openSessionView("history") : undefined}
+				onOpenPrompt={snapshot?.engineCapabilities.systemPrompt ? () => openSessionView("prompt") : undefined}
 				appbarHidden={appbarHidden}
 				onToggleAppbar={() => setAppbarHidden((value) => !value)}
 			/>
@@ -2125,6 +2229,8 @@ export function App() {
 			{/* 全文搜索浮层：入口在「文件管理」标题栏（⌘⇧F 也能开），结果点开就跳到那一行。
 			 * 搜的是**「文件 ▾」下拉框选中的那个项目**（没选 = 当前会话工作区）——
 			 * 下拉框切到别的项目时，搜出来的行也必须来自那个项目，不能再去会话工作区里搜。 */}
+			{/* 朗读中的「停止」：只在出声时出现（设置面板那颗藏得太深，用户找不到） */}
+			{/* 语音输入浮条：永远在（不支持时点一下会告诉你为什么），位置自己拖 */}
 			{/* 快捷键速查表：全局挂一次，开它走 `shortcut-sheet.ts` 的模块状态（⌘/ 或设置里那颗按钮） */}
 			<ShortcutSheet />
 

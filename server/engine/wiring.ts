@@ -111,6 +111,13 @@ export function createEngineWiring(options: {
 	 * —— 它的系统提示是进程级 patch，启动时 compose（见 dsh-prompt-patch.ts）。
 	 */
 	thinkCount?: () => number;
+	/**
+	 * 定时任务工具的宿主端口（ADR-0049）：只接给 pi（工具是 SDK 的扩展点）。
+	 * 宿主先建引擎、后建 cron 服务，所以传的是惰性 getter。
+	 */
+	cron?: () => import("../cron/tool.js").CronToolPort | null;
+	/** 外观字号工具的宿主端口（ADR-0050）：只接给 pi */
+	appearance?: () => import("../session/appearance.js").AppearancePort | null;
 }): EngineWiring {
 	const codexClient = createCodexClient({
 		bin: options.codexBin,
@@ -234,6 +241,8 @@ export function createEngineWiring(options: {
 		...(options.skillPaths ? { skillPaths: options.skillPaths } : {}),
 		onLog: (text) => options.onLog(text),
 		...(options.thinkCount ? { thinkCount: options.thinkCount } : {}),
+		...(options.cron ? { cron: options.cron } : {}),
+		...(options.appearance ? { appearance: options.appearance } : {}),
 		codex: { client: codexClient, bin: options.codexBin, subagentPolicy: codexSubagentPolicy },
 		dsh: { client: dshClient, bin: options.dshBin, model: defaultModel },
 		opencode: {

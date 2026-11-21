@@ -9,16 +9,21 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
 	SHORTCUT_DEFS,
+	MIC_HOLD_DELAY_MS,
 	comboFromEvent,
 	dedupeShortcuts,
 	defaultShortcuts,
 	findConflict,
+	combosMatch,
 	formatCombo,
 	isReservedCombo,
+	micPressResult,
 	normalizeCombo,
+	noteModifierKeys,
 	parseCombo,
 	platformCombo,
 	readShortcuts,
+	resetModifierSides,
 	shortcutFor,
 } from "../../web/src/shortcuts.ts";
 import { sheetRows } from "../../web/src/shortcut-sheet.ts";
@@ -177,6 +182,9 @@ describe("默认表", () => {
 		assert.equal(defaults.files, "Mod+Alt+F");
 		assert.equal(defaults.terminal, "Ctrl+Backquote");
 		assert.equal(defaults.contentSearch, "Mod+Shift+F");
+		assert.equal(defaults.toggleMic, "Mod+Alt+M");
+		assert.equal(defaults.pauseSpeech, "Mod+Shift+P");
+		assert.equal(defaults.stopSpeech, "Mod+Alt+S");
 		assert.equal(defaults.cheatSheet, "Mod+Slash");
 	});
 
@@ -297,5 +305,114 @@ describe("速查表（浮层）", () => {
 		const map = { ...defaultShortcuts(), terminal: null };
 		const rows = sheetRows(map, true);
 		assert.equal(rows.find((row) => row.id === "terminal")?.combo, null);
+	});
+});
+
+describe("麦克风快捷键：轻按开关、长按说话", () => {
+	it("提前松手 = 轻按（开麦后一直听着）", () => {
+		assert.equal(micPressResult(80, false), "start");
+		assert.equal(micPressResult(MIC_HOLD_DELAY_MS - 1, false), "start");
+	});
+
+	it("按够了阈值 = 长按（边说边听，松手时再停）", () => {
+		assert.equal(micPressResult(MIC_HOLD_DELAY_MS, false), "startHold");
+		assert.equal(micPressResult(MIC_HOLD_DELAY_MS + 500, false), "startHold");
+	});
+
+	it("已经在听的时候，按多久都是「关」", () => {
+		assert.equal(micPressResult(50, true), "stop");
+		assert.equal(micPressResult(5000, true), "stop");
+	});
+
+	it("阈值取一个「够短、又不会误判轻按」的数", () => {
+		assert.ok(MIC_HOLD_DELAY_MS >= 200 && MIC_HOLD_DELAY_MS <= 600, "350ms 那一档");
+	});
+});
+
+describe("左右修饰键（右 ⌘ / 右 ⌥）", () => {
+	/** 每个用例自己从「什么都没按」开始，免得相互影响 */
+	function fresh(): void {
+		resetModifierSides();
+	}
+
+	it("按住右 ⌘ 再按 M → RightMod+M；松开右 ⌘ 后又回到 Mod+M", () => {
+		fresh();
+		noteModifierKeys({ code: "MetaRight", type: "keydown" }, true);
+		assert.equal(comboFromEvent(key({ key: "m", code: "KeyM", meta: true }), true), "RightMod+M");
+		noteModifierKeys({ code: "MetaRight", type: "keyup" }, true);
+		assert.equal(comboFromEvent(key({ key: "m", code: "KeyM", meta: true }), true), "Mod+M");
+	});
+
+	it("右 ⌥ 同理；右 ⌘ + 右 ⌥ 也能同时钉住", () => {
+		fresh();
+		noteModifierKeys({ code: "AltRight", type: "keydown" }, true);
+		assert.equal(comboFromEvent(key({ key: "m", code: "KeyM", alt: true }), true), "RightAlt+M");
+		noteModifierKeys({ code: "MetaRight", type: "keydown" }, true);
+		assert.equal(
+			comboFromEvent(key({ key: "m", code: "KeyM", meta: true, alt: true }), true),
+			"RightMod+RightAlt+M",
+		);
+	});
+
+	it("非 mac 上「右 ⌘」不算主修饰键，右 Ctrl 才算", () => {
+		fresh();
+		noteModifierKeys({ code: "MetaRight", type: "keydown" }, false);
+		assert.equal(comboFromEvent(key({ key: "m", code: "KeyM", ctrl: true }), false), "Mod+M");
+		noteModifierKeys({ code: "ControlRight", type: "keydown" }, false);
+		assert.equal(comboFromEvent(key({ key: "m", code: "KeyM", ctrl: true }), false), "RightMod+M");
+	});
+
+	it("焦点丢了要清状态（否则下次左 ⌘ 会被当成右 ⌘）", () => {
+		fresh();
+		noteModifierKeys({ code: "MetaRight", type: "keydown" }, true);
+		resetModifierSides();
+		assert.equal(comboFromEvent(key({ key: "m", code: "KeyM", meta: true }), true), "Mod+M");
+	});
+
+	it("展示文案：mac 上写成「右⌘」「右⌥」", () => {
+		assert.equal(formatCombo("RightMod+M", true), "右⌘M");
+		assert.equal(formatCombo("Mod+RightAlt+M", true), "⌘右⌥M");
+		assert.equal(formatCombo("RightMod+RightAlt+M", true), "右⌘右⌥M");
+		assert.equal(formatCombo("RightMod+M", false), "RightCtrl+M");
+	});
+
+	it("钉了右边的绑定只认右边；没钉的左右都行", () => {
+		const both = parseCombo("Mod+M");
+		const onlyRight = parseCombo("RightMod+M");
+		assert.equal(combosMatch(both, parseCombo("Mod+M")), true);
+		assert.equal(combosMatch(both, onlyRight), true);
+		assert.equal(combosMatch(onlyRight, parseCombo("Mod+M")), false);
+		assert.equal(combosMatch(onlyRight, onlyRight), true);
+	});
+
+	it("绑成「右 ⌘ + 右 ⌥ + M」就再也吃不到左 ⌘ + ⌥ + M", () => {
+		fresh();
+		const map = { ...defaultShortcuts(), toggleMic: "RightMod+RightAlt+M" };
+		const press = key({ key: "m", code: "KeyM", meta: true, alt: true });
+		resetModifierSides();
+		assert.equal(shortcutFor(map, press, true), null);
+		noteModifierKeys({ code: "MetaRight", type: "keydown" }, true);
+		noteModifierKeys({ code: "AltRight", type: "keydown" }, true);
+		assert.equal(shortcutFor(map, press, true), "toggleMic");
+	});
+
+	it("撞车判断：⌘M 与「右 ⌘M」算同一个键（双向）", () => {
+		fresh();
+		assert.equal(findConflict({ ...defaultShortcuts(), newChat: "Mod+M" }, "RightMod+M"), "newChat");
+		assert.equal(findConflict({ ...defaultShortcuts(), newChat: "RightMod+M" }, "Mod+M"), "newChat");
+	});
+
+	it("去重也认左右重叠", () => {
+		const map = defaultShortcuts();
+		map.newChat = "Mod+M";
+		map.newProject = "RightMod+M";
+		const clean = dedupeShortcuts(map);
+		assert.equal(clean.newChat, "Mod+M");
+		assert.equal(clean.newProject, null);
+	});
+
+	it("浏览器抢键不分左右：右 ⌘+T 一样被吃掉", () => {
+		assert.equal(isReservedCombo("RightMod+T"), true);
+		assert.equal(isReservedCombo("RightMod+M"), false);
 	});
 });

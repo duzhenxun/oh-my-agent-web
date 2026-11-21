@@ -153,6 +153,7 @@ export function createServerState(
 			defaultModels: {},
 			thinkCount: 5,
 			thinkTimeoutSec: 20,
+			appearance: null,
 		},
 		actionsByConversation: {},
 		conversations: [],
@@ -356,6 +357,7 @@ export function buildSnapshot(
 				hidden: [...state.settings.projectPrefs.hidden],
 			},
 			defaultModels: { ...state.settings.defaultModels },
+			appearance: state.settings.appearance ? { ...state.settings.appearance } : null,
 			sessionPrefs: {
 				pinned: [...state.settings.sessionPrefs.pinned],
 				archived: [...state.settings.sessionPrefs.archived],

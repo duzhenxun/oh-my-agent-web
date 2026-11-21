@@ -1,8 +1,6 @@
 /**
- * 「语音播报」：用**浏览器内置**的语音合成（SpeechSynthesis）说话。
- *
- * 为什么不用云 TTS：不需要 key、不联网、不出网 —— 这个工作台本来就是单机工具。
- * 代价是音色取决于系统装了哪些语音（macOS 自带婷婷/美佳等），所以面板里给一个下拉框选。
+ * 「语音播报」：按所选引擎使用浏览器语音或服务端 TTS。
+ * 浏览器语音沿用系统音色；Edge TTS 由后端在线合成，前端播放音频。
  *
  * **只说真内容**：只有 `readReplies`（朗读 AI 的最终回复）会走到这里。
  * 完成 / 出错 / 等待审批**不再念固定短句**（以前的「任务已完成」「出错了」已经删了）——
@@ -11,8 +9,19 @@
  * 状态类事件现在全交给 `sound.ts` 的提示音。
  */
 import { tNow } from "./use-language.ts";
+import { isRemoteSpeechAvailable, pauseRemoteSpeech, resumeRemoteSpeech, speakRemote } from "./remote-tts.ts";
+
+import type { RemoteTtsProvider } from "./remote-tts.ts";
+
+export type TtsProvider = "browser" | RemoteTtsProvider;
 
 export type TtsSettings = {
+	/** 旧设置没有 provider 时继续使用浏览器语音。 */
+	provider?: TtsProvider;
+	/** 各引擎独立保存音色，切换后可恢复。 */
+	edgeVoice?: string;
+	kokoroVoice?: string;
+	qwen3Voice?: string;
 	/** 总开关（自动播报） */
 	enabled: boolean;
 	/** 回答结束时朗读最终回复 */
@@ -33,6 +42,10 @@ export type TtsSettings = {
 };
 
 export const DEFAULT_TTS_SETTINGS: TtsSettings = {
+	provider: "browser",
+	edgeVoice: "zh-CN-XiaoxiaoNeural",
+	kokoroVoice: "zf_xiaoxiao",
+	qwen3Voice: "serena",
 	enabled: true,
 	// 默认关：完成只说一声提示音就够了（用户 2026-11-02）。
 	// 想听内容的人自己开，选择会记在本机。
@@ -72,6 +85,11 @@ export function loadTtsSettings(): TtsSettings {
 				? Math.round(Math.max(0.5, Math.min(2, merged.rate)) * 10) / 10
 				: DEFAULT_TTS_SETTINGS.rate;
 		if (typeof merged.voiceURI !== "string") merged.voiceURI = DEFAULT_TTS_SETTINGS.voiceURI;
+		if (!(["browser", "edge", "kokoro", "qwen3"] as const).includes(merged.provider as TtsProvider))
+			merged.provider = "browser";
+		for (const key of ["edgeVoice", "kokoroVoice", "qwen3Voice"] as const) {
+			if (typeof merged[key] !== "string" || !merged[key]) merged[key] = DEFAULT_TTS_SETTINGS[key];
+		}
 		return merged;
 	} catch {
 		return { ...DEFAULT_TTS_SETTINGS };
@@ -89,6 +107,10 @@ export function saveTtsSettings(settings: TtsSettings): void {
 /** 浏览器到底有没有语音合成（Safari/Firefox/Chrome 都有；极老的没有） */
 export function isTtsAvailable(): boolean {
 	return typeof window !== "undefined" && "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
+}
+
+export function isSpeechAvailable(settings: TtsSettings = loadTtsSettings()): boolean {
+	return settings.provider && settings.provider !== "browser" ? isRemoteSpeechAvailable() : isTtsAvailable();
 }
 
 export type VoiceOption = { voiceURI: string; name: string; lang: string; localService: boolean };
@@ -166,7 +188,7 @@ export function resolveVoice(
  * 纯函数：把 markdown 剥成「适合念出来」的连续文字。
  * 代码块整段丢掉（念出来是灾难），链接只留文字，标题/列表/表格符号去掉，换行变空格。
  */
-export function stripMarkdownForSpeech(input: string): string {
+export function stripMarkdownForSpeech(input: string, maxChars = MAX_TTS_CHARS): string {
 	let text = input ?? "";
 	text = text.replace(/```[\s\S]*?(?:```|$)/g, " "); // 代码块（含未闭合的）
 	text = text.replace(/`([^`]+)`/g, "$1"); // 行内代码 → 内容
@@ -184,7 +206,7 @@ export function stripMarkdownForSpeech(input: string): string {
 	text = text.replace(/[ \t]+/g, " ");
 	text = text.replace(/\s*\n+\s*/g, " "); // 念出来是一口气，换行变空格
 	text = text.trim();
-	if (text.length > MAX_TTS_CHARS) text = `${text.slice(0, MAX_TTS_CHARS).trimEnd()}…`;
+	if (text.length > maxChars) text = `${text.slice(0, maxChars).trimEnd()}…`;
 	return text;
 }
 
@@ -244,6 +266,9 @@ export function describeSpeechError(code: string): string {
 let stopped = false;
 /** 每次 speak 自增；旧的那次看到序号变了，就知道自己已经被顶替 */
 let speakSeq = 0;
+/** 当前调用被停止或新朗读替代时，通知按钮收起播放状态。 */
+let onSpeechCanceled: (() => void) | undefined;
+let cancelRemoteSpeech: (() => void) | undefined;
 /** 重试前隔多久：给 cancel 的异步事件留出落地时间 */
 const RETRY_GAP_MS = 200;
 /**
@@ -390,11 +415,13 @@ export type SpeakIssue = {
 };
 
 /** 合成过程中给调用方的钩子（都不传 = 完全静默，自动播报就走这条路） */
-type SpeakHooks = {
+export type SpeakHooks = {
 	/** 真的开始念了（用来清掉「点了没声」的提示） */
 	onStart?: () => void;
 	/** 念完了（按钮回到可点状态） */
 	onEnd?: () => void;
+	/** 用户停止或另一段语音接管了播放。 */
+	onCancel?: () => void;
 	/**
 	 * 失败了（码已翻成人话）。**自己 cancel 造成的不算**（canceled / interrupted 不上报）。
 	 * 第二个参数是结构化上下文：面板靠 `wakeable` 决定要不要显示「唤醒并重试」，不去猜文案。
@@ -434,7 +461,67 @@ function stillSilentText(code: string): string {
  * 失败原因通过 `hooks.onIssue` 报给调用方（面板把它显示成一行红字）；自动播报不传 hooks，
  * 行为和以前一样完全静默。
  */
+/** 最近一次交给合成的文字（防回环用：识别出来的东西如果是它的一部分，就是我们自己的声音） */
+let lastSpokenText = "";
+
+/** 朗读端当前在念的文字（给听写那边做回声判别用） */
+export function currentSpokenText(): string {
+	return lastSpokenText;
+}
+
 export function speak(text: string, settings: TtsSettings = loadTtsSettings(), hooks: SpeakHooks = {}): void {
+	if (!text.trim()) return;
+	lastSpokenText = text;
+	// 听写期间不自动念：由 `use-voice-cues.ts` 在排队那一层挡住（它拿得到听写状态，
+	// 这里不能 import `voice-input.ts` —— 那边反过来要读 `currentSpokenText`）。
+	// 走到这里的都是真要出声的，包括用户手点的「朗读 / 试听」。
+	//
+	// 上一段还停在「暂停」上：新的朗读要开口，先把它解开。
+	// 不解的话浏览器那段一直冻在 paused 里，这句会被排到它后面，永远等不到出声。
+	if (speechPaused) {
+		setSpeechPausedFlag(false);
+		if (isTtsAvailable()) window.speechSynthesis.resume();
+	}
+	if (settings.provider === "browser" || !settings.provider) {
+		if (cancelRemoteSpeech) stopSpeaking();
+		speakBrowser(text, settings, hooks);
+		return;
+	}
+	stopSpeaking();
+	const provider = settings.provider;
+	const voice =
+		provider === "kokoro"
+			? settings.kokoroVoice || "zf_xiaoxiao"
+			: provider === "qwen3"
+				? settings.qwen3Voice || "serena"
+				: settings.edgeVoice || "zh-CN-XiaoxiaoNeural";
+	onSpeechCanceled = hooks.onCancel;
+	const finish = () => {
+		cancelRemoteSpeech = undefined;
+		onSpeechCanceled = undefined;
+	};
+	cancelRemoteSpeech = speakRemote(
+		text,
+		{
+			provider,
+			voice,
+			rate: settings.rate,
+		},
+		{
+			onStart: hooks.onStart,
+			onEnd: () => {
+				finish();
+				hooks.onEnd?.();
+			},
+			onIssue: (message) => {
+				finish();
+				hooks.onIssue?.(message, { wakeable: false });
+			},
+		},
+	);
+}
+
+function speakBrowser(text: string, settings: TtsSettings, hooks: SpeakHooks): void {
 	const body = text.trim();
 	if (body === "") return;
 	if (!isTtsAvailable()) {
@@ -444,6 +531,11 @@ export function speak(text: string, settings: TtsSettings = loadTtsSettings(), h
 		return;
 	}
 	const synth = window.speechSynthesis;
+	// 新的朗读接管时，旧的那段要真的停下来：音色清单还没好时 `speakNow` 会晚 1.2s，
+	// 只通知旧按钮复位会让旧声音继续念，两条回复同时显示「停止朗读」。
+	if (onSpeechCanceled) cancelIfBusy(synth);
+	onSpeechCanceled?.();
+	onSpeechCanceled = hooks.onCancel;
 	/**
 	 * 「这次调用还算不算数」：用户点了停止、或已经有新的一句顶上来，后台还在跑的回调
 	 * 就不该再改界面、再报错。
@@ -466,6 +558,7 @@ export function speak(text: string, settings: TtsSettings = loadTtsSettings(), h
 	 * 排一句话。`stage: "retry"` = 上一次选了音色却没响，这次交给浏览器默认。
 	 */
 	const speakNow = (pool: readonly VoiceOption[], stage: "first" | "retry" = "first"): void => {
+		if (stale()) return;
 		let watchdog = 0;
 		try {
 			const voice =
@@ -771,8 +864,82 @@ export function diagnoseSpeech(timeoutMs = 2500): Promise<SpeechDiagnosis> {
 }
 
 export function stopSpeaking(): void {
-	if (!isTtsAvailable()) return;
+	// 暂停中的 cancel 在 Chromium 上会被吞掉：先解开再停。
+	// 否则声音留在 paused 里 —— 既停不掉，也不再出声，按钮却始终写着「继续」。
+	if (speechPaused) {
+		setSpeechPausedFlag(false);
+		if (isTtsAvailable()) window.speechSynthesis.resume();
+	}
+
 	stopped = true;
+	speakSeq++;
+	cancelRemoteSpeech?.();
+	cancelRemoteSpeech = undefined;
+	const onCancel = onSpeechCanceled;
+	onSpeechCanceled = undefined;
+	onCancel?.();
+	if (!isTtsAvailable()) return;
 	// 空队列上不发 cancel：队列里本来就没什么可停的，而这一记 cancel 会连坐掉下一句
 	cancelIfBusy(window.speechSynthesis);
+}
+
+/* ---- 暂停 / 继续 ---- */
+
+/** 停在「暂停」上（悬浮条的按钮据此换字；新的朗读、点停止都会把它清掉） */
+let speechPaused = false;
+/** 暂停状态变了要通知界面：tts 自己也可能复位（新朗读顶掉暂停中的旧段） */
+const pauseListeners = new Set<() => void>();
+
+function setSpeechPausedFlag(next: boolean): void {
+	if (speechPaused === next) return;
+	speechPaused = next;
+	for (const listener of pauseListeners) listener();
+}
+
+/** 现在有没有声音处在「可以暂停」的状态（远端在放 / 浏览器队列里有东西） */
+function canPauseSpeech(): boolean {
+	if (cancelRemoteSpeech) return true;
+	return isTtsAvailable() && (window.speechSynthesis.speaking || window.speechSynthesis.pending);
+}
+
+/**
+ * 暂停朗读。
+ *
+ * 两条通道做法不同：
+ *   - 浏览器语音：`speechSynthesis.pause()` 把当前这句原地冻住，`resume()` 接着念；
+ *   - 远端语音（Edge / Kokoro / Qwen3）：挂起整个 AudioContext（见 remote-tts.ts 的说明）。
+ *
+ * **流式朗读的队列不归这里管**：暂停之后不能再从队列里取下一句 —— 那是
+ * `use-voice-cues.ts` 的事（它订阅 `speech-control.ts` 的暂停状态）。
+ */
+export function pauseSpeaking(): void {
+	if (speechPaused || !canPauseSpeech()) return;
+	setSpeechPausedFlag(true);
+	if (cancelRemoteSpeech) {
+		pauseRemoteSpeech();
+		return;
+	}
+	window.speechSynthesis.pause();
+}
+
+/** 继续朗读：和 `pauseSpeaking` 成对；没在暂停态时什么也不做 */
+export function resumeSpeaking(): void {
+	if (!speechPaused) return;
+	setSpeechPausedFlag(false);
+	if (cancelRemoteSpeech) {
+		resumeRemoteSpeech();
+		return;
+	}
+	if (isTtsAvailable()) window.speechSynthesis.resume();
+}
+
+/** 现在是不是停在「暂停」上 */
+export function isSpeechPaused(): boolean {
+	return speechPaused;
+}
+
+/** 订阅暂停状态跳变（tts 自己复位时也会触发）；返回取消订阅 */
+export function onSpeechPauseChange(listener: () => void): () => void {
+	pauseListeners.add(listener);
+	return () => pauseListeners.delete(listener);
 }

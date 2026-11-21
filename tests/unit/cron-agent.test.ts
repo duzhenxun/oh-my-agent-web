@@ -26,13 +26,14 @@ afterEach(async () => {
 	for (const dir of dirs.splice(0)) await rm(dir, { recursive: true, force: true });
 });
 
-const assistant = (text: string): UiMessage => ({
-	id: `m-${text}`,
-	role: "assistant",
-	ts: 1,
-	type: "assistant",
-	blocks: [{ kind: "text", text }],
-} as UiMessage);
+const assistant = (text: string): UiMessage =>
+	({
+		id: `m-${text}`,
+		role: "assistant",
+		ts: 1,
+		type: "assistant",
+		blocks: [{ kind: "text", text }],
+	}) as UiMessage;
 
 type Harness = {
 	deps: AgentRunnerDeps;
@@ -49,13 +50,15 @@ type Harness = {
 	finish: (info?: { failed?: boolean; interrupted?: boolean }) => void;
 };
 
-function harness(options: {
-	messages?: UiMessage[];
-	sendOk?: boolean;
-	busy?: boolean;
-	missingSession?: boolean;
-	onSend?: (text: string, conversationId: string) => void;
-} = {}): Harness {
+function harness(
+	options: {
+		messages?: UiMessage[];
+		sendOk?: boolean;
+		busy?: boolean;
+		missingSession?: boolean;
+		onSend?: (text: string, conversationId: string) => void;
+	} = {},
+): Harness {
 	const listeners = new Set<(info: { conversationId: string; failed: boolean; interrupted: boolean }) => void>();
 	let conversationId = "";
 	const seen: Harness["seen"] = {
@@ -75,6 +78,9 @@ function harness(options: {
 			seen.approvalModes.push({ mode, conversationId: id });
 		},
 		sendMessage: async (text, id) => {
+			// 续跑已有会话时不会走 newConversation：这里也要记下会话 id，
+			// 否则 finish() 把「回合结束」发到空 id 上，run 会一直等下去
+			conversationId = id;
 			seen.prompts.push({ text, conversationId: id });
 			// 发送这一刻的策略才是真正生效的那份 —— 结束后会被清掉，所以必须当场记
 			seen.policyDuringTurn = unattendedPolicyOf(id);
@@ -118,7 +124,12 @@ describe("agent 任务：权限边界", () => {
 	it("默认只读：会话模式是 ask，且运行期间策略是 deny-writes", async () => {
 		const h = harness({ onSend: () => h.finish() });
 		const run = createAgentRunner(h.deps);
-		const result = await run({ prompt: "检查一下仓库", workspace: "/work", allowWrites: false, signal: new AbortController().signal });
+		const result = await run({
+			prompt: "检查一下仓库",
+			workspace: "/work",
+			allowWrites: false,
+			signal: new AbortController().signal,
+		});
 		assert.equal(result, "done");
 		// 进入时设成 ask，跑完还原成用户原来的模式（harness 里是 allow）：
 		// 两次调用都是必须的，后者保证不把用户的会话永久改成只读
@@ -201,7 +212,13 @@ describe("agent 任务：收尾与异常", () => {
 		const h = harness(); // 永不结束
 		const run = createAgentRunner(h.deps);
 		await assert.rejects(
-			run({ prompt: "长任务", workspace: "/work", allowWrites: false, signal: new AbortController().signal, timeoutMs: 20 }),
+			run({
+				prompt: "长任务",
+				workspace: "/work",
+				allowWrites: false,
+				signal: new AbortController().signal,
+				timeoutMs: 20,
+			}),
 			/已中断/,
 		);
 		assert.deepEqual(h.seen.interrupted, ["conv-1"]);
@@ -230,7 +247,10 @@ describe("agent 任务：收尾与异常", () => {
 			/被中断/,
 		);
 
-		const failed = harness({ messages: [assistant("报错原因：401 未授权")], onSend: () => failed.finish({ failed: true }) });
+		const failed = harness({
+			messages: [assistant("报错原因：401 未授权")],
+			onSend: () => failed.finish({ failed: true }),
+		});
 		await assert.rejects(
 			createAgentRunner(failed.deps)({
 				prompt: "x",
@@ -282,7 +302,15 @@ describe("agent 任务：收尾与异常", () => {
 
 	it("finalAssistantText 取最后一条 assistant 的正文，忽略思考与工具块", () => {
 		const messages = [
-			{ id: "1", role: "assistant", ts: 1, blocks: [{ kind: "thinking", text: "想" }, { kind: "text", text: "旧结论" }] },
+			{
+				id: "1",
+				role: "assistant",
+				ts: 1,
+				blocks: [
+					{ kind: "thinking", text: "想" },
+					{ kind: "text", text: "旧结论" },
+				],
+			},
 			{ id: "2", role: "user", ts: 2, blocks: [{ kind: "text", text: "用户" }] },
 			{ id: "3", role: "assistant", ts: 3, blocks: [{ kind: "text", text: "最终结论" }] },
 		] as UiMessage[];

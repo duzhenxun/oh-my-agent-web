@@ -48,7 +48,10 @@ export type AgentRunnerDeps = {
 	/** 会话是否正在跑回合（正在跑就跳过这一轮，别打断用户手上的活） */
 	conversationBusy: (conversationId: string) => boolean;
 	/** 切模型（可选能力：引擎不支持时返回错误，不假装成功） */
-	setModel: (model: string, conversationId: string) => Promise<{ ok: true } | { ok: false; error: { message: string } }>;
+	setModel: (
+		model: string,
+		conversationId: string,
+	) => Promise<{ ok: true } | { ok: false; error: { message: string } }>;
 	sendMessage: (
 		text: string,
 		conversationId: string,
@@ -115,6 +118,9 @@ export function createAgentRunner(deps: AgentRunnerDeps) {
 		deps.setApprovalMode(input.allowWrites ? "allow" : "ask", conversationId);
 
 		let unsubscribe: (() => void) | undefined;
+		/** 看门狗与停机监听器都在 finally 里收掉：发送失败这类提前抛出也必须清，否则定时器要挂 20 分钟 */
+		let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
+		let onAbort: (() => void) | undefined;
 		try {
 			let settled = false;
 			const ended = new Promise<{ failed: boolean; interrupted: boolean }>((resolve) => {
@@ -129,22 +135,24 @@ export function createAgentRunner(deps: AgentRunnerDeps) {
 			 * 超时定时器：**不用 unref**，而是结算后 clearTimeout。
 			 * unref 看似更省事，但「唯一还活着的句柄就是这个定时器」时事件循环会先空掉、
 			 * 定时器永远不触发 —— 表现为任务卡在 running（单测里当场复现过）。
+			 * 注意它建在 `sendMessage` 之前：发送本身也可能卡死，所以它要一起兜住。
 			 */
-			let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
 			const timeout = new Promise<{ timeout: true }>((resolve) => {
 				timeoutTimer = setTimeout(() => resolve({ timeout: true }), timeoutMs);
 			});
 			const aborted = new Promise<{ aborted: true }>((resolve) => {
-				if (input.signal.aborted) resolve({ aborted: true });
-				else input.signal.addEventListener("abort", () => resolve({ aborted: true }), { once: true });
+				if (input.signal.aborted) {
+					resolve({ aborted: true });
+					return;
+				}
+				onAbort = () => resolve({ aborted: true });
+				input.signal.addEventListener("abort", onAbort, { once: true });
 			});
 
 			const sent = await deps.sendMessage(input.prompt, conversationId);
 			if (!sent.ok) throw new Error(`发送失败：${sent.error.message}`);
 
-			const outcome = await Promise.race([ended, timeout, aborted]).finally(() => {
-				if (timeoutTimer) clearTimeout(timeoutTimer);
-			});
+			const outcome = await Promise.race([ended, timeout, aborted]);
 			if ("timeout" in outcome) {
 				await deps.interrupt(conversationId).catch(() => undefined);
 				throw new Error(`运行超过 ${Math.round(timeoutMs / 60000)} 分钟，已中断`);
@@ -162,6 +170,8 @@ export function createAgentRunner(deps: AgentRunnerDeps) {
 			if (text.trim() === "") throw new Error("运行结束但没有产出正文");
 			return truncate(text);
 		} finally {
+			if (timeoutTimer) clearTimeout(timeoutTimer);
+			if (onAbort) input.signal.removeEventListener("abort", onAbort);
 			unsubscribe?.();
 			clearUnattendedPolicy(conversationId);
 			deps.setApprovalMode(previousMode, conversationId);
