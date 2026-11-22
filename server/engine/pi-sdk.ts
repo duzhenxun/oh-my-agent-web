@@ -33,6 +33,7 @@ import { createPiSubagents } from "./pi-subagents.js";
 import { makeSubagentToolExtension } from "./pi-subagent-tool.js";
 import { makeCronToolExtension } from "./pi-cron-tool.js";
 import { makeAppearanceToolExtension } from "./pi-appearance-tool.js";
+import { makeCanvasToolExtension } from "./pi-canvas-tool.js";
 import { enabledSubagentSpecs, readSubagentSettings } from "../subagents/profile-store.js";
 import { readSessionModel } from "./pi-session-model.js";
 import { entriesToUiMessages } from "./pi-transcript.js";
@@ -89,6 +90,11 @@ type PiSdkEngineOptions = {
 	 * 同样惰性：宿主设置存储先建、会话后建。
 	 */
 	appearance?: () => import("../session/appearance.js").AppearancePort | null;
+	/**
+	 * 会话里的 `canvas` 工具：把「接下来要做什么」画到右侧画布上。
+	 * 画布是按会话存的，所以除了端口还要把 conversationId 递进去。
+	 */
+	canvas?: () => import("../session/canvas.js").CanvasPort | null;
 };
 
 type SessionHandle = {
@@ -552,6 +558,10 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 		// 外观字号工具：同样只给真会话
 		if (sessionId !== PREWARM_ID && options.appearance) {
 			extensionFactories.push(makeAppearanceToolExtension({ port: options.appearance }));
+		}
+		// 画布工具：把「接下来要做什么」画到右侧画布上（画布按会话存，所以带上 sessionId）
+		if (sessionId !== PREWARM_ID && options.canvas) {
+			extensionFactories.push(makeCanvasToolExtension({ port: options.canvas, conversationId: sessionId }));
 		}
 		if (sessionId !== PREWARM_ID) {
 			extensionFactories.push(

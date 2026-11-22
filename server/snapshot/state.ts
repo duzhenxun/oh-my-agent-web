@@ -8,6 +8,7 @@ import {
 	SNAPSHOT_MESSAGE_LIMIT,
 	PROTOCOL_VERSION,
 	type ApprovalMode,
+	type CanvasDoc,
 	type EngineCapabilities,
 	type EngineOption,
 	type ProviderView,
@@ -313,6 +314,14 @@ type BuildSnapshotOptions = {
 	 * 不带时快照里没有 `piProjects` 字段 —— 客户端沿用上一份（见 protocol.ts 的说明）。
 	 */
 	includeProjects?: boolean;
+	/**
+	 * 取「这条会话的画布」。不给就是 null（= 这条会话没有画布）。
+	 *
+	 * 为什么要回调：画布存在磁盘上（`session/canvas-store.ts`），而 `buildSnapshot` 是纯函数。
+	 * 把读盘放在这里的话，快照就不纯了（同一份 state 会给出两份快照）；
+	 * 所以由调用方（`snapshot-for.ts`）提供、并要求它自己做好缓存。
+	 */
+	canvasOf?: (conversationId: string | null) => CanvasDoc | null;
 };
 
 export function buildSnapshot(
@@ -407,5 +416,7 @@ export function buildSnapshot(
 			return { root, treeVersion: state.files?.treeVersion ?? 0 };
 		})(),
 		notices: state.notices.map((notice) => ({ ...notice })),
+		// 画布跟着**这个客户端正在看的那条会话**走（同上：activeId 是按客户端覆盖的）
+		canvas: options.canvasOf?.(activeId) ?? null,
 	};
 }

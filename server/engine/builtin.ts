@@ -48,6 +48,8 @@ export function createBuiltinEngineRegistry(options: {
 	cron?: () => import("../cron/tool.js").CronToolPort | null;
 	/** 外观字号工具（ADR-0050）：只给 pi（工具是 SDK 的扩展点） */
 	appearance?: () => import("../session/appearance.js").AppearancePort | null;
+	/** 画布工具：只给 pi；画布按会话存，端口自己带 conversationId */
+	canvas?: () => import("../session/canvas.js").CanvasPort | null;
 	/** pi 的告警同时要进日志（引擎层的 notify 不带 logger） */
 	onLog?: (text: string, meta?: Record<string, unknown>) => void;
 	/**
@@ -89,6 +91,7 @@ export function createBuiltinEngineRegistry(options: {
 					...(options.thinkCount ? { thinkCount: options.thinkCount } : {}),
 					...(options.cron ? { cron: options.cron } : {}),
 					...(options.appearance ? { appearance: options.appearance } : {}),
+					...(options.canvas ? { canvas: options.canvas } : {}),
 				}),
 		},
 		...(options.codex

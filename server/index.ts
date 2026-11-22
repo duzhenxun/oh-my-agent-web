@@ -26,6 +26,8 @@ import { completeOnce } from "./providers/one-shot.js";
 import { createCronRouter, createCronService } from "./cron/index.js";
 import { createCronToolPort, type CronToolPort } from "./cron/tool.js";
 import type { AppearancePort } from "./session/appearance.js";
+import { createCanvasStore } from "./session/canvas-store.js";
+import type { CanvasPort } from "./session/canvas.js";
 import type { AppearanceView } from "./protocol.js";
 import { DEFAULT_APPEARANCE } from "./session/settings.js";
 import { createComputerRouter } from "./computer/routes.js";
@@ -204,6 +206,13 @@ let cronToolPort: CronToolPort | null = null;
  */
 let appearancePort: AppearancePort | null = null;
 
+/**
+ * 会话里的 `canvas` 工具：画布存在 `<dataDir>/canvas/`，写完推一帧快照。
+ * 和 appearance 一样惰性：端口要调 `runtime.pushSnapshot()`，而 runtime 在本文件后面才建。
+ */
+let canvasPort: CanvasPort | null = null;
+const canvasStore = createCanvasStore(config.dataDir);
+
 /** 引擎接线：注册表 + codex 客户端 + 每个引擎的会话来源（engine/wiring.ts） */
 const engineWiring = createEngineWiring({
 	engineName: config.engine,
@@ -232,6 +241,8 @@ const engineWiring = createEngineWiring({
 	cron: () => cronToolPort,
 	// 外观字号工具（在对话里改字，ADR-0050）
 	appearance: () => appearancePort,
+	// 画布工具（把「接下来要做什么」画到右侧画布上）
+	canvas: () => canvasPort,
 	workspace: config.workspace,
 	piSessions,
 	onNotice: (text, level) => runtimeRef.current?.notify(text, level),
@@ -379,6 +390,8 @@ const runtime = createRuntime({
 	rules: createFileRuleStore(config.dataDir),
 	// 启动信息只进日志，不进对话流
 	onStartupInfo: (text) => logger.info(text),
+	// 画布：快照里带上当前会话的那份（读盘带缓存，见 session/canvas-store.ts）
+	canvasOf: (conversationId) => canvasStore.ensure(conversationId),
 	// 切会话的分段耗时也进日志：手机上「切会话慢」只能靠这几行数字定位
 	log: (message, ctx) => logger.info(message, ctx),
 	workspace: config.workspace,
@@ -405,6 +418,16 @@ const runtime = createRuntime({
 });
 
 runtimeRef.current = runtime;
+
+/** 画布端口：写回 = 落盘 + 推快照（和外观字号同一条路：浏览器收到快照自己重画） */
+canvasPort = {
+	read: (conversationId) => canvasStore.ensure(conversationId),
+	async write(conversationId, doc) {
+		canvasStore.save(conversationId, doc);
+		runtime.pushSnapshot();
+		return doc;
+	},
+};
 
 /**
  * 外观字号的窄端口（ADR-0050）：

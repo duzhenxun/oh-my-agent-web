@@ -257,6 +257,47 @@ export type { AppearanceView, ProjectPrefs, PromptTemplate, SessionPrefs, Settin
 import type { PromptTemplate, SettingsView } from "./protocol-settings.js";
 import type { PriceSegment } from "./util/pricing.js";
 
+/* ── 画布（agent 生成的“接下来要做什么”图） ─────────────────── */
+
+/** 一个任务节点的状态。和图上那个色点是同一套。 */
+export type CanvasNodeStatus = "todo" | "doing" | "done" | "blocked";
+
+export type CanvasNode = {
+	id: string;
+	title: string;
+	/** 一两句说明（怎么做 / 验收标准）；不写就不画 */
+	detail?: string;
+	status: CanvasNodeStatus;
+	/**
+	 * 节点左上角的**世界坐标**（画布自己的坐标系，不是屏幕像素）。
+	 * 初次由服务端按依赖层级排好（见 `server/session/canvas.ts` 的 `layout`）；
+	 * 用户在画布上拖过之后由客户端回写。
+	 */
+	x: number;
+	y: number;
+	/** agent 给的先后顺序（排布用，界面不展示） */
+	order?: number;
+};
+
+/** 依赖连线：from 先于 to。`label` 可选（例如「走完才能进下一步」）。 */
+export type CanvasEdge = { from: string; to: string; label?: string };
+
+/**
+ * 一条会话对应的一份画布。
+ *
+ * 存在服务端（不是 localStorage）：它是 agent 写出来的**工作产物**，刷新/换设备都得在，
+ * 也才能让 agent 下一轮读回来接着改。
+ */
+export type CanvasDoc = {
+	/** 用户那句话的浓缩（“做一个签到活动”），画布抬头就显示它 */
+	goal: string;
+	nodes: CanvasNode[];
+	edges: CanvasEdge[];
+	/** 单调递增：客户端据此判断“这份和上一份不一样” */
+	rev: number;
+	updatedAt: number;
+};
+
 export type PiProject = {
 	cwd: string;
 	name: string;
@@ -472,6 +513,11 @@ export type Snapshot = {
 	versions: { web: string; engine: string | null; latest: string | null; outdated: boolean };
 	/** 客户端设置（快捷短语等） */
 	settings: SettingsView;
+	/**
+	 * 当前会话的画布（agent 用它画“接下来要做什么”）。
+	 * `null` = 这条会话还没有画布（画布标签就显示空状态）。
+	 */
+	canvas: CanvasDoc | null;
 	/** 建议操作（ADR-0022）：新一轮开始时清空 */
 	actions: ActionItem[];
 	conversations: ConversationMeta[];

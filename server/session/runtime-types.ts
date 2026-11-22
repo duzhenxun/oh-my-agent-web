@@ -7,6 +7,7 @@ import type {
 	AttachmentRef,
 	ApprovalDecision,
 	ApprovalMode,
+	CanvasDoc,
 	PiProject,
 	Notice,
 	ProtocolError,
@@ -176,6 +177,11 @@ export type RuntimeOptions = {
 	/** 启动信息（只进日志，不进对话流） */
 	onStartupInfo?: (text: string) => void;
 	engine: EnginePort;
+	/**
+	 * 取某条会话的画布（快照里带上它，画布标签据此渲染）。
+	 * 不给 = 一律 null（没有画布）：单测／最小启动不需要画布。
+	 */
+	canvasOf?: (conversationId: string | null) => CanvasDoc | null;
 	/** 审批规则落盘（ADR-0006）：「总是允许这类」跨重启生效 */
 	rules: RuleStore;
 	/** 回合看门狗超时（ADR-0023）；不给就用默认 20 分钟 */

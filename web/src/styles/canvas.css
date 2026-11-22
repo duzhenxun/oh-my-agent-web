@@ -1,10 +1,10 @@
 /**
- * 画布（右侧分栏工作区的一种标签）：可平移 / 缩放的会话平面。
+ * 画布：agent 把「接下来要做什么」画成的一张图。
  *
  * 只有两层要用 transform：
  *   .canvas-viewport —— 视口，固定不动，负责裁剪与接手势，网格也跟着它走；
  *   .canvas-world    —— 世界，**唯一**带 transform 的那层，transform-origin 必须是 0 0。
- * 卡片用世界坐标（left/top），拖动时只改 translate 变量，不动 left/top —— 见 CanvasView.tsx。
+ * 节点用世界坐标（left/top），拖动时只改 translate 变量，不动 left/top —— 见 CanvasView.tsx。
  */
 
 .canvas-view {
@@ -15,7 +15,6 @@
 	overflow: hidden;
 }
 
-/* 默认光标是 grab：左键拖空白就是平移（第一版的手感）；按住 Shift / Alt 变十字框选 */
 .canvas-viewport {
 	position: absolute;
 	inset: 0;
@@ -33,6 +32,11 @@
 	cursor: grabbing;
 }
 
+/* 按住 Shift / Alt：本次拖是框选 */
+.canvas-viewport.can-marquee {
+	cursor: crosshair;
+}
+
 .canvas-world {
 	position: absolute;
 	top: 0;
@@ -41,13 +45,33 @@
 	will-change: transform;
 }
 
-/* 一张会话卡：世界坐标定位；拖动位移走独立的 translate，React 重渲染不会把它冲掉 */
-.canvas-card {
+/* 连线层：在世界坐标系里，1px 描边跟着缩放 */
+.canvas-edges {
 	position: absolute;
-	width: 228px;
+	top: 0;
+	left: 0;
+	width: 1px;
+	height: 1px;
+	overflow: visible;
+	pointer-events: none;
+}
+
+.canvas-edges path {
+	fill: none;
+	stroke: var(--border-strong);
+	stroke-width: 1.5;
+	stroke-linecap: round;
+}
+
+/* 一个任务节点：世界坐标定位；拖动位移走独立的 translate，React 重渲染不会把它冲掉 */
+.canvas-node {
+	position: absolute;
+	width: 240px;
+	box-sizing: border-box;
 	translate: var(--card-dx, 0px) var(--card-dy, 0px);
 	background: var(--bg-elev);
 	border: 1px solid var(--border);
+	border-left: 3px solid var(--border-strong);
 	border-radius: 10px;
 	padding: 9px 11px 10px;
 	cursor: grab;
@@ -55,34 +79,104 @@
 	box-shadow: 0 1px 2px rgb(0 0 0 / 6%);
 }
 
-.canvas-card.is-dragging {
+.canvas-node.is-dragging {
 	cursor: grabbing;
 	z-index: 10;
 	box-shadow: 0 10px 30px rgb(0 0 0 / 18%);
 }
 
-.canvas-card:hover {
+.canvas-node:hover {
 	border-color: var(--border-strong);
 }
 
-/* 选中态用 outline 而不是换 border：换 border 会让卡片尺寸变 1px，吸附计算会跟着抖 */
-.canvas-card.is-selected {
+/* 选中态用 outline 而不是换 border：换 border 会让节点尺寸变 1px，吸附计算会跟着抖 */
+.canvas-node.is-selected {
 	outline: 2px solid var(--accent);
 	outline-offset: 1px;
 }
 
-.canvas-card.is-selected:hover {
-	border-color: var(--accent);
+/* 状态色落在左边那条竖线上 —— 一眼扫过去就知道哪几步在动、哪步卡了 */
+.canvas-node.is-doing {
+	border-left-color: var(--accent);
 }
 
-/* 按住空格可以平移时换个手型，否则用户不知道左键拖会变成框选 */
-.canvas-viewport.can-pan {
-	cursor: grab;
+.canvas-node.is-done {
+	border-left-color: #16a34a;
+	background: color-mix(in srgb, var(--bg-elev) 88%, #16a34a);
 }
 
-/* 按住 Shift / Alt：本次拖是框选 */
-.canvas-viewport.can-marquee {
-	cursor: crosshair;
+.canvas-node.is-blocked {
+	border-left-color: #d97706;
+	background: color-mix(in srgb, var(--bg-elev) 90%, #d97706);
+}
+
+.canvas-node-head {
+	display: flex;
+	align-items: flex-start;
+	gap: 6px;
+}
+
+.canvas-dot {
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	flex: 0 0 auto;
+	margin-top: 5px;
+	background: var(--text-whisper);
+}
+
+.canvas-dot.is-doing {
+	background: var(--accent);
+	animation: canvas-pulse 1.4s ease-in-out infinite;
+}
+
+.canvas-dot.is-done {
+	background: #16a34a;
+}
+
+.canvas-dot.is-blocked {
+	background: #d97706;
+	animation: canvas-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes canvas-pulse {
+	50% {
+		opacity: 0.3;
+	}
+}
+
+.canvas-node-title {
+	font-size: 12.5px;
+	font-weight: 600;
+	line-height: 1.4;
+	color: var(--text);
+	word-break: break-word;
+}
+
+.canvas-node-detail {
+	margin-top: 5px;
+	font-size: 11.5px;
+	line-height: 1.45;
+	color: var(--text-dim);
+	word-break: break-word;
+}
+
+.canvas-node-state {
+	margin-top: 7px;
+	font-size: 11px;
+	color: var(--text-faint);
+}
+
+.canvas-node-state.is-doing {
+	color: var(--accent);
+}
+
+.canvas-node-state.is-done {
+	color: #16a34a;
+}
+
+.canvas-node-state.is-blocked {
+	color: #b45309;
 }
 
 /* 框选矩形：屏幕坐标，永远 1px 边框（不跟缩放走，缩得很小时也看得见） */
@@ -123,107 +217,7 @@
 	height: 1px;
 }
 
-.canvas-bar-sel {
-	color: var(--accent);
-	font-weight: 600;
-}
-
-.canvas-card-head {
-	display: flex;
-	align-items: flex-start;
-	gap: 6px;
-}
-
-.canvas-dot {
-	width: 7px;
-	height: 7px;
-	border-radius: 50%;
-	flex: 0 0 auto;
-	margin-top: 5px;
-	background: var(--text-whisper);
-}
-
-.canvas-dot.is-running {
-	background: var(--accent);
-	animation: canvas-pulse 1.4s ease-in-out infinite;
-}
-
-.canvas-dot.is-approval {
-	background: #d97706;
-	animation: canvas-pulse 1.4s ease-in-out infinite;
-}
-
-.canvas-dot.is-error {
-	background: #dc2626;
-}
-
-@keyframes canvas-pulse {
-	50% {
-		opacity: 0.3;
-	}
-}
-
-.canvas-card-title {
-	font-size: 12.5px;
-	font-weight: 600;
-	line-height: 1.4;
-	color: var(--text);
-	/* 标题最多两行，长了截断 —— 卡片不能因为标题长成一条 */
-	display: -webkit-box;
-	-webkit-line-clamp: 2;
-	-webkit-box-orient: vertical;
-	overflow: hidden;
-	word-break: break-word;
-}
-
-.canvas-card-meta {
-	margin-top: 5px;
-	display: flex;
-	flex-wrap: wrap;
-	gap: 6px;
-	font-size: 11px;
-	color: var(--text-faint);
-	font-variant-numeric: tabular-nums;
-}
-
-.canvas-card-state {
-	margin-top: 7px;
-	padding-top: 7px;
-	border-top: 1px solid var(--border);
-	font-size: 11px;
-	color: var(--text-dim);
-}
-
-.canvas-card-state.is-running {
-	color: var(--accent);
-}
-
-.canvas-card-state.is-approval {
-	color: #b45309;
-}
-
-.canvas-card-state.is-error {
-	color: #b91c1c;
-}
-
-.canvas-card-open {
-	margin-top: 7px;
-	font: inherit;
-	font-size: 11px;
-	padding: 2px 8px;
-	border-radius: 6px;
-	border: 1px solid var(--border);
-	background: transparent;
-	color: var(--text-dim);
-	cursor: pointer;
-}
-
-.canvas-card-open:hover {
-	border-color: var(--accent);
-	color: var(--accent);
-}
-
-/* 画布自己的小工具条（左上角）+ 读数（左下角） */
+/* 工具条（左上） + 目标抬头（左下） + 手势提示（右下） */
 .canvas-bar {
 	position: absolute;
 	top: 8px;
@@ -258,6 +252,30 @@
 	color: var(--accent);
 }
 
+.canvas-bar-sel {
+	color: var(--accent);
+	font-weight: 600;
+}
+
+.canvas-goal {
+	position: absolute;
+	left: 8px;
+	bottom: 8px;
+	max-width: 60%;
+	padding: 4px 9px;
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--bg-elev) 88%, transparent);
+	border: 1px solid var(--border);
+	font-size: 11.5px;
+	color: var(--text-dim);
+	backdrop-filter: blur(6px);
+	pointer-events: none;
+	z-index: 20;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
 .canvas-hint {
 	position: absolute;
 	right: 8px;
@@ -273,9 +291,36 @@
 	z-index: 20;
 }
 
-/* 手机上画布没法用（手势全被视口吃掉），直接提示回列表 */
+/* 空状态：还没有画布时告诉用户怎么让它出来 */
+.canvas-empty {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 24px;
+}
+
+.canvas-empty-card {
+	max-width: 380px;
+	text-align: center;
+	color: var(--text-dim);
+}
+
+.canvas-empty-title {
+	font-size: 13.5px;
+	font-weight: 600;
+	color: var(--text);
+}
+
+.canvas-empty-body {
+	margin-top: 8px;
+	font-size: 12px;
+	line-height: 1.6;
+}
+
+/* 手机上画布没法用（手势全被视口吃掉），提示与抬头都收起来 */
 @media (max-width: 400px) {
-	.canvas-hint {
+	.canvas-hint,
+	.canvas-goal {
 		display: none;
 	}
 }

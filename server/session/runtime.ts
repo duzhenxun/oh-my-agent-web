@@ -593,7 +593,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		},
 
 		snapshot: () => buildSnapshot(state),
-		snapshotFor: createSnapshotFor({ state, clientView, now }),
+		snapshotFor: createSnapshotFor({ state, clientView, now, ...(options.canvasOf ? { canvasOf: options.canvasOf } : {}) }),
 		clientView,
 		state: () => state,
 

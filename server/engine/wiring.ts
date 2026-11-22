@@ -118,6 +118,8 @@ export function createEngineWiring(options: {
 	cron?: () => import("../cron/tool.js").CronToolPort | null;
 	/** 外观字号工具的宿主端口（ADR-0050）：只接给 pi */
 	appearance?: () => import("../session/appearance.js").AppearancePort | null;
+	/** 画布工具的宿主端口：只接给 pi（工具是 SDK 的扩展点） */
+	canvas?: () => import("../session/canvas.js").CanvasPort | null;
 }): EngineWiring {
 	const codexClient = createCodexClient({
 		bin: options.codexBin,
@@ -243,6 +245,7 @@ export function createEngineWiring(options: {
 		...(options.thinkCount ? { thinkCount: options.thinkCount } : {}),
 		...(options.cron ? { cron: options.cron } : {}),
 		...(options.appearance ? { appearance: options.appearance } : {}),
+		...(options.canvas ? { canvas: options.canvas } : {}),
 		codex: { client: codexClient, bin: options.codexBin, subagentPolicy: codexSubagentPolicy },
 		dsh: { client: dshClient, bin: options.dshBin, model: defaultModel },
 		opencode: {
