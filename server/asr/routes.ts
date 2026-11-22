@@ -5,12 +5,16 @@
  * 就够了 —— 不用新开一条通道、不用动鉴权/反代，出错也好查。
  *
  *   GET  /api/asr/status   桥的状态（starting / authorizing / ready / missing / error）
+ *   POST /api/asr/install  装一份本地识别程序（没装时才用得上）
  *   POST /api/asr/start    开一句新的（清掉上一句残留）
  *   POST /api/asr/chunk    送 16k 单声道 int16 PCM，返回 { text }（最新 partial）
  *   POST /api/asr/end      说完：等 final，返回 { text }
  */
 import express, { type ErrorRequestHandler, type Express, type Response } from "express";
 import type { AsrBridge } from "./bridge.js";
+import { asrInstallHint, installAsrApp } from "./install.js";
+
+type Logger = { warn: (message: string, ctx?: Record<string, unknown>) => void };
 
 /** 一块最多 512KB（320ms 的 16k 单声道 int16 才 10KB，给足余量） */
 const MAX_CHUNK_BYTES = 512 * 1024;
@@ -24,11 +28,19 @@ function notReady(res: Response, bridge: AsrBridge): void {
 	res.status(503).json(bridge.current());
 }
 
-export function registerAsrRoutes(app: Express, bridge: AsrBridge): void {
+export function registerAsrRoutes(app: Express, bridge: AsrBridge, log?: Logger): void {
 	app.get("/api/asr/status", (request, response) => {
 		// 默认**只读状态**（打开设置面板不该顺带拉起一个会弹系统授权的进程）；
 		// `?start=1` 才真的启动。开始听写时 `/api/asr/start` 本来就会拉起。
-		response.json(request.query.start === "1" ? bridge.ensureStarted() : bridge.current());
+		const status = request.query.start === "1" ? bridge.ensureStarted() : bridge.current();
+		// 没装时顺带把「去哪儿下、装到哪儿」告诉前端：面板直接给按钮，用户不用去翻 README
+		response.json({ ...status, install: status.state === "missing" ? asrInstallHint() : null });
+	});
+
+	app.post("/api/asr/install", async (_request, response) => {
+		const result = await installAsrApp(log);
+		// 失败不给 200：前端按状态码判断；body 里始终有可读的 message 和下载链接兜底
+		response.status(result.ok ? 200 : 502).json(result);
 	});
 
 	app.post("/api/asr/start", (_request, response) => {

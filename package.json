@@ -8,7 +8,11 @@
 	},
 	"files": [
 		"dist",
-		"web/dist"
+		"web/dist",
+		"helper/asr/main.swift",
+		"helper/asr/Info.plist",
+		"helper/asr/build.sh",
+		"helper/asr/release/ASRBridge.zip"
 	],
 	"description": "oh-my-agent-web — 它是一个多 Agent 统一 Web 工作台，对 Pi Agent 做深度适配，同时也支持 Codex、Claude 等其他 Agent。",
 	"author": "duzhenxun",
@@ -55,7 +59,9 @@
 		"format": "prettier --write .",
 		"format:check": "prettier --check .",
 		"icons": "node scripts/make-icons.mjs",
-		"cues": "node scripts/make-voice-cues.mjs"
+		"cues": "node scripts/make-voice-cues.mjs",
+		"build:asr": "sh helper/asr/build.sh",
+		"asr:release": "sh helper/asr/build.sh --release"
 	},
 	"devDependencies": {
 		"@types/express": "^5.0.0",

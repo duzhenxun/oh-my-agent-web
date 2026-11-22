@@ -388,7 +388,7 @@ Speech input lives here too: tap the mic bubble to dictate and the text lands in
 
 | | Default | What the other machine needs |
 |---|---|---|
-| **Voice input** (speech → text) | `Auto`: local on-device first (macOS `SFSpeechRecognizer`); when the local engine isn't built or fails it goes **straight to Chrome's built-in** recognizer (no toast, no wasted round) | Local: the machine **running the server** is macOS and `./helper/asr/build.sh` was executed (one “Speech Recognition” prompt on first use). Chrome: the browser can reach Google |
+| **Voice input** (speech → text) | `Auto`: local on-device first (macOS `SFSpeechRecognizer`); when the local engine isn't installed or fails it goes **straight to Chrome's built-in** recognizer (no toast, no wasted round) | Local: the machine **running the server** is macOS — click **Install it** in Settings → Voice once (it downloads a small helper app; no Xcode needed), one “Speech Recognition” prompt on first use. Chrome: the browser can reach Google |
 | **Voice output** (text → speech) | The **browser's built-in** voices (macOS system voices / Windows SAPI), offline | Pick `edge` (Microsoft, needs network) or host `kokoro` / `qwen3` yourself (Voice → Remote) |
 
 So “the defaults are Google + Microsoft” is only half true: input is **not** Google by default (local first, Google is the fallback), and output is **not** Microsoft by default (system voices; edge-tts is opt-in).

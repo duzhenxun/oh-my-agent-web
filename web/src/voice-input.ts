@@ -164,6 +164,16 @@ let settings: VoiceInputSettings = readSettings();
 let localUnusable = false;
 
 /**
+ * 装好本地识别之后把「这台机器没有本地识别」这条记忆清掉。
+ *
+ * 不清的话：用户点了安装、也看见「已就绪」，但只要不刷新页面，`auto` 仍会一直走 Chrome
+ * —— 因为 `localUnusable` 是开机探测时写下的模块级状态。
+ */
+export function forgetLocalUnavailable(): void {
+	localUnusable = false;
+}
+
+/**
  * 这一次开麦该走哪套引擎（纯函数，测试直接调）。
  *
  * - `browser`：用户明确要 Chrome；

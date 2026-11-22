@@ -18,7 +18,7 @@ import { existsSync, rmSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { resolveAsrAppPath } from "./paths.js";
 
 export type AsrBridgeState = "missing" | "starting" | "authorizing" | "ready" | "error";
 
@@ -32,25 +32,6 @@ export type AsrBridgeStatus = {
 
 type Logger = { warn: (message: string, ctx?: Record<string, unknown>) => void };
 
-/**
- * 找 ASRBridge.app：源码运行（server/asr/）和构建后（dist/server/asr/）的深度不同，
- * 所以从近到远各试一次，取第一个存在的。`OH_MY_AGENT_ASR_APP` 可以覆盖。
- */
-export function resolveAsrAppPath(): string {
-	const override = process.env.OH_MY_AGENT_ASR_APP;
-	if (override && override.trim() !== "") return override;
-	const candidates = [
-		new URL("../../../helper/asr/ASRBridge.app", import.meta.url), // dist/server/asr → 仓库根
-		new URL("../../helper/asr/ASRBridge.app", import.meta.url), // server/asr → 仓库根
-	];
-	for (const candidate of candidates) {
-		const path = fileURLToPath(candidate);
-		if (existsSync(path)) return path;
-	}
-	// 都不存在也回第一候选：报错时把「去哪儿找过」显示出来，用户知道要 build 什么
-	return fileURLToPath(candidates[1]!);
-}
-
 /** 与 Swift 那边的操作码对应 */
 const OP_AUDIO = 0x41;
 const OP_END = 0x45;
@@ -60,7 +41,8 @@ const OP_QUIT = 0x58;
 const MAX_UTTERANCE_BYTES = 16 * 1024 * 1024;
 
 export class AsrBridge {
-	private readonly appPath: string;
+	/** 显式指定 .app（测试 / `OH_MY_AGENT_ASR_APP` 走的是 resolveAsrAppPath）；不给就每次启动时现找 */
+	private readonly appPathOverride?: string;
 	private readonly socketPath: string;
 	private readonly log: Logger;
 	private server: Server | null = null;
@@ -72,15 +54,24 @@ export class AsrBridge {
 	private launching = false;
 	private finalWaiter: { resolve: (text: string) => void; timer: NodeJS.Timeout } | null = null;
 
-	constructor(options: { appPath: string; path?: string; log: Logger }) {
-		this.appPath = options.appPath;
+	constructor(options: { appPath?: string; path?: string; log: Logger }) {
+		this.appPathOverride = options.appPath;
 		this.log = options.log;
 		// 放在临时目录：unix socket 路径有 104 字节上限，数据目录可能很深
 		this.socketPath = options.path ?? join(tmpdir(), "oh-my-agent-web-asr.sock");
 	}
 
 	current(): AsrBridgeStatus {
-		return this.status;
+		if (this.status.state !== "starting" || this.socket !== null || this.launching) return this.status;
+		const appPath = this.appPathOverride ?? resolveAsrAppPath();
+		// 一次都没启动过、程序也不在：如实说「没装」，别让它显示「正在启动…」
+		// （面板据此立刻给出安装按钮；语音输入的 auto 探测也因此直接走 Chrome，不白试一轮）
+		return existsSync(appPath) ? this.status : this.missingStatus(appPath);
+	}
+
+	/** 没装时的那句话：说清楚点哪儿，以及装好之后会在哪 */
+	private missingStatus(appPath: string): AsrBridgeStatus {
+		return { state: "missing", message: `本地识别程序还没装：点「安装本地识别」下载（装好后在 ${appPath}）` };
 	}
 
 	/** 当前这句到目前为止的文字（partial 也在内） */
@@ -96,16 +87,15 @@ export class AsrBridge {
 	ensureStarted(): AsrBridgeStatus {
 		if (this.socket) return this.status;
 		if (this.launching) return this.status;
-		if (!existsSync(this.appPath)) {
-			this.status = {
-				state: "missing",
-				message: `找不到本地识别程序：${this.appPath}（在仓库里执行 ./helper/asr/build.sh 生成）`,
-			};
+		// 每次启动都重新找一遍：用户可能刚在面板上点完「安装」，不该为此重启服务
+		const appPath = this.appPathOverride ?? resolveAsrAppPath();
+		if (!existsSync(appPath)) {
+			this.status = this.missingStatus(appPath);
 			return this.status;
 		}
 		this.launching = true;
 		this.status = { state: "starting" };
-		void this.listen().catch((error: unknown) => {
+		void this.listen(appPath).catch((error: unknown) => {
 			this.launching = false;
 			this.status = { state: "error", message: error instanceof Error ? error.message : String(error) };
 			this.log.warn("本地识别桥启动失败", { message: this.status.message });
@@ -114,7 +104,7 @@ export class AsrBridge {
 	}
 
 	/** bind socket → 用 LaunchServices 拉起 app → 等它连回来 */
-	private async listen(): Promise<void> {
+	private async listen(appPath: string): Promise<void> {
 		rmSync(this.socketPath, { force: true });
 		await new Promise<void>((resolve, reject) => {
 			const server = createServer((socket) => this.attach(socket));
@@ -125,7 +115,7 @@ export class AsrBridge {
 			});
 		});
 		// `-n` = 新实例；`-a` 接 **绝对路径**（相对路径会被当成 app 名字去找，直接失败）
-		spawn("open", ["-n", "-a", this.appPath, "--args", "--socket", this.socketPath], {
+		spawn("open", ["-n", "-a", appPath, "--args", "--socket", this.socketPath], {
 			stdio: "ignore",
 			detached: true,
 		}).unref();

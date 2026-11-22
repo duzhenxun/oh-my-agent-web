@@ -8,38 +8,52 @@
 #   ASRBridge.app/Contents/Info.plist  +  Contents/MacOS/asr-bridge
 # 再 ad-hoc 签名（codesign -s -），让它有一份**稳定的身份**：
 # 不签的话每次重编译 TCC 都会当成新程序，又要重新授权一次。
+#
+# 用法：
+#   ./build.sh             本机架构（开发用，几秒）
+#   ./build.sh --release   通用二进制（arm64 + x86_64）+ 打 release/ASRBridge.zip
+#
+# 为什么要 --release 那一份：npm 的发布流水线跑在 ubuntu 上，**编不了 Swift**。
+# 所以把编好的 zip 提交进仓库、随 npm 包一起发出去，用户那边「安装本地识别」
+# 只是解压 + ad-hoc 验签，不需要装 Xcode 命令行工具（十来兆的东西，很多人没有）。
 set -e
 cd "$(dirname "$0")"
 
 APP="ASRBridge.app"
+BIN="$APP/Contents/MacOS/asr-bridge"
+MODE="${1:-local}"
+
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 
-xcrun swiftc -O main.swift -o "$APP/Contents/MacOS/asr-bridge"
+# 最低 macOS 13：addsPunctuation（自动加标点）从 13 开始有，低了也能跑但没有标点
+DEPLOY_TARGET="macos13.0"
 
-cat > "$APP/Contents/Info.plist" <<'PLIST'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-	<key>CFBundleExecutable</key>
-	<string>asr-bridge</string>
-	<key>CFBundleIdentifier</key>
-	<string>web.ohmyagent.asr-bridge</string>
-	<key>CFBundleName</key>
-	<string>ASRBridge</string>
-	<key>CFBundlePackageType</key>
-	<string>APPL</string>
-	<key>CFBundleShortVersionString</key>
-	<string>1.0</string>
-	<!-- 后台小工具：不出现在 Dock / 应用切换器里 -->
-	<key>LSUIElement</key>
-	<true/>
-	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>oh-my-agent-web 用系统自带的离线语音识别，把你说的话转成输入框里的文字（不联网）。</string>
-</dict>
-</plist>
-PLIST
+if [ "$MODE" = "--release" ] || [ "$MODE" = "--universal" ]; then
+	TMP="$(mktemp -d)"
+	trap 'rm -rf "$TMP"' EXIT
+	# 两个架构各编一次再 lipo：Intel Mac 上也要能跑（发布产物不能只服务 arm64）
+	for arch in arm64 x86_64; do
+		xcrun swiftc -O -target "$arch-apple-$DEPLOY_TARGET" main.swift -o "$TMP/asr-bridge-$arch"
+	done
+	lipo -create -output "$BIN" "$TMP/asr-bridge-arm64" "$TMP/asr-bridge-x86_64"
+else
+	xcrun swiftc -O main.swift -o "$BIN"
+fi
 
-codesign --force --sign - "$APP" >/dev/null 2>&1 || echo "警告：ad-hoc 签名失败（不影响运行，但每次重编译 TCC 会重新问一次）"
+# Info.plist 单独一份文件（不是 heredoc）：服务端的「安装」端点也要用它，
+# 两处共用一个来源，改 plist 不会只改到一半。
+cp Info.plist "$APP/Contents/Info.plist"
+
+codesign --force --sign - "$APP" >/dev/null 2>&1 \
+	|| echo "警告：ad-hoc 签名失败（不影响运行，但每次重编译 TCC 会重新问一次）"
+
 echo "built: $(pwd)/$APP/Contents/MacOS/asr-bridge"
+
+if [ "$MODE" = "--release" ]; then
+	# ditto 而不是 zip：保住可执行位、符号链接和扩展属性（签名相关的东西在 _CodeSignature 里）
+	mkdir -p release
+	rm -f release/ASRBridge.zip
+	ditto -c -k --keepParent "$APP" release/ASRBridge.zip
+	echo "packed: $(pwd)/release/ASRBridge.zip（这个要提交进仓库，npm 包里带的就是它）"
+fi

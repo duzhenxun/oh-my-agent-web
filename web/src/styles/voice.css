@@ -92,6 +92,40 @@
 	color: var(--text-dim);
 }
 
+/*
+ * 没装本地识别时的安装指引。
+ * 为什么不只用一行红字：这属于「少一个后台小组件」，不是错误 —— 给步骤和按钮（自动装 / 手动下载）
+ * 比一句「找不到程序」有用得多。
+ */
+.voice-install {
+	display: flex;
+	flex-direction: column;
+	gap: 7px;
+	margin: 2px 0 6px;
+	padding: 9px 11px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--bg-elev);
+}
+
+.voice-install-steps {
+	margin: 0;
+	padding-left: 18px;
+	color: var(--text-dim);
+	font-size: 12.5px;
+	line-height: 1.5;
+}
+
+.voice-install-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.voice-install-actions a.btn {
+	text-decoration: none;
+}
+
 /* 「试听」：不抢勾选框的位置，靠右侧但排在勾选框前面 */
 .voice-try {
 	flex: none;
@@ -516,7 +550,9 @@
 	font-size: 12px;
 	line-height: 1.2;
 	user-select: none;
-	transition: color 120ms ease, background-color 120ms ease;
+	transition:
+		color 120ms ease,
+		background-color 120ms ease;
 }
 
 /* 正在念：恢复成正常前景色 + 底色偏暖，一眼能看出「它在工作」 */
