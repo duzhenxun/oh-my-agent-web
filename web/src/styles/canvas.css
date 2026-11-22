@@ -199,6 +199,124 @@
 	z-index: 15;
 }
 
+/* 远距离（缩到 0.5 以下）的缩略视图：
+ * 这个尺寸下节点只有 80 多像素宽，字再大也是 4–5px —— 保留文字只是噪声。
+ * 所以只留一个顺序号 + 状态色块，结构一眼看清；要看内容靠悬停预览。 */
+.canvas-node-index {
+	display: none;
+	font-size: 11px;
+	font-weight: 700;
+	color: var(--text-faint);
+	font-variant-numeric: tabular-nums;
+}
+
+.canvas-view.is-far .canvas-node {
+	padding: 6px 8px;
+	min-height: 34px;
+	display: flex;
+	align-items: center;
+	border-left-width: 4px;
+}
+
+/* 缩略状态下用**状态色填充整块**：远看就是一张颜色地图，
+ * 哪段已完成、哪里卡住一眼就看出来，而不是一排空白细条。 */
+.canvas-view.is-far .canvas-node.is-done {
+	background: color-mix(in srgb, #16a34a 24%, var(--bg-elev));
+}
+
+.canvas-view.is-far .canvas-node.is-doing {
+	background: color-mix(in srgb, var(--accent) 24%, var(--bg-elev));
+}
+
+.canvas-view.is-far .canvas-node.is-blocked {
+	background: color-mix(in srgb, #d97706 26%, var(--bg-elev));
+}
+
+.canvas-view.is-far .canvas-node-index {
+	font-size: 12px;
+	color: var(--text-dim);
+}
+
+.canvas-view.is-far .canvas-node-head,
+.canvas-view.is-far .canvas-node-detail,
+.canvas-view.is-far .canvas-node-state {
+	display: none;
+}
+
+.canvas-view.is-far .canvas-node-index {
+	display: block;
+}
+
+/* 悬停预览卡：屏幕坐标、不跟缩放，字号就是正常大小 */
+.canvas-preview {
+	position: absolute;
+	z-index: 30;
+	box-sizing: border-box;
+	padding: 10px 12px 9px;
+	background: var(--bg-elev);
+	border: 1px solid var(--border-strong);
+	border-left: 3px solid var(--border-strong);
+	border-radius: 10px;
+	box-shadow: 0 10px 30px rgb(0 0 0 / 18%);
+	pointer-events: auto;
+}
+
+.canvas-preview.is-doing {
+	border-left-color: var(--accent);
+}
+
+.canvas-preview.is-done {
+	border-left-color: #16a34a;
+}
+
+.canvas-preview.is-blocked {
+	border-left-color: #d97706;
+}
+
+.canvas-preview-head {
+	display: flex;
+	align-items: flex-start;
+	gap: 6px;
+}
+
+.canvas-preview-title {
+	font-size: 13px;
+	font-weight: 600;
+	line-height: 1.4;
+	color: var(--text);
+}
+
+.canvas-preview-detail {
+	margin-top: 6px;
+	font-size: 12px;
+	line-height: 1.5;
+	color: var(--text-dim);
+}
+
+.canvas-preview-foot {
+	margin-top: 8px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.canvas-preview-zoom {
+	font: inherit;
+	font-size: 11px;
+	padding: 2px 8px;
+	border-radius: 6px;
+	border: 1px solid var(--border);
+	background: transparent;
+	color: var(--text-dim);
+	cursor: pointer;
+}
+
+.canvas-preview-zoom:hover {
+	border-color: var(--accent);
+	color: var(--accent);
+}
+
 /* 框选放大用的虚线框：和“框选选中”的实线框区分开 */
 .canvas-marquee.is-zoom {
 	border-style: dashed;

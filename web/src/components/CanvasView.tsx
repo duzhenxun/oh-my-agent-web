@@ -171,6 +171,11 @@ export function CanvasView() {
 		const cell = 24 * view.k;
 		viewport.style.backgroundSize = `${cell}px ${cell}px`;
 		viewport.style.backgroundPosition = `${view.x}px ${view.y}px`;
+		/**
+		 * 远距离（缩到 0.5 以下）切「缩略」：节点里只留一个编号 + 状态色块。
+		 * 这个尺寸下任何文字都是 4–5px，留着只是噪声；要看内容靠悬停预览。
+		 */
+		rootRef.current?.classList.toggle("is-far", view.k < 0.5);
 		if (readoutRef.current) {
 			readoutRef.current.textContent = `x ${Math.round(view.x)} · y ${Math.round(view.y)} · ${view.k.toFixed(2)}×`;
 		}
@@ -737,6 +742,65 @@ export function CanvasView() {
 	const nodes = doc?.nodes ?? [];
 	const chosen = useMemo(() => new Set(selected), [selected]);
 
+	/** 悬停的节点（缩得很小时弹一张不缩放的预览卡，否则字永远看不清） */
+	const [hover, setHover] = useState<{ id: string; x: number; y: number; w: number; h: number } | null>(null);
+	const hoverNode = hover === null ? null : (nodes.find((node) => node.id === hover.id) ?? null);
+	/**
+	 * 鼠标从节点移到预览卡上时，节点的 pointerleave 会先把卡清掉 —— 那就点不到「放大看」了。
+	 * 所以离场不是立刻清，而是挂一个短延时；进到卡上就取消它。
+	 */
+	const hoverTimer = useRef<number | null>(null);
+	const keepHover = useCallback(() => {
+		if (hoverTimer.current !== null) {
+			window.clearTimeout(hoverTimer.current);
+			hoverTimer.current = null;
+		}
+	}, []);
+	const dropHover = useCallback(() => {
+		keepHover();
+		setHover(null);
+	}, [keepHover]);
+	const scheduleDropHover = useCallback(() => {
+		keepHover();
+		hoverTimer.current = window.setTimeout(() => {
+			hoverTimer.current = null;
+			setHover(null);
+		}, 160);
+	}, [keepHover]);
+
+	/** 把一个节点放大到铺满视口（预览卡上的「放大」按钮） */
+	const zoomToNode = useCallback(
+		(node: CanvasNode) => {
+			const viewport = viewportRef.current;
+			if (!viewport) return;
+			const pos = posOf(node);
+			const height = nodeElsRef.current.get(node.id)?.offsetHeight ?? heights[node.id] ?? 84;
+			const pad = 60;
+			const k = clampK(
+				Math.min((viewport.clientWidth - pad * 2) / NODE_WIDTH, (viewport.clientHeight - pad * 2) / Math.max(1, height)),
+			);
+			viewRef.current.k = k;
+			viewRef.current.x = viewport.clientWidth / 2 - (pos.x + NODE_WIDTH / 2) * k;
+			viewRef.current.y = viewport.clientHeight / 2 - (pos.y + height / 2) * k;
+			paint();
+			scheduleSaveView();
+			setHover(null);
+		},
+		[heights, paint, posOf, scheduleSaveView],
+	);
+
+	/** 预览卡的位置：优先放节点右侧，右侧放不下就翻到左侧；纵向夹在视口内 */
+	const previewLayout = useMemo(() => {
+		if (hover === null) return null;
+		const width = 300;
+		const viewportWidth = viewportRef.current?.clientWidth ?? 600;
+		const viewportHeight = viewportRef.current?.clientHeight ?? 600;
+		const left =
+			hover.x + hover.w + 12 + width > viewportWidth ? Math.max(8, hover.x - width - 12) : hover.x + hover.w + 12;
+		const top = Math.max(8, Math.min(hover.y, viewportHeight - 170));
+		return { left, top, width };
+	}, [hover]);
+
 	/** 连线：从源节点右边中点到目标节点左边中点的一条曲线 */
 	const edges = useMemo(() => {
 		if (doc === null || doc.edges.length === 0) return [];
@@ -814,7 +878,7 @@ export function CanvasView() {
 							))}
 						</svg>
 					) : null}
-					{nodes.map((node) => {
+					{nodes.map((node, index) => {
 						const pos = posOf(node);
 						const state = statusOf(node);
 						const isSelected = chosen.has(node.id);
@@ -828,9 +892,22 @@ export function CanvasView() {
 								}}
 								style={{ left: pos.x, top: pos.y }}
 								onPointerDown={(event) => onNodePointerDown(event, node.id)}
+								onPointerEnter={() => {
+									// 只在小尺度时弹预览：放大到看得清的时候弹反而是干扰
+									if (viewRef.current.k >= 0.7) {
+										setHover(null);
+										return;
+									}
+									const view = viewRef.current;
+									const height = nodeElsRef.current.get(node.id)?.offsetHeight ?? 84;
+									setHover({ id: node.id, x: pos.x * view.k + view.x, y: pos.y * view.k + view.y, w: NODE_WIDTH * view.k, h: height * view.k });
+								}}
+								onPointerLeave={scheduleDropHover}
 								onDoubleClick={() => startNode(node)}
 								title={t("双击让 agent 开始做这一步", "Double-click to have the agent start this step")}
 							>
+								{/* 缩略时显示的顺序号：小尺度下它是唯一看得清的东西 */}
+								<span className="canvas-node-index">{index + 1}</span>
 								<div className="canvas-node-head">
 									<span className={`canvas-dot is-${state.tone}`} />
 									<span className="canvas-node-title">{node.title}</span>
@@ -844,7 +921,31 @@ export function CanvasView() {
 				<div className="canvas-marquee" ref={marqueeRef} />
 				<div className="canvas-guide canvas-guide-x" ref={guideXRef} />
 				<div className="canvas-guide canvas-guide-y" ref={guideYRef} />
+
 			</div>
+			{/* 悬停预览：**不在世界里**，所以不会被缩放 —— 缩到 0.36 时它是唯一能看清字的入口 */}
+			{hover !== null && hoverNode !== null && previewLayout !== null ? (
+				<div
+					className={`canvas-preview is-${statusOf(hoverNode).tone}`}
+					style={{ left: previewLayout.left, top: previewLayout.top, width: previewLayout.width }}
+					onPointerEnter={keepHover}
+					onPointerLeave={dropHover}
+				>
+					<div className="canvas-preview-head">
+						<span className={`canvas-dot is-${statusOf(hoverNode).tone}`} />
+						<span className="canvas-preview-title">{hoverNode.title}</span>
+					</div>
+					{hoverNode.detail ? <div className="canvas-preview-detail">{hoverNode.detail}</div> : null}
+					<div className="canvas-preview-foot">
+						<span className={`canvas-node-state is-${statusOf(hoverNode).tone}`}>
+							{t(statusOf(hoverNode).zh, statusOf(hoverNode).en)}
+						</span>
+						<button type="button" className="canvas-preview-zoom" onClick={() => zoomToNode(hoverNode)}>
+							{t("放大看", "Zoom in")}
+						</button>
+					</div>
+				</div>
+			) : null}
 			<div className="canvas-bar">
 				<button type="button" onClick={fit} title={t("缩到能看见全部节点", "Zoom out to show every step")}>
 					{t("看全局", "Fit all")}
