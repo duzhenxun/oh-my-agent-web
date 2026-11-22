@@ -242,6 +242,8 @@ export function CanvasView() {
 
 	const onNodePointerDown = (event: React.PointerEvent<HTMLDivElement>, id: string) => {
 		if (event.button !== 0) return;
+		// 放大工具开着的时候，拖在节点上也应该画放大框 —— 不 stopPropagation，交给视口接管
+		if (zDownRef.current || zoomArmedRef.current) return;
 		if ((event.target as HTMLElement).closest("button")) return;
 		event.stopPropagation();
 
@@ -320,9 +322,31 @@ export function CanvasView() {
 		[doc?.nodes, heights, posOf, showGuides],
 	);
 
+	/** 框选放大：按住 Z 拖（或点工具条按钮切成常开） */
+	const [zoomArmed, setZoomArmed] = useState(false);
+	const zoomArmedRef = useRef(false);
+	useLayoutEffect(() => {
+		zoomArmedRef.current = zoomArmed;
+		// 按钮切成的常开模式也要把光标改掉，否则用户看不出現在左键拖是放大
+		viewportRef.current?.classList.toggle("can-zoom", zoomArmed || zDownRef.current);
+	}, [zoomArmed]);
+	const zDownRef = useRef(false);
+	const zoomDragRef = useRef<{ id: number; sx: number; sy: number; moved: boolean } | null>(null);
+
 	const onViewportPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
 		const target = event.target as HTMLElement;
-		if (target.closest(".canvas-node, .canvas-bar")) return;
+		if (target.closest(".canvas-bar")) return;
+		/**
+		 * 框选放大优先于一切：它是个“工具”模式（Figma 的缩放工具 likewise），
+		 * 开着的时候连节点也不拖，左键一律拉框——否则在节点上起不了手，很难用。
+		 */
+		if (event.button === 0 && (zDownRef.current || zoomArmedRef.current)) {
+			zoomDragRef.current = { id: event.pointerId, sx: event.clientX, sy: event.clientY, moved: false };
+			viewportRef.current?.classList.add("is-zooming");
+			viewportRef.current?.setPointerCapture(event.pointerId);
+			return;
+		}
+		if (target.closest(".canvas-node")) return;
 		const wantMarquee = event.shiftKey || event.altKey;
 		if (event.button === 1 || (event.button === 0 && !wantMarquee)) {
 			panRef.current = { id: event.pointerId, sx: event.clientX, sy: event.clientY, ox: viewRef.current.x, oy: viewRef.current.y };
@@ -342,6 +366,27 @@ export function CanvasView() {
 	};
 
 	const onViewportPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+		const zoomDrag = zoomDragRef.current;
+		if (zoomDrag !== null && event.pointerId === zoomDrag.id) {
+			const viewport = viewportRef.current;
+			const box = marqueeRef.current;
+			if (!viewport || !box) return;
+			const rect = viewport.getBoundingClientRect();
+			const x0 = zoomDrag.sx - rect.left;
+			const y0 = zoomDrag.sy - rect.top;
+			const x1 = event.clientX - rect.left;
+			const y1 = event.clientY - rect.top;
+			if (!zoomDrag.moved && Math.hypot(x1 - x0, y1 - y0) < 4) return;
+			zoomDrag.moved = true;
+			box.classList.add("is-zoom");
+			box.style.display = "block";
+			box.style.left = `${Math.min(x0, x1)}px`;
+			box.style.top = `${Math.min(y0, y1)}px`;
+			box.style.width = `${Math.abs(x1 - x0)}px`;
+			box.style.height = `${Math.abs(y1 - y0)}px`;
+			return;
+		}
+
 		const pan = panRef.current;
 		if (pan !== null && event.pointerId === pan.id) {
 			viewRef.current.x = pan.ox + (event.clientX - pan.sx);
@@ -414,12 +459,51 @@ export function CanvasView() {
 		[doc?.nodes, heights, posOf],
 	);
 
+	/** 把框选出来的那块屏幕矩形放大到铺满视口（框选放大） */
+	const applyZoomToRect = useCallback(() => {
+		const viewport = viewportRef.current;
+		const box = marqueeRef.current;
+		if (!viewport || !box) return;
+		const view = viewRef.current;
+		const left = Number.parseFloat(box.style.left) || 0;
+		const top = Number.parseFloat(box.style.top) || 0;
+		const width = Number.parseFloat(box.style.width) || 0;
+		const height = Number.parseFloat(box.style.height) || 0;
+		// 手抖拉出来的几像素小框不当作放大：那会一口气跳到 MAX_K
+		if (width < 8 || height < 8) return;
+		const worldWidth = width / view.k;
+		const worldHeight = height / view.k;
+		const worldLeft = (left - view.x) / view.k;
+		const worldTop = (top - view.y) / view.k;
+		const k = clampK(Math.min(viewport.clientWidth / worldWidth, viewport.clientHeight / worldHeight));
+		view.k = k;
+		// 把这块世界的中心对齐到视口中心
+		view.x = (viewport.clientWidth - worldWidth * k) / 2 - worldLeft * k;
+		view.y = (viewport.clientHeight - worldHeight * k) / 2 - worldTop * k;
+		paint();
+		scheduleSaveView();
+	}, [paint, scheduleSaveView]);
+
 	const endPointer = (event: React.PointerEvent<HTMLDivElement>) => {
 		const pan = panRef.current;
 		if (pan !== null && event.pointerId === pan.id) {
 			panRef.current = null;
 			viewportRef.current?.classList.remove("is-panning");
 			scheduleSaveView();
+		}
+
+		const zoomDrag = zoomDragRef.current;
+		if (zoomDrag !== null && event.pointerId === zoomDrag.id) {
+			zoomDragRef.current = null;
+			viewportRef.current?.classList.remove("is-zooming");
+			if (zoomDrag.moved) applyZoomToRect();
+			if (marqueeRef.current) {
+				marqueeRef.current.style.display = "none";
+				marqueeRef.current.classList.remove("is-zoom");
+			}
+			// 按钮模式的“用一次就收”：不然下一次左键拖还是放大，人会困惑
+			if (zoomArmedRef.current) setZoomArmed(false);
+			return;
 		}
 
 		const marquee = marqueeRefState.current;
@@ -532,6 +616,45 @@ export function CanvasView() {
 		window.addEventListener("keydown", onKeyDown);
 		return () => window.removeEventListener("keydown", onKeyDown);
 	}, [zoomAt]);
+
+	/**
+	 * 框选放大的快捷键：**按住 Z 拖框**（和 Figma 的缩放工具一个手感）。
+	 * Esc 取消按钮切的那个常开模式。⌘Z 是撤销，不能抢。
+	 */
+	useEffect(() => {
+		const isTyping = (target: EventTarget | null) => {
+			const element = target as HTMLElement | null;
+			return element !== null && (element.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(element.tagName));
+		};
+		const setZ = (down: boolean) => {
+			zDownRef.current = down;
+			viewportRef.current?.classList.toggle("can-zoom", down || zoomArmedRef.current);
+		};
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (isTyping(event.target)) return;
+			if ((event.key === "z" || event.key === "Z") && !event.metaKey && !event.ctrlKey && !event.altKey) {
+				if (!hoverRef.current) return;
+				setZ(true);
+				return;
+			}
+			if (event.key === "Escape") {
+				setZoomArmed(false);
+				setZ(false);
+			}
+		};
+		const onKeyUp = (event: KeyboardEvent) => {
+			if (event.key === "z" || event.key === "Z") setZ(false);
+		};
+		const onBlur = () => setZ(false);
+		window.addEventListener("keydown", onKeyDown);
+		window.addEventListener("keyup", onKeyUp);
+		window.addEventListener("blur", onBlur);
+		return () => {
+			window.removeEventListener("keydown", onKeyDown);
+			window.removeEventListener("keyup", onKeyUp);
+			window.removeEventListener("blur", onBlur);
+		};
+	}, []);
 
 	/** 适应内容：把所有节点的包围盒塞进视口 */
 	const fit = useCallback(() => {
@@ -720,6 +843,15 @@ export function CanvasView() {
 				<button type="button" onClick={reset}>
 					{t("重置", "Reset")}
 				</button>
+				<button
+					type="button"
+					className={zoomArmed ? "is-on" : undefined}
+					aria-pressed={zoomArmed}
+					onClick={() => setZoomArmed((value) => !value)}
+					title={t("框选一块区域放大（也可以按住 Z 拖）", "Zoom into a region (or hold Z and drag)")}
+				>
+					{t("框选放大", "Zoom to area")}
+				</button>
 				<span ref={readoutRef} />
 				<span>
 					{nodes.length} {t("个节点", "steps")}
@@ -736,8 +868,8 @@ export function CanvasView() {
 			{doc.goal ? <div className="canvas-goal">{doc.goal}</div> : null}
 			<div className="canvas-hint">
 				{t(
-					"拖空白平移 · Shift+拖框选 · 滚轮/键盘 +/- 缩放 · ⌘+滚轮缩放 · 双击节点开工",
-					"Drag to pan · Shift+drag to box-select · wheel or +/- to zoom · ⌘+wheel to zoom · double-click to start",
+					"拖空白平移 · Shift+拖框选 · Z+拖框选放大 · +/- 缩放 · 双击节点开工",
+					"Drag to pan · Shift+drag to box-select · Z+drag to zoom · +/- to zoom · double-click to start",
 				)}
 			</div>
 		</div>

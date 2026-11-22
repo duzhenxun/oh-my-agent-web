@@ -37,6 +37,12 @@
 	cursor: crosshair;
 }
 
+/* 框选放大模式（按住 Z / 点工具条按钮）：放大镜光标 */
+.canvas-viewport.can-zoom,
+.canvas-viewport.is-zooming {
+	cursor: zoom-in;
+}
+
 .canvas-world {
 	position: absolute;
 	top: 0;
@@ -191,6 +197,18 @@
 	background: color-mix(in srgb, var(--accent) 12%, transparent);
 	pointer-events: none;
 	z-index: 15;
+}
+
+/* 框选放大用的虚线框：和“框选选中”的实线框区分开 */
+.canvas-marquee.is-zoom {
+	border-style: dashed;
+	background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.canvas-bar button.is-on {
+	border-color: var(--accent);
+	color: var(--accent);
+	background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 /* 吸附参考线：一条竖一条横，靠 transform 定位 */
