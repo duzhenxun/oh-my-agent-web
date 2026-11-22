@@ -19,6 +19,7 @@ export type {
 	CanvasStartNodeRequest,
 	CanvasEdge,
 	CanvasNode,
+	CanvasNodeKind,
 	CanvasNodeStatus,
 	ClientRequest,
 	ClientRequestType,

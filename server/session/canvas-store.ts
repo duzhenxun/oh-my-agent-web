@@ -10,9 +10,10 @@
  */
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { CanvasDoc, CanvasEdge, CanvasNode, CanvasNodeStatus } from "../protocol.js";
+import type { CanvasDoc, CanvasEdge, CanvasNode, CanvasNodeKind, CanvasNodeStatus } from "../protocol.js";
 
 const STATUSES: readonly CanvasNodeStatus[] = ["todo", "doing", "done", "blocked"];
+const KINDS: readonly CanvasNodeKind[] = ["task", "milestone", "risk", "doc", "decision"];
 
 export type CanvasStore = {
 	/** 读一份（第一次会读盘）；没有就 null */
@@ -37,7 +38,8 @@ function isNode(value: unknown): value is CanvasNode {
 		typeof node.title === "string" &&
 		typeof node.x === "number" &&
 		typeof node.y === "number" &&
-		STATUSES.includes(node.status)
+		STATUSES.includes(node.status) &&
+		(node.kind === undefined || KINDS.includes(node.kind))
 	);
 }
 

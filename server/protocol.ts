@@ -262,9 +262,21 @@ import type { PriceSegment } from "./util/pricing.js";
 /** 一个任务节点的状态。和图上那个色点是同一套。 */
 export type CanvasNodeStatus = "todo" | "doing" | "done" | "blocked";
 
+/**
+ * 节点的类型：同一个图里不该所有节点长一样。
+ *   - task：普通一步（默认）
+ *   - milestone：里程碑 / 交付点（值得停下来看的那个）
+ *   - risk：风险 / 容易出错的点
+ *   - doc：文档 / 参考资料
+ *   - decision：需要拍板的决策
+ */
+export type CanvasNodeKind = "task" | "milestone" | "risk" | "doc" | "decision";
+
 export type CanvasNode = {
 	id: string;
 	title: string;
+	/** 不给就是 `task`（普通一步） */
+	kind?: CanvasNodeKind;
 	/** 一两句说明（怎么做 / 验收标准）；不写就不画 */
 	detail?: string;
 	status: CanvasNodeStatus;
@@ -518,6 +530,11 @@ export type Snapshot = {
 	 * `null` = 这条会话还没有画布（画布标签就显示空状态）。
 	 */
 	canvas: CanvasDoc | null;
+	/**
+	 * 这一轮正在做画布上的哪个节点（双击节点开工时宿主记下的）。
+	 * 节点据此显示实时进度（正在跑什么工具、跑了多久）；`null` = 没有节点在跑。
+	 */
+	canvasRunningNodeId: string | null;
 	/** 建议操作（ADR-0022）：新一轮开始时清空 */
 	actions: ActionItem[];
 	conversations: ConversationMeta[];

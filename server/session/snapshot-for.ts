@@ -15,13 +15,16 @@ type SnapshotForDeps = {
 	now: () => number;
 	/** 取当前会话的画布（宿主侧带缓存，见 `session/canvas-store.ts`） */
 	canvasOf?: (conversationId: string | null) => CanvasDoc | null;
+	/** 取「这一轮在干画布上的哪个节点」（节点据此显示实时进度） */
+	canvasRunningNodeOf?: (conversationId: string | null) => string | null;
 };
 
 export function createSnapshotFor(deps: SnapshotForDeps): (clientId: string | undefined) => Snapshot {
-	const { state, clientView, now, canvasOf } = deps;
+	const { state, clientView, now, canvasOf, canvasRunningNodeOf } = deps;
 	return (clientId) =>
 		buildSnapshot(state, undefined, clientView.activeFor(clientId, state.activeId), {
 			includeProjects: clientView.needsProjects(clientId, state.piProjectsVersion, now()),
 			...(canvasOf ? { canvasOf } : {}),
+			...(canvasRunningNodeOf ? { canvasRunningNodeOf } : {}),
 		});
 }

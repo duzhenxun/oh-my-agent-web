@@ -10,7 +10,7 @@
  *   2. **按依赖分层**：没有前置的排最左，每条依赖往右推一层（最长路径），同层竖着排；
  *   3. **有上限**：40 个节点 / 80 条边。超出就截断并如实告诉模型，而不是画一张看不清的图。
  */
-import type { CanvasDoc, CanvasEdge, CanvasNode, CanvasNodeStatus } from "../protocol.js";
+import type { CanvasDoc, CanvasEdge, CanvasNode, CanvasNodeKind, CanvasNodeStatus } from "../protocol.js";
 
 /** 图上最多这么多节点（再多就不是"一眼看全"，而是又一棵树） */
 export const CANVAS_MAX_NODES = 40;
@@ -26,6 +26,7 @@ const ORIGIN_X = 40;
 const ORIGIN_Y = 64;
 
 const STATUSES: readonly CanvasNodeStatus[] = ["todo", "doing", "done", "blocked"];
+const KINDS: readonly CanvasNodeKind[] = ["task", "milestone", "risk", "doc", "decision"];
 
 /** 宿主端口：读某条会话的画布 / 写回一份（写的人负责落盘 + 推快照） */
 export type CanvasPort = {
@@ -40,6 +41,10 @@ function text(value: unknown, max: number): string {
 
 function statusOf(value: unknown): CanvasNodeStatus {
 	return STATUSES.includes(value as CanvasNodeStatus) ? (value as CanvasNodeStatus) : "todo";
+}
+
+function kindOf(value: unknown): CanvasNodeKind {
+	return KINDS.includes(value as CanvasNodeKind) ? (value as CanvasNodeKind) : "task";
 }
 
 /** 模型给的 id 只接受安全字符；不合法的丢掉（后面按顺序补 n1/n2…） */
@@ -62,7 +67,7 @@ function uniqueId(used: Set<string>, base: string): string {
 	return next;
 }
 
-export type NodeInput = { id?: unknown; title?: unknown; detail?: unknown; status?: unknown; order?: unknown };
+export type NodeInput = { id?: unknown; title?: unknown; detail?: unknown; status?: unknown; kind?: unknown; order?: unknown };
 export type EdgeInput = { from?: unknown; to?: unknown; label?: unknown };
 
 /**
@@ -78,10 +83,13 @@ export function normalizeNodes(input: readonly NodeInput[]): CanvasNode[] {
 		const id = uniqueId(used, idOf(raw.id) ?? `n${index + 1}`);
 		const detail = text(raw.detail, DETAIL_MAX);
 		const orderRaw = typeof raw.order === "number" && Number.isFinite(raw.order) ? raw.order : index;
+		const kind = kindOf(raw.kind);
 		nodes.push({
 			id,
 			title,
 			...(detail === "" ? {} : { detail }),
+			// 只有非默认类型才落字段：老画布里没有 kind 是干净的
+			...(kind === "task" ? {} : { kind }),
 			status: statusOf(raw.status),
 			x: 0,
 			y: 0,
@@ -260,7 +268,8 @@ export function describe(doc: CanvasDoc | null): string {
 	const lines = [`画布目标：${canvas.goal || "（没写）"}`, `节点 ${canvas.nodes.length} 个，依赖 ${canvas.edges.length} 条：`];
 	for (const node of canvas.nodes) {
 		const detail = node.detail ? ` —— ${node.detail}` : "";
-		lines.push(`- [${node.status}] ${node.id}: ${node.title}${detail}`);
+		const kind = node.kind ? `(${node.kind}) ` : "";
+		lines.push(`- [${node.status}] ${kind}${node.id}: ${node.title}${detail}`);
 	}
 	if (canvas.edges.length > 0) {
 		lines.push("依赖：");

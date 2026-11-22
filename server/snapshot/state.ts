@@ -322,6 +322,8 @@ type BuildSnapshotOptions = {
 	 * 所以由调用方（`snapshot-for.ts`）提供、并要求它自己做好缓存。
 	 */
 	canvasOf?: (conversationId: string | null) => CanvasDoc | null;
+	/** 取「这一轮在干画布上的哪个节点」；不给就是 null（没有节点在跑） */
+	canvasRunningNodeOf?: (conversationId: string | null) => string | null;
 };
 
 export function buildSnapshot(
@@ -418,5 +420,6 @@ export function buildSnapshot(
 		notices: state.notices.map((notice) => ({ ...notice })),
 		// 画布跟着**这个客户端正在看的那条会话**走（同上：activeId 是按客户端覆盖的）
 		canvas: options.canvasOf?.(activeId) ?? null,
+		canvasRunningNodeId: options.canvasRunningNodeOf?.(activeId) ?? null,
 	};
 }

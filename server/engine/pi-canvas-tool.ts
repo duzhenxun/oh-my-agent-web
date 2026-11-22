@@ -69,6 +69,7 @@ export function makeCanvasToolExtension(options: CanvasToolOptions): InlineExten
 					promptGuidelines: [
 						"用户描述一件要做的、需要多步才能完成的事（「我要做一个签到活动」「把这个需求拆一下」）时，用 `canvas` 的 `plan` 把它画成图——这是这个工作台展示计划的主要方式，比在正文里列 1.2.3 更好用。",
 						"节点粒度是**一次能做完的具体动作**（「在活动后台建档期配置」），不是空泛阶段（「开发」）。一张图 5–10 个节点最好，最多 40 个。",
+						"节点类型别全用默认的 task：交付点用 milestone（「上线」「灰度完成」）、容易翻车的点用 risk（「连签跨零点」「时区切天」）、要人拍板的用 decision、参考资料用 doc。图上会按类型显示不同图标和颜色，全是 task 会很难读。",
 						"只在真有先后依赖时才连 edges；能并行的不要硬连成一条线。",
 						"不要传坐标：x/y 由宿主按依赖分层算好。",
 						"改图之前先 `read`；改完用一句话报「画了 N 个节点、几条依赖」，不要把整张图在正文里再念一遍。",
@@ -92,6 +93,15 @@ export function makeCanvasToolExtension(options: CanvasToolOptions): InlineExten
 									id: Type.Optional(Type.String({ description: "短 id（仅字母数字-_），不传自动编号；后续改它要用这个" })),
 									title: Type.String({ description: "一句话说清这一步做什么" }),
 									detail: Type.Optional(Type.String({ description: "怎么做 / 验收标准，一两句" })),
+									kind: Type.Optional(
+										Type.Union([
+											Type.Literal("task"),
+											Type.Literal("milestone"),
+											Type.Literal("risk"),
+											Type.Literal("doc"),
+											Type.Literal("decision"),
+										]),
+									),
 									status: Type.Optional(
 										Type.Union([
 											Type.Literal("todo"),

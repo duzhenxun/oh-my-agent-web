@@ -640,7 +640,14 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		},
 
 		snapshot: () => buildSnapshot(state),
-		snapshotFor: createSnapshotFor({ state, clientView, now, ...(options.canvasOf ? { canvasOf: options.canvasOf } : {}) }),
+		snapshotFor: createSnapshotFor({
+			state,
+			clientView,
+			now,
+			...(options.canvasOf ? { canvasOf: options.canvasOf } : {}),
+			// 画布节点上的实时进度靠它：客户端据此知道"这一轮在干哪一步"
+			canvasRunningNodeOf: (conversationId) => (conversationId === null ? null : (canvasRunningNode.get(conversationId) ?? null)),
+		}),
 		clientView,
 		state: () => state,
 

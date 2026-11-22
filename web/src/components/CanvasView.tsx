@@ -35,6 +35,73 @@ const SNAP_PX = 6;
 /** 节点的世界宽度：和 CSS 里的 `.canvas-node` 保持一致（算连线端点要用） */
 const NODE_WIDTH = 240;
 
+/** 布局风格（本机偏好，按会话存）：卡片 = 自由摆放；另外两种是客户端按依赖重排 */
+type LayoutStyle = "card" | "timeline" | "checklist";
+const STYLE_KEY = "agent-web.canvas.style.v1";
+
+/** 节点类型 → 图标 + 中文名。全是 task 的图读起来很闷，所以类型要能看出来 */
+const KIND_META: Record<string, { icon: string; zh: string; en: string }> = {
+	task: { icon: "•", zh: "待办项", en: "Task" },
+	milestone: { icon: "▲", zh: "里程碑", en: "Milestone" },
+	risk: { icon: "!", zh: "风险", en: "Risk" },
+	doc: { icon: "▤", zh: "参考", en: "Doc" },
+	decision: { icon: "◆", zh: "决策", en: "Decision" },
+};
+
+function kindOf(node: CanvasNode): string {
+	return node.kind && KIND_META[node.kind] ? node.kind : "task";
+}
+
+/**
+ * 按依赖算每个节点的层级（和 `server/session/canvas.ts` 的 layout 同一套规则）：
+ * depth = 到它的最长前置链。时间线风格直接拿它当列号。
+ */
+function depthsOf(nodes: readonly CanvasNode[], edges: readonly { from: string; to: string }[]): Map<string, number> {
+	const incoming = new Map<string, string[]>();
+	for (const node of nodes) incoming.set(node.id, []);
+	for (const edge of edges) incoming.get(edge.to)?.push(edge.from);
+	const cache = new Map<string, number>();
+	const visiting = new Set<string>();
+	const depthOf = (id: string): number => {
+		const hit = cache.get(id);
+		if (hit !== undefined) return hit;
+		if (visiting.has(id)) return 0;
+		visiting.add(id);
+		let depth = 0;
+		for (const parent of incoming.get(id) ?? []) depth = Math.max(depth, depthOf(parent) + 1);
+		visiting.delete(id);
+		cache.set(id, depth);
+		return depth;
+	};
+	const out = new Map<string, number>();
+	for (const node of nodes) out.set(node.id, depthOf(node.id));
+	return out;
+}
+
+function loadStyle(conversationId: string | null): LayoutStyle {
+	try {
+		const raw = localStorage.getItem(STYLE_KEY);
+		if (raw === null || conversationId === null) return "card";
+		const value = JSON.parse(raw) as Record<string, unknown> | null;
+		const stored = value?.[conversationId];
+		return stored === "timeline" || stored === "checklist" ? stored : "card";
+	} catch {
+		return "card";
+	}
+}
+
+function saveStyle(conversationId: string | null, style: LayoutStyle): void {
+	if (conversationId === null) return;
+	try {
+		const raw = localStorage.getItem(STYLE_KEY);
+		const value = (raw === null ? {} : (JSON.parse(raw) as Record<string, unknown>)) as Record<string, unknown>;
+		value[conversationId] = style;
+		localStorage.setItem(STYLE_KEY, JSON.stringify(value));
+	} catch {
+		// 存不进去只影响"下次还是这个风格"
+	}
+}
+
 type Pos = { x: number; y: number };
 
 function loadView(): { x: number; y: number; k: number } | null {
@@ -64,6 +131,31 @@ function statusOf(node: CanvasNode): { tone: string; zh: string; en: string } {
 	if (node.status === "done") return { tone: "done", zh: "已完成", en: "Done" };
 	if (node.status === "blocked") return { tone: "blocked", zh: "卡住了", en: "Blocked" };
 	return { tone: "todo", zh: "待办", en: "To do" };
+}
+
+/**
+ * 「这一轮跑到哪了」→ 一行字。
+ *
+ * 优先说**正在跑什么工具**（带参数摘要，比"正在输出"有用得多），没有工具就跑秒表。
+ * 秒数从 `turnStartedAt` 算：用户在画布上盯着的就是"它跑了多久了"。
+ */
+function describeRun(
+	run: { status: string; turnStartedAt?: number | null; activeTool?: { name?: string; argsSummary?: string } | null; retrying?: unknown },
+	t: (zh: string, en: string) => string,
+): string {
+	const elapsed =
+		typeof run.turnStartedAt === "number" && run.turnStartedAt > 0
+			? `${Math.max(0, Math.floor((Date.now() - run.turnStartedAt) / 1000))}s`
+			: "";
+	const tool = run.activeTool?.name;
+	if (tool) {
+		const args = (run.activeTool?.argsSummary ?? "").replace(/\s+/g, " ").trim();
+		const short = args.length > 26 ? `${args.slice(0, 26)}…` : args;
+		return [short === "" ? `正在 ${tool}` : `正在 ${tool} · ${short}`, elapsed].filter(Boolean).join(" · ");
+	}
+	if (run.retrying) return [t("等模型重试…", "Retrying…"), elapsed].filter(Boolean).join(" · ");
+	if (run.status === "awaiting_approval") return t("等你确认", "Waiting for you");
+	return [t("正在输出…", "Writing…"), elapsed].filter(Boolean).join(" · ");
 }
 
 /**
@@ -122,12 +214,74 @@ export function CanvasView() {
 		selectedRef.current = new Set(selected);
 	}, [selected]);
 
+	/**
+	 * 这一轮正在做画布上的哪一步（宿主在图一开跑时记下的）+ 这条会话的运行态。
+	 * 节点上的实时进度就靠这两个：正在跑什么工具、跑了多久。
+	 */
+	const runningNodeId = snapshot?.canvasRunningNodeId ?? null;
+	const run = conversationId === null ? undefined : snapshot?.runningByConversation?.[conversationId];
+	/** 秒表：只有真有节点在跑时才每秒滴答一次（不跑的时候不制造重渲染） */
+	const [, setTick] = useState(0);
+	useEffect(() => {
+		if (runningNodeId === null) return;
+		const timer = window.setInterval(() => setTick((value) => value + 1), 1000);
+		return () => window.clearInterval(timer);
+	}, [runningNodeId]);
+
 	/** 节点的实际高度（连线端点要用；宽度是固定常量） */
 	const [heights, setHeights] = useState<Record<string, number>>({});
 	const nodeElsRef = useRef(new Map<string, HTMLElement>());
 
-	/** 节点坐标：刚松手的那个用乐观值，其余用服务端的 */
-	const posOf = useCallback((node: CanvasNode): Pos => pending[node.id] ?? { x: node.x, y: node.y }, [pending]);
+	/**
+	 * 布局风格：卡片（自由摆放，服务端坐标） / 时间线（按依赖分栏） / 清单（单列竖排）。
+	 * 后两种是**客户端按依赖重排**的只读视图 —— 那种排法里"拖"没有意义，所以禁拖。
+	 */
+	const [style, setStyle] = useState<LayoutStyle>(() => loadStyle(conversationId));
+	const styleRef = useRef(style);
+	useLayoutEffect(() => {
+		styleRef.current = style;
+	}, [style]);
+	// 换会话要跟着换回那条会话自己的风格
+	useEffect(() => {
+		setStyle(loadStyle(conversationId));
+	}, [conversationId]);
+	const changeStyle = useCallback(
+		(next: LayoutStyle) => {
+			setStyle(next);
+			saveStyle(conversationId, next);
+		},
+		[conversationId],
+	);
+
+	/** 时间线 / 清单风格下算出来的坐标（卡片风格是 null，用服务端的） */
+	const derived = useMemo(() => {
+		if (style === "card" || doc === null) return null;
+		const depths = depthsOf(doc.nodes, doc.edges);
+		const ordered = [...doc.nodes].sort(
+			(a, b) => (depths.get(a.id) ?? 0) - (depths.get(b.id) ?? 0) || (a.order ?? 0) - (b.order ?? 0),
+		);
+		const map = new Map<string, Pos>();
+		if (style === "timeline") {
+			const rows = new Map<number, number>();
+			for (const node of ordered) {
+				const depth = depths.get(node.id) ?? 0;
+				const row = rows.get(depth) ?? 0;
+				rows.set(depth, row + 1);
+				map.set(node.id, { x: 40 + depth * 300, y: 64 + row * 150 });
+			}
+		} else {
+			// 清单：一列到底，间距压紧一点，像 checklist
+			ordered.forEach((node, index) => map.set(node.id, { x: 40, y: 64 + index * 106 }));
+		}
+		return map;
+	}, [doc, style]);
+
+	/** 节点坐标：派生布局 > 刚松手的乐观值 > 服务端坐标 */
+	const posOf = useCallback(
+		(node: CanvasNode): Pos => derived?.get(node.id) ?? pending[node.id] ?? { x: node.x, y: node.y },
+		[derived, pending],
+	);
+	const canDrag = style === "card";
 
 	/**
 	 * 快照里节点变了（agent 重画 / 加节点）之后重新量高度。
@@ -146,7 +300,7 @@ export function CanvasView() {
 			const same = Object.keys(next).length === Object.keys(current).length && Object.entries(next).every(([id, h]) => current[id] === h);
 			return same ? current : next;
 		});
-	}, [revision, pending]);
+	}, [revision, pending, runningNodeId, run?.status, run?.activeTool?.name]);
 
 	/* ── 视口绘制 ─────────────────────────────────────── */
 	const paint = useCallback(() => {
@@ -242,6 +396,8 @@ export function CanvasView() {
 
 	const onNodePointerDown = (event: React.PointerEvent<HTMLDivElement>, id: string) => {
 		if (event.button !== 0) return;
+		// 时间线 / 清单是按依赖重排出来的只读视图，拖它没有意义
+		if (!canDrag) return;
 		// 放大工具开着的时候，拖在节点上也应该画放大框 —— 不 stopPropagation，交给视口接管
 		if (zDownRef.current || zoomArmedRef.current) return;
 		if ((event.target as HTMLElement).closest("button, select")) return;
@@ -753,6 +909,7 @@ export function CanvasView() {
 	const nodes = doc?.nodes ?? [];
 	const chosen = useMemo(() => new Set(selected), [selected]);
 
+
 	/** 悬停的节点（缩得很小时弹一张不缩放的预览卡，否则字永远看不清） */
 	const [hover, setHover] = useState<{ id: string; x: number; y: number; w: number; h: number } | null>(null);
 	const hoverNode = hover === null ? null : (nodes.find((node) => node.id === hover.id) ?? null);
@@ -893,9 +1050,12 @@ export function CanvasView() {
 						const pos = posOf(node);
 						const state = statusOf(node);
 						const isSelected = chosen.has(node.id);
+						/** 这一轮正在干的就是它：把「跑到哪了」直接写在节点上 */
+						const isLive = runningNodeId === node.id && run !== undefined && run.status !== "idle";
+						const liveText = isLive ? describeRun(run, t) : null;
 						return (
 							<div
-								className={`canvas-node is-${state.tone}${isSelected ? " is-selected" : ""}`}
+								className={`canvas-node is-${state.tone} kind-${kindOf(node)}${isSelected ? " is-selected" : ""}${isLive ? " is-live" : ""}`}
 								key={node.id}
 								ref={(element) => {
 									if (element) nodeElsRef.current.set(node.id, element);
@@ -921,9 +1081,18 @@ export function CanvasView() {
 								<span className="canvas-node-index">{index + 1}</span>
 								<div className="canvas-node-head">
 									<span className={`canvas-dot is-${state.tone}`} />
+									<span className={`canvas-node-kind kind-${kindOf(node)}`} title={t(KIND_META[kindOf(node)].zh, KIND_META[kindOf(node)].en)}>
+										{KIND_META[kindOf(node)].icon}
+									</span>
 									<span className="canvas-node-title">{node.title}</span>
 								</div>
 								{node.detail ? <div className="canvas-node-detail">{node.detail}</div> : null}
+								{isLive && liveText !== null ? (
+									<div className="canvas-node-live">
+										<span className="canvas-live-dot" />
+										<span className="canvas-live-text">{liveText}</span>
+									</div>
+								) : null}
 								<div className={`canvas-node-state is-${state.tone}`}>{t(state.zh, state.en)}</div>
 								{/* 悬停/选中才出现：平时不挡内容 */}
 								<div className="canvas-node-actions">
@@ -988,6 +1157,16 @@ export function CanvasView() {
 				<button type="button" onClick={reset} title={t("回到 100%", "Back to 100%")}>
 					{t("重置", "Reset")}
 				</button>
+				<select
+					className="canvas-style"
+					value={style}
+					aria-label={t("画布布局", "Canvas layout")}
+					onChange={(event) => changeStyle(event.target.value as LayoutStyle)}
+				>
+					<option value="card">{t("卡片布局", "Cards")}</option>
+					<option value="timeline">{t("时间线", "Timeline")}</option>
+					<option value="checklist">{t("清单", "Checklist")}</option>
+				</select>
 				<button
 					type="button"
 					className={zoomArmed ? "is-on" : undefined}
