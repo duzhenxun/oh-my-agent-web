@@ -22,7 +22,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CanvasDoc, CanvasNode, CanvasNodeStatus } from "../types.ts";
 import { useAppState } from "../store.ts";
-import { canvasDeleteNodes, canvasMoveNodes, canvasSetStatus, sendMessage } from "../ws.ts";
+import { canvasDeleteNodes, canvasMoveNodes, canvasSetStatus, canvasStartNode } from "../ws.ts";
 import { useT } from "../use-language.ts";
 
 const VIEW_KEY = "agent-web.canvas.view.v2";
@@ -736,11 +736,19 @@ export function CanvasView() {
 		[conversationId],
 	);
 
-	/** 双击节点：让 agent 开始做这件事（往当前会话发一句话） */
-	const startNode = useCallback((node: CanvasNode) => {
-		const detail = node.detail ? `（${node.detail}）` : "";
-		sendMessage(`开始做这一步：${node.title}${detail}`);
-	}, []);
+	/**
+	 * 双击节点 = 让 agent 开始做这一步。
+	 *
+	 * 交给宿主的 `canvas_start_node`，而不是自己发一句话：宿主会把它标成「正在做」，
+	 * 并记住这一轮干的是哪个节点，回合结束自动推到 done（失败则 blocked）。
+	 */
+	const startNode = useCallback(
+		(node: CanvasNode) => {
+			if (conversationId === null) return;
+			canvasStartNode(conversationId, node.id);
+		},
+		[conversationId],
+	);
 
 	const nodes = doc?.nodes ?? [];
 	const chosen = useMemo(() => new Set(selected), [selected]);

@@ -8,6 +8,14 @@ export type RemoteSpeechHooks = {
 	onIssue?: (message: string) => void;
 };
 
+/**
+ * 下一句从哪儿拿（流式朗读用）：返回 undefined = 眼下没有下一句，这一轮就念完了。
+ *
+ * 有了它，`speakRemote` 会在**当前句还在播**的时候就要下一句并开始合成，
+ * 而不是等这一句播完再发请求 —— 后者正是「句子之间空 1–2 秒」的来源。
+ */
+export type NextSpeechText = () => string | undefined;
+
 let audioContext: AudioContext | undefined;
 
 /**
@@ -101,6 +109,7 @@ export function speakRemote(
 	text: string,
 	settings: { provider: RemoteTtsProvider; voice: string; rate: number },
 	hooks: RemoteSpeechHooks,
+	next?: NextSpeechText,
 ): () => void {
 	const controller = new AbortController();
 	let canceled = false;
@@ -131,7 +140,23 @@ export function speakRemote(
 				tNow("浏览器拦截了播放，请在页面上点击后重新朗读", "Playback was blocked; click on the page and try again"),
 			);
 		}
-		const chunks = splitSpeechText(text);
+		// 句子流：当前这句的块念完，就向 `next` 要下一句（流式朗读时队列里通常已经有了）。
+		// 之所以要在这里跨句取，是因为「下一块」要能在**当前这块还在播**的时候就发出去合成，
+		// 而不是等这一句播完再发一轮请求 —— 后者是每句之间空 1–2 秒的来源。
+		let chunks = splitSpeechText(text);
+		let chunkIndex = 0;
+		const nextChunk = (): string | undefined => {
+			for (;;) {
+				while (chunkIndex < chunks.length) {
+					const chunk = chunks[chunkIndex++];
+					if (chunk && chunk.trim() !== "") return chunk;
+				}
+				const following = next?.();
+				if (following === undefined || following.trim() === "") return undefined;
+				chunks = splitSpeechText(following);
+				chunkIndex = 0;
+			}
+		};
 		const prepare = async (body: string): Promise<AudioBuffer> => {
 			const timeoutMs = settings.provider === "edge" ? 45_000 : 180_000;
 			const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
@@ -159,8 +184,9 @@ export function speakRemote(
 				window.clearTimeout(timeout);
 			}
 		};
-		let buffer = chunks.length ? await prepare(chunks[0]!) : undefined;
-		for (let index = 0; buffer && !canceled; index++) {
+		const firstChunk = nextChunk();
+		let buffer = firstChunk === undefined ? undefined : await prepare(firstChunk);
+		for (let first = true; buffer && !canceled; first = false) {
 			const current = context.createBufferSource();
 			source = current;
 			current.buffer = buffer;
@@ -174,10 +200,11 @@ export function speakRemote(
 				};
 			});
 			current.start();
-			if (index === 0) hooks.onStart?.();
-			// Prepare one following chunk while the current one plays; memory stays bounded.
-			const next = index + 1 < chunks.length ? prepare(chunks[index + 1]!) : Promise.resolve(undefined);
-			[, buffer] = await Promise.all([ended, next]);
+			if (first) hooks.onStart?.();
+			// 预取下一块（跨句时就是下一句的首块），内存里最多压一块。
+			const upcoming = nextChunk();
+			const following = upcoming === undefined ? Promise.resolve(undefined) : prepare(upcoming);
+			[, buffer] = await Promise.all([ended, following]);
 		}
 		if (!canceled) hooks.onEnd?.();
 	};

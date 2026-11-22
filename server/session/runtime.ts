@@ -135,6 +135,25 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		return { ok: true };
 	};
 
+	/**
+	 * 会话 → 这一轮正在做的画布节点。
+	 *
+	 * 为什么要宿主自己记：模型不会每次都老老实实去调 `canvas` 工具标状态，
+	 * 而"我双击了这一步"是个确定的事实 —— 记下来，回合结束时就能自动推到 done。
+	 */
+	const canvasRunningNode = new Map<string, string>();
+
+	/** 回合结束：把绑定的那个节点推到 done / blocked（用户中断的不动，留在 doing 由人决定） */
+	const advanceCanvasNode = (info: { conversationId: string; failed: boolean; interrupted: boolean }): void => {
+		const nodeId = canvasRunningNode.get(info.conversationId);
+		if (nodeId === undefined) return;
+		canvasRunningNode.delete(info.conversationId);
+		if (info.interrupted) return;
+		editCanvas(info.conversationId, (doc) =>
+			doc.nodes.some((node) => node.id === nodeId) ? setStatus(doc, nodeId, info.failed ? "blocked" : "done") : null,
+		);
+	};
+
 	// 子代理（多开 + 模板管理）：引擎跑、宿主投影进快照；模板与开关落 ~/.pi/agent/agents
 	const subagentBridge = createSubagentBridge({
 		agentDir: options.subagentAgentDir ?? options.workspace,
@@ -312,7 +331,11 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		sendNext: (message, conversationId) =>
 			setTimeout(() => void apiRef?.sendMessage(message.text, message.attachments, "now", conversationId), 0),
 		cancelPending: (conversationId, cancelOptions) => approval.cancelPending(conversationId, cancelOptions),
-		onTurnFinished: options.onTurnFinished,
+		onTurnFinished: (info) => {
+			// 先推进画布（同步、幂等），再把事件交给宿主（推送通知等）
+			advanceCanvasNode(info);
+			options.onTurnFinished?.(info);
+		},
 		touchConversation: (conversationId) => touchConversation(conversationId),
 		refreshStats: (id) => void refreshStats(id),
 		refreshProjects: () => void piRefresher.refresh(true),
@@ -712,6 +735,27 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		},
 		canvasMove(conversationId, moves) {
 			return editCanvas(conversationId, (doc) => moveNodes(doc, moves));
+		},
+
+		async canvasStartNode(conversationId, nodeId) {
+			const doc = options.canvasOf?.(conversationId) ?? null;
+			if (doc === null) return { ok: false, error: { code: "canvas.missing", message: "这条会话还没有画布" } };
+			const node = doc.nodes.find((each) => each.id === nodeId);
+			if (node === undefined) return { ok: false, error: { code: "canvas.no_such_node", message: "没有这个节点（可能刚被删掉）" } };
+
+			// 先标 doing 并绑定，再发回合：反过来的话回合快的话会先结束、绑定还没写上
+			const started = editCanvas(conversationId, (current) => setStatus(current, nodeId, "doing"));
+			if (!started.ok) return started;
+			canvasRunningNode.set(conversationId, nodeId);
+
+			const text = node.detail ? `开始做这一步：${node.title}（${node.detail}）` : `开始做这一步：${node.title}`;
+			const result = await sendTurn(text, undefined, "now", conversationId);
+			if (!result.ok) {
+				// 消息都没发出去：解绑并把状态退回原样，别留一个永远 doing 的节点
+				canvasRunningNode.delete(conversationId);
+				editCanvas(conversationId, (current) => setStatus(current, nodeId, node.status));
+			}
+			return result;
 		},
 
 		setEngine: async (name) => {

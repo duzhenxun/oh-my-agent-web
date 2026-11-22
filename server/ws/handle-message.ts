@@ -174,6 +174,13 @@ export async function handleMessage(socket: ClientSink, raw: string, deps: Handl
 			case "canvas_move":
 				deps.reply(socket, request.id, deps.runtime.canvasMove(request.payload.conversationId, request.payload.moves));
 				return;
+			case "canvas_start_node":
+				deps.reply(
+					socket,
+					request.id,
+					await deps.runtime.canvasStartNode(request.payload.conversationId, request.payload.nodeId),
+				);
+				return;
 			case "cancel_queued":
 				deps.reply(socket, request.id, deps.runtime.cancelQueued(request.payload.queueId));
 				return;

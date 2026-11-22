@@ -130,6 +130,16 @@ export function useVoiceCues(snapshot: Snapshot | null): void {
 	/** 最近一次 drain 用的朗读设置：暂停后恢复时要用同一套（音色/语速不能突然变） */
 	const lastTts = useRef<TtsSettings | null>(null);
 
+	/**
+	 * 预取时向队列要下一句：`speakRemote` 会在**当前句还在播**时调它，所以下一句的合成
+	 * 和这一句的播放是并行的（以前必须等这句播完才发下一句的请求，句子之间白等一个往返）。
+	 * 暂停 / 听写期间一律不给：那会儿既不该出声，也不该继续打上游。
+	 */
+	const takeNextSpeech = (): string | undefined => {
+		if (isSpeechPausedNow() || isVoiceListening()) return undefined;
+		return stream.current.queue.shift();
+	};
+
 	const drain = (tts: TtsSettings): void => {
 		const state = stream.current;
 		// 暂停中：队列原地不动。恢复时由下面那个订阅再叫一次 drain ——
@@ -154,6 +164,7 @@ export function useVoiceCues(snapshot: Snapshot | null): void {
 		};
 		speak(next, tts, {
 			onEnd: advance,
+			nextText: takeNextSpeech,
 			onIssue: (message) => {
 				// 自动朗读被浏览器拦住时没有任何提示，只表现为"没声音" —— 至少留一条可查的日志
 				voiceLog("read:issue", { message: message.slice(0, 80) });

@@ -26,6 +26,7 @@ export const REQUEST_TYPES: ClientRequestType[] = [
 	"canvas_set_status",
 	"canvas_delete",
 	"canvas_move",
+	"canvas_start_node",
 	"set_settings",
 	"set_model",
 	"set_approval_mode",
@@ -282,6 +283,14 @@ export function parseClientRequest(raw: unknown): ClientRequest | null {
 		const ids = canvasIds(payload.ids, 40);
 		if (ids === null) return null;
 		return { id, type: "canvas_delete", payload: { conversationId: conversationId.trim(), ids } };
+	}
+
+	if (type === "canvas_start_node") {
+		const conversationId = payload.conversationId;
+		const nodeId = payload.nodeId;
+		if (!nonEmptyString(conversationId) || !nonEmptyString(nodeId)) return null;
+		if (!CANVAS_NODE_ID.test(nodeId.trim())) return null;
+		return { id, type: "canvas_start_node", payload: { conversationId: conversationId.trim(), nodeId: nodeId.trim() } };
 	}
 
 	if (type === "canvas_move") {

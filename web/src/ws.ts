@@ -661,6 +661,16 @@ export function setApprovalMode(mode: ApprovalMode, conversationId?: string | nu
 	});
 }
 
+/**
+ * 让 agent 开始做画布上的某一步（双击节点）。
+ *
+ * 走单独一条请求而不是「改状态 + 发消息」：宿主会把「这一轮在干哪个节点」记下来，
+ * 回合结束自动推到 done / blocked —— 不依赖模型自己记得去调工具。
+ */
+export function canvasStartNode(conversationId: string, nodeId: string): void {
+	send({ id: `req-${++seq}`, type: "canvas_start_node", payload: { conversationId, nodeId } });
+}
+
 /** 画布：手改一个节点的状态（待办 / 正在做 / 已完成 / 卡住） */
 export function canvasSetStatus(conversationId: string, nodeId: string, status: CanvasNodeStatus): void {
 	send({ id: `req-${++seq}`, type: "canvas_set_status", payload: { conversationId, nodeId, status } });

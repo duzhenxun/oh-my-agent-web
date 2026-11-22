@@ -733,6 +733,19 @@ export type CanvasMoveNodesRequest = {
 	payload: { conversationId: string; moves: { id: string; x: number; y: number }[] };
 };
 
+/**
+ * 让 agent 开始做画布上的某一步（双击节点）。
+ *
+ * 为什么要单独一条请求、而不是"改状态 + 发消息"两下：
+ * 宿主得记住「这一轮在干哪个节点」，回合结束时才能自动把它推到 done / blocked。
+ * 拆成两条的话这个绑定关系就丢了，只能靠模型自己记得去调工具标状态。
+ */
+export type CanvasStartNodeRequest = {
+	id: string;
+	type: "canvas_start_node";
+	payload: { conversationId: string; nodeId: string };
+};
+
 export type ClientRequest =
 	| SetEngineRequest
 	| RefreshResourcesRequest
@@ -767,7 +780,8 @@ export type ClientRequest =
 	| MoveSessionRequest
 	| CanvasSetStatusRequest
 	| CanvasDeleteNodesRequest
-	| CanvasMoveNodesRequest;
+	| CanvasMoveNodesRequest
+	| CanvasStartNodeRequest;
 
 /** 新建会话（ADR-0021 §2 起可指定项目：不传 = 继承当前会话的工作区） */
 export type NewChatRequest = {

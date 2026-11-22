@@ -427,6 +427,13 @@ export type SpeakHooks = {
 	 * 第二个参数是结构化上下文：面板靠 `wakeable` 决定要不要显示「唤醒并重试」，不去猜文案。
 	 */
 	onIssue?: (message: string, issue: SpeakIssue) => void;
+	/**
+	 * 下一句从哪儿拿（流式朗读用）：给了它，远端语音会在**当前句还在播**的时候就把下一句
+	 * 要过去开始合成 —— 「句子之间空 1–2 秒」就是少了这一步。
+	 *
+	 * 返回 undefined = 眼下没下一句（这一轮就念完了）。浏览器语音不走这条（系统合成器自己排队）。
+	 */
+	nextText?: () => string | undefined;
 };
 
 /**
@@ -518,6 +525,15 @@ export function speak(text: string, settings: TtsSettings = loadTtsSettings(), h
 				hooks.onIssue?.(message, { wakeable: false });
 			},
 		},
+		// 再要一句就把 `lastSpokenText` 跟上：听写那边拿它判断「这段是不是我们自己的声音」，
+		// 只记第一句的话，第二句开始后的回声就认不出来。
+		hooks.nextText
+			? () => {
+					const following = hooks.nextText?.();
+					if (following !== undefined) lastSpokenText = following;
+					return following;
+				}
+			: undefined,
 	);
 }
 
