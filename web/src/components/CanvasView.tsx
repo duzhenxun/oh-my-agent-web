@@ -22,7 +22,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CanvasDoc, CanvasNode, CanvasNodeStatus } from "../types.ts";
 import { useAppState } from "../store.ts";
-import { canvasDeleteNodes, canvasMoveNodes, canvasSetStatus, canvasStartNode, canvasUpdateNode, interrupt } from "../ws.ts";
+import { canvasDeleteNodes, canvasMoveNodes, canvasSetStatus, canvasStartNode, canvasUpdateNode, interrupt, sendMessage } from "../ws.ts";
 import { useT } from "../use-language.ts";
 
 const MIN_K = 0.2;
@@ -184,6 +184,12 @@ export function CanvasView() {
 
 	/** 右键菜单：`nodeId` 为 null 表示点在空白处 */
 	const [menu, setMenu] = useState<{ x: number; y: number; nodeId: string | null } | null>(null);
+	/**
+	 * 「就这几步说两句」的输入框：`nodeIds` = 这次要带的选区（右键的那个节点不在选区里时，就只有它）。
+	 * 发出去是一条普通消息，但正文里带着节点 id 和现状 —— 让 agent 知道"只改这几个"。
+	 */
+	const [ask, setAsk] = useState<{ x: number; y: number; nodeIds: string[]; text: string } | null>(null);
+
 	/** 重命名（内联输入）：先摆出当前值，Enter 保存 / Esc 取消 */
 	const [editing, setEditing] = useState<{ id: string; title: string; detail: string } | null>(null);
 
@@ -899,6 +905,28 @@ export function CanvasView() {
 		editingRef.current = editing;
 	}, [editing]);
 
+	/** 把「选区 + 我的要求」拼成一条消息发给 agent */
+	const sendAsk = useCallback(() => {
+		if (ask === null || conversationId === null) return;
+		const picked = ask.nodeIds
+			.map((id) => doc?.nodes.find((node) => node.id === id))
+			.filter((node): node is CanvasNode => node !== undefined);
+		const requirement = ask.text.trim();
+		if (picked.length === 0 || requirement === "") return;
+		const lines = [
+			`【画布选区】针对这 ${picked.length} 个节点：`,
+			...picked.map(
+				(node) => `- ${node.id}（${node.status}${node.kind ? `，${node.kind}` : ""}）：${node.title}${node.detail ? ` —— ${node.detail}` : ""}`,
+			),
+			"",
+			`我的要求：${requirement}`,
+			"",
+			"只改这几个节点（用 canvas 工具的 update / status / add 定位到上面的 id），别动其他节点；改完一句话说改了什么。",
+		];
+		sendMessage(lines.join("\n"));
+		setAsk(null);
+	}, [ask, conversationId, doc]);
+
 	/** 手改节点状态（服务端落盘 + 推快照，这里不做乐观更新：一次往返很快） */
 	const setNodeStatus = useCallback(
 		(node: CanvasNode, status: CanvasNodeStatus) => {
@@ -1232,6 +1260,46 @@ export function CanvasView() {
 					</div>
 				</div>
 			) : null}
+			{/* 「就这几步说两句」：一个小输入框，正文里带上节点 id 和现状发给 agent */}
+			{ask !== null ? (
+				<>
+					<div className="canvas-menu-backdrop" onPointerDown={() => setAsk(null)} />
+					<div
+						className="canvas-ask"
+						style={{
+							left: Math.min(ask.x, (viewportRef.current?.clientWidth ?? 600) - 300),
+							top: Math.min(ask.y, (viewportRef.current?.clientHeight ?? 600) - 150),
+						}}
+					>
+						<div className="canvas-ask-head">
+							{t(`对这 ${ask.nodeIds.length} 步说：`, `About these ${ask.nodeIds.length}:`)}
+						</div>
+						<textarea
+							className="canvas-ask-input"
+							value={ask.text}
+							autoFocus
+							rows={3}
+							placeholder={t("比如：这几步太粗，拆细一点 / 合并成一步 / 顺序不对", "e.g. too coarse — split them / merge / wrong order")}
+							onChange={(event) => setAsk({ ...ask, text: event.target.value })}
+							onKeyDown={(event) => {
+								if (event.key === "Enter" && !event.shiftKey) {
+									event.preventDefault();
+									sendAsk();
+								}
+								if (event.key === "Escape") setAsk(null);
+							}}
+						/>
+						<div className="canvas-ask-actions">
+							<button type="button" className="is-primary" onClick={sendAsk}>
+								{t("发给 agent", "Send")}
+							</button>
+							<button type="button" onClick={() => setAsk(null)}>
+								{t("取消", "Cancel")}
+							</button>
+						</div>
+					</div>
+				</>
+			) : null}
 			{/* 右键菜单：点空白和点节点是两套项 */}
 			{menu !== null ? (
 				<>
@@ -1273,6 +1341,21 @@ export function CanvasView() {
 									{zoomArmed ? "✓ " : ""}
 									{t("框选放大", "Zoom to area")}
 								</button>
+								{selected.length > 0 ? (
+									<>
+										<div className="canvas-menu-sep" />
+										<button
+											type="button"
+											className="canvas-menu-item is-accent"
+											onClick={() => {
+												setAsk({ x: menu.x, y: menu.y, nodeIds: [...selected], text: "" });
+												closeMenu();
+											}}
+										>
+											{t(`就这 ${selected.length} 步说两句…`, `Ask about these ${selected.length}…`)}
+										</button>
+									</>
+								) : null}
 								<div className="canvas-menu-sep" />
 								<div className="canvas-menu-label">{t("布局", "Layout")}</div>
 								{([
@@ -1304,6 +1387,20 @@ export function CanvasView() {
 							})();
 							return (
 								<>
+									<button
+										type="button"
+										className="canvas-menu-item is-accent"
+										onClick={() => {
+											// 右键的那个节点在选区里就带整个选区，否则只带它自己
+											const picked = selected.includes(node.id) && selected.length > 0 ? selected : [node.id];
+											setAsk({ x: menu.x, y: menu.y, nodeIds: picked, text: "" });
+											closeMenu();
+										}}
+									>
+										{selected.includes(node.id) && selected.length > 1
+											? t(`就这 ${selected.length} 步说两句…`, `Ask about these ${selected.length}…`)
+											: t("就这一步说两句…", "Ask about this step…")}
+									</button>
 									{/* 文案跟状态走：已完成的还写"开始做"就是骗人 */}
 									<button type="button" className="canvas-menu-item" onClick={() => { closeMenu(); startNode(node); }}>
 										{node.status === "done"

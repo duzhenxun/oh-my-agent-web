@@ -298,6 +298,68 @@
 	z-index: 40;
 }
 
+/* 「就这几步说两句」的输入框 */
+.canvas-ask {
+	position: absolute;
+	z-index: 43;
+	width: 288px;
+	box-sizing: border-box;
+	padding: 8px;
+	border-radius: 10px;
+	background: var(--bg-elev);
+	border: 1px solid var(--border-strong);
+	box-shadow: 0 14px 36px rgb(0 0 0 / 22%);
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.canvas-ask-head {
+	font-size: 11px;
+	color: var(--text-faint);
+}
+
+.canvas-ask-input {
+	font: inherit;
+	font-size: 12.5px;
+	box-sizing: border-box;
+	width: 100%;
+	padding: 6px 8px;
+	border: 1px solid var(--border-strong);
+	border-radius: 7px;
+	background: var(--bg);
+	color: var(--text);
+	resize: vertical;
+}
+
+.canvas-ask-actions {
+	display: flex;
+	gap: 6px;
+	justify-content: flex-end;
+}
+
+.canvas-ask-actions button {
+	font: inherit;
+	font-size: 11.5px;
+	padding: 3px 10px;
+	border-radius: 6px;
+	border: 1px solid var(--border);
+	background: transparent;
+	color: var(--text-dim);
+	cursor: pointer;
+}
+
+.canvas-ask-actions button.is-primary {
+	border-color: var(--accent);
+	background: var(--accent);
+	color: #fff;
+}
+
+/* 菜单里那个"对选区说话"的项：稍微突出一点 */
+.canvas-menu-item.is-accent {
+	color: var(--accent);
+}
+
 /* 右键落点：一个从点击处扩散淡出的圈（菜单可能盖住那一点，所以圈要明显） */
 .canvas-rt-marker {
 	position: absolute;
