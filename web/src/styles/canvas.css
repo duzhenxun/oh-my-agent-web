@@ -15,11 +15,12 @@
 	overflow: hidden;
 }
 
+/* 默认光标是普通箭头：左键拖现在是**框选**；只有按住空格 / 中键才是平移（.can-pan） */
 .canvas-viewport {
 	position: absolute;
 	inset: 0;
 	overflow: hidden;
-	cursor: grab;
+	cursor: default;
 	touch-action: none;
 	background-color: var(--bg);
 	background-image:
@@ -62,6 +63,64 @@
 
 .canvas-card:hover {
 	border-color: var(--border-strong);
+}
+
+/* 选中态用 outline 而不是换 border：换 border 会让卡片尺寸变 1px，吸附计算会跟着抖 */
+.canvas-card.is-selected {
+	outline: 2px solid var(--accent);
+	outline-offset: 1px;
+}
+
+.canvas-card.is-selected:hover {
+	border-color: var(--accent);
+}
+
+/* 按住空格可以平移时换个手型，否则用户不知道左键拖会变成框选 */
+.canvas-viewport.can-pan {
+	cursor: grab;
+}
+
+/* 框选矩形：屏幕坐标，永远 1px 边框（不跟缩放走，缩得很小时也看得见） */
+.canvas-marquee {
+	display: none;
+	position: absolute;
+	left: 0;
+	top: 0;
+	width: 0;
+	height: 0;
+	border: 1px solid var(--accent);
+	background: color-mix(in srgb, var(--accent) 12%, transparent);
+	pointer-events: none;
+	z-index: 15;
+}
+
+/* 吸附参考线：一条竖一条横，靠 transform 定位 */
+.canvas-guide {
+	display: none;
+	position: absolute;
+	background: var(--accent);
+	opacity: 0.75;
+	pointer-events: none;
+	z-index: 14;
+}
+
+.canvas-guide-x {
+	left: 0;
+	top: 0;
+	bottom: 0;
+	width: 1px;
+}
+
+.canvas-guide-y {
+	left: 0;
+	top: 0;
+	right: 0;
+	height: 1px;
+}
+
+.canvas-bar-sel {
+	color: var(--accent);
+	font-weight: 600;
 }
 
 .canvas-card-head {

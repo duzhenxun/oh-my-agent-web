@@ -15,6 +15,12 @@
  *      要是把位移写进 left/top，下一次重渲染就会把拖动中的位置按回去（闪回）。
  *      CSS 变量不在 React 的 style 管控里，所以安全；松手时才落盘成新坐标。
  *
+ * 手势分工（和 Figma / tldraw 一致，别按老习惯改）：
+ *   - 空白处左键拖 = **框选**；它原本是平移，现在平移让给下面几种；
+ *   - 滚轮 / 触控板双指 = 平移；中键拖、或按住空格拖 = 平移；
+ *   - ⌘/Ctrl + 滚轮 = 以光标为锚缩放；
+ *   - 拖卡片 = 移动；选中多张时一起移动，并对齐到其他卡片的边（吸附 + 对齐线）。
+ *
  * 位置存本机（`localStorage`）：画布是"这台机器上我怎么摆"的偏好，不该进快照、
  * 也不该跟别的设备同步。没摆过的会话按顺序自动排进网格。
  */
@@ -46,6 +52,8 @@ const MAX_K = 2.5;
 const FIT_MIN_K = 0.6;
 /** 与 `panel-tab-dnd.ts` 一致：5px 内算点击，不算拖 */
 const DRAG_THRESHOLD = 5;
+/** 吸附距离（**屏幕**像素）：缩得越小越难对齐，所以阈值按屏幕算、用的时候再除以缩放 */
+const SNAP_PX = 6;
 
 type Pos = { x: number; y: number };
 
@@ -118,6 +126,22 @@ function stateOf(running: { status: string; activeTool?: { name?: string } | nul
 	return { tone: "running", zh: tool ? `正在 ${tool}` : "正在跑", en: tool ? `Running ${tool}` : "Running" };
 }
 
+/**
+ * 从一串"被拖动的边"和"静止的边"里挑一个最近的吸附目标。
+ * 三条候选边（左 / 中 / 右，或上 / 中 / 下）× 所有静止卡片的同类边，取绝对距离最小且在容差内的。
+ */
+function bestSnap(moving: number[], targets: number[], tolerance: number): { delta: number; at: number } | null {
+	let best: { delta: number; at: number } | null = null;
+	for (const value of moving) {
+		for (const target of targets) {
+			const delta = target - value;
+			if (Math.abs(delta) > tolerance) continue;
+			if (best === null || Math.abs(delta) < Math.abs(best.delta)) best = { delta, at: target };
+		}
+	}
+	return best;
+}
+
 export function CanvasView() {
 	const t = useT();
 	const { snapshot } = useAppState();
@@ -125,6 +149,9 @@ export function CanvasView() {
 	const viewportRef = useRef<HTMLDivElement | null>(null);
 	const worldRef = useRef<HTMLDivElement | null>(null);
 	const readoutRef = useRef<HTMLSpanElement | null>(null);
+	const marqueeRef = useRef<HTMLDivElement | null>(null);
+	const guideXRef = useRef<HTMLDivElement | null>(null);
+	const guideYRef = useRef<HTMLDivElement | null>(null);
 	/** 视口状态只活在这个 ref 里：每帧都变的东西不该进 React 状态 */
 	const viewRef = useRef(loadView() ?? { x: 0, y: 0, k: 1 });
 	/** 视口落盘的防抖句柄：拖动/缩放会连着触发几十次，不能每次都写 localStorage */
@@ -142,11 +169,26 @@ export function CanvasView() {
 	}, []);
 
 	const [positions, setPositions] = useState<Record<string, Pos>>(loadPositions);
-	/** 拖动时算位移要用最新坐标，但不想因此重挂监听 */
+	/** 拖动 / 框选要用最新坐标，但不想因此重挂监听 */
 	const positionsRef = useRef(positions);
 	useLayoutEffect(() => {
 		positionsRef.current = positions;
 	}, [positions]);
+
+	/** 选中的卡片 id（数组：顺序稳定，渲染时判定用 Set） */
+	const [selected, setSelected] = useState<string[]>([]);
+	const selectedRef = useRef<Set<string>>(new Set());
+	useLayoutEffect(() => {
+		selectedRef.current = new Set(selected);
+	}, [selected]);
+	const selectedSet = useMemo(() => new Set(selected), [selected]);
+
+	/** 卡片 DOM 引用表：拖动时要直接改 CSS 变量、量尺寸，都要拿到元素 */
+	const cardElsRef = useRef(new Map<string, HTMLElement>());
+	const setCardEl = useCallback((id: string, element: HTMLDivElement | null) => {
+		if (element === null) cardElsRef.current.delete(id);
+		else cardElsRef.current.set(id, element);
+	}, []);
 
 	/**
 	 * 卡片清单：**在跑的排前面**，其余按最近更新。
@@ -204,6 +246,14 @@ export function CanvasView() {
 		});
 	}, [cards]);
 
+	/** 已消失的会话从选中里剔掉，否则「已选 3 张」可能其中两张早没了 */
+	useEffect(() => {
+		setSelected((current) => {
+			const alive = current.filter((id) => cards.some((card) => card.id === id));
+			return alive.length === current.length ? current : alive;
+		});
+	}, [cards]);
+
 	/* ── 视口绘制：整层一个 transform，外加网格跟随 ─────────────── */
 	const paint = useCallback(() => {
 		const view = viewRef.current;
@@ -242,27 +292,85 @@ export function CanvasView() {
 		[paint, scheduleSaveView],
 	);
 
-	/* ── 平移 ───────────────────────────────────────────── */
+	/* ── 参考线（吸附时显示）。位置用 transform 直接改，不触发重渲染 ── */
+	const hideGuides = useCallback(() => {
+		for (const ref of [guideXRef, guideYRef]) {
+			if (ref.current) ref.current.style.display = "none";
+		}
+	}, []);
+	const showGuides = useCallback((atX: number | null, atY: number | null) => {
+		// 世界坐标 → 屏幕坐标：屏幕 = 世界 × 缩放 + 平移（视口是定位祖先，所以不用减 rect）
+		const view = viewRef.current;
+		if (guideXRef.current) {
+			if (atX === null) guideXRef.current.style.display = "none";
+			else {
+				guideXRef.current.style.display = "block";
+				guideXRef.current.style.transform = `translateX(${atX * view.k + view.x}px)`;
+			}
+		}
+		if (guideYRef.current) {
+			if (atY === null) guideYRef.current.style.display = "none";
+			else {
+				guideYRef.current.style.display = "block";
+				guideYRef.current.style.transform = `translateY(${atY * view.k + view.y}px)`;
+			}
+		}
+	}, []);
+
+	/* ── 平移（中键 / 空格 + 左键）───────────────────────── */
 	const panRef = useRef<{ id: number; sx: number; sy: number; ox: number; oy: number } | null>(null);
+	/** 空格是否按住：按住时左键拖 = 平移（和 Figma 一致） */
+	const spaceDownRef = useRef(false);
+	const hoverRef = useRef(false);
 
-	const onViewportPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-		// 按在卡片（或工具条）上的不归视口管
-		if ((event.target as HTMLElement).closest(".canvas-card, .canvas-bar")) return;
-		if (event.button !== 0 && event.button !== 1) return;
-		panRef.current = { id: event.pointerId, sx: event.clientX, sy: event.clientY, ox: viewRef.current.x, oy: viewRef.current.y };
-		viewportRef.current?.classList.add("is-panning");
-		viewportRef.current?.setPointerCapture(event.pointerId);
-	};
+	useEffect(() => {
+		/** 焦点在输入框里就是打字，不能抢空格 */
+		const isTyping = (target: EventTarget | null) => {
+			const element = target as HTMLElement | null;
+			return element !== null && (element.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(element.tagName));
+		};
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (event.code !== "Space" || isTyping(event.target)) return;
+			/**
+			 * 空格状态**不看悬停**就记下来：用户常常是先按空格再移鼠标进画布。
+			 * 只有"阻止页面滚动 + 换光标"才需要悬停判断（否则在别处按空格会把页面滚动吃掉）。
+			 */
+			spaceDownRef.current = true;
+			if (!hoverRef.current) return;
+			viewportRef.current?.classList.add("can-pan");
+			event.preventDefault();
+		};
+		const onKeyUp = (event: KeyboardEvent) => {
+			if (event.code !== "Space") return;
+			spaceDownRef.current = false;
+			viewportRef.current?.classList.remove("can-pan");
+		};
+		// 切窗口丢了 keyup 的话，空格会"粘住"，松手都变平移 —— 失焦时强制清掉
+		const onBlur = () => {
+			spaceDownRef.current = false;
+			viewportRef.current?.classList.remove("can-pan");
+		};
+		window.addEventListener("keydown", onKeyDown);
+		window.addEventListener("keyup", onKeyUp);
+		window.addEventListener("blur", onBlur);
+		return () => {
+			window.removeEventListener("keydown", onKeyDown);
+			window.removeEventListener("keyup", onKeyUp);
+			window.removeEventListener("blur", onBlur);
+		};
+	}, []);
 
-	/* ── 卡片拖动 ───────────────────────────────────────── */
+	/* ── 框选 ───────────────────────────────────────────── */
+	const marqueeRefState = useRef<{ id: number; sx: number; sy: number; additive: boolean; moved: boolean } | null>(null);
+
+
+	/* ── 卡片拖动（可能多张，带吸附） ────────────────────── */
 	const dragRef = useRef<{
-		id: string;
-		element: HTMLElement;
 		pointerId: number;
+		ids: string[];
 		sx: number;
 		sy: number;
-		ox: number;
-		oy: number;
+		origins: Map<string, Pos>;
 		moved: boolean;
 	} | null>(null);
 
@@ -271,19 +379,106 @@ export function CanvasView() {
 		// 按在按钮上就是点按钮，别开始拖
 		if ((event.target as HTMLElement).closest("button")) return;
 		event.stopPropagation();
-		const element = event.currentTarget;
-		const from = positionsRef.current[id] ?? { x: 0, y: 0 };
-		dragRef.current = {
-			id,
-			element,
-			pointerId: event.pointerId,
+
+		const additive = event.shiftKey || event.metaKey || event.ctrlKey;
+		let ids: string[];
+		if (additive) {
+			// 加减选：已经在里面就摘掉（本次不拖），否则加进去并一起拖
+			const next = new Set(selectedRef.current);
+			if (next.has(id)) {
+				next.delete(id);
+				setSelected([...next]);
+				return;
+			}
+			next.add(id);
+			setSelected([...next]);
+			ids = [...next];
+		} else if (selectedRef.current.has(id)) {
+			// 点已选中的卡：保留整个选区，一起拖
+			ids = [...selectedRef.current];
+		} else {
+			setSelected([id]);
+			ids = [id];
+		}
+
+		const origins = new Map<string, Pos>();
+		for (const each of ids) {
+			const from = positionsRef.current[each];
+			if (from) origins.set(each, from);
+		}
+		dragRef.current = { pointerId: event.pointerId, ids: [...origins.keys()], sx: event.clientX, sy: event.clientY, origins, moved: false };
+		event.currentTarget.setPointerCapture(event.pointerId);
+	};
+
+	/** 拖动中的位移（世界坐标）+ 吸附结果 */
+	const applyDrag = useCallback((dx: number, dy: number) => {
+		const drag = dragRef.current;
+		if (drag === null) return;
+		const k = viewRef.current.k;
+		const tolerance = SNAP_PX / k;
+
+		// 移动集合的包围盒（未吸附前）
+		let minX = Number.POSITIVE_INFINITY;
+		let minY = Number.POSITIVE_INFINITY;
+		let maxX = Number.NEGATIVE_INFINITY;
+		let maxY = Number.NEGATIVE_INFINITY;
+		for (const [id, origin] of drag.origins) {
+			const element = cardElsRef.current.get(id);
+			if (!element) continue;
+			minX = Math.min(minX, origin.x);
+			minY = Math.min(minY, origin.y);
+			maxX = Math.max(maxX, origin.x + element.offsetWidth);
+			maxY = Math.max(maxY, origin.y + element.offsetHeight);
+		}
+		if (!Number.isFinite(minX)) return;
+
+		// 静止卡片的边（不含正在拖的）
+		const targetXs: number[] = [];
+		const targetYs: number[] = [];
+		for (const card of cards) {
+			if (drag.origins.has(card.id)) continue;
+			const element = cardElsRef.current.get(card.id);
+			const pos = positionsRef.current[card.id];
+			if (!element || !pos) continue;
+			targetXs.push(pos.x, pos.x + element.offsetWidth / 2, pos.x + element.offsetWidth);
+			targetYs.push(pos.y, pos.y + element.offsetHeight / 2, pos.y + element.offsetHeight);
+		}
+
+		const snapX = bestSnap([minX + dx, (minX + maxX) / 2 + dx, maxX + dx], targetXs, tolerance);
+		const snapY = bestSnap([minY + dy, (minY + maxY) / 2 + dy, maxY + dy], targetYs, tolerance);
+		const nextDx = dx + (snapX?.delta ?? 0);
+		const nextDy = dy + (snapY?.delta ?? 0);
+
+		for (const id of drag.ids) {
+			const element = cardElsRef.current.get(id);
+			if (!element) continue;
+			element.style.setProperty("--card-dx", `${nextDx}px`);
+			element.style.setProperty("--card-dy", `${nextDy}px`);
+		}
+		showGuides(snapX?.at ?? null, snapY?.at ?? null);
+	}, [cards, showGuides]);
+
+	/* ── 指针事件总入口（都挂在视口上，卡片用 capture 冒泡上来） ── */
+	const onViewportPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+		const target = event.target as HTMLElement;
+		// 按在卡片 / 工具条上的不归视口管
+		if (target.closest(".canvas-card, .canvas-bar")) return;
+		if (event.button === 1 || (event.button === 0 && spaceDownRef.current)) {
+			panRef.current = { id: event.pointerId, sx: event.clientX, sy: event.clientY, ox: viewRef.current.x, oy: viewRef.current.y };
+			viewportRef.current?.classList.add("is-panning");
+			viewportRef.current?.setPointerCapture(event.pointerId);
+			return;
+		}
+		if (event.button !== 0) return;
+		// 空白处左键拖 = 框选
+		marqueeRefState.current = {
+			id: event.pointerId,
 			sx: event.clientX,
 			sy: event.clientY,
-			ox: from.x,
-			oy: from.y,
+			additive: event.shiftKey || event.metaKey || event.ctrlKey,
 			moved: false,
 		};
-		element.setPointerCapture(event.pointerId);
+		viewportRef.current?.setPointerCapture(event.pointerId);
 	};
 
 	const onViewportPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -294,19 +489,71 @@ export function CanvasView() {
 			paint();
 			return;
 		}
+
 		const drag = dragRef.current;
-		if (drag === null || event.pointerId !== drag.pointerId) return;
-		const dx = event.clientX - drag.sx;
-		const dy = event.clientY - drag.sy;
-		if (!drag.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
-		if (!drag.moved) {
-			drag.moved = true;
-			drag.element.classList.add("is-dragging");
+		if (drag !== null && event.pointerId === drag.pointerId) {
+			const screenDx = event.clientX - drag.sx;
+			const screenDy = event.clientY - drag.sy;
+			if (!drag.moved && Math.hypot(screenDx, screenDy) < DRAG_THRESHOLD) return;
+			if (!drag.moved) {
+				drag.moved = true;
+				for (const id of drag.ids) cardElsRef.current.get(id)?.classList.add("is-dragging");
+			}
+			// 世界位移 = 屏幕位移 ÷ 缩放（漏掉除法就是"放大后拖动跑得比鼠标快"）
+			applyDrag(screenDx / viewRef.current.k, screenDy / viewRef.current.k);
+			return;
 		}
-		// 世界位移 = 屏幕位移 ÷ 缩放（漏掉除法就是"放大后拖动跑得比鼠标快"）
-		drag.element.style.setProperty("--card-dx", `${dx / viewRef.current.k}px`);
-		drag.element.style.setProperty("--card-dy", `${dy / viewRef.current.k}px`);
+
+		const marquee = marqueeRefState.current;
+		if (marquee !== null && event.pointerId === marquee.id) {
+			const viewport = viewportRef.current;
+			const box = marqueeRef.current;
+			if (!viewport || !box) return;
+			const rect = viewport.getBoundingClientRect();
+			const x0 = marquee.sx - rect.left;
+			const y0 = marquee.sy - rect.top;
+			const x1 = event.clientX - rect.left;
+			const y1 = event.clientY - rect.top;
+			if (!marquee.moved && Math.hypot(x1 - x0, y1 - y0) < DRAG_THRESHOLD) return;
+			marquee.moved = true;
+			box.style.display = "block";
+			box.style.left = `${Math.min(x0, x1)}px`;
+			box.style.top = `${Math.min(y0, y1)}px`;
+			box.style.width = `${Math.abs(x1 - x0)}px`;
+			box.style.height = `${Math.abs(y1 - y0)}px`;
+		}
 	};
+
+	/** 框选落定：把矩形换算成世界坐标，跟每张卡的世界包围盒求交 */
+	const commitMarquee = useCallback(
+		(additive: boolean) => {
+			const viewport = viewportRef.current;
+			const box = marqueeRef.current;
+			if (!viewport || !box) return;
+			const view = viewRef.current;
+			const left = Number.parseFloat(box.style.left);
+			const top = Number.parseFloat(box.style.top);
+			const width = Number.parseFloat(box.style.width);
+			const height = Number.parseFloat(box.style.height);
+			const worldLeft = (left - view.x) / view.k;
+			const worldTop = (top - view.y) / view.k;
+			const worldRight = (left + width - view.x) / view.k;
+			const worldBottom = (top + height - view.y) / view.k;
+
+			const hits: string[] = [];
+			for (const card of cards) {
+				const element = cardElsRef.current.get(card.id);
+				const pos = positionsRef.current[card.id];
+				if (!element || !pos) continue;
+				// 相交即选中（不要求完全包住 —— 完全包住在小缩放时几乎选不中任何东西）
+				const overlaps =
+					pos.x < worldRight && pos.x + element.offsetWidth > worldLeft && pos.y < worldBottom && pos.y + element.offsetHeight > worldTop;
+				if (overlaps) hits.push(card.id);
+			}
+			setSelected((current) => (additive ? [...new Set([...current, ...hits])] : hits));
+		},
+		[cards],
+	);
 
 	const endPointer = (event: React.PointerEvent<HTMLDivElement>) => {
 		const pan = panRef.current;
@@ -315,23 +562,49 @@ export function CanvasView() {
 			viewportRef.current?.classList.remove("is-panning");
 			scheduleSaveView();
 		}
+
+		const marquee = marqueeRefState.current;
+		if (marquee !== null && event.pointerId === marquee.id) {
+			marqueeRefState.current = null;
+			// 注意顺序：先提交、再隐藏。反过来写会让 commitMarquee 读到 display:none 直接返回
+			if (marquee.moved) commitMarquee(marquee.additive);
+			else if (!marquee.additive) setSelected([]);
+			if (marqueeRef.current) marqueeRef.current.style.display = "none";
+		}
+
 		const drag = dragRef.current;
 		if (drag === null || event.pointerId !== drag.pointerId) return;
 		dragRef.current = null;
-		drag.element.classList.remove("is-dragging");
+		hideGuides();
+		for (const id of drag.ids) cardElsRef.current.get(id)?.classList.remove("is-dragging");
 		if (!drag.moved) {
 			// 没动过：什么也没发生，交给 click / dblclick
-			drag.element.style.removeProperty("--card-dx");
-			drag.element.style.removeProperty("--card-dy");
+			for (const id of drag.ids) {
+				const element = cardElsRef.current.get(id);
+				element?.style.removeProperty("--card-dx");
+				element?.style.removeProperty("--card-dy");
+			}
 			return;
 		}
-		const dx = (Number.parseFloat(drag.element.style.getPropertyValue("--card-dx")) || 0) as number;
-		const dy = (Number.parseFloat(drag.element.style.getPropertyValue("--card-dy")) || 0) as number;
-		// 松手：先清掉临时位移，再把新坐标写进状态（否则会叠加两次）
-		drag.element.style.removeProperty("--card-dx");
-		drag.element.style.removeProperty("--card-dy");
+		// 松手：先读临时位移、清掉，再把新坐标写进状态（否则会叠加两次）
+		const deltas = new Map<string, { dx: number; dy: number }>();
+		for (const id of drag.ids) {
+			const element = cardElsRef.current.get(id);
+			if (!element) continue;
+			deltas.set(id, {
+				dx: Number.parseFloat(element.style.getPropertyValue("--card-dx")) || 0,
+				dy: Number.parseFloat(element.style.getPropertyValue("--card-dy")) || 0,
+			});
+			element.style.removeProperty("--card-dx");
+			element.style.removeProperty("--card-dy");
+		}
 		setPositions((current) => {
-			const next = { ...current, [drag.id]: { x: drag.ox + dx, y: drag.oy + dy } };
+			const next = { ...current };
+			for (const [id, delta] of deltas) {
+				const origin = drag.origins.get(id);
+				if (!origin) continue;
+				next[id] = { x: origin.x + delta.dx, y: origin.y + delta.dy };
+			}
 			savePositions(next);
 			return next;
 		});
@@ -380,7 +653,7 @@ export function CanvasView() {
 		if (!Number.isFinite(minX)) return;
 		const pad = 40;
 		/**
-		 * 缩放上限到 1（只有两三张卡时不要按比例'放大填满'）、下限到 `FIT_MIN_K`
+		 * 缩放上限到 1（只有两三张卡时不要按比例"放大填满"）、下限到 `FIT_MIN_K`
 		 * （卡片多时不要缩成看不清的小方块）。适应内容只应该把东西装进来。
 		 */
 		const k = Math.min(
@@ -441,16 +714,27 @@ export function CanvasView() {
 				onPointerMove={onViewportPointerMove}
 				onPointerUp={endPointer}
 				onPointerCancel={endPointer}
+				onPointerEnter={() => {
+					hoverRef.current = true;
+					// 先进画布再按的空格（或者按着空格移进来）：补上平移光标
+					if (spaceDownRef.current) viewportRef.current?.classList.add("can-pan");
+				}}
+				onPointerLeave={() => {
+					hoverRef.current = false;
+					viewportRef.current?.classList.remove("can-pan");
+				}}
 			>
 				<div className="canvas-world" ref={worldRef}>
 					{cards.map((card) => {
 						const pos = positions[card.id];
 						const state = stateOf(running[card.id]);
+						const isSelected = selectedSet.has(card.id);
 						return (
 							<div
-								className="canvas-card"
+								className={`canvas-card${isSelected ? " is-selected" : ""}`}
 								key={card.id}
 								data-conversation-id={card.id}
+								ref={(element) => setCardEl(card.id, element)}
 								style={pos ? { left: pos.x, top: pos.y } : { visibility: "hidden" }}
 								onPointerDown={(event) => onCardPointerDown(event, card.id)}
 								onDoubleClick={() => switchConversation(card.id)}
@@ -478,6 +762,11 @@ export function CanvasView() {
 						);
 					})}
 				</div>
+				{/* 框选矩形：屏幕坐标（不跟缩放走），拖动时用 style 直接改 */}
+				<div className="canvas-marquee" ref={marqueeRef} />
+				{/* 吸附参考线：一条竖、一条横，最多各一条 */}
+				<div className="canvas-guide canvas-guide-x" ref={guideXRef} />
+				<div className="canvas-guide canvas-guide-y" ref={guideYRef} />
 			</div>
 			<div className="canvas-bar">
 				<button type="button" onClick={fit}>
@@ -490,9 +779,22 @@ export function CanvasView() {
 				<span>
 					{cards.length} {t("条会话", "sessions")}
 				</span>
+				{selected.length > 0 ? (
+					<>
+						<span className="canvas-bar-sel">
+							{t(`已选 ${selected.length}`, `${selected.length} selected`)}
+						</span>
+						<button type="button" onClick={() => setSelected([])}>
+							{t("取消选择", "Clear")}
+						</button>
+					</>
+				) : null}
 			</div>
 			<div className="canvas-hint">
-				{t("拖空白平移 · ⌘/Ctrl+滚轮缩放 · 拖卡片移动", "Drag to pan · ⌘/Ctrl+wheel to zoom · drag cards")}
+				{t(
+					"拖空白框选 · 拖卡片移动 · 滚轮平移 · ⌘/Ctrl+滚轮缩放 · 空格+拖=平移",
+					"Drag to box-select · drag cards · wheel to pan · ⌘/Ctrl+wheel to zoom · space+drag to pan",
+				)}
 			</div>
 		</div>
 	);
