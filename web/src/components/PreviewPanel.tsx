@@ -9,6 +9,7 @@ import { FilesTool } from "./FilesTool.tsx";
 import { FilesRail } from "./FilesRail.tsx";
 import { SessionHistory } from "./SessionHistory.tsx";
 import { SystemPromptView } from "./SystemPromptView.tsx";
+import { CanvasView } from "./CanvasView.tsx";
 import { useStoredBool } from "../use-stored-bool.ts";
 import { hostOf } from "../url-bar.ts";
 import { disposeSideChannel } from "../side-chat.ts";
@@ -52,10 +53,15 @@ export type PanelItem =
 	 */
 	| { id: string; kind: "history" }
 	/** 「系统提示词」：这次运行**实际在用**的那段（AGENTS.md / 技能 / 附加段都拼完了） */
-	| { id: string; kind: "prompt" };
+	| { id: string; kind: "prompt" }
+	/**
+	 * 画布：把会话摊在一块可平移 / 缩放的平面上（见 `components/CanvasView.tsx`）。
+	 * 同一时刻只开一张（再点入口就切回去）—— 它是「看全局」的窗口，不需要多开。
+	 */
+	| { id: string; kind: "canvas" };
 
-/** 落地页上能点的那四样工具 */
-export type WorkTool = "files" | "terminal" | "side" | "web";
+/** 落地页上能点的工具 */
+export type WorkTool = "files" | "terminal" | "side" | "web" | "canvas";
 
 /**
  * 面板宽度（偏好记本机）。
@@ -124,6 +130,13 @@ function tabTextOf(
 			title: t("这次运行实际在用的系统提示词", "The system prompt this run actually uses"),
 		};
 	}
+	if (item.kind === "canvas") {
+		return {
+			icon: "◎",
+			label: t("画布", "Canvas"),
+			title: t("画布：把会话摊在一块平面上", "Canvas: sessions laid out on a plane"),
+		};
+	}
 	const icon = /\.[jt]sx?$/i.test(item.path)
 		? "TS"
 		: /\.json$/i.test(item.path)
@@ -174,6 +187,14 @@ const TOOL_CARDS: { tool: WorkTool; icon: string; zh: string; en: string; hintZh
 		en: "Web",
 		hintZh: "输入网址直接在这儿看（有些站点拒绝被嵌入）",
 		hintEn: "Open a URL right here (some sites refuse embedding)",
+	},
+	{
+		tool: "canvas",
+		icon: "◎",
+		zh: "画布",
+		en: "Canvas",
+		hintZh: "把会话摊在一块可平移缩放的平面上，一眼看全谁在跑",
+		hintEn: "Lay your sessions out on a pannable, zoomable plane",
 	},
 ];
 
@@ -822,6 +843,8 @@ export function PreviewPanel({
 							<SessionHistory conversationId={conversationId} />
 						) : item.kind === "prompt" ? (
 							<SystemPromptView conversationId={conversationId} active={item.id === active?.id && !showLanding} />
+						) : item.kind === "canvas" ? (
+							<CanvasView />
 						) : (
 							<SideChat itemId={item.id} />
 						)}

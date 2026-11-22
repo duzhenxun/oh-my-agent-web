@@ -674,6 +674,17 @@ export function App() {
 			}
 			setPreviewVisible(true);
 			setPanelLanding(false);
+			/**
+			 * 画布只开一张（已经在就切回去，不往标签栏里堆）：
+			 * 它是「看全局」的窗口，同一个时刻只需要一块。
+			 */
+			if (tool === "canvas") {
+				setPanelItems((current) =>
+					current.some((item) => item.id === "canvas") ? current : [...current, { id: "canvas", kind: "canvas" }],
+				);
+				setActiveItem("canvas");
+				return;
+			}
 			if (tool === "side") {
 				/**
 				 * 临时聊天**可以开多条**（用户要求）：每条一条标签、一条独立通道、一条独立临时会话，

@@ -49,6 +49,7 @@
 @import "./styles/preview-panel.css";
 @import "./styles/file-preview.css"; /* html 报告：直接内嵌渲染的 iframe 外壳 */
 @import "./styles/work-panel.css"; /* 分栏工作区：工具落地页 / 网页 / 临时聊天 / 文件树 */
+@import "./styles/canvas.css"; /* 画布：把会话摊在可平移缩放的平面上 */
 @import "./styles/overlay.css";
 @import "./styles/templates.css";
 @import "./styles/model-picker.css";
