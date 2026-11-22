@@ -707,12 +707,13 @@ export function App() {
 	/**
 	 * 画布标签的开关（快捷键 Mod+Alt+C 走它）。
 	 *
-	 * 一个键两种行为：已经开着 → 关掉（从标签栏移除）；没开 → 打开面板并聚焦到画布。
-	 * 关的时候**不收起整个面板** —— 右边可能还有文件/终端在用。
+	 * 一个键两种行为：已经开着 → 关掉（移除标签**并把右侧面板一起收起**）；没开 → 打开面板并聚焦到画布。
 	 */
 	const toggleCanvas = useCallback(() => {
 		if (panelItems.some((item) => item.id === "canvas")) {
 			setPanelItems((current) => current.filter((item) => item.id !== "canvas"));
+			// 用户要的是"画布关掉时右边也收起"：右边那块是画布的地盘，别留一条空面板
+			setPreviewVisible(false);
 			return;
 		}
 		setPreviewVisible(true);
