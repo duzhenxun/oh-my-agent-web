@@ -15,9 +15,9 @@
  *      要是把位移写进 left/top，下一次重渲染就会把拖动中的位置按回去（闪回）。
  *      CSS 变量不在 React 的 style 管控里，所以安全；松手时才落盘成新坐标。
  *
- * 手势分工（和 Figma / tldraw 一致，别按老习惯改）：
- *   - 空白处左键拖 = **框选**；它原本是平移，现在平移让给下面几种；
- *   - 滚轮 / 触控板双指 = 平移；中键拖、或按住空格拖 = 平移；
+ * 手势分工（**左键拖 = 平移**，这是第一版定下来的手感，别改）：
+ *   - 空白处左键拖 = 平移；滚轮 / 触控板双指、中键拖、空格 + 左键拖也是平移；
+ *   - **Shift / Alt + 左键拖 = 框选**（加选按住 ⌘ / Ctrl）；
  *   - ⌘/Ctrl + 滚轮 = 以光标为锚缩放；
  *   - 拖卡片 = 移动；选中多张时一起移动，并对齐到其他卡片的边（吸附 + 对齐线）。
  *
@@ -345,17 +345,27 @@ export function CanvasView() {
 			spaceDownRef.current = false;
 			viewportRef.current?.classList.remove("can-pan");
 		};
+		/** Shift / Alt 按住 = 本次拖是框选，光标先告诉用户一声 */
+		const syncMarqueeCursor = (event: KeyboardEvent) => {
+			if (event.key !== "Shift" && event.key !== "Alt") return;
+			viewportRef.current?.classList.toggle("can-marquee", event.type === "keydown");
+		};
 		// 切窗口丢了 keyup 的话，空格会"粘住"，松手都变平移 —— 失焦时强制清掉
 		const onBlur = () => {
 			spaceDownRef.current = false;
 			viewportRef.current?.classList.remove("can-pan");
+			viewportRef.current?.classList.remove("can-marquee");
 		};
 		window.addEventListener("keydown", onKeyDown);
 		window.addEventListener("keyup", onKeyUp);
+		window.addEventListener("keydown", syncMarqueeCursor);
+		window.addEventListener("keyup", syncMarqueeCursor);
 		window.addEventListener("blur", onBlur);
 		return () => {
 			window.removeEventListener("keydown", onKeyDown);
 			window.removeEventListener("keyup", onKeyUp);
+			window.removeEventListener("keydown", syncMarqueeCursor);
+			window.removeEventListener("keyup", syncMarqueeCursor);
 			window.removeEventListener("blur", onBlur);
 		};
 	}, []);
@@ -463,19 +473,21 @@ export function CanvasView() {
 		const target = event.target as HTMLElement;
 		// 按在卡片 / 工具条上的不归视口管
 		if (target.closest(".canvas-card, .canvas-bar")) return;
-		if (event.button === 1 || (event.button === 0 && spaceDownRef.current)) {
+		/** Shift / Alt 是「框选」修饰键；不带就是平移（保持第一版的手感） */
+		const wantMarquee = event.shiftKey || event.altKey;
+		if (event.button === 1 || (event.button === 0 && !wantMarquee)) {
 			panRef.current = { id: event.pointerId, sx: event.clientX, sy: event.clientY, ox: viewRef.current.x, oy: viewRef.current.y };
 			viewportRef.current?.classList.add("is-panning");
 			viewportRef.current?.setPointerCapture(event.pointerId);
 			return;
 		}
 		if (event.button !== 0) return;
-		// 空白处左键拖 = 框选
+		// Shift / Alt + 左键拖 = 框选
 		marqueeRefState.current = {
 			id: event.pointerId,
 			sx: event.clientX,
 			sy: event.clientY,
-			additive: event.shiftKey || event.metaKey || event.ctrlKey,
+			additive: event.metaKey || event.ctrlKey,
 			moved: false,
 		};
 		viewportRef.current?.setPointerCapture(event.pointerId);
@@ -792,8 +804,8 @@ export function CanvasView() {
 			</div>
 			<div className="canvas-hint">
 				{t(
-					"拖空白框选 · 拖卡片移动 · 滚轮平移 · ⌘/Ctrl+滚轮缩放 · 空格+拖=平移",
-					"Drag to box-select · drag cards · wheel to pan · ⌘/Ctrl+wheel to zoom · space+drag to pan",
+					"拖空白平移 · Shift+拖框选 · 拖卡片移动 · 滚轮平移 · ⌘/Ctrl+滚轮缩放",
+					"Drag to pan · Shift+drag to box-select · drag cards · wheel to pan · ⌘/Ctrl+wheel to zoom",
 				)}
 			</div>
 		</div>

@@ -15,12 +15,12 @@
 	overflow: hidden;
 }
 
-/* 默认光标是普通箭头：左键拖现在是**框选**；只有按住空格 / 中键才是平移（.can-pan） */
+/* 默认光标是 grab：左键拖空白就是平移（第一版的手感）；按住 Shift / Alt 变十字框选 */
 .canvas-viewport {
 	position: absolute;
 	inset: 0;
 	overflow: hidden;
-	cursor: default;
+	cursor: grab;
 	touch-action: none;
 	background-color: var(--bg);
 	background-image:
@@ -78,6 +78,11 @@
 /* 按住空格可以平移时换个手型，否则用户不知道左键拖会变成框选 */
 .canvas-viewport.can-pan {
 	cursor: grab;
+}
+
+/* 按住 Shift / Alt：本次拖是框选 */
+.canvas-viewport.can-marquee {
+	cursor: crosshair;
 }
 
 /* 框选矩形：屏幕坐标，永远 1px 边框（不跟缩放走，缩得很小时也看得见） */
