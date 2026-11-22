@@ -779,6 +779,16 @@ export type CanvasMoveNodesRequest = {
 	payload: { conversationId: string; moves: { id: string; x: number; y: number }[]; parent?: string };
 };
 
+/**
+ * 画布：让模型给几条"用户可能想说的话"（那个输入框的候选指令）。
+ * 返回 `{ ok: true, suggestions: string[] }`。
+ */
+export type CanvasSuggestRequest = {
+	id: string;
+	type: "canvas_suggest";
+	payload: { conversationId: string; nodeIds: string[]; parent?: string };
+};
+
 /** 画布：改一个节点的标题 / 说明（右键菜单里的「重命名」） */
 export type CanvasUpdateNodeRequest = {
 	id: string;
@@ -835,7 +845,8 @@ export type ClientRequest =
 	| CanvasDeleteNodesRequest
 	| CanvasMoveNodesRequest
 	| CanvasStartNodeRequest
-	| CanvasUpdateNodeRequest;
+	| CanvasUpdateNodeRequest
+	| CanvasSuggestRequest;
 
 /** 新建会话（ADR-0021 §2 起可指定项目：不传 = 继承当前会话的工作区） */
 export type NewChatRequest = {

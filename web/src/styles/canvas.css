@@ -403,8 +403,60 @@
 }
 
 .canvas-ask-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
 	font-size: 11px;
 	color: var(--text-faint);
+}
+
+.canvas-ask-refresh {
+	font: inherit;
+	font-size: 10.5px;
+	padding: 1px 6px;
+	border: 1px solid var(--border);
+	border-radius: 5px;
+	background: transparent;
+	color: var(--text-dim);
+	cursor: pointer;
+}
+
+.canvas-ask-refresh:hover:not(:disabled) {
+	border-color: var(--accent);
+	color: var(--accent);
+}
+
+.canvas-ask-refresh:disabled {
+	opacity: 0.6;
+	cursor: default;
+}
+
+/* 候选指令：点一下直接填进输入框 */
+.canvas-ask-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+}
+
+.canvas-ask-chip {
+	font: inherit;
+	font-size: 11.5px;
+	max-width: 100%;
+	padding: 3px 8px;
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	background: var(--bg-elev-2);
+	color: var(--text-dim);
+	cursor: pointer;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.canvas-ask-chip:hover {
+	border-color: var(--accent);
+	color: var(--accent);
 }
 
 .canvas-ask-input {

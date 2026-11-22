@@ -187,6 +187,17 @@ export async function handleMessage(socket: ClientSink, raw: string, deps: Handl
 					deps.runtime.canvasMove(request.payload.conversationId, request.payload.moves, request.payload.parent ?? null),
 				);
 				return;
+			case "canvas_suggest":
+				deps.reply(
+					socket,
+					request.id,
+					await deps.runtime.canvasSuggest(
+						request.payload.conversationId,
+						request.payload.nodeIds,
+						request.payload.parent ?? null,
+					),
+				);
+				return;
 			case "canvas_update_node":
 				deps.reply(
 					socket,

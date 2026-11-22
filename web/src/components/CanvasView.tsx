@@ -23,7 +23,16 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { CanvasDoc, CanvasNode, CanvasNodeStatus } from "../types.ts";
 import { useAppState } from "../store.ts";
 import { requestInterruptSpeech } from "../speech-control.ts";
-import { canvasDeleteNodes, canvasMoveNodes, canvasSetStatus, canvasStartNode, canvasUpdateNode, interrupt, sendMessage } from "../ws.ts";
+import {
+	canvasDeleteNodes,
+	canvasMoveNodes,
+	canvasSetStatus,
+	canvasStartNode,
+	canvasSuggest,
+	canvasUpdateNode,
+	interrupt,
+	sendMessage,
+} from "../ws.ts";
 import { useT } from "../use-language.ts";
 
 const MIN_K = 0.2;
@@ -214,6 +223,9 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 	const [menu, setMenu] = useState<{ x: number; y: number; nodeId: string | null } | null>(null);
 	/** 「N 项产出」弹层：1:1 时悬停预览不出现，产出得有别的入口 */
 	const [artifactsOf, setArtifactsOf] = useState<{ id: string; x: number; y: number } | null>(null);
+	/** 「就这几步说两句」的候选指令（AI 生成，失败时服务端退回固定候选） */
+	const [suggestions, setSuggestions] = useState<string[]>([]);
+	const [suggesting, setSuggesting] = useState(false);
 
 	/**
 	 * 「就这几步说两句」的输入框：`nodeIds` = 这次要带的选区（右键的那个节点不在选区里时，就只有它）。
@@ -952,6 +964,28 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 		editingRef.current = editing;
 	}, [editing]);
 
+	/** 拉一批候选指令（打开输入框时自动拉，「换一批」也走它） */
+	const loadSuggestions = useCallback(async () => {
+		if (ask === null || conversationId === null) return;
+		setSuggesting(true);
+		try {
+			const list = await canvasSuggest(conversationId, ask.nodeIds, parentId ?? undefined);
+			setSuggestions(list);
+		} finally {
+			setSuggesting(false);
+		}
+	}, [ask, conversationId, parentId]);
+
+	useEffect(() => {
+		if (ask === null) {
+			setSuggestions([]);
+			return;
+		}
+		void loadSuggestions();
+		// 只在"打开输入框"时拉一次；ask.text 变化不该反复打模型
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [ask?.nodeIds.join(","), ask !== null]);
+
 	/** 把「选区 + 我的要求」拼成一条消息发给 agent */
 	const sendAsk = useCallback(() => {
 		if (ask === null || conversationId === null) return;
@@ -1416,8 +1450,28 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 						}}
 					>
 						<div className="canvas-ask-head">
-							{t(`对这 ${ask.nodeIds.length} 步说：`, `About these ${ask.nodeIds.length}:`)}
+							<span>{t(`对这 ${ask.nodeIds.length} 步说：`, `About these ${ask.nodeIds.length}:`)}</span>
+							<button type="button" className="canvas-ask-refresh" disabled={suggesting} onClick={() => void loadSuggestions()}>
+								{suggesting ? t("正在想…", "Thinking…") : t("换一批", "Shuffle")}
+							</button>
 						</div>
+						{/* 候选指令：不想自己打字就点一条（也是提示"能说什么"） */}
+						{suggestions.length > 0 ? (
+							<div className="canvas-ask-chips">
+								{suggestions.map((text) => (
+									<button
+										type="button"
+										key={text}
+										className="canvas-ask-chip"
+										onClick={() =>
+											setAsk((current) => (current === null ? current : { ...current, text }))
+										}
+									>
+										{text}
+									</button>
+								))}
+							</div>
+						) : null}
 						<textarea
 							className="canvas-ask-input"
 							value={ask.text}

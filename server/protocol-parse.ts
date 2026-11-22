@@ -28,6 +28,7 @@ export const REQUEST_TYPES: ClientRequestType[] = [
 	"canvas_move",
 	"canvas_start_node",
 	"canvas_update_node",
+	"canvas_suggest",
 	"set_settings",
 	"set_model",
 	"set_approval_mode",
@@ -307,6 +308,24 @@ export function parseClientRequest(raw: unknown): ClientRequest | null {
 			payload: {
 				conversationId: conversationId.trim(),
 				ids,
+				...(parent.parent === undefined ? {} : { parent: parent.parent }),
+			},
+		};
+	}
+
+	if (type === "canvas_suggest") {
+		const conversationId = payload.conversationId;
+		if (!nonEmptyString(conversationId)) return null;
+		const ids = canvasIds(payload.nodeIds, 20);
+		if (ids === null) return null;
+		const parent = optionalParent(payload.parent);
+		if (!parent.ok) return null;
+		return {
+			id,
+			type: "canvas_suggest",
+			payload: {
+				conversationId: conversationId.trim(),
+				nodeIds: ids,
 				...(parent.parent === undefined ? {} : { parent: parent.parent }),
 			},
 		};

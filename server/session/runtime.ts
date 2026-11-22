@@ -21,6 +21,12 @@ import { messagesForTitle } from "./title-prompt.js";
 import { createSnapshotFor } from "./snapshot-for.js";
 import { moveNodes, removeNodes, setArtifacts, setStatus, updateNode } from "./canvas.js";
 import { collectArtifacts } from "./canvas-artifacts.js";
+import {
+	CANVAS_SUGGEST_SYSTEM,
+	buildCanvasSuggestPrompt,
+	fallbackSuggestions,
+	parseSuggestions,
+} from "./canvas-suggest.js";
 import { createSubagentBridge } from "./subagents.js";
 import { createSwitchConversation } from "./switch-conversation.js";
 import { createModelController, createModelRefresher } from "./model-controller.js";
@@ -751,6 +757,29 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		canvasMove(conversationId, moves, parent = null) {
 			return editCanvas(conversationId, (doc) => moveNodes(doc, moves, parent));
 		},
+		async canvasSuggest(conversationId, nodeIds, parent = null) {
+			const doc = options.canvasOf?.(conversationId) ?? null;
+			// 注意形状：`reply()` 只转发 `result` 这一个字段，数据必须嵌在它里面
+			if (doc === null) return { ok: true, result: { suggestions: fallbackSuggestions(nodeIds.length) } };
+			const levelNodes = parent === null ? doc.nodes : (doc.nodes.find((node) => node.id === parent)?.sub?.nodes ?? []);
+			const picked = levelNodes.filter((node) => nodeIds.includes(node.id));
+			const fallback = fallbackSuggestions(picked.length);
+			if (picked.length === 0) return { ok: true, result: { suggestions: fallback } };
+
+			// 一次性问答：和"AI 起名"共用同一个补全入口（失败一律退回固定候选，不空手而归）
+			try {
+				const raw = await Promise.race([
+					askOneShot(buildCanvasSuggestPrompt(picked, doc.goal), CANVAS_SUGGEST_SYSTEM, conversationId),
+					// 超时也得给东西：候选只是"帮你想几句"，不值得让人对着转圈等
+					new Promise<null>((resolve) => setTimeout(() => resolve(null), 6000)),
+				]);
+				const parsed = parseSuggestions(raw);
+				return { ok: true, result: { suggestions: parsed.length === 0 ? fallback : parsed } };
+			} catch {
+				return { ok: true, result: { suggestions: fallback } };
+			}
+		},
+
 		canvasUpdateNode(conversationId, nodeId, patch, parent = null) {
 			return editCanvas(conversationId, (doc) => updateNode(doc, nodeId, patch, parent));
 		},

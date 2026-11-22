@@ -150,6 +150,12 @@ export type Runtime = {
 	canvasSetStatus(conversationId: string, nodeId: string, status: CanvasNodeStatus, parent?: string | null): Result;
 	canvasDelete(conversationId: string, ids: readonly string[], parent?: string | null): Result;
 	canvasMove(conversationId: string, moves: readonly { id: string; x: number; y: number }[], parent?: string | null): Result;
+	/** 让模型给几条"用户可能想说的话"（输入框的候选指令）；失败时退回固定候选 */
+	canvasSuggest(
+		conversationId: string,
+		nodeIds: readonly string[],
+		parent?: string | null,
+	): Promise<{ ok: true; result: { suggestions: string[] } }>;
 	/** 改节点的标题 / 说明 */
 	canvasUpdateNode(
 		conversationId: string,

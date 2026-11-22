@@ -675,6 +675,39 @@ export function canvasStartNode(conversationId: string, nodeId: string, parent?:
 	});
 }
 
+/**
+ * 画布：让模型给几条"用户可能想说的话"（那个输入框的候选指令）。
+ * 走一次 HTTP 一问一答（和"AI 起名"同一条路），失败时服务端会退回固定候选。
+ */
+export async function canvasSuggest(conversationId: string, nodeIds: string[], parent?: string): Promise<string[]> {
+	try {
+		const response = await fetch("/api/rpc", {
+			signal: AbortSignal.timeout(8000),
+			method: "POST",
+			headers: { "content-type": "application/json", "x-agent-client": clientId() },
+			body: JSON.stringify({
+				id: `req-${++seq}`,
+				type: "canvas_suggest",
+				payload: { conversationId, nodeIds, ...(parent === undefined ? {} : { parent }) },
+			}),
+		});
+		if (!response.ok) {
+			reloadIfUnauthorized(response.status);
+			return [];
+		}
+		const body = (await response.json()) as { frames?: string[] };
+		for (const frame of body.frames ?? []) {
+			const parsed = JSON.parse(frame) as { type?: string; result?: { suggestions?: unknown } };
+			if (parsed.type !== "reply") continue;
+			const list = parsed.result?.suggestions;
+			if (Array.isArray(list)) return list.filter((item): item is string => typeof item === "string");
+		}
+		return [];
+	} catch {
+		return [];
+	}
+}
+
 /** 画布：改节点的标题 / 说明 */
 export function canvasUpdateNode(
 	conversationId: string,
