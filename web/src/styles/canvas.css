@@ -602,6 +602,62 @@
 	color: var(--accent);
 }
 
+/* 「N/M 子步」徽标 */
+.canvas-node-sub {
+	margin-left: 6px;
+	font: inherit;
+	font-size: 11px;
+	padding: 0 4px;
+	border: none;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--accent);
+	font-variant-numeric: tabular-nums;
+	cursor: pointer;
+}
+
+.canvas-node-sub:hover {
+	background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+/* 面包屑：钻进子计划之后显示在工具条最前面「‹ 全部 › 那一步」 */
+.canvas-crumbs {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	max-width: 200px;
+	padding-right: 4px;
+	margin-right: 2px;
+	border-right: 1px solid var(--border);
+	color: var(--text-dim);
+}
+
+.canvas-crumbs button {
+	font: inherit;
+	font-size: 11px;
+	padding: 1px 4px;
+	border: none;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--accent);
+	cursor: pointer;
+}
+
+.canvas-crumbs button:hover {
+	background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.canvas-crumbs-sep {
+	opacity: 0.5;
+}
+
+.canvas-crumbs-current {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--text);
+}
+
 /* 节点上的实时进度（这一轮正在跑什么、跑了多久） */
 .canvas-node-live {
 	margin-top: 6px;

@@ -288,9 +288,20 @@ export type CanvasArtifact = {
 	detail?: string;
 };
 
+/** 一层子计划：挂在某个节点下面的更细的步骤 */
+export type CanvasSubPlan = {
+	nodes: CanvasNode[];
+	edges: CanvasEdge[];
+};
+
 export type CanvasNode = {
 	id: string;
 	title: string;
+	/**
+	 * 这一步的**子计划**（双击节点钻进去看）。
+	 * 主图只留这一步的汇总，细节收在这里；没有就是还没展开。
+	 */
+	sub?: CanvasSubPlan;
 	/** 这一轮做完之后附上的产出；还没跑过就没有这个字段 */
 	artifacts?: CanvasArtifact[];
 	/** 不给就是 `task`（普通一步） */
@@ -753,26 +764,26 @@ export type RefreshActionsRequest = {
 export type CanvasSetStatusRequest = {
 	id: string;
 	type: "canvas_set_status";
-	payload: { conversationId: string; nodeId: string; status: CanvasNodeStatus };
+	payload: { conversationId: string; nodeId: string; status: CanvasNodeStatus; parent?: string };
 };
 
 export type CanvasDeleteNodesRequest = {
 	id: string;
 	type: "canvas_delete";
-	payload: { conversationId: string; ids: string[] };
+	payload: { conversationId: string; ids: string[]; parent?: string };
 };
 
 export type CanvasMoveNodesRequest = {
 	id: string;
 	type: "canvas_move";
-	payload: { conversationId: string; moves: { id: string; x: number; y: number }[] };
+	payload: { conversationId: string; moves: { id: string; x: number; y: number }[]; parent?: string };
 };
 
 /** 画布：改一个节点的标题 / 说明（右键菜单里的「重命名」） */
 export type CanvasUpdateNodeRequest = {
 	id: string;
 	type: "canvas_update_node";
-	payload: { conversationId: string; nodeId: string; title?: string; detail?: string };
+	payload: { conversationId: string; nodeId: string; title?: string; detail?: string; parent?: string };
 };
 
 /**
@@ -785,7 +796,7 @@ export type CanvasUpdateNodeRequest = {
 export type CanvasStartNodeRequest = {
 	id: string;
 	type: "canvas_start_node";
-	payload: { conversationId: string; nodeId: string };
+	payload: { conversationId: string; nodeId: string; parent?: string };
 };
 
 export type ClientRequest =

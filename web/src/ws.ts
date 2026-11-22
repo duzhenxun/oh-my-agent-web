@@ -667,8 +667,12 @@ export function setApprovalMode(mode: ApprovalMode, conversationId?: string | nu
  * 走单独一条请求而不是「改状态 + 发消息」：宿主会把「这一轮在干哪个节点」记下来，
  * 回合结束自动推到 done / blocked —— 不依赖模型自己记得去调工具。
  */
-export function canvasStartNode(conversationId: string, nodeId: string): void {
-	send({ id: `req-${++seq}`, type: "canvas_start_node", payload: { conversationId, nodeId } });
+export function canvasStartNode(conversationId: string, nodeId: string, parent?: string): void {
+	send({
+		id: `req-${++seq}`,
+		type: "canvas_start_node",
+		payload: { conversationId, nodeId, ...(parent === undefined ? {} : { parent }) },
+	});
 }
 
 /** 画布：改节点的标题 / 说明 */
@@ -676,25 +680,51 @@ export function canvasUpdateNode(
 	conversationId: string,
 	nodeId: string,
 	patch: { title?: string; detail?: string },
+	parent?: string,
 ): void {
-	send({ id: `req-${++seq}`, type: "canvas_update_node", payload: { conversationId, nodeId, ...patch } });
+	send({
+		id: `req-${++seq}`,
+		type: "canvas_update_node",
+		payload: { conversationId, nodeId, ...patch, ...(parent === undefined ? {} : { parent }) },
+	});
 }
 
 /** 画布：手改一个节点的状态（待办 / 正在做 / 已完成 / 卡住） */
-export function canvasSetStatus(conversationId: string, nodeId: string, status: CanvasNodeStatus): void {
-	send({ id: `req-${++seq}`, type: "canvas_set_status", payload: { conversationId, nodeId, status } });
+export function canvasSetStatus(
+	conversationId: string,
+	nodeId: string,
+	status: CanvasNodeStatus,
+	parent?: string,
+): void {
+	send({
+		id: `req-${++seq}`,
+		type: "canvas_set_status",
+		payload: { conversationId, nodeId, status, ...(parent === undefined ? {} : { parent }) },
+	});
 }
 
 /** 画布：删节点（服务端连带删掉挂在它上面的线） */
-export function canvasDeleteNodes(conversationId: string, ids: string[]): void {
+export function canvasDeleteNodes(conversationId: string, ids: string[], parent?: string): void {
 	if (ids.length === 0) return;
-	send({ id: `req-${++seq}`, type: "canvas_delete", payload: { conversationId, ids } });
+	send({
+		id: `req-${++seq}`,
+		type: "canvas_delete",
+		payload: { conversationId, ids, ...(parent === undefined ? {} : { parent }) },
+	});
 }
 
 /** 画布：拖动之后回写坐标（用户摆的位置是工作产物的一部分，得存服务端） */
-export function canvasMoveNodes(conversationId: string, moves: { id: string; x: number; y: number }[]): void {
+export function canvasMoveNodes(
+	conversationId: string,
+	moves: { id: string; x: number; y: number }[],
+	parent?: string,
+): void {
 	if (moves.length === 0) return;
-	send({ id: `req-${++seq}`, type: "canvas_move", payload: { conversationId, moves } });
+	send({
+		id: `req-${++seq}`,
+		type: "canvas_move",
+		payload: { conversationId, moves, ...(parent === undefined ? {} : { parent }) },
+	});
 }
 
 export function setModel(modelId: string, conversationId?: string | null): void {

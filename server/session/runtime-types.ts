@@ -147,13 +147,18 @@ export type Runtime = {
 	 */
 	setApprovalMode(mode: ApprovalMode, conversationId?: string | null): Result;
 	/** 画布：用户手改节点状态 / 删节点 / 拖动回写坐标（都需要宿主提供 canvasWrite） */
-	canvasSetStatus(conversationId: string, nodeId: string, status: CanvasNodeStatus): Result;
-	canvasDelete(conversationId: string, ids: readonly string[]): Result;
-	canvasMove(conversationId: string, moves: readonly { id: string; x: number; y: number }[]): Result;
+	canvasSetStatus(conversationId: string, nodeId: string, status: CanvasNodeStatus, parent?: string | null): Result;
+	canvasDelete(conversationId: string, ids: readonly string[], parent?: string | null): Result;
+	canvasMove(conversationId: string, moves: readonly { id: string; x: number; y: number }[], parent?: string | null): Result;
 	/** 改节点的标题 / 说明 */
-	canvasUpdateNode(conversationId: string, nodeId: string, patch: { title?: string; detail?: string }): Result;
+	canvasUpdateNode(
+		conversationId: string,
+		nodeId: string,
+		patch: { title?: string; detail?: string },
+		parent?: string | null,
+	): Result;
 	/** 让 agent 开始做某一步：标 doing → 发一圈回合 → 回合结束自动推 done / blocked */
-	canvasStartNode(conversationId: string, nodeId: string): Promise<Result>;
+	canvasStartNode(conversationId: string, nodeId: string, parent?: string | null): Promise<Result>;
 	/** 停掉一个子代理（只停它，不动主会话那一轮） */
 	interruptSubagent(runId: string): Promise<Result>;
 	/** 新建 / 覆盖一个子代理模板（写 `~/.pi/agent/agents/<id>.md`） */

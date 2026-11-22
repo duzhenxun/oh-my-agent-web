@@ -184,40 +184,99 @@ export function isEmptyDoc(doc: CanvasDoc | null): boolean {
 	return doc === null || doc.nodes.length === 0;
 }
 
-/** 改一个节点的状态 */
-export function setStatus(doc: CanvasDoc, id: string, status: unknown): CanvasDoc {
+/**
+ * 定位一层节点和它的连线：`parent` 为空 = 主图，否则是那个节点的子计划。
+ *
+ * 所有写操作都走这里，就不用每个函数各写一遍"要不要钻进子层"。
+ */
+function levelOf(doc: CanvasDoc, parent: string | null): { nodes: CanvasNode[]; edges: CanvasEdge[] } | null {
+	if (parent === null) return { nodes: [...doc.nodes], edges: [...doc.edges] };
+	const host = doc.nodes.find((node) => node.id === parent);
+	if (host === undefined || host.sub === undefined) return null;
+	return { nodes: [...host.sub.nodes], edges: [...host.sub.edges] };
+}
+
+/** 把改好的那一层写回去（返回新 doc；找不到 parent 就返回 null） */
+function withLevel(doc: CanvasDoc, parent: string | null, nodes: CanvasNode[], edges: CanvasEdge[]): CanvasDoc | null {
+	const stamp = { rev: doc.rev + 1, updatedAt: Date.now() };
+	if (parent === null) return { ...doc, nodes, edges, ...stamp };
+	const host = doc.nodes.find((node) => node.id === parent);
+	if (host === undefined || host.sub === undefined) return null;
 	return {
 		...doc,
-		nodes: doc.nodes.map((node) => (node.id === id ? { ...node, status: statusOf(status) } : node)),
+		nodes: doc.nodes.map((node) => (node.id === parent ? { ...node, sub: { nodes, edges } } : node)),
+		...stamp,
+	};
+}
+
+/**
+ * 给某个节点挂上一份子计划（会按依赖重新排坐标）。
+ * 主图上这一个节点的坐标不动 —— 它还在原位，只是下面多了一层。
+ */
+export function planSub(doc: CanvasDoc, id: string, inputs: readonly NodeInput[], edges: readonly EdgeInput[]): CanvasDoc | null {
+	const host = doc.nodes.find((node) => node.id === id);
+	if (host === undefined) return null;
+	const nodes = normalizeNodes(inputs);
+	if (nodes.length === 0) return null;
+	const normalizedEdges = normalizeEdges(edges, nodes);
+	return {
+		...doc,
+		nodes: doc.nodes.map((node) =>
+			node.id === id ? { ...node, sub: { nodes: layout(nodes, normalizedEdges), edges: normalizedEdges } } : node,
+		),
 		rev: doc.rev + 1,
 		updatedAt: Date.now(),
 	};
 }
 
+/** 子计划的进度汇总（主图上显示「3/5 步」） */
+export function subProgressOf(node: CanvasNode): { done: number; total: number } | null {
+	if (node.sub === undefined || node.sub.nodes.length === 0) return null;
+	const total = node.sub.nodes.length;
+	const done = node.sub.nodes.filter((each) => each.status === "done").length;
+	return { done, total };
+}
+
+/** 改一个节点的状态（`parent` 为空 = 主图） */
+export function setStatus(doc: CanvasDoc, id: string, status: unknown, parent: string | null = null): CanvasDoc {
+	const level = levelOf(doc, parent);
+	if (level === null) return doc;
+	const nodes = level.nodes.map((node) => (node.id === id ? { ...node, status: statusOf(status) } : node));
+	return withLevel(doc, parent, nodes, level.edges) ?? doc;
+}
+
 /** 把这一轮的产出挂到节点上（和状态一起落） */
-export function setArtifacts(doc: CanvasDoc, id: string, artifacts: readonly CanvasArtifact[]): CanvasDoc {
-	return {
-		...doc,
-		nodes: doc.nodes.map((node) => {
+export function setArtifacts(
+	doc: CanvasDoc,
+	id: string,
+	artifacts: readonly CanvasArtifact[],
+	parent: string | null = null,
+): CanvasDoc {
+	const level = levelOf(doc, parent);
+	if (level === null) return doc;
+	const nodes = level.nodes.map((node) => {
 			if (node.id !== id) return node;
 			const next: CanvasNode = { ...node };
 			// 空数组就当没有：老画布不因为"跑了一次但什么都没产出"多出一个空字段
 			if (artifacts.length === 0) delete next.artifacts;
 			else next.artifacts = artifacts.map((each) => ({ ...each }));
 			return next;
-		}),
-		rev: doc.rev + 1,
-		updatedAt: Date.now(),
-	};
+	});
+	return withLevel(doc, parent, nodes, level.edges) ?? doc;
 }
 
-/** 改标题 / 说明 */
-export function updateNode(doc: CanvasDoc, id: string, patch: { title?: unknown; detail?: unknown }): CanvasDoc {
+/** 改标题 / 说明（`parent` 为空 = 主图） */
+export function updateNode(
+	doc: CanvasDoc,
+	id: string,
+	patch: { title?: unknown; detail?: unknown },
+	parent: string | null = null,
+): CanvasDoc {
+	const level = levelOf(doc, parent);
+	if (level === null) return doc;
 	const title = patch.title === undefined ? null : text(patch.title, TITLE_MAX);
 	const detail = patch.detail === undefined ? null : text(patch.detail, DETAIL_MAX);
-	return {
-		...doc,
-		nodes: doc.nodes.map((node) => {
+	const nodes = level.nodes.map((node) => {
 			if (node.id !== id) return node;
 			const next: CanvasNode = { ...node };
 			if (title !== null && title !== "") next.title = title;
@@ -226,53 +285,51 @@ export function updateNode(doc: CanvasDoc, id: string, patch: { title?: unknown;
 				else next.detail = detail;
 			}
 			return next;
-		}),
-		rev: doc.rev + 1,
-		updatedAt: Date.now(),
-	};
+	});
+	return withLevel(doc, parent, nodes, level.edges) ?? doc;
 }
 
 /** 追加若干节点（坐标接着最后一行往下排；有依赖的会被 `layout` 重新归位） */
-export function addNodes(doc: CanvasDoc, nodes: readonly NodeInput[], edges: readonly EdgeInput[]): CanvasDoc {
-	const used = new Set(doc.nodes.map((node) => node.id));
-	const fresh = normalizeNodes(nodes).map((node) => ({ ...node, id: uniqueId(used, node.id) }));
+export function addNodes(
+	doc: CanvasDoc,
+	inputs: readonly NodeInput[],
+	edges: readonly EdgeInput[],
+	parent: string | null = null,
+): CanvasDoc {
+	const level = levelOf(doc, parent);
+	if (level === null) return doc;
+	const used = new Set(level.nodes.map((node) => node.id));
+	const fresh = normalizeNodes(inputs).map((node) => ({ ...node, id: uniqueId(used, node.id) }));
 	if (fresh.length === 0) return doc;
-	const mergedEdges = normalizeEdges([...doc.edges, ...edges], [...doc.nodes, ...fresh]);
-	return {
-		...doc,
-		nodes: layout([...doc.nodes, ...fresh], mergedEdges),
-		edges: mergedEdges,
-		rev: doc.rev + 1,
-		updatedAt: Date.now(),
-	};
+	const mergedEdges = normalizeEdges([...level.edges, ...edges], [...level.nodes, ...fresh]);
+	return withLevel(doc, parent, layout([...level.nodes, ...fresh], mergedEdges), mergedEdges) ?? doc;
 }
 
 /** 删节点（连带删掉挂在它上面的线） */
-export function removeNodes(doc: CanvasDoc, ids: readonly string[]): CanvasDoc {
+export function removeNodes(doc: CanvasDoc, ids: readonly string[], parent: string | null = null): CanvasDoc {
+	const level = levelOf(doc, parent);
+	if (level === null) return doc;
 	const kill = new Set(ids);
-	const nodes = doc.nodes.filter((node) => !kill.has(node.id));
-	return {
-		...doc,
-		nodes,
-		edges: doc.edges.filter((edge) => !kill.has(edge.from) && !kill.has(edge.to)),
-		rev: doc.rev + 1,
-		updatedAt: Date.now(),
-	};
+	const nodes = level.nodes.filter((node) => !kill.has(node.id));
+	const edges = level.edges.filter((edge) => !kill.has(edge.from) && !kill.has(edge.to));
+	return withLevel(doc, parent, nodes, edges) ?? doc;
 }
 
 /** 用户在画布上拖动后回写坐标（只动位置，不改内容） */
-export function moveNodes(doc: CanvasDoc, moves: readonly { id: string; x: number; y: number }[]): CanvasDoc {
+export function moveNodes(
+	doc: CanvasDoc,
+	moves: readonly { id: string; x: number; y: number }[],
+	parent: string | null = null,
+): CanvasDoc {
+	const level = levelOf(doc, parent);
+	if (level === null) return doc;
 	const byId = new Map(moves.map((move) => [move.id, move]));
-	return {
-		...doc,
-		nodes: doc.nodes.map((node) => {
-			const move = byId.get(node.id);
-			if (!move) return node;
-			return { ...node, x: Number.isFinite(move.x) ? move.x : node.x, y: Number.isFinite(move.y) ? move.y : node.y };
-		}),
-		rev: doc.rev + 1,
-		updatedAt: Date.now(),
-	};
+	const nodes = level.nodes.map((node) => {
+		const move = byId.get(node.id);
+		if (!move) return node;
+		return { ...node, x: Number.isFinite(move.x) ? move.x : node.x, y: Number.isFinite(move.y) ? move.y : node.y };
+	});
+	return withLevel(doc, parent, nodes, level.edges) ?? doc;
 }
 
 /**
@@ -286,7 +343,8 @@ export function describe(doc: CanvasDoc | null): string {
 	for (const node of canvas.nodes) {
 		const detail = node.detail ? ` —— ${node.detail}` : "";
 		const kind = node.kind ? `(${node.kind}) ` : "";
-		lines.push(`- [${node.status}] ${kind}${node.id}: ${node.title}${detail}`);
+		const sub = node.sub === undefined ? "" : ` 〔子计划 ${node.sub.nodes.filter((each) => each.status === "done").length}/${node.sub.nodes.length} 步〕`;
+		lines.push(`- [${node.status}] ${kind}${node.id}: ${node.title}${detail}${sub}`);
 	}
 	if (canvas.edges.length > 0) {
 		lines.push("依赖：");

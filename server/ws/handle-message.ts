@@ -165,30 +165,52 @@ export async function handleMessage(socket: ClientSink, raw: string, deps: Handl
 				deps.reply(
 					socket,
 					request.id,
-					deps.runtime.canvasSetStatus(request.payload.conversationId, request.payload.nodeId, request.payload.status),
+					deps.runtime.canvasSetStatus(
+						request.payload.conversationId,
+						request.payload.nodeId,
+						request.payload.status,
+						request.payload.parent ?? null,
+					),
 				);
 				return;
 			case "canvas_delete":
-				deps.reply(socket, request.id, deps.runtime.canvasDelete(request.payload.conversationId, request.payload.ids));
+				deps.reply(
+					socket,
+					request.id,
+					deps.runtime.canvasDelete(request.payload.conversationId, request.payload.ids, request.payload.parent ?? null),
+				);
 				return;
 			case "canvas_move":
-				deps.reply(socket, request.id, deps.runtime.canvasMove(request.payload.conversationId, request.payload.moves));
+				deps.reply(
+					socket,
+					request.id,
+					deps.runtime.canvasMove(request.payload.conversationId, request.payload.moves, request.payload.parent ?? null),
+				);
 				return;
 			case "canvas_update_node":
 				deps.reply(
 					socket,
 					request.id,
-					deps.runtime.canvasUpdateNode(request.payload.conversationId, request.payload.nodeId, {
-						...(request.payload.title === undefined ? {} : { title: request.payload.title }),
-						...(request.payload.detail === undefined ? {} : { detail: request.payload.detail }),
-					}),
+					deps.runtime.canvasUpdateNode(
+						request.payload.conversationId,
+						request.payload.nodeId,
+						{
+							...(request.payload.title === undefined ? {} : { title: request.payload.title }),
+							...(request.payload.detail === undefined ? {} : { detail: request.payload.detail }),
+						},
+						request.payload.parent ?? null,
+					),
 				);
 				return;
 			case "canvas_start_node":
 				deps.reply(
 					socket,
 					request.id,
-					await deps.runtime.canvasStartNode(request.payload.conversationId, request.payload.nodeId),
+					await deps.runtime.canvasStartNode(
+						request.payload.conversationId,
+						request.payload.nodeId,
+						request.payload.parent ?? null,
+					),
 				);
 				return;
 			case "cancel_queued":

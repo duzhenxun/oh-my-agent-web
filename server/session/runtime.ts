@@ -142,7 +142,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 	 * 为什么要宿主自己记：模型不会每次都老老实实去调 `canvas` 工具标状态，
 	 * 而"我双击了这一步"是个确定的事实 —— 记下来，回合结束时就能自动推到 done。
 	 */
-	const canvasRunningNode = new Map<string, { nodeId: string; fromIndex: number }>();
+	const canvasRunningNode = new Map<string, { nodeId: string; parent: string | null; fromIndex: number }>();
 
 	/** 回合结束：把绑定的那个节点推到 done / blocked（用户中断的不动，留在 doing 由人决定） */
 	const advanceCanvasNode = (info: { conversationId: string; failed: boolean; interrupted: boolean }): void => {
@@ -158,9 +158,8 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		const artifacts = info.failed ? [] : collectArtifacts(turnMessages, workspace);
 
 		editCanvas(info.conversationId, (doc) => {
-			if (!doc.nodes.some((node) => node.id === bound.nodeId)) return null;
-			const withStatus = setStatus(doc, bound.nodeId, info.failed ? "blocked" : "done");
-			return artifacts.length === 0 ? withStatus : setArtifacts(withStatus, bound.nodeId, artifacts);
+			const withStatus = setStatus(doc, bound.nodeId, info.failed ? "blocked" : "done", bound.parent);
+			return artifacts.length === 0 ? withStatus : setArtifacts(withStatus, bound.nodeId, artifacts, bound.parent);
 		});
 	};
 
@@ -743,27 +742,24 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		 * 先把写盘做成一个内部小函数：三个方法只差“改哪一份 doc”，读写错都得报同一种错。
 		 * 拿不到 doc 或拿不到写端口就如实报错（而不是默默无动作：用户点了按钮必须有反馈）。
 		 */
-		canvasSetStatus(conversationId, nodeId, status) {
-			return editCanvas(conversationId, (doc) =>
-				doc.nodes.some((node) => node.id === nodeId) ? setStatus(doc, nodeId, status) : null,
-			);
+		canvasSetStatus(conversationId, nodeId, status, parent = null) {
+			return editCanvas(conversationId, (doc) => setStatus(doc, nodeId, status, parent));
 		},
-		canvasDelete(conversationId, ids) {
-			return editCanvas(conversationId, (doc) => removeNodes(doc, ids));
+		canvasDelete(conversationId, ids, parent = null) {
+			return editCanvas(conversationId, (doc) => removeNodes(doc, ids, parent));
 		},
-		canvasMove(conversationId, moves) {
-			return editCanvas(conversationId, (doc) => moveNodes(doc, moves));
+		canvasMove(conversationId, moves, parent = null) {
+			return editCanvas(conversationId, (doc) => moveNodes(doc, moves, parent));
 		},
-		canvasUpdateNode(conversationId, nodeId, patch) {
-			return editCanvas(conversationId, (doc) =>
-				doc.nodes.some((node) => node.id === nodeId) ? updateNode(doc, nodeId, patch) : null,
-			);
+		canvasUpdateNode(conversationId, nodeId, patch, parent = null) {
+			return editCanvas(conversationId, (doc) => updateNode(doc, nodeId, patch, parent));
 		},
 
-		async canvasStartNode(conversationId, nodeId) {
+		async canvasStartNode(conversationId, nodeId, parent = null) {
 			const doc = options.canvasOf?.(conversationId) ?? null;
 			if (doc === null) return { ok: false, error: { code: "canvas.missing", message: "这条会话还没有画布" } };
-			const node = doc.nodes.find((each) => each.id === nodeId);
+			const levelNodes = parent === null ? doc.nodes : (doc.nodes.find((each) => each.id === parent)?.sub?.nodes ?? []);
+			const node = levelNodes.find((each) => each.id === nodeId);
 			if (node === undefined) return { ok: false, error: { code: "canvas.no_such_node", message: "没有这个节点（可能刚被删掉）" } };
 
 			/**
@@ -793,17 +789,17 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			}
 
 			// 先标 doing 并绑定，再发回合：反过来的话回合快的话会先结束、绑定还没写上
-			const started = editCanvas(conversationId, (current) => setStatus(current, nodeId, "doing"));
+			const started = editCanvas(conversationId, (current) => setStatus(current, nodeId, "doing", parent));
 			if (!started.ok) return started;
 			// 记下"开工前的消息数"：回合结束时用它切出这一轮的消息
-			canvasRunningNode.set(conversationId, { nodeId, fromIndex: state.messages[conversationId]?.length ?? 0 });
+			canvasRunningNode.set(conversationId, { nodeId, parent, fromIndex: state.messages[conversationId]?.length ?? 0 });
 
 			const text = node.detail ? `开始做这一步：${node.title}（${node.detail}）` : `开始做这一步：${node.title}`;
 			const result = await sendTurn(text, undefined, "now", conversationId);
 			if (!result.ok) {
 				// 消息都没发出去：解绑并把状态退回原样，别留一个永远 doing 的节点
 				canvasRunningNode.delete(conversationId);
-				editCanvas(conversationId, (current) => setStatus(current, nodeId, node.status));
+				editCanvas(conversationId, (current) => setStatus(current, nodeId, node.status, parent));
 			}
 			return result;
 		},

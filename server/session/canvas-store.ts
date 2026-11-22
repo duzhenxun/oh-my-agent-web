@@ -66,12 +66,32 @@ function parseDoc(raw: string): CanvasDoc | null {
 		const value = JSON.parse(raw) as Partial<CanvasDoc> | null;
 		if (typeof value !== "object" || value === null) return null;
 		if (!Array.isArray(value.nodes) || !Array.isArray(value.edges)) return null;
-		const nodes = value.nodes.filter(isNode).map((node) => {
+		const cleanNode = (node: CanvasNode, depth: number): CanvasNode => {
 			// 坏掉的产出项直接丢掉，别让一份脏数据把整张画布打不开
-			if (!Array.isArray(node.artifacts)) return node;
-			const artifacts = node.artifacts.filter(isArtifact);
-			return artifacts.length === 0 ? { ...node, artifacts: undefined } : { ...node, artifacts };
-		});
+			let next: CanvasNode = node;
+			if (Array.isArray(node.artifacts)) {
+				const artifacts = node.artifacts.filter(isArtifact);
+				next = artifacts.length === 0 ? { ...next, artifacts: undefined } : { ...next, artifacts };
+			}
+			// 子计划：最多三层，坏掉的整层丢掉（不让一份脏数据把画布打不开）
+			if (node.sub !== undefined && depth < 3) {
+				const sub = node.sub as { nodes?: unknown; edges?: unknown } | null;
+				if (typeof sub === "object" && sub !== null && Array.isArray(sub.nodes) && Array.isArray(sub.edges)) {
+					const subNodes = sub.nodes.filter(isNode).map((each) => cleanNode(each, depth + 1));
+					const subEdges = sub.edges.filter(isEdge);
+					next =
+						subNodes.length === 0
+							? { ...next, sub: undefined }
+							: { ...next, sub: { nodes: subNodes, edges: subEdges } };
+				} else {
+					next = { ...next, sub: undefined };
+				}
+			} else if (node.sub !== undefined) {
+				next = { ...next, sub: undefined };
+			}
+			return next;
+		};
+		const nodes = value.nodes.filter(isNode).map((node) => cleanNode(node, 0));
 		// 一条节点都没有 = 等于没有画布（界面显示空状态，而不是一个空壳抬头）
 		if (nodes.length === 0) return null;
 		return {

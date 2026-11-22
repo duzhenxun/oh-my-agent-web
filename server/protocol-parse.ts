@@ -70,6 +70,15 @@ function nonEmptyString(value: unknown): value is string {
 /** 画布写操作的公共校验：会话 id 必须是字符串，节点 id 只收安全字符（与 canvas.ts 一致） */
 const CANVAS_NODE_ID = /^[A-Za-z0-9_-]{1,32}$/;
 
+/** 可选 parent（= 子计划挂在哪一步下面）；不传就是主图 */
+function optionalParent(value: unknown): { ok: boolean; parent?: string } {
+	if (value === undefined) return { ok: true };
+	if (!nonEmptyString(value)) return { ok: false };
+	const trimmed = value.trim();
+	if (!CANVAS_NODE_ID.test(trimmed)) return { ok: false };
+	return { ok: true, parent: trimmed };
+}
+
 function canvasIds(value: unknown, max: number): string[] | null {
 	if (!Array.isArray(value) || value.length === 0 || value.length > max) return null;
 	const ids: string[] = [];
@@ -271,10 +280,17 @@ export function parseClientRequest(raw: unknown): ClientRequest | null {
 		if (!nonEmptyString(conversationId) || !nonEmptyString(nodeId)) return null;
 		if (!CANVAS_NODE_ID.test(nodeId.trim())) return null;
 		if (status !== "todo" && status !== "doing" && status !== "done" && status !== "blocked") return null;
+		const parent = optionalParent(payload.parent);
+		if (!parent.ok) return null;
 		return {
 			id,
 			type: "canvas_set_status",
-			payload: { conversationId: conversationId.trim(), nodeId: nodeId.trim(), status },
+			payload: {
+				conversationId: conversationId.trim(),
+				nodeId: nodeId.trim(),
+				status,
+				...(parent.parent === undefined ? {} : { parent: parent.parent }),
+			},
 		};
 	}
 
@@ -283,7 +299,17 @@ export function parseClientRequest(raw: unknown): ClientRequest | null {
 		if (!nonEmptyString(conversationId)) return null;
 		const ids = canvasIds(payload.ids, 40);
 		if (ids === null) return null;
-		return { id, type: "canvas_delete", payload: { conversationId: conversationId.trim(), ids } };
+		const parent = optionalParent(payload.parent);
+		if (!parent.ok) return null;
+		return {
+			id,
+			type: "canvas_delete",
+			payload: {
+				conversationId: conversationId.trim(),
+				ids,
+				...(parent.parent === undefined ? {} : { parent: parent.parent }),
+			},
+		};
 	}
 
 	if (type === "canvas_update_node") {
@@ -296,6 +322,8 @@ export function parseClientRequest(raw: unknown): ClientRequest | null {
 		if (title !== undefined && typeof title !== "string") return null;
 		if (detail !== undefined && typeof detail !== "string") return null;
 		if (title === undefined && detail === undefined) return null;
+		const parent = optionalParent(payload.parent);
+		if (!parent.ok) return null;
 		return {
 			id,
 			type: "canvas_update_node",
@@ -304,6 +332,7 @@ export function parseClientRequest(raw: unknown): ClientRequest | null {
 				nodeId: nodeId.trim(),
 				...(typeof title === "string" ? { title } : {}),
 				...(typeof detail === "string" ? { detail } : {}),
+				...(parent.parent === undefined ? {} : { parent: parent.parent }),
 			},
 		};
 	}
@@ -313,7 +342,17 @@ export function parseClientRequest(raw: unknown): ClientRequest | null {
 		const nodeId = payload.nodeId;
 		if (!nonEmptyString(conversationId) || !nonEmptyString(nodeId)) return null;
 		if (!CANVAS_NODE_ID.test(nodeId.trim())) return null;
-		return { id, type: "canvas_start_node", payload: { conversationId: conversationId.trim(), nodeId: nodeId.trim() } };
+		const parent = optionalParent(payload.parent);
+		if (!parent.ok) return null;
+		return {
+			id,
+			type: "canvas_start_node",
+			payload: {
+				conversationId: conversationId.trim(),
+				nodeId: nodeId.trim(),
+				...(parent.parent === undefined ? {} : { parent: parent.parent }),
+			},
+		};
 	}
 
 	if (type === "canvas_move") {
@@ -333,7 +372,17 @@ export function parseClientRequest(raw: unknown): ClientRequest | null {
 			// 坐标限一下：一个 NaN/Infinity 就能让画布上的节点飞到天上去
 			moves.push({ id: nodeId.trim(), x: Math.max(-100000, Math.min(100000, x)), y: Math.max(-100000, Math.min(100000, y)) });
 		}
-		return { id, type: "canvas_move", payload: { conversationId: conversationId.trim(), moves } };
+		const parent = optionalParent(payload.parent);
+		if (!parent.ok) return null;
+		return {
+			id,
+			type: "canvas_move",
+			payload: {
+				conversationId: conversationId.trim(),
+				moves,
+				...(parent.parent === undefined ? {} : { parent: parent.parent }),
+			},
+		};
 	}
 
 	if (type === "set_engine") {

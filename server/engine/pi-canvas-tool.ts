@@ -15,6 +15,7 @@ import {
 	describe,
 	isEmptyDoc,
 	planDoc,
+	planSub,
 	addNodes,
 	removeNodes,
 	setStatus,
@@ -59,6 +60,7 @@ export function makeCanvasToolExtension(options: CanvasToolOptions): InlineExten
 						"Actions:",
 						"- `read`：读当前画布（改之前先读）。",
 						"- `plan`：**整体画一张新图**（替换旧的）。给 `goal`（用户那句话的浓缩）+ `nodes` + `edges`。用户说「我要做一个 X / 帮我拆一下 / 规划一下」时用这个。",
+						"- `sub_plan`：给 `id` 指定的那一步挂一层**子计划**（`nodes` + `edges`）。主图只留这一步的汇总，用户双击节点钻进去看细节。一步的活超过 3 条子动作时用它。",
 						"- `add`：往现有图上追加节点 / 连线。",
 						"- `update`：改某个节点的标题或说明。",
 						"- `status`：把某个节点标成 doing / done / blocked / todo（干完一步就标一下）。",
@@ -74,6 +76,8 @@ export function makeCanvasToolExtension(options: CanvasToolOptions): InlineExten
 						"不要传坐标：x/y 由宿主按依赖分层算好。",
 						"改图之前先 `read`；改完用一句话报「画了 N 个节点、几条依赖」，不要把整张图在正文里再念一遍。",
 						"开始干某一步时用 `status` 把它标成 doing，干完标 done —— 用户在画布上看得到进度。",
+						"一步的活儿要是自己也得好几步（「上线」里面还有 CR / 灰度 / 全量），用 `sub_plan` 把它拆到子计划里，别主图越铺越长。",
+						"改子计划里的节点时给 `parent`（= 那一步的 id）；不传就是主图。",
 						"如果用户没有要求画图、只是在问问题，就不要调用这个工具。",
 					],
 					parameters: Type.Object({
@@ -85,6 +89,7 @@ export function makeCanvasToolExtension(options: CanvasToolOptions): InlineExten
 							Type.Literal("status"),
 							Type.Literal("remove"),
 							Type.Literal("clear"),
+							Type.Literal("sub_plan"),
 						]),
 						goal: Type.Optional(Type.String({ description: "这张图要达成什么（用户那句话的浓缩）" })),
 						nodes: Type.Optional(
@@ -122,7 +127,10 @@ export function makeCanvasToolExtension(options: CanvasToolOptions): InlineExten
 								}),
 							),
 						),
-						id: Type.Optional(Type.String({ description: "update / status 要改哪个节点" })),
+						id: Type.Optional(Type.String({ description: "update / status / sub_plan 要改哪个节点" })),
+						parent: Type.Optional(
+							Type.String({ description: "改子计划里的节点时传：那一步的 id。不传 = 主图" }),
+						),
 						status: Type.Optional(
 							Type.Union([Type.Literal("todo"), Type.Literal("doing"), Type.Literal("done"), Type.Literal("blocked")]),
 						),
@@ -136,7 +144,22 @@ export function makeCanvasToolExtension(options: CanvasToolOptions): InlineExten
 						try {
 							const current = port.read(options.conversationId);
 
+							const parent = typeof params.parent === "string" && params.parent !== "" ? params.parent : null;
+
 							if (params.action === "read") return ok(describe(current));
+
+							if (params.action === "sub_plan") {
+								if (current === null) return failure("这条会话还没有画布，先用 action=plan 画一张");
+								if (!params.id) return failure("sub_plan 需要 id（挂到哪一步下面）");
+								if (!params.nodes || params.nodes.length === 0) return failure("sub_plan 至少要给一个 nodes");
+								const doc = planSub(current, params.id, params.nodes, params.edges ?? []);
+								if (doc === null) return failure(`没有这个节点：${params.id}`);
+								await port.write(options.conversationId, doc);
+								const host = doc.nodes.find((node) => node.id === params.id);
+								return ok(
+									`已给 ${params.id} 挂上子计划：${host?.sub?.nodes.length ?? 0} 个子步骤、${host?.sub?.edges.length ?? 0} 条依赖。用户双击那一步就能钻进去看。`,
+								);
+							}
 
 							if (params.action === "clear") {
 								// 清空 = 写一份空文档，但"空文档"在快照里等于没有画布
@@ -155,33 +178,36 @@ export function makeCanvasToolExtension(options: CanvasToolOptions): InlineExten
 							}
 
 							if (!current || isEmptyDoc(current)) return failure("这条会话还没有画布，先用 action=plan 画一张");
+							const levelNodes = parent === null
+								? current.nodes
+								: (current.nodes.find((node) => node.id === parent)?.sub?.nodes ?? []);
 
 							if (params.action === "add") {
 								if (!params.nodes || params.nodes.length === 0) return failure("add 至少要给一个 nodes");
-								const doc = addNodes(current, params.nodes, params.edges ?? []);
+								const doc = addNodes(current, params.nodes, params.edges ?? [], parent);
 								await port.write(options.conversationId, doc);
 								return ok(`已追加：现在共 ${doc.nodes.length} 个节点、${doc.edges.length} 条依赖。`);
 							}
 
 							if (params.action === "update") {
 								if (!params.id) return failure("update 需要 id");
-								if (!current.nodes.some((node) => node.id === params.id)) return failure(`没有这个节点：${params.id}`);
-								const doc = updateNode(current, params.id, { title: params.title, detail: params.detail });
+								if (!levelNodes.some((node) => node.id === params.id)) return failure(`没有这个节点：${params.id}`);
+								const doc = updateNode(current, params.id, { title: params.title, detail: params.detail }, parent);
 								await port.write(options.conversationId, doc);
 								return ok(`已更新节点 ${params.id}。`);
 							}
 
 							if (params.action === "status") {
 								if (!params.id) return failure("status 需要 id");
-								if (!current.nodes.some((node) => node.id === params.id)) return failure(`没有这个节点：${params.id}`);
-								const doc = setStatus(current, params.id, params.status ?? "done");
+								if (!levelNodes.some((node) => node.id === params.id)) return failure(`没有这个节点：${params.id}`);
+								const doc = setStatus(current, params.id, params.status ?? "done", parent);
 								await port.write(options.conversationId, doc);
 								return ok(`节点 ${params.id} 现在状态是 ${params.status ?? "done"}。`);
 							}
 
 							// remove
 							if (!params.ids || params.ids.length === 0) return failure("remove 需要 ids");
-							const doc = removeNodes(current, params.ids);
+							const doc = removeNodes(current, params.ids, parent);
 							await port.write(options.conversationId, doc);
 							const gone = current.nodes.length - doc.nodes.length;
 							return ok(`删掉 ${gone} 个节点，还剩 ${doc.nodes.length} 个。上限 ${CANVAS_MAX_NODES}。`);
