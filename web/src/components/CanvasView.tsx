@@ -30,8 +30,6 @@ const OVERRIDE_KEY = "agent-web.canvas.overrides.v1";
 const VIEW_KEY = "agent-web.canvas.view.v2";
 const MIN_K = 0.2;
 const MAX_K = 2.5;
-/** 「适应内容」的缩放下限：节点一多，缩到 0.4 以下就是一片看不清的小方块 */
-const FIT_MIN_K = 0.5;
 /** 与 `panel-tab-dnd.ts` 一致：5px 内算点击，不算拖 */
 const DRAG_THRESHOLD = 5;
 /** 吸附距离（**屏幕**像素）：缩得越小越难对齐，所以按屏幕算、用的时候再除以缩放 */
@@ -197,6 +195,16 @@ export function CanvasView() {
 			scheduleSaveView();
 		},
 		[paint, scheduleSaveView],
+	);
+
+	/** 以视口中心为锚缩放一档（+/− 按钮和键盘共用这一个入口） */
+	const zoomBy = useCallback(
+		(factor: number) => {
+			const viewport = viewportRef.current;
+			if (!viewport) return;
+			zoomAt(viewport.clientWidth / 2, viewport.clientHeight / 2, viewRef.current.k * factor);
+		},
+		[zoomAt],
 	);
 
 	/* ── 参考线（吸附时显示） ───────────────────────────── */
@@ -605,7 +613,7 @@ export function CanvasView() {
 				event.key === "+" || event.key === "=" ? 1.15 : event.key === "-" || event.key === "_" ? 1 / 1.15 : null;
 			if (factor !== null) {
 				event.preventDefault();
-				zoomAt(viewport.clientWidth / 2, viewport.clientHeight / 2, viewRef.current.k * factor);
+				zoomBy(factor);
 				return;
 			}
 			if (event.key === "0") {
@@ -615,7 +623,7 @@ export function CanvasView() {
 		};
 		window.addEventListener("keydown", onKeyDown);
 		return () => window.removeEventListener("keydown", onKeyDown);
-	}, [zoomAt]);
+	}, [zoomBy, zoomAt]);
 
 	/**
 	 * 框选放大的快捷键：**按住 Z 拖框**（和 Figma 的缩放工具一个手感）。
@@ -676,15 +684,16 @@ export function CanvasView() {
 			maxY = Math.max(maxY, pos.y + height);
 		}
 		const pad = 40;
+		/**
+		 * 上限 1（只有两个节点时不要按比例"放大填满"）、下限到 MIN_K（真的装下全部）。
+		 * 用户要的是「看到全局所有的」—— 宁可小，也要全都看得见。
+		 */
 		const k = Math.min(
 			1,
-			Math.max(
-				FIT_MIN_K,
-				clampK(
-					Math.min(
-						(viewport.clientWidth - pad * 2) / Math.max(1, maxX - minX),
-						(viewport.clientHeight - pad * 2) / Math.max(1, maxY - minY),
-					),
+			clampK(
+				Math.min(
+					(viewport.clientWidth - pad * 2) / Math.max(1, maxX - minX),
+					(viewport.clientHeight - pad * 2) / Math.max(1, maxY - minY),
 				),
 			),
 		);
@@ -837,10 +846,10 @@ export function CanvasView() {
 				<div className="canvas-guide canvas-guide-y" ref={guideYRef} />
 			</div>
 			<div className="canvas-bar">
-				<button type="button" onClick={fit}>
-					{t("适应内容", "Fit")}
+				<button type="button" onClick={fit} title={t("缩到能看见全部节点", "Zoom out to show every step")}>
+					{t("看全局", "Fit all")}
 				</button>
-				<button type="button" onClick={reset}>
+				<button type="button" onClick={reset} title={t("回到 100%", "Back to 100%")}>
 					{t("重置", "Reset")}
 				</button>
 				<button
@@ -852,6 +861,15 @@ export function CanvasView() {
 				>
 					{t("框选放大", "Zoom to area")}
 				</button>
+				{/* 缩放按钮：和键盘 +/- 、触摸板捏合走同一个 zoomBy */}
+				<span className="canvas-zoom">
+					<button type="button" onClick={() => zoomBy(1 / 1.15)} title={t("缩小", "Zoom out")} aria-label={t("缩小", "Zoom out")}>
+						−
+					</button>
+					<button type="button" onClick={() => zoomBy(1.15)} title={t("放大", "Zoom in")} aria-label={t("放大", "Zoom in")}>
+						+
+					</button>
+				</span>
 				<span ref={readoutRef} />
 				<span>
 					{nodes.length} {t("个节点", "steps")}

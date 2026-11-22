@@ -275,6 +275,28 @@
 	font-weight: 600;
 }
 
+/* −/＋ 两个缩放按钮：合成一组，别和左边那几个功能按钮搅在一起 */
+.canvas-zoom {
+	display: inline-flex;
+	gap: 0;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	overflow: hidden;
+}
+
+.canvas-zoom button {
+	border: none;
+	border-radius: 0;
+	width: 22px;
+	padding: 2px 0;
+	font-size: 12px;
+	line-height: 1.2;
+}
+
+.canvas-zoom button + button {
+	border-left: 1px solid var(--border);
+}
+
 .canvas-goal {
 	position: absolute;
 	left: 8px;
