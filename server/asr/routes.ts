@@ -4,7 +4,7 @@
  * 为什么不是 WebSocket：浏览器每 ~300ms POST 一块 PCM，响应里顺带带回「当前 partial」，
  * 就够了 —— 不用新开一条通道、不用动鉴权/反代，出错也好查。
  *
- *   GET  /api/asr/status   桥的状态（starting / authorizing / ready / missing / error）
+ *   GET  /api/asr/status   桥的状态（idle / starting / authorizing / ready / missing / error）
  *   POST /api/asr/install  装一份本地识别程序（没装时才用得上）
  *   POST /api/asr/start    开一句新的（清掉上一句残留）
  *   POST /api/asr/chunk    送 16k 单声道 int16 PCM，返回 { text }（最新 partial）

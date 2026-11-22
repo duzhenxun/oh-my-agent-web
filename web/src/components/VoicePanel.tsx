@@ -7,7 +7,7 @@
  *
  * 设置全部存本机（localStorage）：音量/音色/语速都是「这台机器」的属性，不该多端同步。
  */
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	SOUND_LABEL,
 	loadSoundSettings,
@@ -58,6 +58,16 @@ const NEAR_TALK_PRESETS: readonly { db: number; zh: string; en: string }[] = [
 	{ db: 24, zh: "很严 · 24 dB（几乎只认贴嘴）", en: "Very strict · 24 dB" },
 ];
 
+/** 服务端 `/api/asr/status` 的返回（见 `server/asr/routes.ts` / `install.ts`） */
+type AsrStatus = {
+	/** missing / starting / authorizing / ready / error */
+	state: string;
+	message?: string;
+	locale?: string;
+	/** 没装时服务端给的安装信息（去哪儿下、装好会在哪） */
+	install?: { downloadUrl: string; appPath: string; canAutoInstall: boolean } | null;
+};
+
 export function VoicePanel() {
 	const t = useT();
 	const [sound, setSound] = useState<SoundSettings>(() => loadSoundSettings());
@@ -70,30 +80,42 @@ export function VoicePanel() {
 	 * 本地识别桥的状态：**只读**（不带 `?start=1`）—— 打开设置面板不该顺带拉起一个
 	 * 会弹系统授权框的原生进程。真要启动时用户点「启动」或直接用浮条说话。
 	 */
-	const [asr, setAsr] = useState<{
-		state: string;
-		message?: string;
-		locale?: string;
-		/** 没装时服务端给的安装信息（去哪儿下、装好会在哪） */
-		install?: { downloadUrl: string; appPath: string; canAutoInstall: boolean } | null;
-	} | null>(null);
+	const [asr, setAsr] = useState<AsrStatus | null>(null);
 	/** 正在下载/安装本地识别程序（这期间按钮置灰，避免连点） */
 	const [installingAsr, setInstallingAsr] = useState(false);
 	const [asrInstallError, setAsrInstallError] = useState<string | null>(null);
-	const refreshAsr = (start = false) => {
+	const refreshAsr = useCallback((start = false) => {
 		void fetch(`/api/asr/status${start ? "?start=1" : ""}`)
 			.then(async (response) => {
 				if (!response.ok) return;
-				setAsr(
-					(await response.json()) as {
-						state: string;
-						message?: string;
-						locale?: string;
-						install?: { downloadUrl: string; appPath: string; canAutoInstall: boolean } | null;
-					},
-				);
+				const status = (await response.json()) as AsrStatus;
+				setAsr(status);
+				// 真的就绪了：把开机探测留下的「这台机器没有本地识别」清掉，
+				// 否则 auto 会一直走 Chrome 直到刷新页面
+				if (status.state === "ready") forgetLocalUnavailable();
 			})
 			.catch(() => undefined);
+	}, []);
+	/**
+	 * 桥在「忙」：正在启动 / 等系统授权。
+	 *
+	 * 为什么要把这个状态单独拿出来（用户 2026-11-22：「启动按钮点一下都没反应」）：
+	 * 以前点完只发一次请求，状态就永远停在「正在启动…」—— 看着像没反应。
+	 * 现在按住了就一直轮询（见下面的 effect），中途出什么都在那一行显示。
+	 */
+	const asrStarting = asr?.state === "starting" || asr?.state === "authorizing";
+	useEffect(() => {
+		if (!asrStarting) return;
+		const timer = window.setInterval(() => refreshAsr(), 1200);
+		return () => window.clearInterval(timer);
+	}, [asrStarting, refreshAsr]);
+	/**
+	 * 点「启动」：先把状态**立刻**改成「正在启动」，再去真的拉 ——
+	 * 点下去到原生进程连回来之间有几十毫秒到几秒，这段空档不给反馈就是「点了没反应」。
+	 */
+	const startAsr = () => {
+		setAsr((current) => ({ ...(current ?? {}), state: "starting", message: undefined }));
+		refreshAsr(true);
 	};
 	/**
 	 * 下载并安装本地识别程序（服务端装到 `~/Library/Application Support/oh-my-agent-web/asr`）。
@@ -878,7 +900,7 @@ export function VoicePanel() {
 							<span className="voice-row-label">
 								{t("本地识别", "Local recognition")}
 								<span className="voice-row-hint">
-									{asr === null
+									{asr === null || asr.state === "idle"
 										? t("还没启动过", "Not started yet")
 										: asr.state === "ready"
 											? t(`就绪（${asr.locale ?? "zh-CN"}，离线）`, `Ready (${asr.locale ?? "zh-CN"}, offline)`)
@@ -907,17 +929,24 @@ export function VoicePanel() {
 								>
 									{installingAsr ? t("正在安装…", "Installing…") : t("安装本地识别", "Install it")}
 								</button>
-							) : (
+							) : asr?.state === "ready" ? null : (
+								/* 已就绪就不需要这颗按钮了（用户 2026-11-22：「已启动的话都不需要有这个」） */
 								<button
 									type="button"
 									className="btn btn-tiny"
-									onClick={() => refreshAsr(true)}
-									title={t(
-										"启动本地识别（首次会弹一次系统授权）",
-										"Start the local engine (one system permission prompt the first time)",
-									)}
+									disabled={asrStarting}
+									aria-busy={asrStarting}
+									onClick={startAsr}
+									title={
+										asrStarting
+											? t("正在启动，请稍等…", "Starting — hang on…")
+											: t(
+													"启动本地识别（首次会弹一次系统授权）",
+													"Start the local engine (one system permission prompt the first time)",
+												)
+									}
 								>
-									{t("启动 / 重试", "Start / retry")}
+									{asrStarting ? t("正在启动…", "Starting…") : t("启动 / 重试", "Start / retry")}
 								</button>
 							)}
 						</div>

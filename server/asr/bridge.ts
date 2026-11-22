@@ -20,7 +20,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveAsrAppPath } from "./paths.js";
 
-export type AsrBridgeState = "missing" | "starting" | "authorizing" | "ready" | "error";
+export type AsrBridgeState = "missing" | "idle" | "starting" | "authorizing" | "ready" | "error";
 
 export type AsrBridgeStatus = {
 	state: AsrBridgeState;
@@ -47,7 +47,7 @@ export class AsrBridge {
 	private readonly log: Logger;
 	private server: Server | null = null;
 	private socket: Socket | null = null;
-	private status: AsrBridgeStatus = { state: "starting" };
+	private status: AsrBridgeStatus = { state: "idle" };
 	private text = "";
 	private audioBytes = 0;
 	private tail = "";
@@ -62,7 +62,7 @@ export class AsrBridge {
 	}
 
 	current(): AsrBridgeStatus {
-		if (this.status.state !== "starting" || this.socket !== null || this.launching) return this.status;
+		if (this.status.state !== "idle" || this.socket !== null || this.launching) return this.status;
 		const appPath = this.appPathOverride ?? resolveAsrAppPath();
 		// 一次都没启动过、程序也不在：如实说「没装」，别让它显示「正在启动…」
 		// （面板据此立刻给出安装按钮；语音输入的 auto 探测也因此直接走 Chrome，不白试一轮）
@@ -122,6 +122,10 @@ export class AsrBridge {
 		// 连不上（app 没跑起来 / 被 Gatekeeper 拦了）时别一直显示 starting
 		const timer = setTimeout(() => {
 			if (this.socket) return;
+			// 把「正在起」的标志和监听 socket 一起放开：否则「重试」会直接返回旧状态，点了没反应
+			this.launching = false;
+			this.server?.close();
+			this.server = null;
 			this.status = {
 				state: "error",
 				message: "本地识别进程没有连回来（可能是首次运行被系统拦截，或 .app 被移动了）",
@@ -143,8 +147,9 @@ export class AsrBridge {
 	private detach(): void {
 		this.socket = null;
 		this.tail = "";
+		// 进程没了 → 回到「没启动」而不是「正在启动」：否则面板会卡在「正在启动…」一直转
 		if (this.status.state === "ready" || this.status.state === "authorizing") {
-			this.status = { state: "starting" };
+			this.status = { state: "idle" };
 		}
 		this.resolveFinal(this.text);
 	}
