@@ -19,8 +19,10 @@ import {
 	defaultShortcuts,
 	findConflict,
 	formatCombo,
+	isLoneModifierEvent,
 	isMacPlatform,
 	isReservedCombo,
+	loneModifierCombo,
 	shortcutLabel,
 	noteModifierKeys,
 	type ShortcutId,
@@ -46,19 +48,13 @@ export function ShortcutsPane() {
 	 */
 	useEffect(() => {
 		if (!recording) return;
-		const onKey = (event: KeyboardEvent) => {
-			// 先记左右修饰键（右 ⌘ / 右 ⌥）：主键事件本身看不出是哪一边
-			noteModifierKeys(event);
-			event.preventDefault();
-			event.stopPropagation();
-			// 光按 Esc（不带修饰键）= 放弃录制
-			if (event.key === "Escape" && !event.metaKey && !event.ctrlKey && !event.altKey) {
-				setRecording(null);
-				setNotice(null);
-				return;
-			}
-			const combo = comboFromEvent(event);
-			if (!combo) return; // 还在按修饰键 / 不支持的键：继续等
+		/**
+		 * 刚按下、还没松开的那颗修饰键（`event.code`）。松手时若没按过别的键，那一下就是
+		 * 「单键」绑定（右 ⌘ / 右 ⌥ / ⌃ / Alt）。
+		 */
+		let loneCode: string | null = null;
+		/** 验收一条组合键：被浏览器占用 / 跟别的动作撞车都不静默吞 */
+		const apply = (combo: string): void => {
 			if (isReservedCombo(combo)) {
 				setNotice(
 					t(
@@ -83,6 +79,41 @@ export function ShortcutsPane() {
 			setRecording(null);
 			setNotice(null);
 		};
+		const onKey = (event: KeyboardEvent) => {
+			// 先记左右修饰键（右 ⌘ / 右 ⌥）：主键事件本身看不出是哪一边
+			noteModifierKeys(event);
+			event.preventDefault();
+			event.stopPropagation();
+			// 光按 Esc（不带修饰键）= 放弃录制
+			if (event.key === "Escape" && !event.metaKey && !event.ctrlKey && !event.altKey) {
+				setRecording(null);
+				setNotice(null);
+				loneCode = null;
+				return;
+			}
+			/**
+			 * 只按了一颗修饰键：**先记下，等松手再收**。
+			 * 按下就收的话，想录 `右⌘ + L` 的人会先被录成「右⌘」—— 而后者现在是合法的单键绑定。
+			 */
+			if (isLoneModifierEvent(event)) {
+				loneCode = event.code ?? "";
+				return;
+			}
+			loneCode = null;
+			const combo = comboFromEvent(event);
+			if (!combo) return; // 不支持的键：继续等
+			apply(combo);
+		};
+		/** 松手：如果这一下只按过修饰键，那就是「单键」绑定（右 ⌘ / 右 ⌥ / ⌃ / Alt） */
+		const onKeyUp = (event: KeyboardEvent) => {
+			noteModifierKeys(event);
+			if (loneCode === null || (event.code ?? "") !== loneCode) return;
+			loneCode = null;
+			event.preventDefault();
+			event.stopPropagation();
+			const combo = loneModifierCombo(event);
+			if (combo) apply(combo);
+		};
 		/**
 		 * 点别处 = 取消录制。两个细节都是踩过的坑：
 		 *
@@ -97,9 +128,11 @@ export function ShortcutsPane() {
 			setRecording(null);
 		};
 		window.addEventListener("keydown", onKey, true);
+		window.addEventListener("keyup", onKeyUp, true);
 		window.addEventListener("pointerdown", onPointerDown, true);
 		return () => {
 			window.removeEventListener("keydown", onKey, true);
+			window.removeEventListener("keyup", onKeyUp, true);
 			window.removeEventListener("pointerdown", onPointerDown, true);
 		};
 	}, [recording, map, save, mac, t]);
@@ -148,11 +181,14 @@ export function ShortcutsPane() {
 									title={
 										isRecording
 											? t("按 Esc 取消", "Press Esc to cancel")
-											: t("点一下，然后按新的组合键", "Click, then press the new combo")
+											: t(
+													"点一下，然后按新的组合键（也可以只按一颗修饰键 / F1–F12）",
+													"Click, then press a combo (or a single modifier / F1–F12)",
+												)
 									}
 								>
 									{isRecording
-										? t("按下组合键…", "Press keys…")
+										? t("按下组合键 / 单键…", "Press a combo or a single key…")
 										: combo
 											? formatCombo(combo, mac)
 											: t("未设置", "Unbound")}
@@ -186,8 +222,8 @@ export function ShortcutsPane() {
 			<div className="shortcut-foot">
 				<span className="settings-hint">
 					{t(
-						"组合键必须带 ⌘/Ctrl 或 Alt；只按字母不会生效（否则在输入框里打字就会触发动作）。同一组合只能给一个动作。",
-						"Combos must include ⌘/Ctrl or Alt; a bare letter never fires (otherwise typing would trigger actions). Each combo belongs to one action.",
+						"组合键要带 ⌘/Ctrl 或 Alt。也可以绑单键：单独一颗修饰键（右⌘ / 右⌥ / ⌃ / Alt）或功能键 F1–F12；裸字母、数字不行（在输入框里打字就会触发动作）。同一组合只能给一个动作。",
+						"Combos need ⌘/Ctrl or Alt. Single keys are allowed too: one modifier alone (right ⌘ / right ⌥ / ⌃ / Alt) or a function key F1–F12; bare letters and digits are not (typing would trigger actions). Each combo belongs to one action.",
 					)}
 				</span>
 				<button

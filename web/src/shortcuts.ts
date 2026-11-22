@@ -7,8 +7,11 @@
  *     为什么不两边都认：macOS 上 `Ctrl+K` 是文本框里「删到行尾」的正经按键，
  *     抢它等于把编辑习惯弄坏；而 `⌘K` 在这边本来就是空的。
  *     同一条绑定两个平台都能用 —— 各按各的主修饰键，展示也跟着换（⌘K / Ctrl+K）。
- *  2. **必须带修饰键**（`Mod` 或 `Alt` 至少一个）。不收裸字母 —— 否则在输入框里打 `k`
- *     就能开一条新会话，比没有快捷键糟糕得多。
+ *  2. **必须带修饰键，或者是一个「单键」**。单键只收两类：
+ *     - 单独一颗修饰键（右 ⌘ / 右 ⌥ / ⌃ / Alt）—— 拿来开麦最顺手；
+ *     - 单独一颗功能键 F1–F12（不产生文字，按了不会打断打字）。
+ *     裸字母 / 数字 / 标点仍然拒绝：在输入框里打一个 `k` 就开一条新会话，
+ *     比没有快捷键糟糕得多。
  *  3. 存**整张表**（JSON：`actionId → combo | null`）。`null` = 用户明确「不设置」；
  *     键缺失 = 从没配过 → 回落到默认值。这样以后新增动作，老数据不用迁移也能拿到默认键。
  *
@@ -163,9 +166,9 @@ export const SHORTCUT_DEFS: readonly ShortcutDefinition[] = [
 		id: "toggleMic",
 		label: "开始 / 停止语音输入",
 		labelEn: "Start / stop voice input",
-		hint: "按一下开、一直听着，再按一下关；也可以按住不放说一句短的，松手就停（设置里能录右⌘ / 右⌥）",
+		hint: "按一下开、一直听着，再按一下关；也可以按住不放说一句短的，松手就停（设置里能录右⌘ / 右⌥，也能录成只按这一颗）",
 		hintEn:
-			"Tap to keep listening, tap again to stop; or hold and release to say one short thing (right ⌘ / right ⌥ work too)",
+			"Tap to keep listening, tap again to stop; or hold and release to say one short thing (right ⌘ / right ⌥ work, alone or with a key)",
 		defaultCombo: "Mod+Alt+M",
 	},
 	{
@@ -297,11 +300,36 @@ export function keyTokenOfEvent(event: { key: string; code?: string }): string |
 	return keyTokenOf(event);
 }
 
+/**
+ * 「单独按就有意义」的修饰键 token：`key` 留空串（没有主键）。
+ *
+ * 不收单独的 `Shift`：大写字母 / 选中文字都会按它，绑上去等于到处误触发。
+ */
+const LONE_MODIFIERS: Record<string, Omit<ParsedCombo, "key">> = {
+	Mod: { mod: true, ctrl: false, shift: false, alt: false, modRight: false, altRight: false },
+	RightMod: { mod: true, ctrl: false, shift: false, alt: false, modRight: true, altRight: false },
+	Alt: { mod: false, ctrl: false, shift: false, alt: true, modRight: false, altRight: false },
+	RightAlt: { mod: false, ctrl: false, shift: false, alt: true, modRight: false, altRight: true },
+	Ctrl: { mod: false, ctrl: true, shift: false, alt: false, modRight: false, altRight: false },
+};
+
+/** 允许「裸按」的主键：功能键不产生文字，按了不会打断打字 */
+const NAKED_KEYS = /^F([1-9]|1[0-2])$/;
+
 /** 解析规范字符串；不认识 / 缺修饰键 / 键名不认识 → null */
 export function parseCombo(combo: string | null | undefined): ParsedCombo | null {
 	if (!combo) return null;
 	const parts = combo.split("+");
-	if (parts.length < 2) return null;
+	// 单键：单独一颗修饰键（`RightMod` / `Alt`…）或一颗功能键（`F5`）
+	if (parts.length === 1) {
+		const only = parts[0] ?? "";
+		const lone = LONE_MODIFIERS[only];
+		if (lone) return { ...lone, key: "" };
+		if (NAKED_KEYS.test(only)) {
+			return { mod: false, ctrl: false, shift: false, alt: false, modRight: false, altRight: false, key: only };
+		}
+		return null;
+	}
 	const key = parts[parts.length - 1] ?? "";
 	if (key === "") return null;
 	const parsed: ParsedCombo = {
@@ -340,7 +368,8 @@ export function comboOf(parsed: ParsedCombo): string {
 	if (parsed.ctrl) parts.push("Ctrl");
 	if (parsed.shift) parts.push("Shift");
 	if (parsed.alt) parts.push(parsed.altRight ? "RightAlt" : "Alt");
-	parts.push(parsed.key);
+	// `key` 为空 = 「单按修饰键」：拼出来就是修饰键自己（`RightMod`）
+	if (parsed.key !== "") parts.push(parsed.key);
 	return parts.join("+");
 }
 
@@ -410,8 +439,8 @@ export function resetModifierSides(): void {
 /**
  * 键盘事件 → 解析后的组合键（`comboFromEvent` / `shortcutFor` 共用这一份）。
  *
- * 返回 null 的三种情况：正在按修饰键（还没按完）、没有修饰键（裸键不绑）、
- * 键名不在白名单（Tab / Escape / 功能键以外的东西）。
+ * 返回 null 的三种情况：正在按修饰键（还没按完）、裸字母 / 数字（会打断打字）、
+ * 键名不在白名单（Tab / Escape 这类没有绑的意义）。
  */
 function parsedFromEvent(
 	event: {
@@ -432,7 +461,19 @@ function parsedFromEvent(
 	// 单独的 Ctrl 只在 macOS 上可表达（其它平台它已经就是 Mod）
 	const ctrl = mac ? Boolean(event.ctrlKey) : false;
 	const alt = Boolean(event.altKey);
-	if (!mod && !ctrl && !alt) return null;
+	if (!mod && !ctrl && !alt) {
+		// 裸功能键（F1–F12）放行：它不产生文字，在哪按都不会打断打字
+		if (!NAKED_KEYS.test(key)) return null;
+		return {
+			mod: false,
+			modRight: false,
+			ctrl: false,
+			shift: Boolean(event.shiftKey),
+			alt: false,
+			altRight: false,
+			key,
+		};
+	}
 	/**
 	 * macOS 上「单独的 ⌃ + 字母/数字」仍不认：`⌃K` 是文本框里「删到行尾」、`⌃A/⌃E` 是行首行尾，
 	 * 抢它们等于把编辑习惯弄坏（文件头约定 1 的理由）。
@@ -440,7 +481,15 @@ function parsedFromEvent(
 	 */
 	if (mac && ctrl && !mod && /^[A-Z0-9]$/.test(key)) return null;
 	// 左右看「修饰键自己刚才有没有按下右边那颗」（见 `rightDown` 的说明）
-	return { mod, modRight: mod && sides.mod, ctrl, shift: Boolean(event.shiftKey), alt, altRight: alt && sides.alt, key };
+	return {
+		mod,
+		modRight: mod && sides.mod,
+		ctrl,
+		shift: Boolean(event.shiftKey),
+		alt,
+		altRight: alt && sides.alt,
+		key,
+	};
 }
 
 /**
@@ -499,6 +548,53 @@ export function isReservedCombo(combo: string | null | undefined): boolean {
 	return RESERVED_COMBOS.has(comboOf({ ...parsed, modRight: false, altRight: false }));
 }
 
+/* ---------------- 单键：单独一颗修饰键 ---------------- */
+
+/**
+ * 一次「只按了修饰键」的按键 → 解析结果（`key` 为空串）；不是修饰键 → null。
+ *
+ * 为什么要单开一条路：修饰键的 keydown 里 `event.key` 是 `"Meta"` / `"Alt"`，
+ * 没有主键 —— 普通的 `parsedFromEvent` 会把它当成「还没按完」直接丢掉。
+ * 而「单按右 ⌘ 开麦」这类绑定恰恰只要这颗键自己。左右用 `event.code` 区分。
+ */
+export function loneModifierParsed(event: { code?: string; key: string }, mac = isMacPlatform()): ParsedCombo | null {
+	const code = event.code ?? "";
+	const base = { mod: false, ctrl: false, shift: false, alt: false, modRight: false, altRight: false, key: "" };
+	const mod = mac ? "Meta" : "Control";
+	if (code === `${mod}Left`) return { ...base, mod: true };
+	if (code === `${mod}Right`) return { ...base, mod: true, modRight: true };
+	if (code === "AltLeft") return { ...base, alt: true };
+	if (code === "AltRight") return { ...base, alt: true, altRight: true };
+	// macOS 的 ⌃ 是第二颗修饰键；其它平台上它已经就是 Mod 本身（见文件头约定 1）
+	if (mac && (code === "ControlLeft" || code === "ControlRight")) return { ...base, ctrl: true };
+	return null;
+}
+
+/** 这个事件是不是「修饰键自己」（录制时用它判断：松手可以当成单键收下） */
+export function isLoneModifierEvent(event: { code?: string; key: string }, mac = isMacPlatform()): boolean {
+	return loneModifierParsed(event, mac) !== null;
+}
+
+/** 单按修饰键 → 规范字符串（`RightMod` / `RightAlt` / `Ctrl` / `Mod`…）；不是修饰键 → null */
+export function loneModifierCombo(event: { code?: string; key: string }, mac = isMacPlatform()): string | null {
+	const parsed = loneModifierParsed(event, mac);
+	return parsed ? comboOf(parsed) : null;
+}
+
+/** 单按修饰键命中了哪个动作（没绑就是 null） */
+export function loneModifierShortcut(
+	map: ShortcutMap,
+	event: { code?: string; key: string },
+	mac = isMacPlatform(),
+): ShortcutId | null {
+	const pressed = loneModifierParsed(event, mac);
+	if (!pressed) return null;
+	for (const def of SHORTCUT_DEFS) {
+		if (combosMatch(platformParsed(map[def.id], mac), pressed)) return def.id;
+	}
+	return null;
+}
+
 /** 默认整表（按定义顺序去重：重复的后来者让位，变成「不设置」） */
 export function defaultShortcuts(): ShortcutMap {
 	const map = {} as ShortcutMap;
@@ -519,8 +615,7 @@ export function dedupeShortcuts(map: ShortcutMap): ShortcutMap {
 	for (const def of SHORTCUT_DEFS) {
 		const combo = normalizeCombo(map[def.id]);
 		const parsed = parseCombo(combo);
-		const clash =
-			parsed !== null && used.some((other) => combosMatch(other, parsed) || combosMatch(parsed, other));
+		const clash = parsed !== null && used.some((other) => combosMatch(other, parsed) || combosMatch(parsed, other));
 		if (!combo || !parsed || clash) {
 			next[def.id] = null;
 			continue;
@@ -708,11 +803,15 @@ export function formatCombo(combo: string | null | undefined, mac = isMacPlatfor
 		if (parsed.shift) parts.push("⇧");
 		if (parsed.alt) parts.push(parsed.altRight ? "右⌥" : "⌥");
 	} else {
-		parts.push(parsed.modRight ? "RightCtrl" : "Ctrl");
+		if (parsed.mod) parts.push(parsed.modRight ? "RightCtrl" : "Ctrl");
+		else if (parsed.ctrl) parts.push("Ctrl");
 		if (parsed.shift) parts.push("Shift");
 		if (parsed.alt) parts.push(parsed.altRight ? "RightAlt" : "Alt");
 	}
-	const label = KEY_LABELS[parsed.key];
-	parts.push(label ? label[mac ? 0 : 1] : parsed.key);
+	// 单按修饰键（`key` 为空）：上面已经把修饰键拼完了，不再拼主键
+	if (parsed.key !== "") {
+		const label = KEY_LABELS[parsed.key];
+		parts.push(label ? label[mac ? 0 : 1] : parsed.key);
+	}
 	return mac ? parts.join("") : parts.join("+");
 }

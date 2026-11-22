@@ -16,7 +16,9 @@ import {
 	findConflict,
 	combosMatch,
 	formatCombo,
+	isLoneModifierEvent,
 	isReservedCombo,
+	loneModifierShortcut,
 	micPressResult,
 	normalizeCombo,
 	noteModifierKeys,
@@ -115,8 +117,8 @@ describe("组合键解析与归一化", () => {
 		assert.equal(comboFromEvent(key({ key: "Escape", code: "Escape", meta: true })), null);
 	});
 
-	it("功能键与方向键可以绑", () => {
-		assert.equal(comboFromEvent(key({ key: "F5", code: "F5" }), false), null); // 无修饰键 → 不收
+	it("功能键与方向键可以绑（功能键单独按也算一条）", () => {
+		assert.equal(comboFromEvent(key({ key: "F5", code: "F5" }), false), "F5"); // 裸功能键 = 单键绑定
 		assert.equal(comboFromEvent(key({ key: "F5", code: "F5", meta: true }), true), "Mod+F5");
 		assert.equal(comboFromEvent(key({ key: "ArrowRight", code: "ArrowRight", ctrl: true }), false), "Mod+ArrowRight");
 	});
@@ -348,10 +350,7 @@ describe("左右修饰键（右 ⌘ / 右 ⌥）", () => {
 		noteModifierKeys({ code: "AltRight", type: "keydown" }, true);
 		assert.equal(comboFromEvent(key({ key: "m", code: "KeyM", alt: true }), true), "RightAlt+M");
 		noteModifierKeys({ code: "MetaRight", type: "keydown" }, true);
-		assert.equal(
-			comboFromEvent(key({ key: "m", code: "KeyM", meta: true, alt: true }), true),
-			"RightMod+RightAlt+M",
-		);
+		assert.equal(comboFromEvent(key({ key: "m", code: "KeyM", meta: true, alt: true }), true), "RightMod+RightAlt+M");
 	});
 
 	it("非 mac 上「右 ⌘」不算主修饰键，右 Ctrl 才算", () => {
@@ -414,5 +413,63 @@ describe("左右修饰键（右 ⌘ / 右 ⌥）", () => {
 	it("浏览器抢键不分左右：右 ⌘+T 一样被吃掉", () => {
 		assert.equal(isReservedCombo("RightMod+T"), true);
 		assert.equal(isReservedCombo("RightMod+M"), false);
+	});
+});
+
+describe("单键：单独的修饰键 / 功能键", () => {
+	it("功能键可以单独绑；裸字母、数字、标点仍然不行", () => {
+		assert.equal(normalizeCombo("F5"), "F5");
+		assert.equal(parseCombo("F5")?.key, "F5");
+		// 裸字母 / 数字 / 标点：在输入框里打字就会触发动作，一律拒收
+		for (const bare of ["K", "5", "Comma", "Space", "Escape"]) {
+			assert.equal(parseCombo(bare), null, bare);
+		}
+	});
+
+	it("裸功能键能派发；裸字母仍然产生不了组合", () => {
+		const map: ShortcutMap = { ...defaultShortcuts(), newChat: "F5" };
+		assert.equal(shortcutFor(map, key({ key: "F5", code: "F5" })), "newChat");
+		assert.equal(shortcutFor(map, key({ key: "k", code: "KeyK" })), null);
+	});
+
+	it("右 ⌘ / 右 ⌥ / ⌃ 可以单独成键，且左右分得开", () => {
+		assert.equal(normalizeCombo("RightMod"), "RightMod");
+		assert.equal(normalizeCombo("RightAlt"), "RightAlt");
+		assert.equal(normalizeCombo("Ctrl"), "Ctrl");
+		const map: ShortcutMap = { ...defaultShortcuts(), toggleMic: "RightMod" };
+		assert.equal(loneModifierShortcut(map, { key: "Meta", code: "MetaRight" }), "toggleMic");
+		// 左 ⌘ 不算「右 ⌘」
+		assert.equal(loneModifierShortcut(map, { key: "Meta", code: "MetaLeft" }), null);
+		// 带主键的绑定不会被「单按修饰键」命中
+		const withKey: ShortcutMap = { ...defaultShortcuts(), toggleMic: "RightMod+L" };
+		assert.equal(loneModifierShortcut(withKey, { key: "Meta", code: "MetaRight" }), null);
+	});
+
+	it("主键按下时不会被当成「单按修饰键」", () => {
+		const map: ShortcutMap = { ...defaultShortcuts(), toggleMic: "RightMod" };
+		assert.equal(loneModifierShortcut(map, { key: "k", code: "KeyK" }), null);
+		// Shift 不参与单键（大写字母 / 选文字都会按它）
+		assert.equal(isLoneModifierEvent({ key: "Shift", code: "ShiftLeft" }), false);
+		assert.equal(normalizeCombo("Shift"), null);
+	});
+
+	it("展示：单键只写那颗键", () => {
+		assert.equal(formatCombo("RightMod", true), "右⌘");
+		assert.equal(formatCombo("RightAlt", true), "右⌥");
+		assert.equal(formatCombo("Mod", true), "⌘");
+		assert.equal(formatCombo("Ctrl", true), "⌃");
+		assert.equal(formatCombo("F5", true), "F5");
+		// 非 mac：Mod 就是 Ctrl，单按显示成 Ctrl
+		assert.equal(formatCombo("Mod", false), "Ctrl");
+	});
+
+	it("存储里能留住单键；「⌘」和「右⌘」互斥（只会留一个）", () => {
+		assert.equal(readShortcuts(JSON.stringify({ toggleMic: "RightMod" })).toggleMic, "RightMod");
+		const map = defaultShortcuts();
+		map.toggleMic = "Mod";
+		map.pauseSpeech = "RightMod";
+		const clean = dedupeShortcuts(map);
+		assert.equal(clean.toggleMic, "Mod");
+		assert.equal(clean.pauseSpeech, null);
 	});
 });

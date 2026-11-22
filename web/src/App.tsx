@@ -27,7 +27,9 @@ import {
 	useAppSelector,
 } from "./store.ts";
 import {
+	isLoneModifierEvent,
 	keyTokenOfEvent,
+	loneModifierShortcut,
 	micPressResult,
 	noteModifierKeys,
 	resetModifierSides,
@@ -814,19 +816,52 @@ export function App() {
 	const endMicPressRef = useRef(endMicPress);
 	endMicPressRef.current = endMicPress;
 	/**
+	 * 撤掉「还没松开」的那一下麦克风：用户按着 `⌘+⌥+M` 又按了别的键时用得到。
+	 * 不能直接调 `endMicPress` —— 那会按「轻按」逻辑真的开/关一次麦。
+	 */
+	const cancelMicPress = useCallback(() => {
+		const press = micPressRef.current;
+		if (!press) return;
+		micPressRef.current = null;
+		if (press.timer) clearTimeout(press.timer);
+	}, []);
+	const cancelMicPressRef = useRef(cancelMicPress);
+	cancelMicPressRef.current = cancelMicPress;
+	/**
+	 * 「单按修饰键」那条绑定，还没松手时记在这里。
+	 *
+	 * 为什么松手才执行：⌘ 是 macOS 的主修饰键 —— 按下就执行的话，`⌘K` 会先把
+	 * 「单按 ⌘」那个动作触发一遍。麦克风例外（它要「按住说话」），见下面的分支。
+	 */
+	const lonePressRef = useRef<{ id: ShortcutId } | null>(null);
+	/**
 	 * 全局快捷键派发（全部可改：设置 → 快捷键）。
 	 *
 	 * 三个必须的过滤：
 	 *  - `event.repeat`：按住不放不连环开面板；
 	 *  - `event.defaultPrevented`：设置里「录制组合键」那一层会在捕获阶段截胡并 `preventDefault`，
 	 *    这里就别再执行一遍（否则录一个 ⌘K 会顺手开一条新会话）；
-	 *  - 没带 Mod / Alt 的组合根本不会产生（`comboFromEvent` 的约定），所以在输入框里打字安全。
+	 *  - 裸字母 / 数字 / 标点根本不会产生组合（`comboFromEvent` 的约定），所以在输入框里打字安全；
+	 *    能裸按的只有功能键 F1–F12 与「单独一颗修饰键」，后者还要松手才执行。
 	 */
 	useEffect(() => {
 		const onKey = (event: KeyboardEvent) => {
 			// 先记左右修饰键（右 ⌘ / 右 ⌥）：主键事件本身看不出是哪一边
 			noteModifierKeys(event);
 			if (event.repeat || event.defaultPrevented) return;
+			/**
+			 * 单键绑定：只按了一颗修饰键（右 ⌘ / 右 ⌥ / ⌃ / Alt）。
+			 * 麦克风按下就记账（要支持「按住说话」），其余动作等松手 —— 见 `lonePressRef`。
+			 */
+			const lone = loneModifierShortcut(shortcutsRef.current, event);
+			if (lone) {
+				if (lone === "toggleMic") startMicPressRef.current(null);
+				else lonePressRef.current = { id: lone };
+				return;
+			}
+			// 又按了别的键 → 这不是「单按修饰键」：把待定的那条撤掉，免得松手时补执行一次
+			lonePressRef.current = null;
+			cancelMicPressRef.current();
 			const id = shortcutFor(shortcutsRef.current, event);
 			if (!id) return;
 			event.preventDefault();
@@ -841,6 +876,15 @@ export function App() {
 		 */
 		const onKeyUp = (event: KeyboardEvent) => {
 			noteModifierKeys(event);
+			// 单按修饰键：松手才执行（麦克风不在这里 —— 它要用「按住/轻按」那套逻辑）
+			const lone = lonePressRef.current;
+			if (lone) {
+				lonePressRef.current = null;
+				if (isLoneModifierEvent(event)) {
+					runShortcutRef.current(lone.id);
+					return;
+				}
+			}
 			const press = micPressRef.current;
 			if (!press) return;
 			const released = keyTokenOfEvent(event);
@@ -851,6 +895,7 @@ export function App() {
 		const onBlur = () => {
 			// 修饰键的 keyup 也收不到了：侧别状态必须清，否则下次左 ⌘ 会被当成右 ⌘
 			resetModifierSides();
+			lonePressRef.current = null;
 			if (!micPressRef.current) return;
 			endMicPressRef.current();
 		};

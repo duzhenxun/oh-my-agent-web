@@ -490,7 +490,7 @@ Sorting is a deliberate choice: **newest-created first inside a group** — a ne
 
 ## Shortcuts and slash commands
 
-**Every shortcut** is rebindable in Settings → Shortcuts (a binding must include `Mod`/`Alt`; bare letters are rejected). On macOS `Mod` is ⌘, elsewhere it's Ctrl.
+**Every shortcut** is rebindable in Settings → Shortcuts (a combo needs `Mod`/`Alt`; a single key only works for one modifier alone — right ⌘ / right ⌥ / ⌃ / Alt — or a function key F1–F12; bare letters are rejected). On macOS `Mod` is ⌘, elsewhere it's Ctrl.
 
 | Action | Default | Action | Default |
 |---|---|---|---|
