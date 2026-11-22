@@ -156,9 +156,15 @@ function bestSnap(moving: number[], targets: number[], tolerance: number): { del
 
 export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (path: string) => void }) {
 	const t = useT();
-	const { snapshot } = useAppState();
-	const doc: CanvasDoc | null = snapshot?.canvas ?? null;
-	const conversationId = snapshot?.active.conversationId ?? null;
+	const { snapshot, newSession, pendingNewChat } = useAppState();
+	/**
+	 * 「新会话界面」上服务端**什么都还没建**，快照里 `active` 还是上一条会话 ——
+	 * 直接拿它的话，新建会话时右边会挂着上一个会话的画布（用户 2026-11-22 报的）。
+	 * 这一屏就当成"没有会话"，画布显示空状态。
+	 */
+	const onEmptyScreen = newSession !== null || pendingNewChat;
+	const doc: CanvasDoc | null = onEmptyScreen ? null : (snapshot?.canvas ?? null);
+	const conversationId = onEmptyScreen ? null : (snapshot?.active.conversationId ?? null);
 
 	const viewportRef = useRef<HTMLDivElement | null>(null);
 	/** 外层容器（空状态也渲染）：手势必须挂在这里，否则空画布时触摸板捏合会缩放整个网页 */
