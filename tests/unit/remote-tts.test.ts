@@ -8,7 +8,14 @@ import {
 	splitSpeechText,
 	type RemoteSpeechHooks,
 } from "../../web/src/remote-tts.ts";
-import { DEFAULT_TTS_SETTINGS, loadTtsSettings, saveTtsSettings, speak, stopSpeaking } from "../../web/src/tts.ts";
+import {
+	currentSpokenText,
+	DEFAULT_TTS_SETTINGS,
+	loadTtsSettings,
+	saveTtsSettings,
+	speak,
+	stopSpeaking,
+} from "../../web/src/tts.ts";
 
 const REMOTE_SETTINGS = { provider: "edge", voice: "en-US-JennyNeural", rate: 1.4 } as const;
 const EDGE_SETTINGS = {
@@ -286,6 +293,53 @@ describe("Edge TTS playback", () => {
 		await nextTurn();
 		assert.equal(secondSource.disconnects, 1);
 		assert.deepEqual(speech.events, ["start", "end"]);
+	});
+
+	it("下一句在当前句还在播时就开始合成，接上时不用再等网络", async (t) => {
+		const audio = installAudio(t);
+		const speech = recordSpeech();
+		const queued = ["下一句也念完。"];
+		// 流式朗读的队列就是通过这个回调交给播放链的
+		const cancel = speakRemote("第一句先念。", REMOTE_SETTINGS, speech.hooks, () => queued.shift());
+		t.after(() => cancel());
+		await nextTurn();
+		assert.equal(audio.requests.length, 1, "第一句先发一次请求");
+		audio.requests[0]!.resolve(new Response(Uint8Array.of(1)));
+		await nextTurn();
+		assert.equal(audio.sources.length, 1);
+		assert.equal(audio.sources[0]!.starts, 1, "第一句开始播");
+
+		// 关键：第一句的 source 还没结束（没 finish），第二句的请求已经发出去了
+		assert.equal(audio.requests.length, 2, "下一句要在这一句播完之前就开始合成");
+		assert.equal(JSON.parse(String(audio.requests[1]!.init?.body)).text, "下一句也念完。");
+		assert.deepEqual(queued, [], "取走后队列里不该再留一份，否则会念两遍");
+
+		audio.requests[1]!.resolve(new Response(Uint8Array.of(2)));
+		await nextTurn();
+		assert.equal(audio.sources.length, 1, "预取好的音频要等这一块播完才接上");
+
+		audio.sources[0]!.finish();
+		await nextTurn();
+		assert.equal(audio.sources.length, 2);
+		assert.equal(audio.requests.length, 2, "接上下一句时不该再发请求");
+		assert.equal(audio.sources[1]!.starts, 1);
+		audio.sources[1]!.finish();
+		await nextTurn();
+		assert.deepEqual(speech.events, ["start", "end"]);
+	});
+
+	it("speak() 把下一句的取数透传给播放链，并同步 lastSpokenText", async (t) => {
+		const audio = installAudio(t);
+		const speech = recordSpeech();
+		const queued = ["第二句。"];
+		speak("第一句。", EDGE_SETTINGS, { ...speech.hooks, nextText: () => queued.shift() });
+		await nextTurn();
+		audio.requests[0]!.resolve(new Response(Uint8Array.of(1)));
+		await nextTurn();
+		assert.equal(audio.sources.length, 1);
+		assert.equal(audio.requests.length, 2, "tts.ts 要把 nextText 透传到播放链");
+		// 听写靠它判断「这段是不是我们自己的声音」，只看第一句就会把第二句的回声当用户说话
+		assert.equal(currentSpokenText(), "第二句。");
 	});
 
 	it("stops and disconnects the playing source when canceled", async (t) => {

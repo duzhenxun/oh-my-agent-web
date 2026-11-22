@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { ActionItem } from "../types.ts";
 import { setDraft } from "../store.ts";
 import { sendMessage } from "../ws.ts";
+import { requestInterruptSpeech } from "../speech-control.ts";
 import { useT } from "../use-language.ts";
 
 /**
@@ -49,6 +50,8 @@ export function ActionSuggestions({ actions, running }: { actions: ActionItem[];
 						}
 						if (running || sent) return;
 						setSent(true); // 先锁住：快照回来之前按钮还没消失，连点会发两次
+						// 这也是「我开始说下一段了」：上一条回复的朗读立刻闭嘴（同回车发送）
+						requestInterruptSpeech();
 						sendMessage(action.prompt);
 					}}
 				>

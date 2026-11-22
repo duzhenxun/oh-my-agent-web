@@ -35,6 +35,7 @@ import {
 	stopVoiceInput,
 } from "../voice-input.ts";
 import { voiceLog } from "../voice-log.ts";
+import { interruptSpeechForSend } from "../speech-control.ts";
 import { showToast } from "../toast.ts";
 import { openImageViewer } from "../image-viewer.ts";
 import { SlashPalette } from "./SlashPalette.tsx";
@@ -763,6 +764,9 @@ export function Composer({
 	 *  - 其余 → 老路径，直接发给当前会话。
 	 */
 	const deliver = (text: string, attachments?: AttachmentRef[], mode: SendMode = "now") => {
+		// 发出去就把上面的朗读处理掉：口径是「用户 2026-11-22」定的，映射在 speech-control.ts：
+		// now 立刻掐（新回复照常念）、queue 连这一轮剩下的也不念、steer 不动。
+		interruptSpeechForSend(mode);
 		if (surface) surface.send(text, attachments, mode);
 		else if (newSession)
 			createSessionAndSend(text, attachments, mode, newSession.workspace ?? undefined, {

@@ -17,7 +17,13 @@ import type { UiMessage } from "./types.ts";
 import { createStreamReader } from "./stream-speech.ts";
 import { voiceLog } from "./voice-log.ts";
 import { isVoiceListening } from "./voice-input.ts";
-import { isSpeechPausedNow, onSpeechPauseChange, onStopSpeechRequest, setReading } from "./speech-control.ts";
+import {
+	isSpeechPausedNow,
+	onInterruptSpeechRequest,
+	onSpeechPauseChange,
+	onStopSpeechRequest,
+	setReading,
+} from "./speech-control.ts";
 import { playVoiceClip, preloadVoiceClips } from "./voice-clips.ts";
 import {
 	createAnnounceMemory,
@@ -217,6 +223,28 @@ export function useVoiceCues(snapshot: Snapshot | null): void {
 	};
 
 	useEffect(() => onStopSpeechRequest(stopReading), []);
+
+	/**
+	 * 打断当前朗读（用户发了新指令）。
+	 *
+	 * 只停声音：掐掉正在念的这一句、作废排队里的句子，但**不写 `muted`** ——
+	 * 用户发消息的意思是「别再念上面那条了」，不是「以后都别念」；新回复（或 steer
+	 * 之后新吐出来的字）还会听到。`requestStopSpeech` 那条路会封整轮，两者不能合并。
+	 *
+	 * 也**不** reset 切句游标：已经念过的句子不该因为这次打断被从头重念一遍（那是用户抱怨的
+	 * 「同一段又播了一遍」）。真正换轮时会变 key，那时才重置。
+	 */
+	const interruptReading = (): void => {
+		const state = stream.current;
+		voiceLog("read:interrupt", { queued: state.queue.length, spoken: state.reader.spoken });
+		state.token += 1;
+		state.busy = false;
+		state.queue.length = 0;
+		setReading(false);
+		stopSpeaking();
+	};
+
+	useEffect(() => onInterruptSpeechRequest(interruptReading), []);
 
 	// 暂停 → 继续：把停在队列里的句子接着念（drain 的暂停守卫让它们没被提前取走）
 	useEffect(
