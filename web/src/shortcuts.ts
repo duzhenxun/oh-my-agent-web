@@ -28,6 +28,7 @@ export type ShortcutId =
 	| "projects"
 	| "toggleLeft"
 	| "files"
+	| "canvas"
 	| "terminal"
 	| "contentSearch"
 	| "toggleMic"
@@ -136,6 +137,14 @@ export const SHORTCUT_DEFS: readonly ShortcutDefinition[] = [
 		hint: "同一个键开 / 关：树开着就收起；侧栏收着时会先展开",
 		hintEn: "Opens and closes with the same key; expands the sidebar if it was collapsed",
 		defaultCombo: "Mod+Alt+F",
+	},
+	{
+		id: "canvas",
+		label: "画布",
+		labelEn: "Canvas",
+		hint: "同一个键开 / 关：没开就打开画布标签，已经开着就收起来",
+		hintEn: "Opens and closes the canvas tab with the same key",
+		defaultCombo: "Mod+Alt+C",
 	},
 	{
 		id: "terminal",

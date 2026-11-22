@@ -705,6 +705,25 @@ export function App() {
 		[toolSeq, workspaceRoot, openBottomTerminalAt],
 	);
 	/**
+	 * 画布标签的开关（快捷键 Mod+Alt+C 走它）。
+	 *
+	 * 一个键两种行为：已经开着 → 关掉（从标签栏移除）；没开 → 打开面板并聚焦到画布。
+	 * 关的时候**不收起整个面板** —— 右边可能还有文件/终端在用。
+	 */
+	const toggleCanvas = useCallback(() => {
+		if (panelItems.some((item) => item.id === "canvas")) {
+			setPanelItems((current) => current.filter((item) => item.id !== "canvas"));
+			return;
+		}
+		setPreviewVisible(true);
+		setPanelLanding(false);
+		setPanelItems((current) =>
+			current.some((item) => item.id === "canvas") ? current : [...current, { id: "canvas", kind: "canvas" }],
+		);
+		setActiveItem("canvas");
+	}, [panelItems]);
+
+	/**
 	 * 可自定义快捷键（设置 → 快捷键）：键表存在本机，这套派发器只负责「按到的组合键 → 动作」。
 	 *
 	 * 为什么用 ref 存最近的闭包而不是把一堆 state 塞进依赖数组：
@@ -752,6 +771,9 @@ export function App() {
 						setCollapsed(false);
 					}
 					return;
+				case "canvas":
+					toggleCanvas();
+					return;
 				case "terminal":
 					// Ctrl+` 切换的是对话框下面那条底部终端（VSCode 的习惯）——所有终端入口现在都落到它
 					setBottomTermOpen((current) => !current);
@@ -775,7 +797,7 @@ export function App() {
 					return;
 			}
 		},
-		[collapsed, filesOpen, openTool, toggleSplit],
+		[collapsed, filesOpen, openTool, toggleCanvas, toggleSplit],
 	);
 	const runShortcutRef = useRef(runShortcutAction);
 	runShortcutRef.current = runShortcutAction;
