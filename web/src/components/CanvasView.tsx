@@ -22,6 +22,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CanvasDoc, CanvasNode, CanvasNodeStatus } from "../types.ts";
 import { useAppState } from "../store.ts";
+import { requestInterruptSpeech } from "../speech-control.ts";
 import { canvasDeleteNodes, canvasMoveNodes, canvasSetStatus, canvasStartNode, canvasUpdateNode, interrupt, sendMessage } from "../ws.ts";
 import { useT } from "../use-language.ts";
 
@@ -153,7 +154,7 @@ function bestSnap(moving: number[], targets: number[], tolerance: number): { del
 	return best;
 }
 
-export function CanvasView() {
+export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (path: string) => void }) {
 	const t = useT();
 	const { snapshot } = useAppState();
 	const doc: CanvasDoc | null = snapshot?.canvas ?? null;
@@ -184,6 +185,9 @@ export function CanvasView() {
 
 	/** 右键菜单：`nodeId` 为 null 表示点在空白处 */
 	const [menu, setMenu] = useState<{ x: number; y: number; nodeId: string | null } | null>(null);
+	/** 「N 项产出」弹层：1:1 时悬停预览不出现，产出得有别的入口 */
+	const [artifactsOf, setArtifactsOf] = useState<{ id: string; x: number; y: number } | null>(null);
+
 	/**
 	 * 「就这几步说两句」的输入框：`nodeIds` = 这次要带的选区（右键的那个节点不在选区里时，就只有它）。
 	 * 发出去是一条普通消息，但正文里带着节点 id 和现状 —— 让 agent 知道"只改这几个"。
@@ -923,6 +927,8 @@ export function CanvasView() {
 			"",
 			"只改这几个节点（用 canvas 工具的 update / status / add 定位到上面的 id），别动其他节点；改完一句话说改了什么。",
 		];
+		// 发出去就是下一段了：上一条回复的朗读别接着响（同回车发送）
+		requestInterruptSpeech();
 		sendMessage(lines.join("\n"));
 		setAsk(null);
 	}, [ask, conversationId, doc]);
@@ -945,6 +951,43 @@ export function CanvasView() {
 			setHover((current) => (current?.id === node.id ? null : current));
 		},
 		[conversationId],
+	);
+
+	/** 产出清单（预览卡和「N 项产出」弹层共用一份） */
+	const renderArtifacts = useCallback(
+		(node: CanvasNode) => {
+			const list = node.artifacts ?? [];
+			if (list.length === 0) return null;
+			return (
+				<div className="canvas-preview-artifacts">
+					<div className="canvas-preview-artifacts-head">{t("这一步的产出", "Artifacts")}</div>
+					{list.map((artifact, index) => {
+						const canOpen = artifact.kind === "file" && artifact.detail !== "工作区外";
+						return (
+							<button
+								type="button"
+								key={`${artifact.kind}-${index}-${artifact.label}`}
+								className={`canvas-artifact is-${artifact.kind}${canOpen ? " can-open" : ""}`}
+								title={artifact.detail ?? artifact.label}
+								onClick={() => {
+									if (canOpen) {
+										onOpenFile(artifact.label);
+										setArtifactsOf(null);
+									}
+								}}
+							>
+								<span className="canvas-artifact-icon">
+									{artifact.kind === "file" ? "▤" : artifact.kind === "command" ? ">_" : "✎"}
+								</span>
+								<span className="canvas-artifact-label">{artifact.label}</span>
+								{artifact.detail ? <span className="canvas-artifact-detail">{artifact.detail}</span> : null}
+							</button>
+						);
+					})}
+				</div>
+			);
+		},
+		[t, onOpenFile],
 	);
 
 	/**
@@ -1203,7 +1246,27 @@ export function CanvasView() {
 										<span className="canvas-live-text">{liveText}</span>
 									</div>
 								) : null}
-								<div className={`canvas-node-state is-${state.tone}`}>{t(state.zh, state.en)}</div>
+								<div className={`canvas-node-state is-${state.tone}`}>
+									{t(state.zh, state.en)}
+									{node.artifacts !== undefined && node.artifacts.length > 0 ? (
+										<button
+											type="button"
+											className="canvas-node-artifacts"
+											title={t("看这一步的产出", "See artifacts")}
+											onPointerDown={(event) => event.stopPropagation()}
+											onClick={() => {
+												const view = viewRef.current;
+												setArtifactsOf({
+													id: node.id,
+													x: pos.x * view.k + view.x,
+													y: (pos.y + 40) * view.k + view.y,
+												});
+											}}
+										>
+											· {node.artifacts.length} {t("项产出", "artifacts")}
+										</button>
+									) : null}
+								</div>
 								{/* 悬停/选中才出现：平时不挡内容 */}
 								<div className="canvas-node-actions">
 									<select
@@ -1250,6 +1313,8 @@ export function CanvasView() {
 						<span className="canvas-preview-title">{hoverNode.title}</span>
 					</div>
 					{hoverNode.detail ? <div className="canvas-preview-detail">{hoverNode.detail}</div> : null}
+					{renderArtifacts(hoverNode)}
+
 					<div className="canvas-preview-foot">
 						<span className={`canvas-node-state is-${statusOf(hoverNode).tone}`}>
 							{t(statusOf(hoverNode).zh, statusOf(hoverNode).en)}
@@ -1260,7 +1325,27 @@ export function CanvasView() {
 					</div>
 				</div>
 			) : null}
-			{/* 「就这几步说两句」：一个小输入框，正文里带上节点 id 和现状发给 agent */}
+{/* 「N 项产出」弹层 */}
+			{artifactsOf !== null ? (() => {
+				const node = nodes.find((each) => each.id === artifactsOf.id);
+				if (node === undefined) return null;
+				return (
+					<>
+						<div className="canvas-menu-backdrop" onPointerDown={() => setArtifactsOf(null)} />
+						<div
+							className="canvas-ask"
+							style={{
+								left: Math.min(artifactsOf.x, (viewportRef.current?.clientWidth ?? 600) - 300),
+								top: Math.min(artifactsOf.y, (viewportRef.current?.clientHeight ?? 600) - 160),
+							}}
+						>
+							<div className="canvas-ask-head">{node.title}</div>
+							{renderArtifacts(node)}
+						</div>
+					</>
+				);
+			})() : null}
+						{/* 「就这几步说两句」：一个小输入框，正文里带上节点 id 和现状发给 agent */}
 			{ask !== null ? (
 				<>
 					<div className="canvas-menu-backdrop" onPointerDown={() => setAsk(null)} />

@@ -844,7 +844,7 @@ export function PreviewPanel({
 						) : item.kind === "prompt" ? (
 							<SystemPromptView conversationId={conversationId} active={item.id === active?.id && !showLanding} />
 						) : item.kind === "canvas" ? (
-							<CanvasView />
+							<CanvasView root={root} onOpenFile={onOpenFile} />
 						) : (
 							<SideChat itemId={item.id} />
 						)}

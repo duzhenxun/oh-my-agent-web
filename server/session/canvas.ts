@@ -10,7 +10,7 @@
  *   2. **按依赖分层**：没有前置的排最左，每条依赖往右推一层（最长路径），同层竖着排；
  *   3. **有上限**：40 个节点 / 80 条边。超出就截断并如实告诉模型，而不是画一张看不清的图。
  */
-import type { CanvasDoc, CanvasEdge, CanvasNode, CanvasNodeKind, CanvasNodeStatus } from "../protocol.js";
+import type { CanvasArtifact, CanvasDoc, CanvasEdge, CanvasNode, CanvasNodeKind, CanvasNodeStatus } from "../protocol.js";
 
 /** 图上最多这么多节点（再多就不是"一眼看全"，而是又一棵树） */
 export const CANVAS_MAX_NODES = 40;
@@ -189,6 +189,23 @@ export function setStatus(doc: CanvasDoc, id: string, status: unknown): CanvasDo
 	return {
 		...doc,
 		nodes: doc.nodes.map((node) => (node.id === id ? { ...node, status: statusOf(status) } : node)),
+		rev: doc.rev + 1,
+		updatedAt: Date.now(),
+	};
+}
+
+/** 把这一轮的产出挂到节点上（和状态一起落） */
+export function setArtifacts(doc: CanvasDoc, id: string, artifacts: readonly CanvasArtifact[]): CanvasDoc {
+	return {
+		...doc,
+		nodes: doc.nodes.map((node) => {
+			if (node.id !== id) return node;
+			const next: CanvasNode = { ...node };
+			// 空数组就当没有：老画布不因为"跑了一次但什么都没产出"多出一个空字段
+			if (artifacts.length === 0) delete next.artifacts;
+			else next.artifacts = artifacts.map((each) => ({ ...each }));
+			return next;
+		}),
 		rev: doc.rev + 1,
 		updatedAt: Date.now(),
 	};

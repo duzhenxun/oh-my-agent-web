@@ -10,7 +10,7 @@
  */
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { CanvasDoc, CanvasEdge, CanvasNode, CanvasNodeKind, CanvasNodeStatus } from "../protocol.js";
+import type { CanvasArtifact, CanvasDoc, CanvasEdge, CanvasNode, CanvasNodeKind, CanvasNodeStatus } from "../protocol.js";
 
 const STATUSES: readonly CanvasNodeStatus[] = ["todo", "doing", "done", "blocked"];
 const KINDS: readonly CanvasNodeKind[] = ["task", "milestone", "risk", "doc", "decision"];
@@ -43,6 +43,18 @@ function isNode(value: unknown): value is CanvasNode {
 	);
 }
 
+const ARTIFACT_KINDS: readonly CanvasArtifact["kind"][] = ["file", "command", "note"];
+
+function isArtifact(value: unknown): value is CanvasArtifact {
+	const artifact = value as CanvasArtifact | null;
+	return (
+		typeof artifact === "object" &&
+		artifact !== null &&
+		typeof artifact.label === "string" &&
+		ARTIFACT_KINDS.includes(artifact.kind)
+	);
+}
+
 function isEdge(value: unknown): value is CanvasEdge {
 	const edge = value as CanvasEdge | null;
 	return typeof edge === "object" && edge !== null && typeof edge.from === "string" && typeof edge.to === "string";
@@ -54,7 +66,12 @@ function parseDoc(raw: string): CanvasDoc | null {
 		const value = JSON.parse(raw) as Partial<CanvasDoc> | null;
 		if (typeof value !== "object" || value === null) return null;
 		if (!Array.isArray(value.nodes) || !Array.isArray(value.edges)) return null;
-		const nodes = value.nodes.filter(isNode);
+		const nodes = value.nodes.filter(isNode).map((node) => {
+			// 坏掉的产出项直接丢掉，别让一份脏数据把整张画布打不开
+			if (!Array.isArray(node.artifacts)) return node;
+			const artifacts = node.artifacts.filter(isArtifact);
+			return artifacts.length === 0 ? { ...node, artifacts: undefined } : { ...node, artifacts };
+		});
 		// 一条节点都没有 = 等于没有画布（界面显示空状态，而不是一个空壳抬头）
 		if (nodes.length === 0) return null;
 		return {

@@ -298,6 +298,94 @@
 	z-index: 40;
 }
 
+/* 节点上的产出徽标（可点开看清单） */
+.canvas-node-artifacts {
+	margin-left: 6px;
+	font: inherit;
+	font-size: 11px;
+	padding: 0 4px;
+	border: none;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--text-dim);
+	font-variant-numeric: tabular-nums;
+	cursor: pointer;
+}
+
+.canvas-node-artifacts:hover {
+	background: var(--bg-elev-2);
+	color: var(--accent);
+}
+
+/* 预览卡里的产出清单 */
+.canvas-preview-artifacts {
+	margin-top: 8px;
+	padding-top: 7px;
+	border-top: 1px solid var(--border);
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+}
+
+.canvas-preview-artifacts-head {
+	font-size: 10.5px;
+	color: var(--text-faint);
+	margin-bottom: 2px;
+}
+
+.canvas-artifact {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	width: 100%;
+	font: inherit;
+	font-size: 11.5px;
+	padding: 3px 6px;
+	border: 1px solid transparent;
+	border-radius: 6px;
+	background: var(--bg-elev-2);
+	color: var(--text-dim);
+	text-align: left;
+	cursor: default;
+	min-width: 0;
+}
+
+.canvas-artifact.can-open {
+	cursor: pointer;
+}
+
+.canvas-artifact.can-open:hover {
+	border-color: var(--accent);
+	color: var(--accent);
+}
+
+.canvas-artifact-icon {
+	font-size: 10px;
+	flex: 0 0 auto;
+	opacity: 0.85;
+}
+
+.canvas-artifact-label {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 11px;
+}
+
+.canvas-artifact.is-note .canvas-artifact-label {
+	font-family: inherit;
+	white-space: normal;
+}
+
+.canvas-artifact-detail {
+	flex: 0 0 auto;
+	font-size: 10px;
+	color: #b45309;
+}
+
 /* 「就这几步说两句」的输入框 */
 .canvas-ask {
 	position: absolute;

@@ -12,6 +12,8 @@ export type {
 	AttachmentRef,
 	ApproveRequest,
 	CancelQueuedRequest,
+	CanvasArtifact,
+	CanvasArtifactKind,
 	CanvasDeleteNodesRequest,
 	CanvasDoc,
 	CanvasMoveNodesRequest,

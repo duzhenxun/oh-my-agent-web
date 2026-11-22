@@ -19,7 +19,8 @@ import { createTemplatePromptGenerator } from "./template-prompt.js";
 import { createCronPromptGenerator } from "./cron-prompt.js";
 import { messagesForTitle } from "./title-prompt.js";
 import { createSnapshotFor } from "./snapshot-for.js";
-import { moveNodes, removeNodes, setStatus, updateNode } from "./canvas.js";
+import { moveNodes, removeNodes, setArtifacts, setStatus, updateNode } from "./canvas.js";
+import { collectArtifacts } from "./canvas-artifacts.js";
 import { createSubagentBridge } from "./subagents.js";
 import { createSwitchConversation } from "./switch-conversation.js";
 import { createModelController, createModelRefresher } from "./model-controller.js";
@@ -141,17 +142,26 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 	 * 为什么要宿主自己记：模型不会每次都老老实实去调 `canvas` 工具标状态，
 	 * 而"我双击了这一步"是个确定的事实 —— 记下来，回合结束时就能自动推到 done。
 	 */
-	const canvasRunningNode = new Map<string, string>();
+	const canvasRunningNode = new Map<string, { nodeId: string; fromIndex: number }>();
 
 	/** 回合结束：把绑定的那个节点推到 done / blocked（用户中断的不动，留在 doing 由人决定） */
 	const advanceCanvasNode = (info: { conversationId: string; failed: boolean; interrupted: boolean }): void => {
-		const nodeId = canvasRunningNode.get(info.conversationId);
-		if (nodeId === undefined) return;
+		const bound = canvasRunningNode.get(info.conversationId);
+		if (bound === undefined) return;
 		canvasRunningNode.delete(info.conversationId);
 		if (info.interrupted) return;
-		editCanvas(info.conversationId, (doc) =>
-			doc.nodes.some((node) => node.id === nodeId) ? setStatus(doc, nodeId, info.failed ? "blocked" : "done") : null,
-		);
+
+		// 这一轮的消息 = 开工时记下的下标之后的部分；产出从里面推（改了什么文件、跑了什么命令）
+		const all = state.messages[info.conversationId] ?? [];
+		const turnMessages = all.slice(Math.min(bound.fromIndex, all.length));
+		const workspace = state.conversations.find((each) => each.id === info.conversationId)?.workspace ?? state.workspace;
+		const artifacts = info.failed ? [] : collectArtifacts(turnMessages, workspace);
+
+		editCanvas(info.conversationId, (doc) => {
+			if (!doc.nodes.some((node) => node.id === bound.nodeId)) return null;
+			const withStatus = setStatus(doc, bound.nodeId, info.failed ? "blocked" : "done");
+			return artifacts.length === 0 ? withStatus : setArtifacts(withStatus, bound.nodeId, artifacts);
+		});
 	};
 
 	// 子代理（多开 + 模板管理）：引擎跑、宿主投影进快照；模板与开关落 ~/.pi/agent/agents
@@ -646,7 +656,8 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			now,
 			...(options.canvasOf ? { canvasOf: options.canvasOf } : {}),
 			// 画布节点上的实时进度靠它：客户端据此知道"这一轮在干哪一步"
-			canvasRunningNodeOf: (conversationId) => (conversationId === null ? null : (canvasRunningNode.get(conversationId) ?? null)),
+			canvasRunningNodeOf: (conversationId) =>
+				conversationId === null ? null : (canvasRunningNode.get(conversationId)?.nodeId ?? null),
 		}),
 		clientView,
 		state: () => state,
@@ -767,7 +778,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 				canvasRunningNode.delete(conversationId);
 			}
 			if (turns.has(conversationId)) {
-				const runningId = canvasRunningNode.get(conversationId);
+				const runningId = canvasRunningNode.get(conversationId)?.nodeId;
 				const runningTitle = runningId === undefined ? null : (doc.nodes.find((each) => each.id === runningId)?.title ?? null);
 				return {
 					ok: false,
@@ -784,7 +795,8 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			// 先标 doing 并绑定，再发回合：反过来的话回合快的话会先结束、绑定还没写上
 			const started = editCanvas(conversationId, (current) => setStatus(current, nodeId, "doing"));
 			if (!started.ok) return started;
-			canvasRunningNode.set(conversationId, nodeId);
+			// 记下"开工前的消息数"：回合结束时用它切出这一轮的消息
+			canvasRunningNode.set(conversationId, { nodeId, fromIndex: state.messages[conversationId]?.length ?? 0 });
 
 			const text = node.detail ? `开始做这一步：${node.title}（${node.detail}）` : `开始做这一步：${node.title}`;
 			const result = await sendTurn(text, undefined, "now", conversationId);

@@ -272,9 +272,27 @@ export type CanvasNodeStatus = "todo" | "doing" | "done" | "blocked";
  */
 export type CanvasNodeKind = "task" | "milestone" | "risk" | "doc" | "decision";
 
+/**
+ * 挂在节点上的**产出**（这一轮实际做出来的东西）。
+ *   - file：改过的文件（相对工作区路径）
+ *   - command：跑过的命令
+ *   - note：没有文件/命令时的结论摘要
+ */
+export type CanvasArtifactKind = "file" | "command" | "note";
+
+export type CanvasArtifact = {
+	kind: CanvasArtifactKind;
+	/** 文件：路径；命令：命令行；note：摘要文字 */
+	label: string;
+	/** 附注（工作区外 / 退出码非 0 之类） */
+	detail?: string;
+};
+
 export type CanvasNode = {
 	id: string;
 	title: string;
+	/** 这一轮做完之后附上的产出；还没跑过就没有这个字段 */
+	artifacts?: CanvasArtifact[];
 	/** 不给就是 `task`（普通一步） */
 	kind?: CanvasNodeKind;
 	/** 一两句说明（怎么做 / 验收标准）；不写就不画 */
