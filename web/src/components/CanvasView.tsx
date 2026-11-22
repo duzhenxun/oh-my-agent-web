@@ -105,6 +105,8 @@ export function CanvasView() {
 	const conversationId = snapshot?.active.conversationId ?? null;
 
 	const viewportRef = useRef<HTMLDivElement | null>(null);
+	/** 外层容器（空状态也渲染）：手势必须挂在这里，否则空画布时触摸板捏合会缩放整个网页 */
+	const rootRef = useRef<HTMLDivElement | null>(null);
 	const worldRef = useRef<HTMLDivElement | null>(null);
 	const readoutRef = useRef<HTMLSpanElement | null>(null);
 	const marqueeRef = useRef<HTMLDivElement | null>(null);
@@ -474,24 +476,62 @@ export function CanvasView() {
 
 	/* ── 滚轮 ─────────────────────────────────────────── */
 	useEffect(() => {
-		const viewport = viewportRef.current;
-		if (!viewport) return;
+		// 挂在**外层容器**上：空画布时 `.canvas-viewport` 根本不存在，
+		// 手势没挂上 → 触摸板双指捏合会被浏览器当成「缩放网页」（用户报过）。
+		const root = rootRef.current;
+		if (!root) return;
 		const onWheel = (event: WheelEvent) => {
+			// 整个画布区域内一律拦住默认行为：不拦的话双指捏合会缩放整个网页
 			event.preventDefault();
 			if (event.ctrlKey || event.metaKey) {
-				const rect = viewport.getBoundingClientRect();
+				// 捏合 / ⌘+滚轮：以光标为锚缩放（触控板捏合同样带 ctrlKey）
+				const rect = root.getBoundingClientRect();
 				const factor = Math.exp(-event.deltaY * 0.0025);
 				zoomAt(event.clientX - rect.left, event.clientY - rect.top, viewRef.current.k * factor);
 				return;
 			}
+			// 没内容时平移无意义，但已经 preventDefault 了，不会再动网页
+			if (viewportRef.current === null) return;
 			viewRef.current.x -= event.deltaX;
 			viewRef.current.y -= event.deltaY;
 			paint();
 			scheduleSaveView();
 		};
-		viewport.addEventListener("wheel", onWheel, { passive: false });
-		return () => viewport.removeEventListener("wheel", onWheel);
+		root.addEventListener("wheel", onWheel, { passive: false });
+		return () => root.removeEventListener("wheel", onWheel);
 	}, [paint, zoomAt, scheduleSaveView]);
+
+	/**
+	 * 键盘缩放：`+` / `=` 放大、`-` 缩小、`0` 回到 100%，**带 ⌘/Ctrl 也归画布**。
+	 *
+	 * 为什么要连 ⌘ 一起拦：macOS 用户习惯按 ⌘+ / ⌘-，不拦的话浏览器就把**整个网页**
+	 * 缩放了（用户 2026-11-23 报的「整个网页会放大缩小」）。
+	 * 只在**鼠标在画布上**时生效：这几个键在输入框里是正经字符，全局抢会把人搞疯。
+	 * 缩放以视口中心为锚（不是左上角）—— 否则按两下就把内容甩出屏幕了。
+	 */
+	useEffect(() => {
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (!hoverRef.current) return;
+			const target = event.target as HTMLElement | null;
+			if (target !== null && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+			const viewport = viewportRef.current;
+			if (!viewport) return;
+
+			const factor =
+				event.key === "+" || event.key === "=" ? 1.15 : event.key === "-" || event.key === "_" ? 1 / 1.15 : null;
+			if (factor !== null) {
+				event.preventDefault();
+				zoomAt(viewport.clientWidth / 2, viewport.clientHeight / 2, viewRef.current.k * factor);
+				return;
+			}
+			if (event.key === "0") {
+				event.preventDefault();
+				zoomAt(viewport.clientWidth / 2, viewport.clientHeight / 2, 1);
+			}
+		};
+		window.addEventListener("keydown", onKeyDown);
+		return () => window.removeEventListener("keydown", onKeyDown);
+	}, [zoomAt]);
 
 	/** 适应内容：把所有节点的包围盒塞进视口 */
 	const fit = useCallback(() => {
@@ -593,7 +633,16 @@ export function CanvasView() {
 	/* 空状态：还没有画布 */
 	if (doc === null || nodes.length === 0) {
 		return (
-			<div className="canvas-view canvas-empty">
+			<div
+				className="canvas-view canvas-empty"
+				ref={rootRef}
+				onPointerEnter={() => {
+					hoverRef.current = true;
+				}}
+				onPointerLeave={() => {
+					hoverRef.current = false;
+				}}
+			>
 				<div className="canvas-empty-card">
 					<div className="canvas-empty-title">{t("画布还空着", "The canvas is empty")}</div>
 					<div className="canvas-empty-body">
@@ -608,7 +657,7 @@ export function CanvasView() {
 	}
 
 	return (
-		<div className="canvas-view">
+		<div className="canvas-view" ref={rootRef}>
 			<div
 				className="canvas-viewport"
 				ref={viewportRef}
@@ -687,8 +736,8 @@ export function CanvasView() {
 			{doc.goal ? <div className="canvas-goal">{doc.goal}</div> : null}
 			<div className="canvas-hint">
 				{t(
-					"拖空白平移 · Shift+拖框选 · 拖节点移动 · ⌘/Ctrl+滚轮缩放 · 双击节点开工",
-					"Drag to pan · Shift+drag to box-select · drag nodes · ⌘/Ctrl+wheel to zoom · double-click to start",
+					"拖空白平移 · Shift+拖框选 · 滚轮/键盘 +/- 缩放 · ⌘+滚轮缩放 · 双击节点开工",
+					"Drag to pan · Shift+drag to box-select · wheel or +/- to zoom · ⌘+wheel to zoom · double-click to start",
 				)}
 			</div>
 		</div>
