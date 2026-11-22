@@ -4,7 +4,7 @@
  * 只做「解析 → 分发 → 回包」；真正的活儿都在 runtime / provider 接线里。
  * 单源：请求形状校验在 protocol-parse.ts（ADR-0002 纪律①）。
  */
-import { parseClientRequest } from "../protocol-parse.js";
+import { isKnownRequestType, parseClientRequest } from "../protocol-parse.js";
 import type { ProtocolError, Snapshot } from "../protocol.js";
 import type { Logger } from "../util/log.js";
 import type { Runtime } from "../session/runtime-types.js";
@@ -44,10 +44,20 @@ export async function handleMessage(socket: ClientSink, raw: string, deps: Handl
 	if (!request) {
 		const id = typeof (parsed as { id?: unknown })?.id === "string" ? (parsed as { id: string }).id : "unknown";
 		const type = (parsed as { type?: unknown })?.type;
-		const error: ProtocolError =
-			typeof type === "string"
-				? { code: "protocol.bad_payload", message: `请求 ${type} 的载荷不合法` }
-				: { code: "protocol.unknown_type", message: "无法识别的请求" };
+		/**
+		 * 两种失败要分开报（踩过两次同样的坑）：
+		 *   - 类型根本不认识 → 多半是**代码更新了但服务端没重启**，报 bad_payload 会让人去查数据；
+		 *   - 类型认识、载荷不对 → 才是客户端的问题。
+		 */
+		const error: ProtocolError = isKnownRequestType(type)
+			? { code: "protocol.bad_payload", message: `请求 ${type} 的载荷不合法` }
+			: {
+					code: "protocol.unknown_type",
+					message:
+						typeof type === "string"
+							? `这个服务端版本不认识「${type}」这条请求 —— 多半是代码更新了但服务端没重启，重启一下就好`
+							: "无法识别的请求",
+				};
 		deps.logger.warn("拒绝非法请求", { id, type, code: error.code });
 		deps.reply(socket, id, { ok: false, error });
 		return;

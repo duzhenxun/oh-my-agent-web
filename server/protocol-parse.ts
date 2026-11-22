@@ -7,6 +7,11 @@ import { normalizeWorkspacePath } from "./util/paths.js";
 
 // ---------------------------------------------------------------------------
 
+/** 这个服务端版本认识这条请求吗？（用来把"不认识"和"载荷不对"分开报） */
+export function isKnownRequestType(type: unknown): type is ClientRequestType {
+	return typeof type === "string" && (REQUEST_TYPES as string[]).includes(type);
+}
+
 export const REQUEST_TYPES: ClientRequestType[] = [
 	"set_engine",
 	"refresh_resources",
