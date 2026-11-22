@@ -45,7 +45,7 @@ const SNAP_PX = 6;
 const NODE_WIDTH = 240;
 
 /** 布局风格（本机偏好，按会话存）：卡片 = 自由摆放；另外两种是客户端按依赖重排 */
-type LayoutStyle = "card" | "timeline" | "checklist";
+type LayoutStyle = "card" | "timeline" | "checklist" | "mindmap";
 const STYLE_KEY = "agent-web.canvas.style.v1";
 
 /** 节点类型 → 图标 + 中文名。全是 task 的图读起来很闷，所以类型要能看出来 */
@@ -87,13 +87,98 @@ function depthsOf(nodes: readonly CanvasNode[], edges: readonly { from: string; 
 	return out;
 }
 
+/**
+ * 思维导图排布：根在中间，子节点按角度向外放射，同一支的子节点挤在同一个扇形里。
+ *
+ * 角度怎么分：先数每个节点**下面有多少个叶子**，按叶子数分角度区间 ——
+ * 这样支子多的那一边占的角度更宽，不会出现"一小支挤成一坨、一大支散得很开"。
+ * 断开的节点（没有从根走得到的）挂到最外圈，按顺序排。
+ */
+function mindmapLayout(nodes: readonly CanvasNode[], edges: readonly { from: string; to: string }[]): Map<string, Pos> {
+	const map = new Map<string, Pos>();
+	if (nodes.length === 0) return map;
+	const incoming = new Map<string, number>();
+	for (const node of nodes) incoming.set(node.id, 0);
+	const children = new Map<string, string[]>();
+	for (const edge of edges) {
+		incoming.set(edge.to, (incoming.get(edge.to) ?? 0) + 1);
+		const list = children.get(edge.from) ?? [];
+		list.push(edge.to);
+		children.set(edge.from, list);
+	}
+	const roots = nodes.filter((node) => (incoming.get(node.id) ?? 0) === 0).map((node) => node.id);
+	// 全是环：拿第一个当根，至少能画出来
+	if (roots.length === 0 && nodes[0] !== undefined) roots.push(nodes[0].id);
+
+	const RING = 300;
+	const seen = new Set<string>();
+	const leaves = new Map<string, number>();
+	const countLeaves = (id: string, stack: Set<string>): number => {
+		const cached = leaves.get(id);
+		if (cached !== undefined) return cached;
+		if (stack.has(id)) return 1;
+		stack.add(id);
+		const kids = children.get(id) ?? [];
+		const total = kids.length === 0 ? 1 : kids.reduce((sum, kid) => sum + countLeaves(kid, stack), 0);
+		stack.delete(id);
+		leaves.set(id, total);
+		return total;
+	};
+
+	const place = (id: string, angleStart: number, angleEnd: number, depth: number) => {
+		if (seen.has(id)) return;
+		seen.add(id);
+		const radius = depth * RING;
+		const angle = (angleStart + angleEnd) / 2;
+		map.set(id, { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius });
+		const kids = (children.get(id) ?? []).filter((kid) => !seen.has(kid));
+		if (kids.length === 0) return;
+		const total = kids.reduce((sum, kid) => sum + countLeaves(kid, new Set()), 0);
+		let cursor = angleStart;
+		for (const kid of kids) {
+			const share = ((angleEnd - angleStart) * countLeaves(kid, new Set())) / Math.max(1, total);
+			place(kid, cursor, cursor + share, depth + 1);
+			cursor += share;
+		}
+	};
+
+	const spread = Math.PI * 2;
+	roots.forEach((root, index) => {
+		const start = (spread * index) / roots.length - Math.PI / 2;
+		place(root, start, start + spread / roots.length, 0);
+	});
+
+	// 从根走不到的（环里的、孤立的）挂到最外圈
+	const orphans = nodes.filter((node) => !map.has(node.id));
+	if (orphans.length > 0) {
+		let maxDepth = 0;
+		for (const node of nodes) if (map.has(node.id)) maxDepth = Math.max(maxDepth, 1);
+		const radius = (maxDepth + 1) * RING;
+		orphans.forEach((node, index) => {
+			const angle = (Math.PI * 2 * index) / orphans.length - Math.PI / 2;
+			map.set(node.id, { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius });
+		});
+	}
+	// 把整张图挪到正坐标区（和别的样式一致，看全局时不会被负坐标绕晕）
+	let minX = Number.POSITIVE_INFINITY;
+	let minY = Number.POSITIVE_INFINITY;
+	for (const pos of map.values()) {
+		minX = Math.min(minX, pos.x);
+		minY = Math.min(minY, pos.y);
+	}
+	const dx = 400 - minX;
+	const dy = 400 - minY;
+	for (const [id, pos] of map) map.set(id, { x: pos.x + dx, y: pos.y + dy });
+	return map;
+}
+
 function loadStyle(conversationId: string | null): LayoutStyle {
 	try {
 		const raw = localStorage.getItem(STYLE_KEY);
 		if (raw === null || conversationId === null) return "card";
 		const value = JSON.parse(raw) as Record<string, unknown> | null;
 		const stored = value?.[conversationId];
-		return stored === "timeline" || stored === "checklist" ? stored : "card";
+		return stored === "timeline" || stored === "checklist" || stored === "mindmap" ? stored : "card";
 	} catch {
 		return "card";
 	}
@@ -312,6 +397,10 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 		const heightOf = (id: string) => heights[id] ?? 128;
 		const GAP = 22;
 		const map = new Map<string, Pos>();
+
+		if (style === "mindmap") {
+			return mindmapLayout(level.nodes, level.edges);
+		}
 
 		if (style === "timeline") {
 			// 每列自己往下堆
@@ -1561,6 +1650,7 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 									["card", t("卡片", "Cards")],
 									["timeline", t("时间线", "Timeline")],
 									["checklist", t("清单", "Checklist")],
+									["mindmap", t("导图", "Mind map")],
 								] as [LayoutStyle, string][]).map(([value, label]) => (
 									<button
 										type="button"
@@ -1718,6 +1808,7 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 					<option value="card">{t("卡片", "Cards")}</option>
 					<option value="timeline">{t("时间线", "Timeline")}</option>
 					<option value="checklist">{t("清单", "Checklist")}</option>
+					<option value="mindmap">{t("导图", "Mind map")}</option>
 				</select>
 				<button
 					type="button"
