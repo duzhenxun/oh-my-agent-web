@@ -1519,8 +1519,9 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 					<div
 						className="canvas-menu"
 						style={{
-							left: Math.min(menu.x, (viewportRef.current?.clientWidth ?? 600) - 200),
-							top: Math.min(menu.y, (viewportRef.current?.clientHeight ?? 600) - 40 - menuKinds * 26),
+							// 往右下挪一点：菜单左上角的小三角正好指向右键那一点
+							left: Math.min(menu.x + 8, (viewportRef.current?.clientWidth ?? 600) - 200),
+							top: Math.min(menu.y + 8, (viewportRef.current?.clientHeight ?? 600) - 40 - menuKinds * 26),
 						}}
 					>
 						{menu.nodeId === null ? (

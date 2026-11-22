@@ -531,6 +531,7 @@
 .canvas-menu {
 	position: absolute;
 	z-index: 41;
+	/* 菜单偏开右键点 10px，留出小三角的位置 */
 	min-width: 176px;
 	max-width: 240px;
 	padding: 4px;
@@ -538,6 +539,20 @@
 	background: var(--bg-elev);
 	border: 1px solid var(--border-strong);
 	box-shadow: 0 12px 32px rgb(0 0 0 / 20%);
+}
+
+/* 小尾巴：指向右键那一点，一眼看出"我是在哪儿点的" */
+.canvas-menu::before {
+	content: "";
+	position: absolute;
+	left: -5px;
+	top: -5px;
+	width: 10px;
+	height: 10px;
+	background: var(--bg-elev);
+	border-left: 1px solid var(--border-strong);
+	border-top: 1px solid var(--border-strong);
+	transform: rotate(45deg);
 }
 
 .canvas-menu-item {
