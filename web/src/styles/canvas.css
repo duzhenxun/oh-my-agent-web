@@ -51,6 +51,32 @@
 	will-change: transform;
 }
 
+/* 泳道底色带：铺在节点和连线下面，标出"这一摊事" */
+.canvas-lane {
+	position: absolute;
+	box-sizing: border-box;
+	border: 1px dashed color-mix(in srgb, var(--border-strong) 95%, transparent);
+	border-radius: 12px;
+	background: color-mix(in srgb, var(--bg-elev) 78%, transparent);
+	pointer-events: none;
+}
+
+.canvas-lane-label {
+	position: absolute;
+	left: 10px;
+	top: 5px;
+	padding: 1px 7px;
+	border-radius: 999px;
+	background: var(--bg-elev-2);
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--text-dim);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: calc(100% - 24px);
+}
+
 /* 连线层：在世界坐标系里，1px 描边跟着缩放 */
 .canvas-edges {
 	position: absolute;
