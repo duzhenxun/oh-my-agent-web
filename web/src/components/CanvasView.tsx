@@ -88,15 +88,22 @@ function depthsOf(nodes: readonly CanvasNode[], edges: readonly { from: string; 
 }
 
 /**
- * 思维导图排布：根在中间，子节点按角度向外放射，同一支的子节点挤在同一个扇形里。
+ * 思维导图（**从左往右的树**，和 XMind 逻辑图一个排法）。
  *
- * 角度怎么分：先数每个节点**下面有多少个叶子**，按叶子数分角度区间 ——
- * 这样支子多的那一边占的角度更宽，不会出现"一小支挤成一坨、一大支散得很开"。
- * 断开的节点（没有从根走得到的）挂到最外圈，按顺序排。
+ * 为什么不是放射状：我们的节点是 240px 宽的卡片，放射状下同一圈的卡片会互相压、
+ * 跨支的线还会交叉，看着像一堆散点（用户 2026-11-23 直接说"做的不对"）。
+ * 卡片天生适合横着排：深度 → 列，叶子按顺序占行，父节点对齐子节点的**中点**。
+ *
+ * 行高用实测高度（标题换行的卡片本来就是两倍高），否则又会摞在一起。
  */
-function mindmapLayout(nodes: readonly CanvasNode[], edges: readonly { from: string; to: string }[]): Map<string, Pos> {
+function mindmapLayout(
+	nodes: readonly CanvasNode[],
+	edges: readonly { from: string; to: string }[],
+	heightOf: (id: string) => number,
+): Map<string, Pos> {
 	const map = new Map<string, Pos>();
 	if (nodes.length === 0) return map;
+
 	const incoming = new Map<string, number>();
 	for (const node of nodes) incoming.set(node.id, 0);
 	const children = new Map<string, string[]>();
@@ -106,69 +113,47 @@ function mindmapLayout(nodes: readonly CanvasNode[], edges: readonly { from: str
 		list.push(edge.to);
 		children.set(edge.from, list);
 	}
-	const roots = nodes.filter((node) => (incoming.get(node.id) ?? 0) === 0).map((node) => node.id);
-	// 全是环：拿第一个当根，至少能画出来
-	if (roots.length === 0 && nodes[0] !== undefined) roots.push(nodes[0].id);
 
-	const RING = 300;
-	const seen = new Set<string>();
-	const leaves = new Map<string, number>();
-	const countLeaves = (id: string, stack: Set<string>): number => {
-		const cached = leaves.get(id);
-		if (cached !== undefined) return cached;
-		if (stack.has(id)) return 1;
+	const COLUMN = 340; // 240 卡片宽 + 100 连线空间
+	const GAP = 20;
+	const left = 40;
+	const top = 64;
+
+	const placed = new Set<string>();
+	let cursorY = top;
+
+	/** 后序：先把子树排完，再把自己对准子节点中点 */
+	const visit = (id: string, depth: number, stack: Set<string>): number => {
+		if (placed.has(id)) return map.get(id)?.y ?? cursorY;
+		if (stack.has(id)) return cursorY; // 环：就地兜住，不递归
 		stack.add(id);
-		const kids = children.get(id) ?? [];
-		const total = kids.length === 0 ? 1 : kids.reduce((sum, kid) => sum + countLeaves(kid, stack), 0);
-		stack.delete(id);
-		leaves.set(id, total);
-		return total;
-	};
+		placed.add(id);
 
-	const place = (id: string, angleStart: number, angleEnd: number, depth: number) => {
-		if (seen.has(id)) return;
-		seen.add(id);
-		const radius = depth * RING;
-		const angle = (angleStart + angleEnd) / 2;
-		map.set(id, { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius });
-		const kids = (children.get(id) ?? []).filter((kid) => !seen.has(kid));
-		if (kids.length === 0) return;
-		const total = kids.reduce((sum, kid) => sum + countLeaves(kid, new Set()), 0);
-		let cursor = angleStart;
-		for (const kid of kids) {
-			const share = ((angleEnd - angleStart) * countLeaves(kid, new Set())) / Math.max(1, total);
-			place(kid, cursor, cursor + share, depth + 1);
-			cursor += share;
+		const kids = (children.get(id) ?? []).filter((kid) => !placed.has(kid) && !stack.has(kid));
+		let y: number;
+		if (kids.length === 0) {
+			y = cursorY;
+			cursorY += heightOf(id) + GAP;
+		} else {
+			const kidYs = kids.map((kid) => visit(kid, depth + 1, stack));
+			y = (kidYs[0]! + kidYs[kidYs.length - 1]!) / 2 - heightOf(id) / 2 + heightOf(kids[0]!) / 2;
 		}
+		stack.delete(id);
+		map.set(id, { x: left + depth * COLUMN, y });
+		return y;
 	};
 
-	const spread = Math.PI * 2;
-	roots.forEach((root, index) => {
-		const start = (spread * index) / roots.length - Math.PI / 2;
-		place(root, start, start + spread / roots.length, 0);
-	});
+	// 根：没有入边的（多个就依次往下排）；全是环就拿第一个
+	const roots = nodes.filter((node) => (incoming.get(node.id) ?? 0) === 0).map((node) => node.id);
+	if (roots.length === 0 && nodes[0] !== undefined) roots.push(nodes[0].id);
+	for (const root of roots) visit(root, 0, new Set());
 
-	// 从根走不到的（环里的、孤立的）挂到最外圈
-	const orphans = nodes.filter((node) => !map.has(node.id));
-	if (orphans.length > 0) {
-		let maxDepth = 0;
-		for (const node of nodes) if (map.has(node.id)) maxDepth = Math.max(maxDepth, 1);
-		const radius = (maxDepth + 1) * RING;
-		orphans.forEach((node, index) => {
-			const angle = (Math.PI * 2 * index) / orphans.length - Math.PI / 2;
-			map.set(node.id, { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius });
-		});
+	// 走不到的（环里的、孤立的）：单独一列排在下面，别让它们消失
+	const orphans = nodes.filter((node) => !placed.has(node.id));
+	for (const node of orphans) {
+		map.set(node.id, { x: left, y: cursorY });
+		cursorY += heightOf(node.id) + GAP;
 	}
-	// 把整张图挪到正坐标区（和别的样式一致，看全局时不会被负坐标绕晕）
-	let minX = Number.POSITIVE_INFINITY;
-	let minY = Number.POSITIVE_INFINITY;
-	for (const pos of map.values()) {
-		minX = Math.min(minX, pos.x);
-		minY = Math.min(minY, pos.y);
-	}
-	const dx = 400 - minX;
-	const dy = 400 - minY;
-	for (const [id, pos] of map) map.set(id, { x: pos.x + dx, y: pos.y + dy });
 	return map;
 }
 
@@ -399,7 +384,7 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 		const map = new Map<string, Pos>();
 
 		if (style === "mindmap") {
-			return mindmapLayout(level.nodes, level.edges);
+			return mindmapLayout(level.nodes, level.edges, (id) => heights[id] ?? 128);
 		}
 
 		if (style === "timeline") {
