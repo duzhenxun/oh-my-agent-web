@@ -45,7 +45,7 @@ const SNAP_PX = 6;
 const NODE_WIDTH = 240;
 
 /** 布局风格（本机偏好，按会话存）：卡片 = 自由摆放；另外两种是客户端按依赖重排 */
-type LayoutStyle = "card" | "timeline" | "checklist" | "mindmap";
+type LayoutStyle = "card" | "timeline" | "checklist" | "mindmap" | "swimlane";
 const STYLE_KEY = "agent-web.canvas.style.v1";
 
 /** 节点类型 → 图标 + 中文名。全是 task 的图读起来很闷，所以类型要能看出来 */
@@ -136,7 +136,12 @@ function mindmapLayout(
 			cursorY += heightOf(id) + GAP;
 		} else {
 			const kidYs = kids.map((kid) => visit(kid, depth + 1, stack));
-			y = (kidYs[0]! + kidYs[kidYs.length - 1]!) / 2 - heightOf(id) / 2 + heightOf(kids[0]!) / 2;
+			// 子节点各自的**中线**取平均，再把自己对到那个中线上 —— 别混自己的高度，
+			// 混了之后父节点会往下漂、压住上面那条支（用户 2026-11-23 报的"容易压住"）。
+			const firstMid = kidYs[0]! + heightOf(kids[0]!) / 2;
+			const lastKid = kids[kids.length - 1]!;
+			const lastMid = kidYs[kidYs.length - 1]! + heightOf(lastKid) / 2;
+			y = (firstMid + lastMid) / 2 - heightOf(id) / 2;
 		}
 		stack.delete(id);
 		map.set(id, { x: left + depth * COLUMN, y });
@@ -157,13 +162,167 @@ function mindmapLayout(
 	return map;
 }
 
+/** 泳道的一条带（渲染成世界坐标里的一块底色 + 标题） */
+type LaneBand = { x: number; y: number; w: number; h: number; label: string };
+
+/**
+ * 泳道图：**根节点的每个一级分支 = 一条泳道**，支里的步骤按深度从左到右排。
+ *
+ * 为什么拿一级分支当泳道：节点上没有"负责人/模块"这种字段，凭空造一个还得让 agent 去填。
+ * 而一张计划里，根下面那一层本来就是"并行推进的几摊事"——直接拿它当泳道，语义和视觉都对得上。
+ * 掉不进任何分支的节点（环里的、孤立的）单独放在最后一条「其他」泳道。
+ */
+function swimlaneLayout(
+	nodes: readonly CanvasNode[],
+	edges: readonly { from: string; to: string }[],
+	heightOf: (id: string) => number,
+): { positions: Map<string, Pos>; bands: LaneBand[] } {
+	const positions = new Map<string, Pos>();
+	const bands: LaneBand[] = [];
+	if (nodes.length === 0) return { positions, bands };
+
+	const children = new Map<string, string[]>();
+	const incoming = new Map<string, number>();
+	for (const node of nodes) incoming.set(node.id, 0);
+	for (const edge of edges) {
+		children.set(edge.from, [...(children.get(edge.from) ?? []), edge.to]);
+		incoming.set(edge.to, (incoming.get(edge.to) ?? 0) + 1);
+	}
+
+	const COLUMN = 320;
+	const LEFT = 40;
+	const TOP = 64;
+	const LANE_GAP = 26;
+	const ROW_GAP = 18;
+	const BAND_PAD = 16;
+	/** 泳道标题占的高度：不留出来的话标签会压在第一个节点上 */
+	const LABEL_SPACE = 26;
+
+	const root = nodes.find((node) => (incoming.get(node.id) ?? 0) === 0) ?? nodes[0]!;
+	const lanes = (children.get(root.id) ?? []).filter((id) => nodes.some((node) => node.id === id));
+
+	/** 一支的分支成员（含支头本身） */
+	const collect = (headId: string): string[] => {
+		const out: string[] = [];
+		const stack = [headId];
+		const seen = new Set<string>();
+		while (stack.length > 0) {
+			const id = stack.pop()!;
+			if (seen.has(id) || id === root.id) continue;
+			seen.add(id);
+			out.push(id);
+			for (const kid of children.get(id) ?? []) stack.push(kid);
+		}
+		return out;
+	};
+
+	let cursorY = TOP;
+	const placeLane = (label: string, ids: string[], depthOf: Map<string, number>) => {
+		if (ids.length === 0) return;
+		// 泳道内按深度分行：同深度的往下一行一行排
+		const byDepth = new Map<number, string[]>();
+		for (const id of ids) {
+			const depth = depthOf.get(id) ?? 0;
+			byDepth.set(depth, [...(byDepth.get(depth) ?? []), id]);
+		}
+		const depths = [...byDepth.keys()].sort((a, b) => a - b);
+		let bandHeight = 0;
+		let rowCursor = cursorY + LABEL_SPACE + BAND_PAD / 2;
+		const vertical = new Map<string, number>();
+		for (const depth of depths) {
+			const group = byDepth.get(depth)!;
+			let rowY = rowCursor;
+			let rowHeight = 0;
+			for (const id of group) {
+				vertical.set(id, rowY);
+				rowY += heightOf(id) + ROW_GAP;
+				rowHeight = Math.max(rowHeight, heightOf(id));
+			}
+			rowCursor = rowY;
+			bandHeight = Math.max(bandHeight, rowCursor - cursorY);
+		}
+		bandHeight = Math.max(bandHeight, LABEL_SPACE + 56) + BAND_PAD;
+		const maxDepth = depths[depths.length - 1] ?? 0;
+		const minDepth = depths[0] ?? 0;
+		bands.push({
+			x: LEFT - BAND_PAD,
+			y: cursorY,
+			w: (maxDepth - minDepth + 1) * COLUMN + BAND_PAD * 2,
+			h: bandHeight,
+			label,
+		});
+		for (const id of ids) {
+			positions.set(id, {
+				x: LEFT + ((depthOf.get(id) ?? 0) - minDepth) * COLUMN,
+				y: vertical.get(id) ?? cursorY + LABEL_SPACE + BAND_PAD / 2,
+			});
+		}
+		cursorY += bandHeight + LANE_GAP;
+	};
+
+	// 深度：从根算（根 = 0），每条泳道内部再把支头挪到第一列
+	const depthOf = depthsOf(nodes, edges);
+
+	if (lanes.length === 0) {
+		// 没有分支（只有一个根，或者全是环）：就一条泳道
+		placeLane(root.title, nodes.filter((node) => node.id !== root.id).map((node) => node.id), depthOf);
+	} else {
+		const covered = new Set<string>();
+		for (const headId of lanes) {
+			const label = nodes.find((node) => node.id === headId)?.title ?? headId;
+			const ids = collect(headId);
+			for (const id of ids) covered.add(id);
+			placeLane(label, ids, depthOf);
+		}
+		const orphans = nodes.filter((node) => node.id !== root.id && !covered.has(node.id)).map((node) => node.id);
+		placeLane("其他", orphans, depthOf);
+	}
+
+	// 根自己：放在最上面一条细带里，左边对齐
+	const rootHeight = heightOf(root.id);
+	positions.set(root.id, { x: LEFT, y: TOP });
+	for (const band of bands) {
+		// 所有泳道整体下移，给根让出位置
+		band.y += rootHeight + LANE_GAP;
+	}
+	for (const [id, pos] of positions) {
+		if (id === root.id) continue;
+		positions.set(id, { x: pos.x, y: pos.y + rootHeight + LANE_GAP });
+	}
+	return { positions, bands };
+}
+
+/** 非卡片样式下"手摆的位置"存本机：会话 → 样式 → 节点 id → 坐标 */
+const MOVES_KEY = "agent-web.canvas.moves.v1";
+
+function loadMoves(): Record<string, Record<string, Record<string, Pos>>> {
+	try {
+		const raw = localStorage.getItem(MOVES_KEY);
+		if (raw === null) return {};
+		const value = JSON.parse(raw) as unknown;
+		return typeof value === "object" && value !== null ? (value as Record<string, Record<string, Record<string, Pos>>>) : {};
+	} catch {
+		return {};
+	}
+}
+
+function saveMoves(moves: Record<string, Record<string, Record<string, Pos>>>): void {
+	try {
+		localStorage.setItem(MOVES_KEY, JSON.stringify(moves));
+	} catch {
+		// 存不进去只影响"下次还摆在这儿"
+	}
+}
+
 function loadStyle(conversationId: string | null): LayoutStyle {
 	try {
 		const raw = localStorage.getItem(STYLE_KEY);
 		if (raw === null || conversationId === null) return "card";
 		const value = JSON.parse(raw) as Record<string, unknown> | null;
 		const stored = value?.[conversationId];
-		return stored === "timeline" || stored === "checklist" || stored === "mindmap" ? stored : "card";
+		return stored === "timeline" || stored === "checklist" || stored === "mindmap" || stored === "swimlane"
+			? stored
+			: "card";
 	} catch {
 		return "card";
 	}
@@ -372,8 +531,11 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 	 * （用户 2026-11-22 报的"清单时距离太近"）。`heights` 是渲染后量出来的，
 	 * 第一帧还没量到时用估算值兜着，量到之后会再排一次。
 	 */
-	const derived = useMemo(() => {
-		if (style === "card" || doc === null) return null;
+	const layoutResult = useMemo((): { positions: Map<string, Pos> | null; bands: LaneBand[] } => {
+		if (style === "card" || doc === null) return { positions: null, bands: [] };
+		if (style === "swimlane") {
+			return swimlaneLayout(level.nodes, level.edges, (id) => heights[id] ?? 128);
+		}
 		const depths = depthsOf(level.nodes, level.edges);
 		const ordered = [...level.nodes].sort(
 			(a, b) => (depths.get(a.id) ?? 0) - (depths.get(b.id) ?? 0) || (a.order ?? 0) - (b.order ?? 0),
@@ -384,7 +546,7 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 		const map = new Map<string, Pos>();
 
 		if (style === "mindmap") {
-			return mindmapLayout(level.nodes, level.edges, (id) => heights[id] ?? 128);
+			return { positions: mindmapLayout(level.nodes, level.edges, (id) => heights[id] ?? 128), bands: [] };
 		}
 
 		if (style === "timeline") {
@@ -396,6 +558,7 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 				map.set(node.id, { x: 40 + depth * 300, y });
 				cursor.set(depth, y + heightOf(node.id) + GAP);
 			}
+			return { positions: map, bands: [] };
 		} else {
 			// 清单：一列到底，按真实高度往下排
 			let y = 64;
@@ -404,15 +567,31 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 				y += heightOf(node.id) + GAP;
 			}
 		}
-		return map;
+		return { positions: map, bands: [] };
 	}, [level, style, heights]);
 
-	/** 节点坐标：派生布局 > 刚松手的乐观值 > 服务端坐标 */
+	/** 派生布局的位置（卡片风格是 null，用服务端坐标） */
+	const derived = layoutResult.positions;
+	/** 泳道的底色带（别的样式是空数组） */
+	const laneBands = layoutResult.bands;
+
+	/**
+	 * 非卡片样式下**手摆的位置**（本机，按 会话+样式 分别记）。
+	 *
+	 * 为什么只存本机：服务端的 x/y 只有一份，而"时间线里我想把这张挪开"是某个样式的个人偏好，
+	 * 不该覆盖主数据。卡片样式仍然以服务端为准（那是这份计划的真实坐标）。
+	 */
+	const [moves, setMoves] = useState<Record<string, Record<string, Record<string, Pos>>>>(loadMoves);
+	const styleMoves = style === "card" ? undefined : moves[conversationId ?? ""]?.[style];
+
+	/** 节点坐标：手摆（非卡片样式） > 派生布局 > 刚松手的乐观值 > 服务端坐标 */
 	const posOf = useCallback(
-		(node: CanvasNode): Pos => derived?.get(node.id) ?? pending[node.id] ?? { x: node.x, y: node.y },
-		[derived, pending],
+		(node: CanvasNode): Pos =>
+			styleMoves?.[node.id] ?? derived?.get(node.id) ?? pending[node.id] ?? { x: node.x, y: node.y },
+		[derived, pending, styleMoves],
 	);
-	const canDrag = style === "card";
+	/** 现在所有样式都能拖（以前只有卡片能拖，用户 2026-11-23 要求其他样式也能） */
+	const canDrag = true;
 
 	/**
 	 * 画布上的键盘操作（都要满足：鼠标在画布上、焦点不在输入框里）。
@@ -463,7 +642,7 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 			const same = Object.keys(next).length === Object.keys(current).length && Object.entries(next).every(([id, h]) => current[id] === h);
 			return same ? current : next;
 		});
-	}, [revision, pending, runningNodeId, run?.status, run?.activeTool?.name]);
+	}, [revision, pending, runningNodeId, run?.status, run?.activeTool?.name, style]);
 
 	/* ── 视口绘制 ─────────────────────────────────────── */
 	const paint = useCallback(() => {
@@ -867,9 +1046,20 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 			moved[id] = pos;
 			moves.push({ id, ...pos });
 		}
-		// 先乐观摆上（不然会闪回原位），再回写服务端；rev 一变就清 pending
-		setPending((current) => ({ ...current, ...moved }));
-		if (conversationId !== null) canvasMoveNodes(conversationId, moves, parentId ?? undefined);
+		if (style === "card") {
+			// 先乐观摆上（不然会闪回原位），再回写服务端；rev 一变就清 pending
+			setPending((current) => ({ ...current, ...moved }));
+			if (conversationId !== null) canvasMoveNodes(conversationId, moves, parentId ?? undefined);
+		} else {
+			// 其他样式：只记在本机（按样式分开，不污染服务端那份坐标）
+			setMoves((current) => {
+				const key = conversationId ?? "";
+				const forStyle = { ...current[key]?.[style], ...moved };
+				const next = { ...current, [key]: { ...current[key], [style]: forStyle } };
+				saveMoves(next);
+				return next;
+			});
+		}
 	};
 
 	/* ── 滚轮 ─────────────────────────────────────────── */
@@ -1291,6 +1481,16 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 				}}
 			>
 				<div className="canvas-world" ref={worldRef}>
+					{/* 泳道底色带：在节点和连线下面，标出"这一摊事" */}
+					{laneBands.map((band) => (
+						<div
+							className="canvas-lane"
+							key={`${band.label}-${band.y}`}
+							style={{ left: band.x, top: band.y, width: band.w, height: band.h }}
+						>
+							<span className="canvas-lane-label">{band.label}</span>
+						</div>
+					))}
 					{/* 连线画在世界坐标系里，跟着一起缩放 */}
 					{edges.length > 0 ? (
 						<svg className="canvas-edges">
@@ -1636,6 +1836,7 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 									["timeline", t("时间线", "Timeline")],
 									["checklist", t("清单", "Checklist")],
 									["mindmap", t("导图", "Mind map")],
+									["swimlane", t("泳道", "Swimlanes")],
 								] as [LayoutStyle, string][]).map(([value, label]) => (
 									<button
 										type="button"
@@ -1794,6 +1995,7 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 					<option value="timeline">{t("时间线", "Timeline")}</option>
 					<option value="checklist">{t("清单", "Checklist")}</option>
 					<option value="mindmap">{t("导图", "Mind map")}</option>
+					<option value="swimlane">{t("泳道", "Swimlanes")}</option>
 				</select>
 				<button
 					type="button"
