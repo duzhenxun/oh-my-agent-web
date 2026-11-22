@@ -298,6 +298,34 @@
 	z-index: 40;
 }
 
+/* 右键落点：一个从点击处扩散淡出的圈（菜单可能盖住那一点，所以圈要明显） */
+.canvas-rt-marker {
+	position: absolute;
+	z-index: 42;
+	width: 14px;
+	height: 14px;
+	margin: -7px 0 0 -7px;
+	border-radius: 50%;
+	border: 2px solid var(--accent);
+	pointer-events: none;
+	animation: canvas-rt-pop 900ms ease-out forwards;
+}
+
+@keyframes canvas-rt-pop {
+	0% {
+		transform: scale(0.4);
+		opacity: 0.95;
+	}
+	60% {
+		transform: scale(1.5);
+		opacity: 0.5;
+	}
+	100% {
+		transform: scale(2.1);
+		opacity: 0;
+	}
+}
+
 .canvas-menu {
 	position: absolute;
 	z-index: 41;
@@ -410,7 +438,8 @@
 .canvas-style {
 	font: inherit;
 	font-size: 11px;
-	padding: 2px 4px;
+	max-width: 78px;
+	padding: 2px 2px;
 	border: 1px solid var(--border);
 	border-radius: 5px;
 	background: transparent;
@@ -654,6 +683,10 @@
 	left: 8px;
 	display: flex;
 	align-items: center;
+	/* 面板窄的时候宁可折成两行，也别把"看全局"压成竖排的单字 */
+	flex-wrap: wrap;
+	row-gap: 4px;
+	max-width: calc(100% - 16px);
 	gap: 5px;
 	padding: 4px 6px;
 	border-radius: 8px;
@@ -664,6 +697,65 @@
 	font-variant-numeric: tabular-nums;
 	backdrop-filter: blur(6px);
 	z-index: 20;
+}
+
+/* 工具条里每一项都不许折字：竖排的单字是没法读的 */
+.canvas-bar > * {
+	flex: 0 0 auto;
+	white-space: nowrap;
+}
+
+/* 图标按钮：正方形、没有文字，省宽度 */
+.canvas-icon-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	padding: 0;
+	border-radius: 5px;
+	border: 1px solid var(--border);
+	background: transparent;
+	color: var(--text-dim);
+	cursor: pointer;
+}
+
+.canvas-icon-btn:hover {
+	border-color: var(--accent);
+	color: var(--accent);
+}
+
+.canvas-icon-btn.is-on {
+	border-color: var(--accent);
+	color: var(--accent);
+	background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+/* "1:1" 是文字，稍微宽一点 */
+.canvas-icon-btn.canvas-icon-text {
+	width: auto;
+	min-width: 26px;
+	padding: 0 4px;
+	font-size: 10.5px;
+	font-weight: 600;
+	letter-spacing: 0.02em;
+}
+
+/* 读数 / 计数：窄、右对齐，别抢宽度 */
+.canvas-readout {
+	min-width: 34px;
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+}
+
+.canvas-count {
+	min-width: 14px;
+	text-align: center;
+	opacity: 0.75;
+}
+
+.canvas-bar > span {
+	white-space: nowrap;
 }
 
 .canvas-bar button {

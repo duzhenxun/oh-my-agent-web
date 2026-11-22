@@ -755,6 +755,32 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			const node = doc.nodes.find((each) => each.id === nodeId);
 			if (node === undefined) return { ok: false, error: { code: "canvas.no_such_node", message: "没有这个节点（可能刚被删掉）" } };
 
+			/**
+			 * 一条会话同一时刻只能跑一个回合，所以也只能有一个节点在"做"。
+			 *
+			 * 不拦的话：A 在跑时点 B，绑定会被 B 覆盖 —— A 永远不会被推到 done，
+			 * 而 B 那一轮结束又会被当成 A 的结果。两个节点一起烂在那里。
+			 * 宁可拒绝并说清楚"现在在做什么"。
+			 */
+			if (canvasRunningNode.has(conversationId) && !turns.has(conversationId)) {
+				// 回合早结束了但绑定还挂着（比如宿主重启过）：清掉，别一直报忙
+				canvasRunningNode.delete(conversationId);
+			}
+			if (turns.has(conversationId)) {
+				const runningId = canvasRunningNode.get(conversationId);
+				const runningTitle = runningId === undefined ? null : (doc.nodes.find((each) => each.id === runningId)?.title ?? null);
+				return {
+					ok: false,
+					error: {
+						code: "canvas.busy",
+						message:
+							runningTitle === null
+								? "这条会话正在跑，等这一轮结束或先停下来再开始下一步"
+								: `这条会话正在做「${runningTitle}」，要么等它结束，要么先停下来`,
+					},
+				};
+			}
+
 			// 先标 doing 并绑定，再发回合：反过来的话回合快的话会先结束、绑定还没写上
 			const started = editCanvas(conversationId, (current) => setStatus(current, nodeId, "doing"));
 			if (!started.ok) return started;

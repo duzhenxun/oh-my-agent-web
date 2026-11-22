@@ -22,10 +22,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CanvasDoc, CanvasNode, CanvasNodeStatus } from "../types.ts";
 import { useAppState } from "../store.ts";
-import { canvasDeleteNodes, canvasMoveNodes, canvasSetStatus, canvasStartNode, canvasUpdateNode } from "../ws.ts";
+import { canvasDeleteNodes, canvasMoveNodes, canvasSetStatus, canvasStartNode, canvasUpdateNode, interrupt } from "../ws.ts";
 import { useT } from "../use-language.ts";
 
-const VIEW_KEY = "agent-web.canvas.view.v2";
 const MIN_K = 0.2;
 const MAX_K = 2.5;
 /** 与 `panel-tab-dnd.ts` 一致：5px 内算点击，不算拖 */
@@ -104,26 +103,6 @@ function saveStyle(conversationId: string | null, style: LayoutStyle): void {
 
 type Pos = { x: number; y: number };
 
-function loadView(): { x: number; y: number; k: number } | null {
-	try {
-		const raw = localStorage.getItem(VIEW_KEY);
-		if (raw === null) return null;
-		const value = JSON.parse(raw) as { x?: unknown; y?: unknown; k?: unknown } | null;
-		if (
-			typeof value?.x !== "number" ||
-			typeof value.y !== "number" ||
-			typeof value.k !== "number" ||
-			!Number.isFinite(value.x) ||
-			!Number.isFinite(value.y) ||
-			!Number.isFinite(value.k)
-		) {
-			return null;
-		}
-		return { x: value.x, y: value.y, k: Math.min(MAX_K, Math.max(MIN_K, value.k)) };
-	} catch {
-		return null;
-	}
-}
 
 /** 状态 → 色点 / 文案 / 颜色类 */
 function statusOf(node: CanvasNode): { tone: string; zh: string; en: string } {
@@ -188,19 +167,14 @@ export function CanvasView() {
 	const marqueeRef = useRef<HTMLDivElement | null>(null);
 	const guideXRef = useRef<HTMLDivElement | null>(null);
 	const guideYRef = useRef<HTMLDivElement | null>(null);
-	const viewRef = useRef(loadView() ?? { x: 0, y: 0, k: 1 });
-	const saveViewTimer = useRef<number | null>(null);
-	const scheduleSaveView = useCallback(() => {
-		if (saveViewTimer.current !== null) window.clearTimeout(saveViewTimer.current);
-		saveViewTimer.current = window.setTimeout(() => {
-			saveViewTimer.current = null;
-			try {
-				localStorage.setItem(VIEW_KEY, JSON.stringify(viewRef.current));
-			} catch {
-				// 存不进去只是不记得视口
-			}
-		}, 300);
-	}, []);
+	/**
+	 * 视口状态：**每次打开画布都从「重置」那个视角开始**（100%，原点）。
+	 *
+	 * 为什么不再记住上次的平移/缩放，也不自动"适应内容"：用户要的是"打开就看到
+	 * 自己画的那张图原本的样子"，而不是浏览器替他缩小到全局、或者跳回上次拖到的角落。
+	 * 要看全局有「看全局」按钮，随时点。
+	 */
+	const viewRef = useRef({ x: 0, y: 0, k: 1 });
 
 	/**
 	 * 拖动后的**乐观坐标**：松手立刻先摆在原地，等快照回来。
@@ -369,7 +343,9 @@ export function CanvasView() {
 		 */
 		rootRef.current?.classList.toggle("is-far", view.k < 0.5);
 		if (readoutRef.current) {
-			readoutRef.current.textContent = `x ${Math.round(view.x)} · y ${Math.round(view.y)} · ${view.k.toFixed(2)}×`;
+			readoutRef.current.textContent = `${view.k.toFixed(2)}×`;
+			// x/y 挪到 title：工具栏里那一长串是最容易被压到折行的部分
+			readoutRef.current.title = `x ${Math.round(view.x)} · y ${Math.round(view.y)} · ${view.k.toFixed(2)}×`;
 		}
 	}, []);
 
@@ -389,9 +365,8 @@ export function CanvasView() {
 			view.x = screenX - worldX * k;
 			view.y = screenY - worldY * k;
 			paint();
-			scheduleSaveView();
 		},
-		[paint, scheduleSaveView],
+		[paint],
 	);
 
 	/** 以视口中心为锚缩放一档（+/− 按钮和键盘共用这一个入口） */
@@ -688,15 +663,13 @@ export function CanvasView() {
 		view.x = (viewport.clientWidth - worldWidth * k) / 2 - worldLeft * k;
 		view.y = (viewport.clientHeight - worldHeight * k) / 2 - worldTop * k;
 		paint();
-		scheduleSaveView();
-	}, [paint, scheduleSaveView]);
+	}, [paint]);
 
 	const endPointer = (event: React.PointerEvent<HTMLDivElement>) => {
 		const pan = panRef.current;
 		if (pan !== null && event.pointerId === pan.id) {
 			panRef.current = null;
 			viewportRef.current?.classList.remove("is-panning");
-			scheduleSaveView();
 		}
 
 		const zoomDrag = zoomDragRef.current;
@@ -782,11 +755,10 @@ export function CanvasView() {
 			viewRef.current.x -= event.deltaX;
 			viewRef.current.y -= event.deltaY;
 			paint();
-			scheduleSaveView();
 		};
 		root.addEventListener("wheel", onWheel, { passive: false });
 		return () => root.removeEventListener("wheel", onWheel);
-	}, [paint, zoomAt, scheduleSaveView]);
+	}, [paint, zoomAt]);
 
 	/**
 	 * 键盘缩放：`+` / `=` 放大、`-` 缩小、`0` 回到 100%，**带 ⌘/Ctrl 也归画布**。
@@ -899,29 +871,12 @@ export function CanvasView() {
 		viewRef.current.x = Math.max(centeredX, pad - minX * k);
 		viewRef.current.y = Math.max(centeredY, pad - minY * k);
 		paint();
-		scheduleSaveView();
-	}, [doc?.nodes, heights, paint, posOf, scheduleSaveView]);
+	}, [doc?.nodes, heights, paint, posOf]);
 
 	const reset = useCallback(() => {
 		viewRef.current = { x: 0, y: 0, k: 1 };
 		paint();
-		scheduleSaveView();
-	}, [paint, scheduleSaveView]);
-
-	/**
-	 * 画布第一次拿到内容时自动适应一次。
-	 * 记录已经适配过的 rev，避免之后 agent 每次加节点都把用户的视角拽走。
-	 */
-	const fittedRevRef = useRef<number | null>(null);
-	useEffect(() => {
-		if (revision === 0) return;
-		if (fittedRevRef.current !== null) return;
-		const frame = window.requestAnimationFrame(() => {
-			fittedRevRef.current = revision;
-			fit();
-		});
-		return () => window.cancelAnimationFrame(frame);
-	}, [revision, fit]);
+	}, [paint]);
 
 	/** 重命名提交：标题不能为空，说明可以清空 */
 	const commitEditing = useCallback(() => {
@@ -938,7 +893,7 @@ export function CanvasView() {
 		if (patch.title !== undefined || patch.detail !== undefined) canvasUpdateNode(conversationId, draft.id, patch);
 	}, [conversationId, doc]);
 
-	/** 右边菜单要用的"当前编辑值"，提交时不想因为闭包拿不到最新值 */
+	/** 右边菜单 / 内联编辑要用的"当前编辑值"，提交时不想因为闭包拿不到最新值 */
 	const editingRef = useRef<{ id: string; title: string; detail: string } | null>(null);
 	useLayoutEffect(() => {
 		editingRef.current = editing;
@@ -1023,10 +978,9 @@ export function CanvasView() {
 			viewRef.current.x = viewport.clientWidth / 2 - (pos.x + NODE_WIDTH / 2) * k;
 			viewRef.current.y = viewport.clientHeight / 2 - (pos.y + height / 2) * k;
 			paint();
-			scheduleSaveView();
 			setHover(null);
 		},
-		[heights, paint, posOf, scheduleSaveView],
+		[heights, paint, posOf],
 	);
 
 	/** 预览卡的位置：优先放节点右侧，右侧放不下就翻到左侧；纵向夹在视口内 */
@@ -1289,6 +1243,13 @@ export function CanvasView() {
 							closeMenu();
 						}}
 					/>
+					{/* 右键落点标示：一个扩散的圈，让人看清自己到底点在哪儿 */}
+					<span
+						key={`${menu.x}-${menu.y}`}
+						className="canvas-rt-marker"
+						style={{ left: menu.x, top: menu.y }}
+						aria-hidden="true"
+					/>
 					<div
 						className="canvas-menu"
 						style={{
@@ -1334,11 +1295,39 @@ export function CanvasView() {
 						{menu.nodeId !== null ? (() => {
 							const node = nodes.find((each) => each.id === menu.nodeId);
 							if (node === undefined) return null;
+							const padreHint = (() => {
+								const parents = (doc?.edges ?? []).filter((edge) => edge.to === node.id).map((edge) => edge.from);
+								if (parents.length === 0) return null;
+								const pending = parents.filter((id) => (nodes.find((each) => each.id === id)?.status ?? "todo") !== "done");
+								if (pending.length === 0) return null;
+								return t(`前置还有 ${pending.length} 步没完成`, `${pending.length} earlier step(s) not done yet`);
+							})();
 							return (
 								<>
+									{/* 文案跟状态走：已完成的还写"开始做"就是骗人 */}
 									<button type="button" className="canvas-menu-item" onClick={() => { closeMenu(); startNode(node); }}>
-										{t("开始做这一步", "Start this step")}
+										{node.status === "done"
+											? t("重新做一遍", "Run it again")
+											: node.status === "doing"
+												? t("重新开始这一步", "Restart this step")
+												: node.status === "blocked"
+													? t("重试这一步", "Retry this step")
+													: t("开始做这一步", "Start this step")}
 									</button>
+									{node.status === "doing" ? (
+										<button
+											type="button"
+											className="canvas-menu-item"
+											onClick={() => {
+												closeMenu();
+												if (conversationId !== null) interrupt(conversationId);
+											}}
+										>
+											{t("停下来", "Stop it")}
+										</button>
+									) : null}
+									{/* 前置没做完就开工：允许（有时就是要跳），但得说一声 */}
+									{padreHint !== null ? <div className="canvas-menu-hint">{padreHint}</div> : null}
 									<div className="canvas-menu-sep" />
 									<div className="canvas-menu-label">{t("状态", "Status")}</div>
 									{([
@@ -1386,30 +1375,57 @@ export function CanvasView() {
 				</>
 			) : null}
 			<div className="canvas-bar">
-				<button type="button" onClick={fit} title={t("缩到能看见全部节点", "Zoom out to show every step")}>
-					{t("看全局", "Fit all")}
+				{/* 图标按钮：面板窄的时候文字会折成竖排单字，图标 + title 更稳 */}
+				<button
+					type="button"
+					className="canvas-icon-btn"
+					onClick={fit}
+					title={t("看全局（缩到能看见全部）", "Fit all")}
+					aria-label={t("看全局", "Fit all")}
+				>
+					<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+						<path
+							d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4"
+							fill="none"
+							stroke="currentColor"
+							strokeWidth="1.5"
+							strokeLinecap="round"
+						/>
+					</svg>
 				</button>
-				<button type="button" onClick={reset} title={t("回到 100%", "Back to 100%")}>
-					{t("重置", "Reset")}
+				<button
+					type="button"
+					className="canvas-icon-btn canvas-icon-text"
+					onClick={reset}
+					title={t("回到 100%（重置视角）", "Back to 100%")}
+					aria-label={t("重置视角", "Reset view")}
+				>
+					1:1
 				</button>
 				<select
 					className="canvas-style"
 					value={style}
 					aria-label={t("画布布局", "Canvas layout")}
+					title={t("画布布局", "Canvas layout")}
 					onChange={(event) => changeStyle(event.target.value as LayoutStyle)}
 				>
-					<option value="card">{t("卡片布局", "Cards")}</option>
+					<option value="card">{t("卡片", "Cards")}</option>
 					<option value="timeline">{t("时间线", "Timeline")}</option>
 					<option value="checklist">{t("清单", "Checklist")}</option>
 				</select>
 				<button
 					type="button"
-					className={zoomArmed ? "is-on" : undefined}
+					className={`canvas-icon-btn${zoomArmed ? " is-on" : ""}`}
 					aria-pressed={zoomArmed}
 					onClick={() => setZoomArmed((value) => !value)}
-					title={t("框选一块区域放大（也可以按住 Z 拖）", "Zoom into a region (or hold Z and drag)")}
+					title={t("框选放大（也可以按住 Z 拖）", "Zoom to area")}
+					aria-label={t("框选放大", "Zoom to area")}
 				>
-					{t("框选放大", "Zoom to area")}
+					<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+						<rect x="1.5" y="1.5" width="8" height="8" rx="1" fill="none" stroke="currentColor" strokeWidth="1.3" strokeDasharray="2 1.6" />
+						<circle cx="10.6" cy="10.6" r="3" fill="none" stroke="currentColor" strokeWidth="1.4" />
+						<path d="M12.9 12.9 15 15" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+					</svg>
 				</button>
 				{/* 缩放按钮：和键盘 +/- 、触摸板捏合走同一个 zoomBy */}
 				<span className="canvas-zoom">
@@ -1420,15 +1436,26 @@ export function CanvasView() {
 						+
 					</button>
 				</span>
-				<span ref={readoutRef} />
-				<span>
-					{nodes.length} {t("个节点", "steps")}
+				{/* 读数只留缩放比例，x/y 放 title：那一串太长，是折行的元凶 */}
+				<span ref={readoutRef} className="canvas-readout" title={t("当前缩放", "Current zoom")} />
+				<span className="canvas-count" title={t(`${nodes.length} 个节点`, `${nodes.length} steps`)}>
+					{nodes.length}
 				</span>
 				{selected.length > 0 ? (
 					<>
-						<span className="canvas-bar-sel">{t(`已选 ${selected.length}`, `${selected.length} selected`)}</span>
-						<button type="button" onClick={() => setSelected([])}>
-							{t("取消选择", "Clear")}
+						<span className="canvas-bar-sel" title={t(`已选 ${selected.length} 个`, `${selected.length} selected`)}>
+							{selected.length}
+						</span>
+						<button
+							type="button"
+							className="canvas-icon-btn"
+							onClick={() => setSelected([])}
+							title={t("取消选择", "Clear selection")}
+							aria-label={t("取消选择", "Clear selection")}
+						>
+							<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+								<path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+							</svg>
 						</button>
 					</>
 				) : null}
