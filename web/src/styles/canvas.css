@@ -237,6 +237,67 @@
 	color: var(--text-dim);
 }
 
+/* 节点上的操作行：悬停 / 选中才出现，平时不挡内容 */
+.canvas-node-actions {
+	display: none;
+	position: absolute;
+	top: -11px;
+	right: -1px;
+	gap: 4px;
+	align-items: center;
+	padding: 2px 3px;
+	border-radius: 7px;
+	background: var(--bg-elev);
+	border: 1px solid var(--border);
+	box-shadow: 0 2px 8px rgb(0 0 0 / 10%);
+	z-index: 5;
+}
+
+.canvas-node:hover .canvas-node-actions,
+.canvas-node.is-selected .canvas-node-actions {
+	display: flex;
+}
+
+.canvas-node-status {
+	font: inherit;
+	font-size: 10.5px;
+	padding: 1px 2px;
+	border: 1px solid var(--border);
+	border-radius: 5px;
+	background: transparent;
+	color: var(--text-dim);
+	cursor: pointer;
+}
+
+.canvas-node-status:hover {
+	border-color: var(--accent);
+	color: var(--accent);
+}
+
+.canvas-node-delete {
+	font: inherit;
+	font-size: 12px;
+	line-height: 1;
+	width: 18px;
+	height: 18px;
+	padding: 0;
+	border-radius: 5px;
+	border: 1px solid var(--border);
+	background: transparent;
+	color: var(--text-faint);
+	cursor: pointer;
+}
+
+.canvas-node-delete:hover {
+	border-color: #dc2626;
+	color: #dc2626;
+}
+
+/* 缩略态下手都点不准，操作行收起来 */
+.canvas-view.is-far .canvas-node-actions {
+	display: none !important;
+}
+
 .canvas-view.is-far .canvas-node-head,
 .canvas-view.is-far .canvas-node-detail,
 .canvas-view.is-far .canvas-node-state {

@@ -161,6 +161,19 @@ export async function handleMessage(socket: ClientSink, raw: string, deps: Handl
 				);
 				return;
 			}
+			case "canvas_set_status":
+				deps.reply(
+					socket,
+					request.id,
+					deps.runtime.canvasSetStatus(request.payload.conversationId, request.payload.nodeId, request.payload.status),
+				);
+				return;
+			case "canvas_delete":
+				deps.reply(socket, request.id, deps.runtime.canvasDelete(request.payload.conversationId, request.payload.ids));
+				return;
+			case "canvas_move":
+				deps.reply(socket, request.id, deps.runtime.canvasMove(request.payload.conversationId, request.payload.moves));
+				return;
 			case "cancel_queued":
 				deps.reply(socket, request.id, deps.runtime.cancelQueued(request.payload.queueId));
 				return;

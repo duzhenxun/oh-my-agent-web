@@ -23,6 +23,9 @@ export const REQUEST_TYPES: ClientRequestType[] = [
 	"fork_session",
 	"switch_conversation",
 	"move_session",
+	"canvas_set_status",
+	"canvas_delete",
+	"canvas_move",
 	"set_settings",
 	"set_model",
 	"set_approval_mode",
@@ -60,6 +63,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function nonEmptyString(value: unknown): value is string {
 	return typeof value === "string" && value.length > 0;
+}
+
+/** 画布写操作的公共校验：会话 id 必须是字符串，节点 id 只收安全字符（与 canvas.ts 一致） */
+const CANVAS_NODE_ID = /^[A-Za-z0-9_-]{1,32}$/;
+
+function canvasIds(value: unknown, max: number): string[] | null {
+	if (!Array.isArray(value) || value.length === 0 || value.length > max) return null;
+	const ids: string[] = [];
+	for (const each of value) {
+		if (!nonEmptyString(each)) return null;
+		const trimmed = each.trim();
+		if (!CANVAS_NODE_ID.test(trimmed)) return null;
+		ids.push(trimmed);
+	}
+	return ids;
 }
 
 /**
@@ -242,6 +260,48 @@ export function parseClientRequest(raw: unknown): ClientRequest | null {
 			type: "set_approval_mode",
 			payload: typeof conversationId === "string" ? { mode, conversationId: conversationId.trim() } : { mode },
 		};
+	}
+
+	if (type === "canvas_set_status") {
+		const conversationId = payload.conversationId;
+		const nodeId = payload.nodeId;
+		const status = payload.status;
+		if (!nonEmptyString(conversationId) || !nonEmptyString(nodeId)) return null;
+		if (!CANVAS_NODE_ID.test(nodeId.trim())) return null;
+		if (status !== "todo" && status !== "doing" && status !== "done" && status !== "blocked") return null;
+		return {
+			id,
+			type: "canvas_set_status",
+			payload: { conversationId: conversationId.trim(), nodeId: nodeId.trim(), status },
+		};
+	}
+
+	if (type === "canvas_delete") {
+		const conversationId = payload.conversationId;
+		if (!nonEmptyString(conversationId)) return null;
+		const ids = canvasIds(payload.ids, 40);
+		if (ids === null) return null;
+		return { id, type: "canvas_delete", payload: { conversationId: conversationId.trim(), ids } };
+	}
+
+	if (type === "canvas_move") {
+		const conversationId = payload.conversationId;
+		if (!nonEmptyString(conversationId)) return null;
+		const raw = payload.moves;
+		if (!Array.isArray(raw) || raw.length === 0 || raw.length > 40) return null;
+		const moves: { id: string; x: number; y: number }[] = [];
+		for (const each of raw) {
+			const entry = each as { id?: unknown; x?: unknown; y?: unknown } | null;
+			if (entry === null || typeof entry !== "object") return null;
+			const nodeId = entry.id;
+			if (!nonEmptyString(nodeId) || !CANVAS_NODE_ID.test(nodeId.trim())) return null;
+			const x = entry.x;
+			const y = entry.y;
+			if (typeof x !== "number" || typeof y !== "number" || !Number.isFinite(x) || !Number.isFinite(y)) return null;
+			// 坐标限一下：一个 NaN/Infinity 就能让画布上的节点飞到天上去
+			moves.push({ id: nodeId.trim(), x: Math.max(-100000, Math.min(100000, x)), y: Math.max(-100000, Math.min(100000, y)) });
+		}
+		return { id, type: "canvas_move", payload: { conversationId: conversationId.trim(), moves } };
 	}
 
 	if (type === "set_engine") {

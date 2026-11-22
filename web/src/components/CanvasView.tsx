@@ -20,13 +20,11 @@
  * 手势：空白左键拖 = 平移；**Shift / Alt + 拖 = 框选**；⌘/Ctrl + 滚轮 = 缩放；拖节点 = 移动。
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { CanvasDoc, CanvasNode } from "../types.ts";
+import type { CanvasDoc, CanvasNode, CanvasNodeStatus } from "../types.ts";
 import { useAppState } from "../store.ts";
-import { sendMessage } from "../ws.ts";
+import { canvasDeleteNodes, canvasMoveNodes, canvasSetStatus, sendMessage } from "../ws.ts";
 import { useT } from "../use-language.ts";
 
-/** 节点位置的**本机覆盖**（用户拖过之后以它为准；没拖过就用服务端排好的坐标） */
-const OVERRIDE_KEY = "agent-web.canvas.overrides.v1";
 const VIEW_KEY = "agent-web.canvas.view.v2";
 const MIN_K = 0.2;
 const MAX_K = 2.5;
@@ -38,18 +36,6 @@ const SNAP_PX = 6;
 const NODE_WIDTH = 240;
 
 type Pos = { x: number; y: number };
-type Overrides = Record<string, Record<string, Pos>>;
-
-function loadOverrides(): Overrides {
-	try {
-		const raw = localStorage.getItem(OVERRIDE_KEY);
-		if (raw === null) return {};
-		const value = JSON.parse(raw) as unknown;
-		return typeof value === "object" && value !== null ? (value as Overrides) : {};
-	} catch {
-		return {};
-	}
-}
 
 function loadView(): { x: number; y: number; k: number } | null {
 	try {
@@ -124,11 +110,11 @@ export function CanvasView() {
 		}, 300);
 	}, []);
 
-	const [overrides, setOverrides] = useState<Overrides>(loadOverrides);
-	const overridesRef = useRef(overrides);
-	useLayoutEffect(() => {
-		overridesRef.current = overrides;
-	}, [overrides]);
+	/**
+	 * 拖动后的**乐观坐标**：松手立刻先摆在原地，等快照回来。
+	 * `rev` 一变就清掉 —— 服务端才是坐标的事实源（用户摆的位置也是工作产物，得存服务端）。
+	 */
+	const [pending, setPending] = useState<Record<string, Pos>>({});
 
 	const [selected, setSelected] = useState<string[]>([]);
 	const selectedRef = useRef<Set<string>>(new Set());
@@ -140,17 +126,18 @@ export function CanvasView() {
 	const [heights, setHeights] = useState<Record<string, number>>({});
 	const nodeElsRef = useRef(new Map<string, HTMLElement>());
 
-	/** 节点坐标：本机覆盖优先，否则用服务端算的 */
-	const posOf = useCallback(
-		(node: CanvasNode): Pos => overrides[conversationId ?? ""]?.[node.id] ?? { x: node.x, y: node.y },
-		[overrides, conversationId],
-	);
+	/** 节点坐标：刚松手的那个用乐观值，其余用服务端的 */
+	const posOf = useCallback((node: CanvasNode): Pos => pending[node.id] ?? { x: node.x, y: node.y }, [pending]);
 
 	/**
 	 * 快照里节点变了（agent 重画 / 加节点）之后重新量高度。
 	 * 依赖 `doc?.rev`：同一个 rev 不重复量；量完把结果写进 state，连线才会跟着更新。
 	 */
 	const revision = doc?.rev ?? 0;
+	/** 快照已经反映了新的坐标（rev 变了）→ 清掉乐观值，之后完全以服务端为准 */
+	useEffect(() => {
+		setPending({});
+	}, [revision]);
 	useLayoutEffect(() => {
 		const next: Record<string, number> = {};
 		for (const [id, element] of nodeElsRef.current) next[id] = element.offsetHeight;
@@ -159,7 +146,7 @@ export function CanvasView() {
 			const same = Object.keys(next).length === Object.keys(current).length && Object.entries(next).every(([id, h]) => current[id] === h);
 			return same ? current : next;
 		});
-	}, [revision, overrides]);
+	}, [revision, pending]);
 
 	/* ── 视口绘制 ─────────────────────────────────────── */
 	const paint = useCallback(() => {
@@ -257,7 +244,7 @@ export function CanvasView() {
 		if (event.button !== 0) return;
 		// 放大工具开着的时候，拖在节点上也应该画放大框 —— 不 stopPropagation，交给视口接管
 		if (zDownRef.current || zoomArmedRef.current) return;
-		if ((event.target as HTMLElement).closest("button")) return;
+		if ((event.target as HTMLElement).closest("button, select")) return;
 		event.stopPropagation();
 
 		const additive = event.shiftKey || event.metaKey || event.ctrlKey;
@@ -553,22 +540,18 @@ export function CanvasView() {
 			element.style.removeProperty("--card-dx");
 			element.style.removeProperty("--card-dy");
 		}
-		const key = conversationId ?? "";
-		setOverrides((current) => {
-			const forConversation = { ...current[key] };
-			for (const [id, delta] of deltas) {
-				const origin = drag.origins.get(id);
-				if (!origin) continue;
-				forConversation[id] = { x: origin.x + delta.x, y: origin.y + delta.y };
-			}
-			const next = { ...current, [key]: forConversation };
-			try {
-				localStorage.setItem(OVERRIDE_KEY, JSON.stringify(next));
-			} catch {
-				// 存不进去只影响"下次还摆在这儿"
-			}
-			return next;
-		});
+		const moved: Record<string, Pos> = {};
+		const moves: { id: string; x: number; y: number }[] = [];
+		for (const [id, delta] of deltas) {
+			const origin = drag.origins.get(id);
+			if (!origin) continue;
+			const pos = { x: origin.x + delta.x, y: origin.y + delta.y };
+			moved[id] = pos;
+			moves.push({ id, ...pos });
+		}
+		// 先乐观摆上（不然会闪回原位），再回写服务端；rev 一变就清 pending
+		setPending((current) => ({ ...current, ...moved }));
+		if (conversationId !== null) canvasMoveNodes(conversationId, moves);
 	};
 
 	/* ── 滚轮 ─────────────────────────────────────────── */
@@ -732,6 +715,26 @@ export function CanvasView() {
 		});
 		return () => window.cancelAnimationFrame(frame);
 	}, [revision, fit]);
+
+	/** 手改节点状态（服务端落盘 + 推快照，这里不做乐观更新：一次往返很快） */
+	const setNodeStatus = useCallback(
+		(node: CanvasNode, status: CanvasNodeStatus) => {
+			if (conversationId === null || status === node.status) return;
+			canvasSetStatus(conversationId, node.id, status);
+		},
+		[conversationId],
+	);
+
+	/** 删一个节点（连带它上面的线由服务端处理） */
+	const deleteNode = useCallback(
+		(node: CanvasNode) => {
+			if (conversationId === null) return;
+			canvasDeleteNodes(conversationId, [node.id]);
+			setSelected((current) => current.filter((id) => id !== node.id));
+			setHover((current) => (current?.id === node.id ? null : current));
+		},
+		[conversationId],
+	);
 
 	/** 双击节点：让 agent 开始做这件事（往当前会话发一句话） */
 	const startNode = useCallback((node: CanvasNode) => {
@@ -914,6 +917,30 @@ export function CanvasView() {
 								</div>
 								{node.detail ? <div className="canvas-node-detail">{node.detail}</div> : null}
 								<div className={`canvas-node-state is-${state.tone}`}>{t(state.zh, state.en)}</div>
+								{/* 悬停/选中才出现：平时不挡内容 */}
+								<div className="canvas-node-actions">
+									<select
+										className="canvas-node-status"
+										value={node.status}
+										aria-label={t("改状态", "Change status")}
+										onPointerDown={(event) => event.stopPropagation()}
+										onChange={(event) => setNodeStatus(node, event.target.value as CanvasNodeStatus)}
+									>
+										<option value="todo">{t("待办", "To do")}</option>
+										<option value="doing">{t("正在做", "Doing")}</option>
+										<option value="done">{t("已完成", "Done")}</option>
+										<option value="blocked">{t("卡住了", "Blocked")}</option>
+									</select>
+									<button
+										type="button"
+										className="canvas-node-delete"
+										title={t("删掉这一步", "Delete this step")}
+										aria-label={t("删掉这一步", "Delete this step")}
+										onClick={() => deleteNode(node)}
+									>
+										×
+									</button>
+								</div>
 							</div>
 						);
 					})}

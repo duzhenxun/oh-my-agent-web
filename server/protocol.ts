@@ -705,6 +705,34 @@ export type RefreshActionsRequest = {
 	payload?: { conversationId?: string; count?: number };
 };
 
+/**
+ * 画布的三个写操作（用户在画布上手改）：
+ *
+ *   - `canvas_set_status`：改一个节点的状态（待办 / 正在做 / 已完成 / 卡住）；
+ *   - `canvas_delete`：删节点（连带删掉挂在它上面的线）；
+ *   - `canvas_move`：拖动之后回写坐标。
+ *
+ * 为什么带 `conversationId`：画布是按会话存的，而“界面看着哪条会话”是客户端自己的事
+ * （多标签/多设备各看各的）。服务端不拿全局 activeId 猜。
+ */
+export type CanvasSetStatusRequest = {
+	id: string;
+	type: "canvas_set_status";
+	payload: { conversationId: string; nodeId: string; status: CanvasNodeStatus };
+};
+
+export type CanvasDeleteNodesRequest = {
+	id: string;
+	type: "canvas_delete";
+	payload: { conversationId: string; ids: string[] };
+};
+
+export type CanvasMoveNodesRequest = {
+	id: string;
+	type: "canvas_move";
+	payload: { conversationId: string; moves: { id: string; x: number; y: number }[] };
+};
+
 export type ClientRequest =
 	| SetEngineRequest
 	| RefreshResourcesRequest
@@ -736,7 +764,10 @@ export type ClientRequest =
 	| CloseEphemeralRequest
 	| ForkSessionRequest
 	| SwitchConversationRequest
-	| MoveSessionRequest;
+	| MoveSessionRequest
+	| CanvasSetStatusRequest
+	| CanvasDeleteNodesRequest
+	| CanvasMoveNodesRequest;
 
 /** 新建会话（ADR-0021 §2 起可指定项目：不传 = 继承当前会话的工作区） */
 export type NewChatRequest = {

@@ -392,6 +392,10 @@ const runtime = createRuntime({
 	onStartupInfo: (text) => logger.info(text),
 	// 画布：快照里带上当前会话的那份（读盘带缓存，见 session/canvas-store.ts）
 	canvasOf: (conversationId) => canvasStore.ensure(conversationId),
+	// 画布写回（用户手改状态 / 删节点 / 拖动）：落盘 + 推快照
+	canvasWrite: async (conversationId, doc) => {
+		await canvasPort?.write(conversationId, doc);
+	},
 	// 切会话的分段耗时也进日志：手机上「切会话慢」只能靠这几行数字定位
 	log: (message, ctx) => logger.info(message, ctx),
 	workspace: config.workspace,

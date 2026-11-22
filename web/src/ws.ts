@@ -17,6 +17,7 @@ import { shareSnapshot } from "./snapshot-share.ts";
 import type {
 	ApprovalMode,
 	AttachmentRef,
+	CanvasNodeStatus,
 	ClientRequest,
 	ClientRequestType,
 	ProjectPrefs,
@@ -658,6 +659,23 @@ export function setApprovalMode(mode: ApprovalMode, conversationId?: string | nu
 		type: "set_approval_mode",
 		payload: conversationId ? { mode, conversationId } : { mode },
 	});
+}
+
+/** 画布：手改一个节点的状态（待办 / 正在做 / 已完成 / 卡住） */
+export function canvasSetStatus(conversationId: string, nodeId: string, status: CanvasNodeStatus): void {
+	send({ id: `req-${++seq}`, type: "canvas_set_status", payload: { conversationId, nodeId, status } });
+}
+
+/** 画布：删节点（服务端连带删掉挂在它上面的线） */
+export function canvasDeleteNodes(conversationId: string, ids: string[]): void {
+	if (ids.length === 0) return;
+	send({ id: `req-${++seq}`, type: "canvas_delete", payload: { conversationId, ids } });
+}
+
+/** 画布：拖动之后回写坐标（用户摆的位置是工作产物的一部分，得存服务端） */
+export function canvasMoveNodes(conversationId: string, moves: { id: string; x: number; y: number }[]): void {
+	if (moves.length === 0) return;
+	send({ id: `req-${++seq}`, type: "canvas_move", payload: { conversationId, moves } });
 }
 
 export function setModel(modelId: string, conversationId?: string | null): void {

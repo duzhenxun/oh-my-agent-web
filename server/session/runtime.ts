@@ -19,6 +19,7 @@ import { createTemplatePromptGenerator } from "./template-prompt.js";
 import { createCronPromptGenerator } from "./cron-prompt.js";
 import { messagesForTitle } from "./title-prompt.js";
 import { createSnapshotFor } from "./snapshot-for.js";
+import { moveNodes, removeNodes, setStatus } from "./canvas.js";
 import { createSubagentBridge } from "./subagents.js";
 import { createSwitchConversation } from "./switch-conversation.js";
 import { createModelController, createModelRefresher } from "./model-controller.js";
@@ -46,7 +47,7 @@ import {
 	touchConversationIn,
 } from "../snapshot/state.js";
 export type { Result, Runtime, RuntimeEmit } from "./runtime-types.js";
-import type { Runtime, RuntimeOptions } from "./runtime-types.js";
+import type { Result, Runtime, RuntimeOptions } from "./runtime-types.js";
 export type { RuntimeOptions } from "./runtime-types.js";
 
 export function createRuntime(options: RuntimeOptions): Runtime {
@@ -110,6 +111,29 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 	let apiRef: Runtime | null = null;
 
 	const pushSnapshot = () => options.emit.snapshot(buildSnapshot(state));
+
+	/**
+	 * 画布手改的公共壳：读 → 改 → 写。
+	 *
+	 * 三条都返回 `Result` 而不是 void：用户点了按钮必须有反馈，
+	 * “没接上存储 / 这条会话没画布 / 节点已经不在了”要能报出来，不能默默无动作。
+	 * 写回（落盘 + 推快照）由宿主的 canvasWrite 负责，这里不重复推。
+	 */
+	const editCanvas = (
+		conversationId: string,
+		mutate: (doc: import("../protocol.js").CanvasDoc) => import("../protocol.js").CanvasDoc | null,
+	): Result => {
+		const read = options.canvasOf;
+		const write = options.canvasWrite;
+		if (!read || !write) return { ok: false, error: { code: "canvas.unavailable", message: "画布没接上（宿主没提供画布存储）" } };
+		const current = read(conversationId);
+		if (current === null) return { ok: false, error: { code: "canvas.missing", message: "这条会话还没有画布" } };
+		const next = mutate(current);
+		if (next === null) return { ok: false, error: { code: "canvas.no_such_node", message: "没有这个节点（可能刚被删掉）" } };
+		// 落盘是同步的（store.save），推快照会自己走下一帧；这里不用 await
+		void Promise.resolve(write(conversationId, next)).catch(() => undefined);
+		return { ok: true };
+	};
 
 	// 子代理（多开 + 模板管理）：引擎跑、宿主投影进快照；模板与开关落 ~/.pi/agent/agents
 	const subagentBridge = createSubagentBridge({
@@ -671,6 +695,23 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 			setApprovalModeOf(state, conversationId ?? state.activeId, mode);
 			pushSnapshot();
 			return { ok: true };
+		},
+
+		/**
+		 * 画布手改三件事。
+		 * 先把写盘做成一个内部小函数：三个方法只差“改哪一份 doc”，读写错都得报同一种错。
+		 * 拿不到 doc 或拿不到写端口就如实报错（而不是默默无动作：用户点了按钮必须有反馈）。
+		 */
+		canvasSetStatus(conversationId, nodeId, status) {
+			return editCanvas(conversationId, (doc) =>
+				doc.nodes.some((node) => node.id === nodeId) ? setStatus(doc, nodeId, status) : null,
+			);
+		},
+		canvasDelete(conversationId, ids) {
+			return editCanvas(conversationId, (doc) => removeNodes(doc, ids));
+		},
+		canvasMove(conversationId, moves) {
+			return editCanvas(conversationId, (doc) => moveNodes(doc, moves));
 		},
 
 		setEngine: async (name) => {

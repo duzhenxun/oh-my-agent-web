@@ -8,6 +8,7 @@ import type {
 	ApprovalDecision,
 	ApprovalMode,
 	CanvasDoc,
+	CanvasNodeStatus,
 	PiProject,
 	Notice,
 	ProtocolError,
@@ -145,6 +146,10 @@ export type Runtime = {
 	 * `conversationId` 由界面给（它才知道自己正看着哪条会话）；没给就落到全局 activeId。
 	 */
 	setApprovalMode(mode: ApprovalMode, conversationId?: string | null): Result;
+	/** 画布：用户手改节点状态 / 删节点 / 拖动回写坐标（都需要宿主提供 canvasWrite） */
+	canvasSetStatus(conversationId: string, nodeId: string, status: CanvasNodeStatus): Result;
+	canvasDelete(conversationId: string, ids: readonly string[]): Result;
+	canvasMove(conversationId: string, moves: readonly { id: string; x: number; y: number }[]): Result;
 	/** 停掉一个子代理（只停它，不动主会话那一轮） */
 	interruptSubagent(runId: string): Promise<Result>;
 	/** 新建 / 覆盖一个子代理模板（写 `~/.pi/agent/agents/<id>.md`） */
@@ -182,6 +187,11 @@ export type RuntimeOptions = {
 	 * 不给 = 一律 null（没有画布）：单测／最小启动不需要画布。
 	 */
 	canvasOf?: (conversationId: string | null) => CanvasDoc | null;
+	/**
+	 * 把改过的画布写回去（落盘 + 推快照）。和 `canvasOf` 成对：一个读、一个写。
+	 * 不给 = 画布只读（工具和手改都不生效）。
+	 */
+	canvasWrite?: (conversationId: string, doc: CanvasDoc) => Promise<void> | void;
 	/** 审批规则落盘（ADR-0006）：「总是允许这类」跨重启生效 */
 	rules: RuleStore;
 	/** 回合看门狗超时（ADR-0023）；不给就用默认 20 分钟 */
