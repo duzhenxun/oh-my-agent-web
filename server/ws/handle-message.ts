@@ -174,6 +174,16 @@ export async function handleMessage(socket: ClientSink, raw: string, deps: Handl
 			case "canvas_move":
 				deps.reply(socket, request.id, deps.runtime.canvasMove(request.payload.conversationId, request.payload.moves));
 				return;
+			case "canvas_update_node":
+				deps.reply(
+					socket,
+					request.id,
+					deps.runtime.canvasUpdateNode(request.payload.conversationId, request.payload.nodeId, {
+						...(request.payload.title === undefined ? {} : { title: request.payload.title }),
+						...(request.payload.detail === undefined ? {} : { detail: request.payload.detail }),
+					}),
+				);
+				return;
 			case "canvas_start_node":
 				deps.reply(
 					socket,

@@ -22,7 +22,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CanvasDoc, CanvasNode, CanvasNodeStatus } from "../types.ts";
 import { useAppState } from "../store.ts";
-import { canvasDeleteNodes, canvasMoveNodes, canvasSetStatus, canvasStartNode } from "../ws.ts";
+import { canvasDeleteNodes, canvasMoveNodes, canvasSetStatus, canvasStartNode, canvasUpdateNode } from "../ws.ts";
 import { useT } from "../use-language.ts";
 
 const VIEW_KEY = "agent-web.canvas.view.v2";
@@ -208,6 +208,25 @@ export function CanvasView() {
 	 */
 	const [pending, setPending] = useState<Record<string, Pos>>({});
 
+	/** 右键菜单：`nodeId` 为 null 表示点在空白处 */
+	const [menu, setMenu] = useState<{ x: number; y: number; nodeId: string | null } | null>(null);
+	/** 重命名（内联输入）：先摆出当前值，Enter 保存 / Esc 取消 */
+	const [editing, setEditing] = useState<{ id: string; title: string; detail: string } | null>(null);
+
+	/** 右键位置换算成"相对画布容器"的坐标（菜单是容器的子元素，不能直接用 clientX/Y） */
+	const openMenuAt = useCallback((event: React.MouseEvent, nodeId: string | null = null) => {
+		const rect = rootRef.current?.getBoundingClientRect();
+		const x = event.clientX - (rect?.left ?? 0);
+		const y = event.clientY - (rect?.top ?? 0);
+		return { x, y, nodeId };
+	}, []);
+
+	/** 菜单项数量：只为"别让菜单超出画布下边缘"估个高度 */
+	const menuKinds = menu?.nodeId === null ? 9 : 13;
+
+	const closeMenu = useCallback(() => setMenu(null), []);
+
+
 	const [selected, setSelected] = useState<string[]>([]);
 	const selectedRef = useRef<Set<string>>(new Set());
 	useLayoutEffect(() => {
@@ -282,6 +301,38 @@ export function CanvasView() {
 		[derived, pending],
 	);
 	const canDrag = style === "card";
+
+	/**
+	 * 画布上的键盘操作（都要满足：鼠标在画布上、焦点不在输入框里）。
+	 *   Delete / Backspace → 删掉选中的节点
+	 *   ⌘/Ctrl + A → 全选
+	 *   Esc → 关菜单 / 退出重命名 / 取消选择
+	 */
+	useEffect(() => {
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (!hoverRef.current) return;
+			const target = event.target as HTMLElement | null;
+			if (target !== null && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+			if (event.key === "Escape") {
+				closeMenu();
+				setEditing(null);
+				setSelected([]);
+				return;
+			}
+			if ((event.metaKey || event.ctrlKey) && (event.key === "a" || event.key === "A")) {
+				event.preventDefault();
+				setSelected((doc?.nodes ?? []).map((node) => node.id));
+				return;
+			}
+			if ((event.key === "Delete" || event.key === "Backspace") && selected.length > 0 && conversationId !== null) {
+				event.preventDefault();
+				canvasDeleteNodes(conversationId, selected);
+				setSelected([]);
+			}
+		};
+		window.addEventListener("keydown", onKeyDown);
+		return () => window.removeEventListener("keydown", onKeyDown);
+	}, [closeMenu, conversationId, doc, selected]);
 
 	/**
 	 * 快照里节点变了（agent 重画 / 加节点）之后重新量高度。
@@ -872,6 +923,27 @@ export function CanvasView() {
 		return () => window.cancelAnimationFrame(frame);
 	}, [revision, fit]);
 
+	/** 重命名提交：标题不能为空，说明可以清空 */
+	const commitEditing = useCallback(() => {
+		const draft = editingRef.current;
+		setEditing(null);
+		if (draft === null || conversationId === null) return;
+		const node = doc?.nodes.find((each) => each.id === draft.id);
+		if (node === undefined) return;
+		const title = draft.title.trim();
+		const detail = draft.detail.trim();
+		const patch: { title?: string; detail?: string } = {};
+		if (title !== "" && title !== node.title) patch.title = title;
+		if (detail !== (node.detail ?? "")) patch.detail = detail;
+		if (patch.title !== undefined || patch.detail !== undefined) canvasUpdateNode(conversationId, draft.id, patch);
+	}, [conversationId, doc]);
+
+	/** 右边菜单要用的"当前编辑值"，提交时不想因为闭包拿不到最新值 */
+	const editingRef = useRef<{ id: string; title: string; detail: string } | null>(null);
+	useLayoutEffect(() => {
+		editingRef.current = editing;
+	}, [editing]);
+
 	/** 手改节点状态（服务端落盘 + 推快照，这里不做乐观更新：一次往返很快） */
 	const setNodeStatus = useCallback(
 		(node: CanvasNode, status: CanvasNodeStatus) => {
@@ -1026,6 +1098,11 @@ export function CanvasView() {
 				className="canvas-viewport"
 				ref={viewportRef}
 				onPointerDown={onViewportPointerDown}
+				onContextMenu={(event) => {
+					// 点在节点上的已经 stopPropagation 了，能冒到这儿的就是空白区
+					event.preventDefault();
+					setMenu(openMenuAt(event));
+				}}
 				onPointerMove={onViewportPointerMove}
 				onPointerUp={endPointer}
 				onPointerCancel={endPointer}
@@ -1063,6 +1140,11 @@ export function CanvasView() {
 								}}
 								style={{ left: pos.x, top: pos.y }}
 								onPointerDown={(event) => onNodePointerDown(event, node.id)}
+								onContextMenu={(event) => {
+									event.preventDefault();
+									event.stopPropagation();
+									setMenu(openMenuAt(event, node.id));
+								}}
 								onPointerEnter={() => {
 									// 只在小尺度时弹预览：放大到看得清的时候弹反而是干扰
 									if (viewRef.current.k >= 0.7) {
@@ -1079,14 +1161,60 @@ export function CanvasView() {
 							>
 								{/* 缩略时显示的顺序号：小尺度下它是唯一看得清的东西 */}
 								<span className="canvas-node-index">{index + 1}</span>
-								<div className="canvas-node-head">
-									<span className={`canvas-dot is-${state.tone}`} />
-									<span className={`canvas-node-kind kind-${kindOf(node)}`} title={t(KIND_META[kindOf(node)].zh, KIND_META[kindOf(node)].en)}>
-										{KIND_META[kindOf(node)].icon}
-									</span>
-									<span className="canvas-node-title">{node.title}</span>
-								</div>
-								{node.detail ? <div className="canvas-node-detail">{node.detail}</div> : null}
+								{editing !== null && editing.id === node.id ? (
+									/* 重命名：标题一行输入 + 说明多行输入，Enter 保存 / Esc 取消 */
+									<div className="canvas-node-edit">
+										<input
+											className="canvas-node-edit-title"
+											value={editing.title}
+											autoFocus
+											onChange={(event) => setEditing({ ...editing, title: event.target.value })}
+											onKeyDown={(event) => {
+												if (event.key === "Enter") {
+													event.preventDefault();
+													commitEditing();
+												}
+												if (event.key === "Escape") setEditing(null);
+											}}
+										/>
+										<textarea
+											className="canvas-node-edit-detail"
+											value={editing.detail}
+											rows={2}
+											placeholder={t("说明（可留空）", "Detail (optional)")}
+											onChange={(event) => setEditing({ ...editing, detail: event.target.value })}
+											onKeyDown={(event) => {
+												if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+													event.preventDefault();
+													commitEditing();
+												}
+												if (event.key === "Escape") setEditing(null);
+											}}
+										/>
+										<div className="canvas-node-edit-actions">
+											<button type="button" onClick={commitEditing}>
+												{t("保存", "Save")}
+											</button>
+											<button type="button" onClick={() => setEditing(null)}>
+												{t("取消", "Cancel")}
+											</button>
+										</div>
+									</div>
+								) : (
+									<>
+										<div className="canvas-node-head">
+											<span className={`canvas-dot is-${state.tone}`} />
+											<span
+												className={`canvas-node-kind kind-${kindOf(node)}`}
+												title={t(KIND_META[kindOf(node)].zh, KIND_META[kindOf(node)].en)}
+											>
+												{KIND_META[kindOf(node)].icon}
+											</span>
+											<span className="canvas-node-title">{node.title}</span>
+										</div>
+										{node.detail ? <div className="canvas-node-detail">{node.detail}</div> : null}
+									</>
+								)}
 								{isLive && liveText !== null ? (
 									<div className="canvas-node-live">
 										<span className="canvas-live-dot" />
@@ -1149,6 +1277,113 @@ export function CanvasView() {
 						</button>
 					</div>
 				</div>
+			) : null}
+			{/* 右键菜单：点空白和点节点是两套项 */}
+			{menu !== null ? (
+				<>
+					<div
+						className="canvas-menu-backdrop"
+						onPointerDown={closeMenu}
+						onContextMenu={(event) => {
+							event.preventDefault();
+							closeMenu();
+						}}
+					/>
+					<div
+						className="canvas-menu"
+						style={{
+							left: Math.min(menu.x, (viewportRef.current?.clientWidth ?? 600) - 200),
+							top: Math.min(menu.y, (viewportRef.current?.clientHeight ?? 600) - 40 - menuKinds * 26),
+						}}
+					>
+						{menu.nodeId === null ? (
+							<>
+								<button type="button" className="canvas-menu-item" onClick={() => { closeMenu(); fit(); }}>
+									{t("看全局", "Fit all")}
+								</button>
+								<button type="button" className="canvas-menu-item" onClick={() => { closeMenu(); reset(); }}>
+									{t("回到 100%", "Back to 100%")}
+								</button>
+								<button
+									type="button"
+									className={`canvas-menu-item${zoomArmed ? " is-on" : ""}`}
+									onClick={() => { closeMenu(); setZoomArmed((value) => !value); }}
+								>
+									{zoomArmed ? "✓ " : ""}
+									{t("框选放大", "Zoom to area")}
+								</button>
+								<div className="canvas-menu-sep" />
+								<div className="canvas-menu-label">{t("布局", "Layout")}</div>
+								{([
+									["card", t("卡片", "Cards")],
+									["timeline", t("时间线", "Timeline")],
+									["checklist", t("清单", "Checklist")],
+								] as [LayoutStyle, string][]).map(([value, label]) => (
+									<button
+										type="button"
+										key={value}
+										className={`canvas-menu-item${style === value ? " is-on" : ""}`}
+										onClick={() => { closeMenu(); changeStyle(value); }}
+									>
+										{style === value ? "✓ " : ""}
+										{label}
+									</button>
+								))}
+							</>
+						) : null}
+						{menu.nodeId !== null ? (() => {
+							const node = nodes.find((each) => each.id === menu.nodeId);
+							if (node === undefined) return null;
+							return (
+								<>
+									<button type="button" className="canvas-menu-item" onClick={() => { closeMenu(); startNode(node); }}>
+										{t("开始做这一步", "Start this step")}
+									</button>
+									<div className="canvas-menu-sep" />
+									<div className="canvas-menu-label">{t("状态", "Status")}</div>
+									{([
+										["todo", t("待办", "To do")],
+										["doing", t("正在做", "Doing")],
+										["done", t("已完成", "Done")],
+										["blocked", t("卡住了", "Blocked")],
+									] as [CanvasNodeStatus, string][]).map(([value, label]) => (
+										<button
+											type="button"
+											key={value}
+											className={`canvas-menu-item${node.status === value ? " is-on" : ""}`}
+											onClick={() => { closeMenu(); setNodeStatus(node, value); }}
+										>
+											{node.status === value ? "✓ " : ""}
+											{label}
+										</button>
+									))}
+									<div className="canvas-menu-sep" />
+									<button
+										type="button"
+										className="canvas-menu-item"
+										onClick={() => {
+											closeMenu();
+											setEditing({ id: node.id, title: node.title, detail: node.detail ?? "" });
+										}}
+									>
+										{t("重命名 / 改说明", "Rename")}
+									</button>
+									<button type="button" className="canvas-menu-item" onClick={() => { closeMenu(); zoomToNode(node); }}>
+										{t("放大看这一步", "Zoom in")}
+									</button>
+									<div className="canvas-menu-sep" />
+									<button
+										type="button"
+										className="canvas-menu-item is-danger"
+										onClick={() => { closeMenu(); deleteNode(node); }}
+									>
+										{t("删除这一步", "Delete")}
+									</button>
+								</>
+							);
+						})() : null}
+					</div>
+				</>
 			) : null}
 			<div className="canvas-bar">
 				<button type="button" onClick={fit} title={t("缩到能看见全部节点", "Zoom out to show every step")}>

@@ -291,6 +291,121 @@
 	border-left-color: #d97706;
 }
 
+/* 右键菜单 */
+.canvas-menu-backdrop {
+	position: absolute;
+	inset: 0;
+	z-index: 40;
+}
+
+.canvas-menu {
+	position: absolute;
+	z-index: 41;
+	min-width: 176px;
+	max-width: 240px;
+	padding: 4px;
+	border-radius: 9px;
+	background: var(--bg-elev);
+	border: 1px solid var(--border-strong);
+	box-shadow: 0 12px 32px rgb(0 0 0 / 20%);
+}
+
+.canvas-menu-item {
+	display: block;
+	width: 100%;
+	text-align: left;
+	font: inherit;
+	font-size: 12px;
+	padding: 5px 9px;
+	border: none;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--text);
+	cursor: pointer;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.canvas-menu-item:hover {
+	background: var(--bg-elev-2);
+}
+
+.canvas-menu-item.is-on {
+	color: var(--accent);
+}
+
+.canvas-menu-item.is-danger {
+	color: #dc2626;
+}
+
+.canvas-menu-item.is-danger:hover {
+	background: color-mix(in srgb, #dc2626 12%, var(--bg-elev));
+}
+
+.canvas-menu-sep {
+	height: 1px;
+	margin: 4px 6px;
+	background: var(--border);
+}
+
+.canvas-menu-label {
+	padding: 3px 9px 2px;
+	font-size: 10.5px;
+	color: var(--text-faint);
+}
+
+/* 内联重命名 */
+.canvas-node-edit {
+	display: flex;
+	flex-direction: column;
+	gap: 5px;
+}
+
+.canvas-node-edit-title,
+.canvas-node-edit-detail {
+	font: inherit;
+	font-size: 12.5px;
+	width: 100%;
+	box-sizing: border-box;
+	padding: 3px 6px;
+	border: 1px solid var(--border-strong);
+	border-radius: 6px;
+	background: var(--bg);
+	color: var(--text);
+	resize: vertical;
+}
+
+.canvas-node-edit-title {
+	font-weight: 600;
+}
+
+.canvas-node-edit-detail {
+	font-size: 11.5px;
+	color: var(--text-dim);
+}
+
+.canvas-node-edit-actions {
+	display: flex;
+	gap: 6px;
+}
+
+.canvas-node-edit-actions button {
+	font: inherit;
+	font-size: 11px;
+	padding: 2px 8px;
+	border-radius: 6px;
+	border: 1px solid var(--border);
+	background: transparent;
+	color: var(--text-dim);
+	cursor: pointer;
+}
+
+.canvas-node-edit-actions button:first-child {
+	border-color: var(--accent);
+	color: var(--accent);
+}
+
 /* 布局风格下拉 */
 .canvas-style {
 	font: inherit;

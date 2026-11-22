@@ -19,7 +19,7 @@ import { createTemplatePromptGenerator } from "./template-prompt.js";
 import { createCronPromptGenerator } from "./cron-prompt.js";
 import { messagesForTitle } from "./title-prompt.js";
 import { createSnapshotFor } from "./snapshot-for.js";
-import { moveNodes, removeNodes, setStatus } from "./canvas.js";
+import { moveNodes, removeNodes, setStatus, updateNode } from "./canvas.js";
 import { createSubagentBridge } from "./subagents.js";
 import { createSwitchConversation } from "./switch-conversation.js";
 import { createModelController, createModelRefresher } from "./model-controller.js";
@@ -742,6 +742,11 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		},
 		canvasMove(conversationId, moves) {
 			return editCanvas(conversationId, (doc) => moveNodes(doc, moves));
+		},
+		canvasUpdateNode(conversationId, nodeId, patch) {
+			return editCanvas(conversationId, (doc) =>
+				doc.nodes.some((node) => node.id === nodeId) ? updateNode(doc, nodeId, patch) : null,
+			);
 		},
 
 		async canvasStartNode(conversationId, nodeId) {

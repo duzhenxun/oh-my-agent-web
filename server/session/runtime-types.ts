@@ -150,6 +150,8 @@ export type Runtime = {
 	canvasSetStatus(conversationId: string, nodeId: string, status: CanvasNodeStatus): Result;
 	canvasDelete(conversationId: string, ids: readonly string[]): Result;
 	canvasMove(conversationId: string, moves: readonly { id: string; x: number; y: number }[]): Result;
+	/** 改节点的标题 / 说明 */
+	canvasUpdateNode(conversationId: string, nodeId: string, patch: { title?: string; detail?: string }): Result;
 	/** 让 agent 开始做某一步：标 doing → 发一圈回合 → 回合结束自动推 done / blocked */
 	canvasStartNode(conversationId: string, nodeId: string): Promise<Result>;
 	/** 停掉一个子代理（只停它，不动主会话那一轮） */

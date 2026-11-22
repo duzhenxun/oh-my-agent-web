@@ -671,6 +671,15 @@ export function canvasStartNode(conversationId: string, nodeId: string): void {
 	send({ id: `req-${++seq}`, type: "canvas_start_node", payload: { conversationId, nodeId } });
 }
 
+/** 画布：改节点的标题 / 说明 */
+export function canvasUpdateNode(
+	conversationId: string,
+	nodeId: string,
+	patch: { title?: string; detail?: string },
+): void {
+	send({ id: `req-${++seq}`, type: "canvas_update_node", payload: { conversationId, nodeId, ...patch } });
+}
+
 /** 画布：手改一个节点的状态（待办 / 正在做 / 已完成 / 卡住） */
 export function canvasSetStatus(conversationId: string, nodeId: string, status: CanvasNodeStatus): void {
 	send({ id: `req-${++seq}`, type: "canvas_set_status", payload: { conversationId, nodeId, status } });

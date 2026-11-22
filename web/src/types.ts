@@ -17,6 +17,7 @@ export type {
 	CanvasMoveNodesRequest,
 	CanvasSetStatusRequest,
 	CanvasStartNodeRequest,
+	CanvasUpdateNodeRequest,
 	CanvasEdge,
 	CanvasNode,
 	CanvasNodeKind,
