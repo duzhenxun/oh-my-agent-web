@@ -51,6 +51,26 @@ final class Onboarding: NSObject, NSWindowDelegate {
 			Permissions.requestAccessibility()
 		}
 		show()
+		registerScreenRecording()
+	}
+
+	/// 把 app **登记进「录屏与系统录音」列表**（用户 2026-11-23：「默认没添加进去」）。
+	///
+	/// 为什么必须单独调一次：`CGPreflight…` 是纯读的状态检查，**不会**让 app 出现在那个列表里；
+	/// 只有 `CGRequest…` 才会写 TCC 记录。以前只有引导窗上的「去授权」按钮调它，
+	/// 所以没点过那个按钮的机器上，用户打开系统设置根本找不到「Agent Computer」这一条。
+	///
+	/// 放在窗口显示之后、下一拍再调：这个调用会一直等到用户回答系统提示才返回，
+	/// 直接写在 `applicationDidFinishLaunching` 里会让引导窗口卡着不出现。
+	/// 这里只做「登记」，**不强迫开启** —— 开关由用户自己决定。
+	private func registerScreenRecording() {
+		guard !Permissions.screenRecordingGranted() else { return }
+		DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+			guard let self, !Permissions.screenRecordingGranted() else { return }
+			let granted = Permissions.requestScreenRecording()
+			Log.write("申请屏幕录制（登记进列表）：granted=\(granted)")
+			self.refresh()
+		}
 	}
 
 	func show() {

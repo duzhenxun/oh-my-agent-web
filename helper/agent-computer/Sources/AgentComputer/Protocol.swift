@@ -7,7 +7,13 @@ import Foundation
 /// 避免拿着旧编号点到完全不同的东西。
 enum Protocol {
 	static let apiVersion = "agent-computer-1"
-	static let helperVersion = "0.3.0"
+	/// 版本号只认 `Info.plist` 的 `CFBundleShortVersionString`。
+	///
+	/// 以前这里写死了一个字符串，改 plist 不改这儿的话，面板显示的版本就永远停在旧值
+	/// （0.3.1 那次就踩了：plist 已经 0.3.1，`hello` 还报 0.3.0）。
+	/// 直接跑二进制（不在 .app 里）时读不到 infoDictionary，回退成 `dev`。
+	static let helperVersion =
+		(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "dev"
 
 	/// 所有请求串行执行：多连接并发操作会互相抢鼠标/焦点
 	private static let queue = DispatchQueue(label: "com.computeruseturbo.minhelper.protocol")
