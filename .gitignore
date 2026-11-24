@@ -13,6 +13,13 @@ web/dist/
 .idea/
 .vscode/
 
+# 本地打包 / 分发产物（Electron 打包、内置 node 运行时、pkg 工作区、electron-builder 输出）
+# 注意：根锚定，避免误伤 helper/asr/release/ASRBridge.zip
+/electron-dist/
+/node-runtime/
+/.pkg/
+/release/
+
 # 本地运行日志与截图（npm run dev 的输出、UI 验证截图）
 .run/
 
