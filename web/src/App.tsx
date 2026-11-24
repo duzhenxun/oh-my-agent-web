@@ -6,6 +6,7 @@ import { useVoiceCues } from "./use-voice-cues.ts";
 // 「跑完了、你还没看」的小圆点：喂帧在这里，画圆点在侧栏（session-unseen.ts）
 import { useUnseenFinishWatch } from "./use-unseen-finish.ts";
 import { ToastHost } from "./components/ToastHost.tsx";
+import { MigrationBanner } from "./components/MigrationBanner.tsx";
 import { useDocumentFullscreen } from "./use-fullscreen.ts";
 import { ImageViewer } from "./components/ImageViewer.tsx";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -1923,6 +1924,10 @@ export function App() {
 					) : null}
 				</div>
 			</div>
+			{/* 项目迁移公告：顶栏下面横贯整窗的一条，**不依赖顶栏在不在**（顶栏可以整条藏起来）。
+			   放这里是它要在任何页面状态下都看得见 —— 还没开会话、右侧面板铺开、手机单栏都一样；
+			   点掉之后写 localStorage，不再天天挡着（见 MigrationBanner.tsx）。 */}
+			<MigrationBanner />
 			<div className="app-main">
 				{/*
 				 * 「展开项目列表」：舌形小箭头（`>`），**顶栏在不在、桌面还是手机都一样**。

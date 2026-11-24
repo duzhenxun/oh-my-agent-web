@@ -39,11 +39,14 @@ import { migrateLegacyDataDir } from "./util/data-dir.js";
 import { DEFAULT_DATA_DIR_NAME } from "./util/env.js";
 import { prunePtyPrebuilds } from "./util/prune-pty.js";
 import { fetchHealth, showStatus, showVersion, upgrade } from "./cli-info.js";
+import { MIGRATION_NOTICE, MIGRATION_URL } from "./brand.js";
 import { checkForUpdate, describeUpdate } from "./update-check.js";
 import { offerUpgrade } from "./update-prompt.js";
 import { defaultIsAlive, describeHolder, readLock } from "./session/lock.js";
 
 const USAGE = `用法: agent-web [命令] [选项]        （agent-web / aw / oh-my-agent-web 三个命令完全等价）
+
+⚠ 这个项目已经升级，请改用：${MIGRATION_URL}
 
 命令:
   start              启动（默认前台；已在跑就只把地址给你，不会再起一个）
@@ -384,6 +387,8 @@ async function startDetached(rawArgv: string[], open: boolean): Promise<void> {
 			console.log(`  → 打开 http://${probeHost}:${lock.port}`);
 			console.log(`  → 日志 ${log}`);
 			console.log(`  → 停止：${stopHint(rawArgv)}`);
+			// 后台模式下这一行是**唯一的**启动回执（前台那屏 banner 根本不会画），所以复核一次
+			console.log(`  ⚠ ${MIGRATION_NOTICE}`);
 			if (open) openBrowser(`http://${probeHost}:${lock.port}`);
 			return;
 		}

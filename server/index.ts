@@ -73,7 +73,7 @@ import { createPasswordStore } from "./http/password-store.js";
 import { registerAuthRoutes } from "./http/auth-routes.js";
 import { createLoginGuard } from "./http/login-guard.js";
 import { createLoginActivity } from "./http/login-activity.js";
-import { BRAND_NAME } from "./brand.js";
+import { BRAND_NAME, MIGRATION_NOTICE } from "./brand.js";
 import { registerLiveRoutes, type Sink } from "./http/live-routes.js";
 import { registerClientLogRoutes } from "./http/client-log-routes.js";
 import { registerVoiceSettingsRoutes } from "./http/voice-settings-routes.js";
@@ -914,6 +914,10 @@ function printStartBanner(options: { cli: string; version: string; url: string }
 	console.log("");
 	console.log(`  ${paint("bold", `oh-my-agent-web ${version}`)}  ${paint("dim", "·")}  ${paint("green", "started")}`);
 	console.log(`  ${paint("underline", url)}  ${paint("dim", "(Ctrl-C to exit)")}`);
+	console.log("");
+	// 项目已迁移：印在启动那一屏，是因为很多人是 `aw -d` 起完就再不看终端了，
+	// 只有这一屏是「每次启动都会经过」的位置。用黄色而不是灰色，别被当成普通说明划过去。
+	console.log(`  ${paint("yellow", `⚠ ${MIGRATION_NOTICE}`)}`);
 	console.log("");
 	console.log(row(`${cli} -d`, "run in background (logs to daemon.log)"));
 	console.log(row(`${cli} restart  /  ${cli} stop`, "restart / stop"));

@@ -1,0 +1,72 @@
+/*
+ * 项目迁移提示条（MigrationBanner）：顶栏下面、横贯整窗的一整行。
+ *
+ * 位置与层级：它是 `.app`（纵向 flex）里顶栏后面的一项，`flex: none` 只占自己那一行高，
+ * 不参与下面 `.app-main` 三栏的高度分配。所以插在顶栏和三栏之间不会挤坏布局 ——
+ * 顶栏被藏起来时它也一样在（不依赖 `.appbar` 存在）。
+ *
+ * 颜色走 `--amber`（跟 `.notice-warn` 同一套语义）：这条不是报错，但也比普通说明更要紧，
+ * 用蓝色 accent 会跟「临时会话」那种信息条混成一片，看不出差别。
+ * 深浅主题都靠 `color-mix` 跟底色混，不用为深色单独写补丁。
+ */
+.migration-bar {
+	flex: none;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: center;
+	gap: 4px 10px;
+	padding: 6px 14px;
+	border-bottom: 1px solid color-mix(in srgb, var(--amber) 32%, transparent);
+	background: color-mix(in srgb, var(--amber) 9%, var(--bg-elev));
+	color: color-mix(in srgb, var(--amber) 85%, var(--text));
+	font-size: 13px;
+	line-height: 1.5;
+	/* 顶栏有 z-index: 4（要盖住下面三栏的边框）；这条跟它同层排在一起，别被内容压住 */
+	position: relative;
+	z-index: 4;
+}
+
+.migration-bar-text {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.migration-bar-link {
+	color: inherit;
+	font-weight: 600;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+	white-space: nowrap;
+}
+
+.migration-bar-link:hover {
+	color: var(--amber);
+}
+
+/* 「✕ 不再提示」：次要动作，透明底灰字，别跟链接抢注意力 */
+.migration-bar-close {
+	flex: none;
+	cursor: pointer;
+	font: inherit;
+	font-size: 12px;
+	padding: 2px 8px;
+	border-radius: 999px;
+	border: 1px solid transparent;
+	background: transparent;
+	color: color-mix(in srgb, var(--amber) 60%, var(--text-faint));
+	white-space: nowrap;
+}
+
+.migration-bar-close:hover {
+	background: color-mix(in srgb, var(--amber) 12%, transparent);
+	border-color: color-mix(in srgb, var(--amber) 40%, transparent);
+}
+
+/* 窄屏（手机单栏）：文字本来就会换行，左右留白收一点，别把一行挤成三截 */
+@media (max-width: 560px) {
+	.migration-bar {
+		padding: 6px 8px;
+		font-size: 12px;
+	}
+}

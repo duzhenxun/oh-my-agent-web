@@ -21,6 +21,7 @@
 @import "./styles/provider-checklist.css";
 @import "./styles/provider-switch.css";
 @import "./styles/app-bar.css";
+@import "./styles/migration.css"; /* 顶栏下面那条「项目已迁移」公告（MigrationBanner） */
 @import "./styles/engine-picker.css";
 @import "./styles/app-bar-mobile.css";
 @import "./styles/terminal.css";

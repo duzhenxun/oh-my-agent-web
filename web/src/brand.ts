@@ -23,3 +23,12 @@ export const REPO_URL = "https://github.com/duzhenxun/oh-my-agent-web";
  * 这边写成全名是为了让用户在终端里看得懂自己在跑什么。改包名时两处一起改。
  */
 export const UPGRADE_COMMAND = "npm -g install oh-my-agent-web@latest";
+
+/**
+ * 项目迁移目标：这个仓库已经不再演进，接手的是 pop-agent。
+ *
+ * 和服务端那份 `MIGRATION_URL`（server/brand.ts）是同一个地址，但不能 import ——
+ * web 只允许通过 web/src/types.ts 碰 server 的协议类型（ADR-0002 纪律①），一个 URL 不值得开口子。
+ * 改地址时两处一起改（跟 REPO_URL 的规矩一样）。
+ */
+export const MIGRATION_URL = "https://github.com/duzhenxun/pop-agent";
