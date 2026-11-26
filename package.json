@@ -1,6 +1,6 @@
 {
 	"name": "oh-my-agent-web",
-	"version": "1.5.3",
+	"version": "2.0.0",
 	"bin": {
 		"oh-my-agent-web": "dist/server/cli.js",
 		"aw": "dist/server/cli.js",
@@ -8,11 +8,7 @@
 	},
 	"files": [
 		"dist",
-		"web/dist",
-		"helper/asr/main.swift",
-		"helper/asr/Info.plist",
-		"helper/asr/build.sh",
-		"helper/asr/release/ASRBridge.zip"
+		"web/dist"
 	],
 	"description": "oh-my-agent-web — 它是一个多 Agent 统一 Web 工作台，对 Pi Agent 做深度适配，同时也支持 Codex、Claude 等其他 Agent。",
 	"author": "duzhenxun",
@@ -29,6 +25,7 @@
 		"agent-web",
 		"agent-web-ui",
 		"coding-agent",
+		"pi-agent",
 		"pi-web",
 		"codex-web",
 		"opencode-web",
@@ -60,8 +57,8 @@
 		"format:check": "prettier --check .",
 		"icons": "node scripts/make-icons.mjs",
 		"cues": "node scripts/make-voice-cues.mjs",
-		"build:asr": "sh helper/asr/build.sh",
-		"asr:release": "sh helper/asr/build.sh --release"
+		"build:helper": "node scripts/build-helper.mjs",
+		"prepack": "npm run build"
 	},
 	"devDependencies": {
 		"@types/express": "^5.0.0",
@@ -98,5 +95,9 @@
 	},
 	"optionalDependencies": {
 		"node-pty": "^1.1.0"
-	}
+	},
+	"allowScripts": [
+		"esbuild",
+		"node-pty"
+	]
 }

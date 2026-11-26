@@ -21,7 +21,6 @@
 @import "./styles/provider-checklist.css";
 @import "./styles/provider-switch.css";
 @import "./styles/app-bar.css";
-@import "./styles/migration.css"; /* 顶栏下面那条「项目已迁移」公告（MigrationBanner） */
 @import "./styles/engine-picker.css";
 @import "./styles/app-bar-mobile.css";
 @import "./styles/terminal.css";
@@ -52,6 +51,7 @@
 @import "./styles/work-panel.css"; /* 分栏工作区：工具落地页 / 网页 / 临时聊天 / 文件树 */
 @import "./styles/canvas.css"; /* 画布：把会话摊在可平移缩放的平面上 */
 @import "./styles/overlay.css";
+@import "./styles/first-run.css"; /* 首启向导：选引擎 / 填 key / 建第一条会话（App 根节点那次性的三步浮层） */
 @import "./styles/templates.css";
 @import "./styles/model-picker.css";
 @import "./styles/highlight.css";
@@ -64,8 +64,10 @@
 @import "./styles/voice.css";
 @import "./styles/agents.css";
 @import "./styles/cron.css";
+@import "./styles/bug-report.css";
 @import "./styles/computer.css";
 @import "./styles/toast.css";
+@import "./styles/error-boundary.css"; /* 界面崩溃时那一屏（白屏的最后一道防线） */
 @import "./styles/image-viewer.css"; /* 点图片原地弹大图（不再开新标签页） */
 @import "./styles/mcp-panes.css";
 @import "./styles/engine-panel.css";

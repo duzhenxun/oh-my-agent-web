@@ -116,6 +116,17 @@ export function CronPanel() {
 					"自动刷新。运行历史和结果仅以文本显示，不会打开普通代理会话。",
 					"Refreshes automatically. Run history and results are shown as text; no regular agent session is opened.",
 				)}
+				{/* 任务按引擎分开存（用户 2026-11-24：「不同 agent 要区分开，各保存各的」）：
+				 * 不写这一句，切引擎之后看到列表空/换了会以为任务丢了。 */}
+				{data ? (
+					<>
+						{" "}
+						{t(
+							`任务按引擎分开保存，这里只显示 ${data.engine} 的任务。`,
+							`Jobs are stored per engine — only ${data.engine} jobs are shown here.`,
+						)}
+					</>
+				) : null}
 			</p>
 			{loadError ? (
 				<div className="cron-error" role="alert">

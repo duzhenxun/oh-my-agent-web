@@ -33,7 +33,7 @@ export function HiddenProjectsRow({
 				open
 					? t("收起隐藏的项目", "Collapse hidden projects")
 					: t(
-							`已隐藏 ${count} 个项目（点一下展开，里面跟项目管理一样能点开项目、打开会话）`,
+							`已隐藏 ${count} 个项目（点一下展开，里面跟「项目」那一栏一样能点开项目、打开会话）`,
 							`${count} hidden project(s) — click to expand; projects and sessions work like the main list`,
 						)
 			}

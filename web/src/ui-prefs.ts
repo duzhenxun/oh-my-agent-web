@@ -94,39 +94,53 @@ export const TERMINAL_FONT_MAX = 24;
 
 /**
  * 顶栏那一排入口的显隐：**勾上才显示**（见设置里的「顶栏」tab）。
- * 覆盖八个面板入口：模型 / 技能 / 推送 / 语音 / 插件 / MCP / 子代理 / 定时任务。
+ * 覆盖八个面板入口：模型 / 定时任务 / 技能 / 推送 / 语音 / 插件 / MCP / 子代理。
  *
- * 「设置」故意不在这张表里：它是唯一能把这些入口重新勾回来的地方，
- * 一旦允许把它藏掉，用户全取消勾选之后就再没有入口能回去了。
- * 引擎切换也不在：它在底部状态栏（跟审批模式并排），不属于顶栏这一排。
+ * **数组顺序就是顶栏从左到右的顺序**（`App.tsx` 直接按它 filter）：
+ * 2026-11-23 用户要「模型 → 定时任务 → 技能」，所以这三项提到最前；后面几个按需才勾，顺序不重要。
+ * 设置面板里那排勾选框也是这个顺序 —— 勾的就是屏幕上从左到右看到的那一排。
+ *
+ * 「设置」**2026-11-23 起也进表**（用户：「顶栏的设置按扭也放在设置里面，可以勾选不显示」）。
+ * 以前它被写死在顶栏里，理由是「它是把这些入口重新勾回来的唯一地方」；现在不怕了：
+ * 状态栏右下角还有一颗「设置」（同一个面板），藏掉顶栏那颗也回得去。
+ *
+ * 引擎切换不在表里：它在底部状态栏（跟审批模式并排），不属于顶栏这一排。
  */
 export const APPBAR_ITEMS = [
 	"models",
+	"cron",
 	"skills",
 	"push",
 	"voice",
 	"plugins",
 	"mcp",
 	"agents",
-	"cron",
+	/* 「提 Bug」也是面板（见 components/BugPanel.tsx）：默认不在顶栏，但可以在设置里勾出来；
+	   不勾的时候还能从 设置 → 对话 → 反馈 进去，不会因为没勾就找不到 */
+	"bug",
 ] as const;
 type AppbarItem = (typeof APPBAR_ITEMS)[number];
-export type AppbarToggle = AppbarItem;
+/** 可勾选的东西 = 那八个面板入口 + 「设置」自己 */
+export type AppbarToggle = AppbarItem | "settings";
 
-/** 设置里那排勾选框的顺序：就是这些面板入口 */
-export const APPBAR_TOGGLES: AppbarToggle[] = [...APPBAR_ITEMS];
+/** 设置里那排勾选框的顺序：八个面板入口（顺序同上），最后是「设置」自己 */
+export const APPBAR_TOGGLES: AppbarToggle[] = [...APPBAR_ITEMS, "settings"];
 
 /**
- * 顶栏入口的**默认值**：只有模型 / 技能 / 语音 / MCP 默认勾上，其余默认不勾。
+ * 顶栏入口的**默认值**：只有模型 / 定时任务 / 技能 默认勾上，其余（含「设置」）默认不勾。
  *
- * 为什么不「全勾」：新装完的系统顶栏一下子铺满七个面板 + 临时会话，视觉上就是一片按钮墙 ——
- * 用户 2026-10-30 明确要求「只勾这几个，不要全都勾上」。推送 / 插件 / 子代理都是**按需**才用的入口，
- * 想用的人在 设置 → 界面 → 顶栏 里勾一下就好（读的是同一个 key）。
+ * 为什么不「全勾」：新装完的系统顶栏一下子铺满七个面板 + 临时会话，视觉上就是一片按钮墙。
+ * 2026-11-23 用户把这条再收紧一次：「顶部默认只要 模型、定时任务、技能」——
+ * 语音 / MCP 原来默认勾上，现在也不勾了；「设置」顶上那颗同样默认不显示，
+ * 因为底部状态栏最左边那颗就是同一个面板（见 `STATUSBAR_ITEM_DEFAULT_ON`）。
+ * 推送 / 插件 / 子代理都是**按需**才用的入口，想用的人在 设置 → 界面 → 顶栏 里勾一下就好。
+ * 2026-11-24 再收一次：「顶部只要定时任务」—— 模型和技能也默认不显示。
+ * 这两个平时就在输入框上方（模型 / 提示词）和侧栏里，再看一遍只是重复。
  *
  * 只是**默认值**，不是「强制」：`readStoredBool` 一律先看本地存过的值，
  * 所以老用户（或已经把某个入口关掉的人）升级上来不会被这条默认改回原样。
  */
-export const APPBAR_ITEM_DEFAULT_ON: readonly AppbarToggle[] = ["models", "skills", "voice", "mcp"];
+export const APPBAR_ITEM_DEFAULT_ON: readonly AppbarToggle[] = ["cron"];
 
 /** 单个顶栏入口的默认显隐（给 `usePrefFlags` 用：一次渲染整排勾选框时需要逐项取默认） */
 export const appbarItemDefault = (item: AppbarToggle): boolean => APPBAR_ITEM_DEFAULT_ON.includes(item);
@@ -169,6 +183,8 @@ export const APPBAR_ITEM_LABEL: Record<AppbarToggle, string> = {
 	mcp: "MCP",
 	agents: "子代理",
 	cron: "定时任务",
+	bug: "提 Bug",
+	settings: "设置",
 };
 
 /** 上面那张表的英文（和顶栏按钮同一套叫法） */
@@ -181,6 +197,8 @@ export const APPBAR_ITEM_LABEL_EN: Record<AppbarToggle, string> = {
 	mcp: "MCP",
 	agents: "Subagents",
 	cron: "Cron",
+	bug: "Report a bug",
+	settings: "Settings",
 };
 
 /**
@@ -205,44 +223,85 @@ export const APPBAR_TEMPCHAT_DEFAULT = false;
  * **短语内容**本身，它仍然在服务端 settings 里。
  * 服务端那个字段留着只为老客户端兼容和一次性迁移（见 `use-quick-seed.ts`）。
  */
-export const COMPOSER_TOGGLES = ["templates", "think", "quick"] as const;
+export const COMPOSER_TOGGLES = ["model", "thinking", "templates", "think", "quick"] as const;
+
+/**
+ * 「快捷指令」那一项的默认值：**关**（2026-11-23 起）。
+ *
+ * 短语本身的编辑与点击已经搬进「提示词」弹窗；外面那一排变成**可选**的快捷入口 ——
+ * 用户：「这个可以在设置中设置要不要外面显示」。默认不占地方，需要的人在
+ * 设置 → 对话 里勾上「快捷指令」就会出现（`.quick-chip` 那排）。
+ */
+const COMPOSER_ITEM_DEFAULT_ON = new Set(["model", "thinking", "templates", "think"]);
+export const composerItemDefault = (item: ComposerToggle): boolean => COMPOSER_ITEM_DEFAULT_ON.has(item);
 export type ComposerToggle = (typeof COMPOSER_TOGGLES)[number];
 
 export const COMPOSER_ITEM_KEY = (item: ComposerToggle): string => `agent-web.composer.${item}`;
 
+/**
+ * 输入框里那颗**裸回车**是「发送」还是「换行」（设置 → 界面 → 对话窗口）。
+ *
+ * 2026-11-24 用户：「这里发消息，怎么不可以设置回车呢」—— 回车到底该发还是该换行，
+ * 是记在手里的肌肉记忆，不是产品能统一帮所有人决定的：写代码、写长 prompt 的人
+ * 需要回车换行（只有 ⌘↩ 才发）；聊天式用法的人只想一句话回车就走。
+ *
+ * 默认 **true**（回车就发送，Shift+Enter 换行）—— 跟以前完全一样，老用户不会被改手感。
+ * 关掉后：回车换行，发送改走 `Mod+Enter`（那条快捷键本来就在 `shortcuts.ts` 里，可再自己改键）。
+ * 纯本机偏好：手机 / 桌面各记各的。
+ */
+export const COMPOSER_ENTER_SEND_KEY = "agent-web.composer.enterSend";
+export const COMPOSER_ENTER_SEND_DEFAULT = true;
+
 /** 勾选框上的名字（和输入框上方那颗按钮同一套叫法） */
 export const COMPOSER_ITEM_LABEL: Record<ComposerToggle, string> = {
+	model: "模型",
+	thinking: "思考强度",
 	templates: "提示词",
 	think: "想想",
-	quick: "快捷指令",
+	quick: "快捷指令（显示在输入框上方）",
 };
 
 /** 上面那张表的英文（`Prompts` 是提示词库那颗按钮的叫法，`Quick phrases` 同「快捷短语」） */
 export const COMPOSER_ITEM_LABEL_EN: Record<ComposerToggle, string> = {
+	model: "Model",
+	thinking: "Thinking effort",
 	templates: "Prompts",
 	think: "Think",
-	quick: "Quick phrases",
+	quick: "Quick commands (above the input)",
 };
 
 /**
- * 「底部状态栏」所有项目的显隐：设置、审批、引擎、模型、思考强度、排队、工作中、上下文、
- * 完整历史、系统提示词、终端、顶部。数组顺序就是默认的从左到右顺序（用户 2026-11-05 定）；用户拖过的顺序存在 `statusbar-order.ts`，以存的为准。「设置」始终保留。
+ * 「底部状态栏」所有项目的显隐：设置、引擎、审批、完整历史、系统提示词、排队、工作中、上下文、
+ * 终端、顶部。数组顺序就是默认的从左到右顺序；用户拖过的顺序存在 `statusbar-order.ts`，以存的为准。「设置」始终保留。
+ *
+ * 2026-11-23 用户定：「底部只要 设置、引擎、审批模式」——
+ * 所以前三项固定是这三颗（设置在最左，跟「设置放到最左边」那条一致），其余默认隐藏、顺序排在后面。
  */
 export const STATUSBAR_TOGGLES = [
+	"settings",
+	"engine",
+	"approval",
 	"history",
 	"prompt",
-	"model",
-	"engine",
-	"thinking",
-	"approval",
 	"queued",
 	"running",
 	"context",
 	"terminal",
 	"top",
-	"settings",
 ] as const;
 export type StatusbarToggle = (typeof STATUSBAR_TOGGLES)[number];
+
+/**
+ * 底部状态栏的**默认显隐**：只有设置 / 引擎 / 审批模式三颗。
+ *
+ * 「设置」这一颗在 `StatusBar` 里本身就是恒画（它是找回其它入口的地方），
+ * 这里列上只是让「默认值」这张表读起来完整、跟设置面板里的勾选态一致。
+ * 和顶栏一样：只影响从没勾过的人，本地存过的值优先。
+ */
+export const STATUSBAR_ITEM_DEFAULT_ON: readonly StatusbarToggle[] = ["settings", "engine", "approval"];
+
+/** 单个底部项目的默认显隐（给 `usePrefFlags` 用：一次渲染整排勾选框时需要逐项取默认） */
+export const statusbarItemDefault = (item: StatusbarToggle): boolean => STATUSBAR_ITEM_DEFAULT_ON.includes(item);
 
 const STATUSBAR_KEY_PREFIX = "agent-web.statusbar.";
 export const STATUSBAR_ITEM_KEY = (item: StatusbarToggle): string => `${STATUSBAR_KEY_PREFIX}${item}`;
@@ -251,8 +310,6 @@ export const STATUSBAR_ITEM_LABEL: Record<StatusbarToggle, string> = {
 	settings: "设置",
 	approval: "审批模式",
 	engine: "引擎",
-	model: "模型",
-	thinking: "思考强度",
 	queued: "排队",
 	running: "工作中",
 	context: "上下文用量",
@@ -267,8 +324,6 @@ export const STATUSBAR_ITEM_LABEL_EN: Record<StatusbarToggle, string> = {
 	settings: "Settings",
 	approval: "Approval mode",
 	engine: "Engine",
-	model: "Model",
-	thinking: "Thinking level",
 	queued: "Queued",
 	running: "Running",
 	context: "Context",

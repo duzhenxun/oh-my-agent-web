@@ -46,11 +46,34 @@ export function useReading(): boolean {
 }
 
 /**
+ * **手动点「朗读」那一路**单独的停止通道。
+ *
+ * 为什么不能复用上面两条：`requestInterruptSpeech` / `requestStopSpeech` 只通知
+ * **自动播报**（`use-voice-cues.ts` 订阅），而尾注那颗「朗读」是组件自己 `speak()` 的，
+ * 谁都不认识它 —— 于是出现了用户 2026-11-24 报的那种情况：
+ * 「我都在操作下一个了，播放还在上面」（旧消息一直念着，那颗「停止」也一直挂在旧消息上）。
+ *
+ * 所以手动朗读要能被**任何一次「往下走」**叫停：发消息（含插队）、切会话、点停止。
+ */
+const manualStopListeners = new Set<() => void>();
+
+export function requestStopManualSpeech(): void {
+	for (const listener of manualStopListeners) listener();
+}
+
+/** 手动朗读端订阅停止请求；返回取消订阅 */
+export function onStopManualSpeechRequest(listener: () => void): () => void {
+	manualStopListeners.add(listener);
+	return () => manualStopListeners.delete(listener);
+}
+
+/**
  * 请朗读端停下来。**同时会让这一轮剩下的文字不再自动念** ——
  * 用户按「停止」的意图是「别念了」，不是「念完这一句再接着念下一句」（那样等于没停）。
  */
 export function requestStopSpeech(): void {
 	for (const listener of stopListeners) listener();
+	requestStopManualSpeech(); // 手点的那一路也要停（不然「停止」只停一半）
 }
 
 /** 朗读端订阅停止请求；返回取消订阅 */
@@ -101,8 +124,14 @@ export function speechActionForSend(mode: "now" | "queue" | "steer"): SendSpeech
 /** 按发送模式处理一下朗读：发送方只管调这个，别自己判断 */
 export function interruptSpeechForSend(mode: "now" | "queue" | "steer"): void {
 	const action = speechActionForSend(mode);
+	// 「排队」走 `requestStopSpeech`，它内部已经会停手动朗读；另两种在这里补一刀。
+	// 手动点的那一路**不看模式**：插队也算「人已经往下走了」，旧消息不该还在念
+	// （自动播报的规则仍是那张表：插队不动它，见 `speechActionForSend`）。
 	if (action === "stop") requestStopSpeech();
-	else if (action === "interrupt") requestInterruptSpeech();
+	else {
+		requestStopManualSpeech();
+		if (action === "interrupt") requestInterruptSpeech();
+	}
 }
 
 /* ---- 暂停 / 继续 ---- */

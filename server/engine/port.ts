@@ -140,8 +140,11 @@ export type EngineSessionOptions = {
 	 *
 	 * 为什么由引擎做：裁剪得按**引擎自己的会话树**走（entry 的 parentId 关系），
 	 * 宿主手里只有映射好的界面消息，拿不到分叉所需的 entry 结构。
+	 *
+	 * `startId`（可选）：**从哪条消息开始算**——给了就以它为起点，之前的历史**丢掉**
+	 * （用户 2026-11-24：「只把某一条消息作为开头开新会话」）；不给就是从根开始。
 	 */
-	fork?: { sourceSessionId: string; leafId?: string };
+	fork?: { sourceSessionId: string; leafId?: string; startId?: string };
 };
 
 /**
@@ -249,6 +252,20 @@ export type EnginePort = {
 		},
 	): Promise<void>;
 	interrupt(sessionId: string): Promise<void>;
+	/**
+	 * 打断这一轮，并**等它真的落定**（ADR-0054 的「插队」要用）。
+	 *
+	 * 为什么不能只调 `interrupt()` 就走：插队要在打断之后**立刻**发下一条输入，而底层协议都是
+	 * 「一个会话同时只能跑一条 prompt」（`sendMessage` 的先决条件），所以必须等到这一轮结束：
+	 *   - codex：本轮还没 `turn/completed` 就发 `turn/start`，会把 adapter 的 active 槽覆盖掉 ——
+	 *     上一轮的 promise 永不 resolve，之后 `turn/completed` 还会被路由到新那一轮的监听器
+	 *     （实测：8 秒不返回）；
+	 *   - ACP 三家：`session/cancel` 只是**通知**，在飞的那条 `session/prompt` 要等它自己 settle。
+	 *
+	 * @returns true = 这一轮已经结束（可以立刻发下一条）；false = 超时没落定（调用方应降级成排队）。
+	 * 不实现 = 宿主自己 `interrupt()` + 轮询回合是否还挂着（兜底，慢一点但不会永久 busy）。
+	 */
+	interruptAndSettle?(sessionId: string): Promise<boolean>;
 	/** 关掉一个引擎会话（LRU 回收：同时打开太多会带来多次资源扫描） */
 	closeSession?(sessionId: string): Promise<void>;
 	/**

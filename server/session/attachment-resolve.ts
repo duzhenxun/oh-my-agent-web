@@ -11,7 +11,8 @@ import type { AttachmentRef } from "../protocol.js";
 
 type UploadReader = {
 	read: (id: string) => Promise<{ bytes: Buffer; mime: string } | null>;
-	pathOf?: (id: string) => string;
+	/** 副本在磁盘上的**绝对路径**（拿不到返回 null） */
+	pathOf?: (id: string) => string | null | Promise<string | null>;
 };
 
 type ResolvedAttachments = {
@@ -42,8 +43,17 @@ export async function resolveAttachments(
 			images.push({ data: found.bytes.toString("base64"), mimeType: found.mime });
 			continue;
 		}
-		const path = uploadStore?.pathOf?.(attachment.id) ?? attachment.name;
-		promptText += `\n\n（附上文件，未注入内容：${path}）`;
+		const stored = uploadStore?.pathOf ? await uploadStore.pathOf(attachment.id) : null;
+		if (stored !== null && stored !== "") {
+			promptText += `\n\n（附上文件，未注入内容：${stored}）`;
+			continue;
+		}
+		/**
+		 * 没有路径就只能给文件名 —— 但要**把它说出来**，不要假装这是路径：
+		 * 以前的实现直接拿 `attachment.name` 充路径，模型看到「（附上文件，未注入内容：截图.png）」
+		 * 会当作相对路径去试，读不到就编（用户 2026-11-26：「发送时没有发路径」）。
+		 */
+		promptText += `\n\n（附上文件「${attachment.name}」，未注入内容；本环境只能给到文件名，没有磁盘路径）`;
 	}
 
 	if (promptText.trim() === "") promptText = "（见附件）";

@@ -28,8 +28,8 @@
  *       timeline / quadrantChart / xychart / sankey / block / packet / radar / kanban / requirement / info。
  *
  * 想换回完整版（或只想保留 mindmap、公式标签）——不用改代码，两个环境变量：
- *   OH_MY_AGENT_WEB_MERMAID_FULL=1            # 完全不裁，回到 7.3MB
- *   OH_MY_AGENT_WEB_MERMAID_KEEP=mindmap,katex # 从默认裁剪表里豁免指定项（id 或裸包名）
+ *   AGENT_WEB_MERMAID_FULL=1            # 完全不裁，回到 7.3MB
+ *   AGENT_WEB_MERMAID_KEEP=mindmap,katex # 从默认裁剪表里豁免指定项（id 或裸包名）
  *
  * 版本漂移怎么办：图型 id → chunk 文件的映射是**构建时从 mermaid 自己的 dist 源码里解析**的
  * （`var idNN = "<id>"; … await import("./chunks/mermaid.core/<file>")`），不写死带 hash 的文件名，
@@ -158,9 +158,9 @@ function chunkNamesOf(distDir: string): string[] {
 		.map((f) => f.replace(/\.mjs$/, ""));
 }
 
-/** 读环境变量里的豁免项（`OH_MY_AGENT_WEB_MERMAID_KEEP=mindmap,katex`） */
+/** 读环境变量里的豁免项（`AGENT_WEB_MERMAID_KEEP=mindmap,katex`） */
 function readKeep(): Set<string> {
-	const raw = process.env.OH_MY_AGENT_WEB_MERMAID_KEEP ?? "";
+	const raw = process.env.AGENT_WEB_MERMAID_KEEP ?? "";
 	return new Set(
 		raw
 			.split(",")
@@ -174,8 +174,8 @@ function makePlan(): Plan {
 	const chunks = new Set<string>();
 	const deps = new Set<string>();
 
-	if (process.env.OH_MY_AGENT_WEB_MERMAID_FULL === "1") {
-		notes.push("OH_MY_AGENT_WEB_MERMAID_FULL=1：跳过裁剪（完整 mermaid）");
+	if (process.env.AGENT_WEB_MERMAID_FULL === "1") {
+		notes.push("AGENT_WEB_MERMAID_FULL=1：跳过裁剪（完整 mermaid）");
 		return { chunks, deps, notes };
 	}
 
@@ -243,7 +243,7 @@ export function mermaidSlim(): Plugin {
 	let distDir = "";
 
 	return {
-		name: "oh-my-agent-web:mermaid-slim",
+		name: "agent-web:mermaid-slim",
 		enforce: "pre",
 		apply: "build",
 
@@ -282,13 +282,18 @@ export function mermaidSlim(): Plugin {
 
 		closeBundle() {
 			const count = plan.chunks.size + plan.deps.size;
+			/**
+			 * 默认闭嘴（用户 2026-11-26）：每次 `build:web` / `dev` 都刷一段裁剪报告，属于构建噪声。
+			 * 想看时 `AGENT_WEB_MERMAID_VERBOSE=1 npm run build:web`。
+			 */
+			if (!process.env.AGENT_WEB_MERMAID_VERBOSE) return;
 			if (count === 0) {
 				for (const note of plan.notes) console.log(`[oh-my-agent-web] ${note}`);
 				return;
 			}
 			console.log(
 				`[oh-my-agent-web] mermaid 已裁剪 ${plan.chunks.size} 个图型 chunk + ${plan.deps.size} 个重依赖` +
-					`（保留完整版：OH_MY_AGENT_WEB_MERMAID_FULL=1；单独保留某项：OH_MY_AGENT_WEB_MERMAID_KEEP=mindmap,katex）`,
+					`（保留完整版：AGENT_WEB_MERMAID_FULL=1；单独保留某项：AGENT_WEB_MERMAID_KEEP=mindmap,katex；看这行报告：AGENT_WEB_MERMAID_VERBOSE=1）`,
 			);
 			for (const note of plan.notes) console.log(`[oh-my-agent-web]   ${note}`);
 		},

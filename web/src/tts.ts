@@ -22,6 +22,10 @@ export type TtsSettings = {
 	edgeVoice?: string;
 	kokoroVoice?: string;
 	qwen3Voice?: string;
+	/** DeepSeek 只有 stella（女）/ tide（男）两个音色 */
+	deepseekVoice?: string;
+	/** 千问 Qwen-Audio-TTS 的音色（默认 3.1-flash 的旗舰音色）；注意和本地的 qwen3Voice 不是一回事 */
+	qwenVoice?: string;
 	/** 总开关（自动播报） */
 	enabled: boolean;
 	/** 回答结束时朗读最终回复 */
@@ -42,10 +46,14 @@ export type TtsSettings = {
 };
 
 export const DEFAULT_TTS_SETTINGS: TtsSettings = {
-	provider: "browser",
+	// 默认微软 Edge TTS（晓晓）：浏览器自带的中文音色普遍是机器音，
+	// 第一次装完点播报就该是「能听」的声音（2026-11-24 用户：「语音 tts 默认 微软 晓晓」）。
+	provider: "edge",
 	edgeVoice: "zh-CN-XiaoxiaoNeural",
 	kokoroVoice: "zf_xiaoxiao",
 	qwen3Voice: "serena",
+	deepseekVoice: "stella",
+	qwenVoice: "longanlingxin_v3.1",
 	enabled: true,
 	// 默认关：完成只说一声提示音就够了（用户 2026-11-02）。
 	// 想听内容的人自己开，选择会记在本机。
@@ -76,6 +84,12 @@ export function loadTtsSettings(): TtsSettings {
 		const raw = localStorage.getItem(STORAGE_KEY);
 		if (!raw) return { ...DEFAULT_TTS_SETTINGS };
 		const parsed = JSON.parse(raw) as Partial<TtsSettings>;
+		/*
+		 * 老设置没有 `provider` 字段 —— 那时只有浏览器语音，所以继续用浏览器语音。
+		 * 不兜这个底的话，它们会吃到新默认值（Edge / 晓晓）：用户从没选过 Edge，
+		 * 却在下一次点开语音时发现换了引擎、而且要联网。**默认值只该影响新装**。
+		 */
+		if (parsed.provider === undefined) parsed.provider = "browser";
 		const merged: TtsSettings = { ...DEFAULT_TTS_SETTINGS, ...parsed };
 		for (const key of ["enabled", "readReplies", "allowOnline"] as const) {
 			if (typeof merged[key] !== "boolean") merged[key] = DEFAULT_TTS_SETTINGS[key];
@@ -85,9 +99,9 @@ export function loadTtsSettings(): TtsSettings {
 				? Math.round(Math.max(0.5, Math.min(2, merged.rate)) * 10) / 10
 				: DEFAULT_TTS_SETTINGS.rate;
 		if (typeof merged.voiceURI !== "string") merged.voiceURI = DEFAULT_TTS_SETTINGS.voiceURI;
-		if (!(["browser", "edge", "kokoro", "qwen3"] as const).includes(merged.provider as TtsProvider))
+		if (!(["browser", "edge", "kokoro", "qwen3", "deepseek", "qwen"] as const).includes(merged.provider as TtsProvider))
 			merged.provider = "browser";
-		for (const key of ["edgeVoice", "kokoroVoice", "qwen3Voice"] as const) {
+		for (const key of ["edgeVoice", "kokoroVoice", "qwen3Voice", "deepseekVoice", "qwenVoice"] as const) {
 			if (typeof merged[key] !== "string" || !merged[key]) merged[key] = DEFAULT_TTS_SETTINGS[key];
 		}
 		return merged;
@@ -96,12 +110,41 @@ export function loadTtsSettings(): TtsSettings {
 	}
 }
 
+/**
+ * 语音设置变了（同页广播）。
+ *
+ * 为什么需要它：这些设置存在**本机 localStorage**（`agent-web.voice.tts`），不是服务端快照 ——
+ * 消息尾注那边要跟着「启用语音播报」这个开关显隐（用户 2026-11-24：「没启动的话就不显示」），
+ * 而它没有 snapshot 可订阅。存完派一个事件，`useTtsSettings()` 订阅它；跨标签页靠 `storage`。
+ */
+const TTS_EVENT = "agent-web:tts-settings";
+
 export function saveTtsSettings(settings: TtsSettings): void {
 	try {
 		localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
 	} catch {
 		// 存不了就只对本次生效
 	}
+	try {
+		window.dispatchEvent(new CustomEvent<TtsSettings>(TTS_EVENT, { detail: settings }));
+	} catch {
+		// 没有 window（SSR / 单测）就算了，本页自己已经拿到新值
+	}
+}
+
+/** 订阅语音设置的变化（同页自定义事件 + 跨标签页 `storage`） */
+export function onTtsSettingsChange(callback: (settings: TtsSettings) => void): () => void {
+	const onCustom = (event: Event) => callback((event as CustomEvent<TtsSettings>).detail);
+	const onStorage = (event: StorageEvent) => {
+		if (event.key !== STORAGE_KEY) return;
+		callback(loadTtsSettings());
+	};
+	window.addEventListener(TTS_EVENT, onCustom);
+	window.addEventListener("storage", onStorage);
+	return () => {
+		window.removeEventListener(TTS_EVENT, onCustom);
+		window.removeEventListener("storage", onStorage);
+	};
 }
 
 /** 浏览器到底有没有语音合成（Safari/Firefox/Chrome 都有；极老的没有） */
@@ -501,7 +544,11 @@ export function speak(text: string, settings: TtsSettings = loadTtsSettings(), h
 			? settings.kokoroVoice || "zf_xiaoxiao"
 			: provider === "qwen3"
 				? settings.qwen3Voice || "serena"
-				: settings.edgeVoice || "zh-CN-XiaoxiaoNeural";
+				: provider === "deepseek"
+					? settings.deepseekVoice || "stella"
+					: provider === "qwen"
+						? settings.qwenVoice || "longanlingxin_v3.1"
+						: settings.edgeVoice || "zh-CN-XiaoxiaoNeural";
 	onSpeechCanceled = hooks.onCancel;
 	const finish = () => {
 		cancelRemoteSpeech = undefined;

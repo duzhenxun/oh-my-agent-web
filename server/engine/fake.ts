@@ -40,8 +40,8 @@ function planFor(text: string): FakePlanStep[] {
 				kind: "approval",
 				toolName: "write_file",
 				argsSummary: 'path="docs/notes.md", bytes=128',
-				scopeKey: "write_file|/Users/me/code/agent-web/docs",
-				scopeHint: "目录 /Users/me/code/agent-web/docs",
+				scopeKey: "write_file|/Users/me/code/oh-my-agent-web/docs",
+				scopeHint: "目录 /Users/me/code/oh-my-agent-web/docs",
 				riskNote: "写文件会改动磁盘内容，确认后才能执行",
 			},
 			{ kind: "text", text: "（按你的决定，我要么继续、要么收手。）\n" },
@@ -198,7 +198,7 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
 		async openSession(openOptions) {
 			if (!sessions.has(openOptions.sessionId)) {
 				sessions.set(openOptions.sessionId, {
-					workspace: options.workspaceHint ?? "/tmp/agent-web-fake",
+					workspace: options.workspaceHint ?? "/tmp/oh-my-agent-web-fake",
 					transcript: [],
 					sessionPath: openOptions.sessionPath ?? null,
 				});

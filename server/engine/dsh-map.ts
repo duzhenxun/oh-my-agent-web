@@ -15,6 +15,7 @@
  *     工具名与参数得靠前面 `tool_call` 更新自己记（见 `rememberToolCall`）。
  */
 import type { ApprovalRequest, EngineEvent, EngineModelInfo } from "./port.js";
+import { missingEngineMessage } from "./engine-specs.js";
 
 type DshModelChoice = { value: string; name: string; description?: string; group?: string };
 
@@ -261,6 +262,8 @@ export function permissionOptionId(
  */
 export function friendlyDshError(error: unknown): string {
 	const message = error instanceof Error ? error.message : String(error);
+	// 必须排在 /not found/ 前面：spawn 失败的消息本身长这样
+	if (/ENOENT|command not found/i.test(message)) return missingEngineMessage("dsh");
 	if (/active write handle|already owned/i.test(message)) {
 		return "这个会话正在 DSH 自己的界面（web / tui）里打开着：先在那里关掉它，或新建一条会话";
 	}

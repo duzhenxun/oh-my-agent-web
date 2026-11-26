@@ -1,7 +1,7 @@
 {
 	"id": "/",
-	"name": "oh-my-agent-web",
-	"short_name": "agent-web",
+	"name": "pop-agent",
+	"short_name": "pop-agent",
 	"description": "单机编码智能体工作台",
 	"start_url": "/",
 	"scope": "/",
@@ -9,9 +9,9 @@
 	"background_color": "#ffffff",
 	"theme_color": "#3b82f6",
 	"icons": [
-		{ "src": "/favicon.svg?v=4", "type": "image/svg+xml", "sizes": "any", "purpose": "any" },
-		{ "src": "/icons/icon-192.png?v=4", "type": "image/png", "sizes": "192x192", "purpose": "any" },
-		{ "src": "/icons/icon-512.png?v=4", "type": "image/png", "sizes": "512x512", "purpose": "any" },
-		{ "src": "/icons/icon-maskable-512.png?v=4", "type": "image/png", "sizes": "512x512", "purpose": "maskable" }
+		{ "src": "/favicon.svg?v=9", "type": "image/svg+xml", "sizes": "any", "purpose": "any" },
+		{ "src": "/icons/icon-192.png?v=9", "type": "image/png", "sizes": "192x192", "purpose": "any" },
+		{ "src": "/icons/icon-512.png?v=9", "type": "image/png", "sizes": "512x512", "purpose": "any" },
+		{ "src": "/icons/icon-maskable-512.png?v=9", "type": "image/png", "sizes": "512x512", "purpose": "maskable" }
 	]
 }

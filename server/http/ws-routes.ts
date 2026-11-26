@@ -157,7 +157,7 @@ export function registerWebSocketRoutes(
 		if (!header) return null;
 		for (const part of header.split(";")) {
 			const [name, ...rest] = part.trim().split("=");
-			if (name === "agent-web-client") {
+			if (name === "oh-my-agent-web-client") {
 				const value = rest.join("=").trim();
 				return value === "" ? null : value;
 			}

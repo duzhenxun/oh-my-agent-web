@@ -2,7 +2,7 @@
  * ADR-0046：右侧分栏工作区 —— 临时聊天不共用主通道，而是另开一条客户端连接。
  *
  * 为什么需要**第二条连接**：服务端给每个客户端只发一份「你正在看哪个会话」的视图
- * （`server/session/client-view.ts`，ADR-0033）。主聊天用 `agent-web-client` 这个 cookie 里的 id，
+ * （`server/session/client-view.ts`，ADR-0033）。主聊天用 `oh-my-agent-web-client` 这个 cookie 里的 id，
  * 同时只有一条 active 会话。右侧要再开一个能独立收发的聊天，就只能在同域下另取一个 clientId：
  * 自己一条 SSE（`/api/events?client=…`）、自己一份快照、自己的 RPC 头（`x-agent-client`）——
  * 服务端一行不用改，主聊天的 active 也不会被顶掉。

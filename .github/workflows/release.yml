@@ -80,10 +80,6 @@ jobs:
         run: |
           # 只 build 不 pack 的话，最典型的翻车是 web/dist 被 .gitignore 顺带漏掉
           npm pack --dry-run 2>&1 | grep -E "package size|total files|dist/server/cli.js|web/dist/index.html"
-          # 本地识别程序的预编译包（ubuntu 上编不了 Swift，只能靠仓库里这份）
-          # 漏了也不会崩：用户点「安装」会退回 GitHub 下载；但有些网络不通，所以提个醒
-          npm pack --dry-run 2>&1 | grep -q "helper/asr/release/ASRBridge.zip" \
-            || echo "::warning::npm 包里没有 helper/asr/release/ASRBridge.zip —— 先跑 npm run asr:release 并提交"
 
       - name: 发布
         run: npm publish --access public

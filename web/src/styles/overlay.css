@@ -109,59 +109,78 @@ html.is-modal-moving * {
  * 容器借了 `.composer-wrap` 类，于是左右留白（限宽居中 / 满宽 / 手机三档）跟输入框自动一致；
  * 这里只管把它**水平摆到中间**、把这一行的高度收紧。 */
 .jump-bottom-host {
-	/* **居中**（用户：「放在中间吧」）：以前是 `flex-end`（贴着输入框右头），
-	 * 跟右下角那排工具 / 发送按钮挂得像一伙的，其实它是一个「下面还有新内容」的提示，
-	 * 属于正在滚的那一块正文，而不是输入去侧的控件 —— 摆中间才像「往下看」的指示。 */
-	align-items: center;
-	justify-content: center;
-	/* 左右 padding 由 chat.css 里那条 `.jump-bottom-host` 清零（要同时盖住限宽 / 满宽 / 手机三档，
-	 * 所以写在那边；不清零的话箭头会往左偏 7px —— 那套左右留白是不对称的）。 */
-	/* 上面那块（提示条 / 待发条）已经给过间距，这里只留和输入框之间的那条缝 */
-	gap: 0;
+	/* 2026-11-23（用户：「这块不要这个矩形，只要中间漂浮的按钮就行」）：
+	 * 这一行**不再占位置** —— 高度 0、没有底色，只是给按钮当定位参照。
+	 * 原来它是一整行（借了 `.composer-wrap` 的左右留白），看着就是输入框上方多出来的一条白色矩形。 */
+	position: relative;
+	height: 0;
+	min-height: 0;
+	margin: 0;
+	padding: 0;
+	background: none;
+	border: none;
+	pointer-events: none;
+	overflow: visible;
 }
 
 .jump-bottom {
-	/* 图标 + 文案（用户：「这个还是加上文案吧」）：
-	 * 早先它只剩一枚箭头（当时的要求是「不要文案，只要向下的箭头」），
-	 * 但光一枚 16px 的箭头在宽屏、低对比度下很难看出是个能点的东西；
-	 * 现在把字加回来，仍然**透明底、无描边、无投影**（那几条要求还成立），
-	 * 只是文字与图标一起淡，悬停时一起变深 —— 它依旧不抢输入框的注意力。 */
+	/* 2026-11-23（用户：「回到最新这块换成图里的那个图标，下面这块白的要变成透明的，
+	 * 只留一个回到最新的小图标」）：从「箭头 + 文案」的胶囊收成**一枚圆形小箭头**。
+	 *  - 圆的：28×28、`border-radius: 50%`；
+	 *  - 不铺白底：极淡的半透明底 + 1px 细边（纯透明在浅色正文上会找不见它），
+	 *    悬停才变实一点的浅底；
+	 *  - 不写字：文案在 `title` / `aria-label` 里（读屏与悬停提示照旧）。
+	 * 位置没变：仍然是输入框上方那一行、水平居中。 */
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	/* 高度不变（24px，跟输入框上方那一行齐）；宽度改成跟内容走（图标 + 字） */
-	min-width: 24px;
-	height: 24px;
-	gap: 4px;
-	/* 跟输入框上沿贴得再紧一点（用户：「再往下放放」）：那一行的高度就是这颗方块的高度，
-	 * 不再给下边留白 —— 间距都交给输入区自己的间距。 */
+	/* 浮起来：水平居中，底边压在「输入框上沿」往上 6px 处（宿主是零高度的一行） */
+	position: absolute;
+	left: 50%;
+	transform: translateX(-50%);
+	bottom: 6px;
+	pointer-events: auto;
+	width: 28px;
+	height: 28px;
+	padding: 0;
 	margin: 0;
-	/* 左右给一点内边距：悬停浅底时文字不会顶到胶囊边缘 */
-	padding: 0 8px;
-	border: none;
-	border-radius: 999px;
-	background: transparent;
-	color: var(--text-faint);
+	border: 1px solid var(--border);
+	border-radius: 50%;
+	background: color-mix(in srgb, var(--bg) 55%, transparent);
+	-webkit-backdrop-filter: blur(6px);
+	backdrop-filter: blur(6px);
+	color: var(--text-dim);
 	font: inherit;
-	font-size: 12px;
 	line-height: 1;
-	white-space: nowrap;
 	cursor: pointer;
-}
-
-.jump-bottom-label {
-	/* 跟右上角那颗箭头的图标视觉重量保持一致，不显得「字比图标重」 */
-	font-weight: 500;
+	transition:
+		background 0.12s ease,
+		color 0.12s ease,
+		border-color 0.12s ease;
 }
 
 .jump-bottom svg {
 	display: block;
-	width: 16px;
-	height: 16px;
+	width: 14px;
+	height: 14px;
 }
 
-.jump-bottom:hover {
-	/* 悬停才给一点底色（不再是完全没反应，但也不是一真胶囊） */
+.jump-bottom:hover,
+.jump-bottom:focus-visible {
 	background: var(--bg-elev-2);
-	color: var(--text-dim);
+	border-color: var(--border-strong);
+	color: var(--text);
+}
+
+/* 引擎安装弹窗（ADR-0052）：成功一行、说明一行 —— 不复用 .modal-risk（那是警告色） */
+.modal-ok {
+	margin: 0 0 12px;
+	color: var(--green, #4ade80);
+}
+
+.modal-hint {
+	margin: 12px 0 0;
+	color: var(--text-faint);
+	font-size: 14px;
+	overflow-wrap: anywhere;
 }

@@ -53,6 +53,7 @@ export type {
 	PiSessionSummary,
 	ProjectPrefs,
 	PromptTemplate,
+	QuickPhrase,
 	ProtocolError,
 	QueuedMode,
 	RefreshActionsRequest,

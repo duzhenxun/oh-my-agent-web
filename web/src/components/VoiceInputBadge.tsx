@@ -23,7 +23,7 @@ export function VoiceInputBadge({ inline = false }: { inline?: boolean } = {}) {
 	const status = useVoiceInputStatus();
 	const silence = useVoiceSilenceRatio();
 	const drag = useDraggableBadge<HTMLButtonElement>({ storageKey: POS_KEY });
-	/** 放进输入框时：纯按钮，不拖动、不记位置（位置由布局决定） */
+	/** 放进输入框里时：纯按钮，不拖动、不记位置（位置由布局决定） */
 	const floating = !inline;
 	const listening = status === "listening";
 	const sending = status === "sending";

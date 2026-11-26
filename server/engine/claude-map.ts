@@ -22,6 +22,7 @@
  *   - `session/prompt` 只回 `{stopReason}`（**没有 usage**）：用量从会话 JSONL 里读（claude-sessions.ts）。
  */
 import type { ApprovalRequest, EngineEvent, EngineModelInfo } from "./port.js";
+import { missingEngineMessage } from "./engine-specs.js";
 
 /** 模型 id 的前缀：界面按 `provider/model` 显示，Claude 只有一家 provider */
 export const CLAUDE_PROVIDER = "anthropic";
@@ -356,7 +357,7 @@ export function permissionOptionId(
 export function friendlyClaudeError(error: unknown): string {
 	const message = error instanceof Error ? error.message : String(error);
 	if (/ENOENT|spawn .* ENOENT|command not found/i.test(message)) {
-		return "没有找到 claude-code-acp / claude-agent-acp：先 `npm i -g @zed-industries/claude-code-acp`（或改名后的 `npm i -g @agentclientprotocol/claude-agent-acp`；Claude Code 本体也要装好并登录），或设 AGENT_WEB_CLAUDE_BIN 指向它";
+		return missingEngineMessage("claude");
 	}
 	if (/authRequired|authentication required|Please run \/login|Invalid API key|401|403|unauthor/i.test(message)) {
 		return "Claude Code 没登录 / 凭据失效：先在终端里跑一次 `claude` 完成登录（本机凭据要单独登录），再切回来";

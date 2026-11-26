@@ -15,6 +15,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
 	CHAT_WIDTHS,
+	CHAT_WIDTH_DEFAULT_PX,
 	CHAT_WIDTH_MIN_PX,
 	CHAT_WIDTH_STEP_PX,
 	clampChatWidthPx,
@@ -28,9 +29,10 @@ import { DEFAULT_FONT_PX, FONT_LADDERS } from "../../web/src/font-scale.ts";
 const CHAT_DEFAULT = DEFAULT_FONT_PX.chat;
 
 describe("默认值：改这个设置之前的样子", () => {
-	it("没存过 → 标准字号 + 满宽", () => {
+	it("没存过 → 标准字号 + 标准宽度（2026-11-23 起不再是满宽）", () => {
 		assert.equal(readStoredFont(null), CHAT_DEFAULT);
-		assert.equal(readStoredWidth(null), 0); // 0 = 满宽
+		assert.equal(readStoredWidth(null), CHAT_WIDTH_DEFAULT_PX);
+		assert.equal(CHAT_WIDTH_DEFAULT_PX, 900); // = 「标准」那一档
 	});
 
 	it("默认字号 = 「标准」14px（聊天正文那一档）", () => {
@@ -60,9 +62,9 @@ describe("字号取值：新值、老档位、坏值", () => {
 		assert.equal(readStoredFont("M"), CHAT_DEFAULT); // 大小写不认，也不炸
 	});
 
-	it("宽度坏值回落到满宽（findChatWidth 对未知 id 返回 null）", () => {
-		assert.equal(readStoredWidth("9999px"), 0); // 带单位 = 坏值
-		assert.equal(readStoredWidth(""), 0);
+	it("宽度坏值回落到「标准」（findChatWidth 对未知 id 返回 null）", () => {
+		assert.equal(readStoredWidth("9999px"), CHAT_WIDTH_DEFAULT_PX); // 带单位 = 坏值
+		assert.equal(readStoredWidth(""), CHAT_WIDTH_DEFAULT_PX);
 		assert.equal(findChatWidth("huge"), null);
 	});
 
@@ -97,11 +99,17 @@ describe("cssVarsOf：写到 <html> 上的两个值", () => {
 		assert.equal(cssVarsOf(16, 720).maxWidth, "720px");
 	});
 
-	it("滑杆刻度：0 与负数都是满宽，其余落在 480 + n*20 上", () => {
+	it("滑杆刻度：0 与负数都是满宽，其余落在 360 + n*20 上", () => {
 		assert.equal(clampChatWidthPx(0), 0);
 		assert.equal(clampChatWidthPx(-40), 0);
 		assert.equal(clampChatWidthPx(Number.NaN), 0);
-		assert.equal(clampChatWidthPx(500), CHAT_WIDTH_MIN_PX + CHAT_WIDTH_STEP_PX);
+		assert.equal(clampChatWidthPx(500), 500); // 落在刻度上就原样保留（360 + 7*20）
+		// 刚过左端一点点就吸到左端，而不是多跳一格（旧的 500 是在 min = 480 时写的，早已过期）
+		assert.equal(clampChatWidthPx(CHAT_WIDTH_MIN_PX + 5), CHAT_WIDTH_MIN_PX);
+		assert.equal(
+			clampChatWidthPx(CHAT_WIDTH_MIN_PX + CHAT_WIDTH_STEP_PX + 5),
+			CHAT_WIDTH_MIN_PX + CHAT_WIDTH_STEP_PX,
+		);
 		for (const px of [480, 501, 937, 1280]) {
 			const clamped = clampChatWidthPx(px);
 			assert.equal((clamped - CHAT_WIDTH_MIN_PX) % CHAT_WIDTH_STEP_PX, 0);

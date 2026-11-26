@@ -40,7 +40,11 @@
 }
 
 .tpl-grid {
-	flex: 1 1 auto;
+	/* `flex: 0 1 auto`（原来是 `1 1 auto`）：模板网格不再"吃掉剩余高度"——
+	 * 2026-11-23 在它下面加了「快捷指令」那块，网格继续伸展的话会把那块顶到弹窗最底下、
+	 * 中间空出一大片。现在网格按内容高度排，整块从下往上贴着快捷指令走；
+	 * 模板很多时仍然是网格自己滚（`overflow: auto` + 弹窗的 `max-height: 88vh` 兜着）。 */
+	flex: 0 1 auto;
 	min-height: 0;
 	overflow: auto;
 	display: grid;
@@ -419,4 +423,110 @@
 
 .composer-topbar .quick-row {
 	flex-wrap: wrap;
+}
+
+/* chip 里的图标：**往下挪 1px**。
+ *
+ * 2026-11-23：图标换成对称图形（圆环+圆心 / 三个递进的点）之后，**盒子**跟文字完全对齐
+ * （实测中心都在 527.4），但看起来图标仍偏高一点 —— 因为文字的视觉中心是 x-height 的中线，
+ * 比行盒中心低约 1px（汉字还好，英文的 h/x 高度差更明显）。
+ * 所以这一格不是"补图形缺陷"，而是把图标对到**文字的光学中心**。 */
+.composer-tools .tool-chip .tool-icon {
+	transform: translateY(1px);
+}
+
+
+/* ---- 提示词模板弹窗里那块「快捷指令」----
+ * 2026-11-23 从输入框上方那颗「✏️ 编辑」弹窗并进来：模板下面是短语输入框。
+ * 与上面的模板网格之间用一条分隔层区分（不新加组件，只靠 `.tpl-head-sub` 上的上边框 + 间距）。 */
+.tpl-head-sub {
+	margin-top: 18px;
+	padding-top: 16px;
+	border-top: 1px solid var(--border);
+}
+
+.tpl-quick-textarea {
+	min-height: 78px;
+	margin-top: 10px;
+}
+
+/* ---- 提示词弹窗里的「快捷指令」胶囊（2026-11-23 从输入框上方搬进来）----
+ * 点一下直接发送、Shift+点击只填入；样式沿用输入框上方那排 `.quick-chip`，
+ * 只是这里允许换行（弹窗宽度固定，短语多时要能折行）。 */
+.tpl-quick-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-top: 10px;
+}
+
+/* ---- 提示词弹窗里的「快捷指令」输入框：**不要太长** ----
+ * 弹窗宽 1080，输入框原来铺满整行、还有 5 行高，看着像块白板（用户 2026-11-23：「这个框不需要这么长」）。
+ * 现在限制在 520px、行数压到 2 行 —— 一行一条短语，够用。 */
+.tpl-quick-textarea {
+	max-width: 520px;
+	min-height: 56px;
+}
+
+/* 内容多时自己也别被截断：3 行高度 + 内部滚动（宽度仍然限 520） */
+.tpl-quick-textarea {
+	height: auto;
+}
+
+/* ---- 快捷指令：胶囊（带 ×）+ 添加行 ----
+ * 2026-11-23：从「一行一条的 textarea」改成「一条一个胶囊 + 底部添加」。
+ * 胶囊沿用 `.quick-chip` 的外形，但拆成两半：名字部分（`.tpl-quick-send`）和删除叉（`.tpl-quick-x`），
+ * 因为 HTML 里按钮不能套按钮。 */
+.tpl-quick-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 0;
+	padding: 0;
+	overflow: hidden;
+}
+
+.tpl-quick-send {
+	display: inline-flex;
+	align-items: center;
+	border: none;
+	background: none;
+	color: inherit;
+	font: inherit;
+	padding: 1px 4px 1px 7px;
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.tpl-quick-send:hover {
+	color: var(--text);
+}
+
+.tpl-quick-x {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border: none;
+	background: none;
+	color: var(--text-faint);
+	font: inherit;
+	line-height: 1;
+	padding: 1px 6px 1px 2px;
+	cursor: pointer;
+}
+
+.tpl-quick-x:hover {
+	color: var(--red);
+}
+
+/* 添加行：小输入框 + 按钮 */
+.tpl-quick-add {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-top: 10px;
+}
+
+.tpl-quick-input {
+	width: 240px;
+	max-width: 50%;
 }

@@ -1,4 +1,4 @@
-import { UPGRADE_COMMAND } from "./brand.ts";
+import { engineBrandName, UPGRADE_COMMAND } from "./brand.ts";
 import { basename } from "./path-utils.ts";
 import { useStickToBottom } from "./stick-to-bottom.ts";
 import { nextAnchorTarget, type AnchorSeen } from "./anchor-target.ts";
@@ -6,8 +6,6 @@ import { useVoiceCues } from "./use-voice-cues.ts";
 // 「跑完了、你还没看」的小圆点：喂帧在这里，画圆点在侧栏（session-unseen.ts）
 import { useUnseenFinishWatch } from "./use-unseen-finish.ts";
 import { ToastHost } from "./components/ToastHost.tsx";
-import { MigrationBanner } from "./components/MigrationBanner.tsx";
-import { useDocumentFullscreen } from "./use-fullscreen.ts";
 import { ImageViewer } from "./components/ImageViewer.tsx";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
@@ -40,6 +38,7 @@ import {
 } from "./shortcuts.ts";
 import { toggleProjects } from "./projects-panel.ts";
 import { toggleShortcutSheet } from "./shortcut-sheet.ts";
+import { requestComposerAction } from "./composer-actions.ts";
 import { isSpeechPausedNow, requestStopSpeech, setSpeechPaused } from "./speech-control.ts";
 import { isVoiceListening, startVoiceInput, stopVoiceInput, toggleVoiceInput } from "./voice-input.ts";
 import { useShortcuts } from "./use-shortcuts.ts";
@@ -84,6 +83,8 @@ import type { UiMessage } from "./types.ts";
 import { archiveSession, toggleSessionPin } from "./session-actions.ts";
 import { deleteSession } from "./delete-session.ts";
 import { SessionMenu } from "./components/SessionMenu.tsx";
+import { SpeechPet } from "./components/SpeechPet.tsx";
+import { onOpenPanelRequest } from "./open-panel.ts";
 import { currentMobileShell } from "./mobile-shell-dom.ts";
 import { ApprovalDialog, NoticeBar } from "./components/ApprovalDialog.tsx";
 import { Composer } from "./components/Composer.tsx";
@@ -92,15 +93,15 @@ import { NewChatMeta } from "./components/NewChatMeta.tsx";
 import { NewChatTemplates } from "./components/NewChatTemplates.tsx";
 import { ConversationOutline } from "./components/ConversationOutline.tsx";
 import { SidebarMenu, type Panel as MenuPanel } from "./components/SidebarMenu.tsx";
+import type { FilesToolProps } from "./components/FilesTool.tsx";
 import { APPBAR_ITEMS, APPBAR_TEMPCHAT_DEFAULT, APPBAR_TEMPCHAT_KEY } from "./ui-prefs.ts";
 import { useAppbarItems } from "./use-appbar-items.ts";
 import { useStoredBool } from "./use-stored-bool.ts";
-import { AgentsLiveBadge } from "./components/AgentsLiveBadge.tsx";
 import { NewChatButton } from "./components/NewChatButton.tsx";
 import { TempChatButton } from "./components/TempChatButton.tsx";
 import { NewProjectDialog } from "./components/NewProjectDialog.tsx";
 import { ShortcutSheet } from "./components/ShortcutSheet.tsx";
-import { turnStartedAtOf } from "./subagent-view.tsx";
+import { FirstRunWizard } from "./components/FirstRunWizard.tsx";
 import { PreviewPanel, disposePanelItem, type PanelItem, type WorkTool } from "./components/PreviewPanel.tsx";
 // 分栏里的临时聊天：它们不是「我的会话」，要从左侧清单里滤掉
 import { isSideConversation, sideChannelFor } from "./side-chat.ts";
@@ -111,6 +112,7 @@ import { StatusBar } from "./components/StatusBar.tsx";
 import { BottomTerminal } from "./components/BottomTerminal.tsx";
 import { useT } from "./use-language.ts";
 import { useBrandName } from "./use-brand-name.ts";
+import { setDefaultBrandName } from "./brand-name.ts";
 import { syncAppearanceFromSnapshot } from "./appearance-sync.ts";
 
 /**
@@ -149,8 +151,6 @@ export function App() {
 	}, []);
 	/** 顶部栏是否收起（底部状态栏的「▴ 顶部」切换，状态存 localStorage） */
 	const [appbarHidden, setAppbarHidden] = useState(() => readStored("agent-web:appbar-hidden") === "1");
-	/** 整页全屏：状态只认 `document.fullscreenElement`（Esc / 浏览器自带方式退出也跟得上），见 use-fullscreen.ts */
-	const fullscreen = useDocumentFullscreen();
 	/**
 	 * 刷新前的右侧分栏状态（标签 / 聚焦哪条 / 开没开）—— 只读一次。
 	 * 读在这里（`previewVisible` / `panelItems` / `activeItem` 的初值都要用它），
@@ -209,6 +209,11 @@ export function App() {
 	 * `onNewProject` 回调上来，两处共用同一份 state。
 	 */
 	const [newProjectOpen, setNewProjectOpen] = useState(false);
+	/**
+	 * 首启向导看过了没（纯本机偏好，只读一次）。
+	 * 向导只在**第一次打开且快照已有数据**时出现；用户点跳过 / 走完都算看过，之后不再打扰。
+	 */
+	const [onboarded, setOnboarded] = useState(() => localStorage.getItem("agent-web.onboarded") === "1");
 	/** 待确认关闭的临时对话（非空 = 显示自绘确认弹窗） */
 	const [closingEphemeral, setClosingEphemeral] = useState<{ conversationId: string; title: string } | null>(null);
 	/**
@@ -250,7 +255,6 @@ export function App() {
 	 * 现在的作用就是「把左边这一块打开」，然后从左边挑文件（点文件才开标签）。
 	 * 以前 Sidebar 自己关着这个状态，外面够不着，落地页只能自己再开一个重复的文件树标签。
 	 */
-	const [filesOpen, setFilesOpen] = useState(false);
 	/**
 	 * 「分栏铺到顶」（顶栏让位 + 右侧面板升到窗口最顶上，标签条占顶栏右半段）：
 	 * 分栏开着、没铺开（铺开时左半边本来是面板）、不是手机壳（手机上分栏是整屏）才做。
@@ -290,11 +294,12 @@ export function App() {
 			}
 			const barBox = bar.getBoundingClientRect();
 			const panelBox = panel.getBoundingClientRect();
-			// 让出去的宽度永远量「面板把它那一侧的顶栏挤掉了多少」：
-			//   常态（面板在右）= 顶栏右边 → 面板左边缘；
-			//   对调（面板在左）= 面板右边缘 → 顶栏左边。
-			// 两种都量真元素，所以拖宽、换标签、窗口缩放都自动跟上。
-			const gap = chatSide === "right" ? panelBox.right - barBox.left : barBox.right - panelBox.left;
+			/**
+			 * 让出去的宽度 = **面板自己的宽度**（真元素量出来的）。
+			 *
+			 * 面板宽度与它挂在哪一列无关，两种摆放、侧栏开合都对。
+			 */
+			const gap = Math.round(panelBox.width);
 			root.style.setProperty("--split-w", `${Math.max(0, Math.round(gap))}px`);
 			/**
 			 * 「左边那一路」（品牌 / 新会话 / 侧栏开关）那一组的右沿。
@@ -335,6 +340,16 @@ export function App() {
 	useEffect(() => {
 		writeStored(SIDEBAR_COLLAPSED_KEY, collapsed ? "1" : "0");
 	}, [collapsed]);
+	/**
+	 * 侧栏宽度写进 CSS 变量 `--side-w`。
+	 *
+	 * 浏览器版顶栏横跨整窗、侧栏从它下面才开始，于是「侧栏｜对话」那条竖线在最上面缺一段
+	 * （用户 2026-11-23：「网页里，左边竖线上面还缺一块」）。顶栏自己知道这个 x 才能把那一段补齐。
+	 * 手机上侧栏是抽屉（盖在内容上），不参与分栏，所以给 0。
+	 */
+	useEffect(() => {
+		document.documentElement.style.setProperty("--side-w", collapsed || mobileShell ? "0px" : `${sideWidth}px`);
+	}, [sideWidth, collapsed, mobileShell]);
 	useEffect(() => {
 		writeStored("agent-web:appbar-hidden", appbarHidden ? "1" : "0");
 	}, [appbarHidden]);
@@ -535,18 +550,37 @@ export function App() {
 	const [menuPanel, setMenuPanel] = useState<MenuPanel>(null);
 	/**
 	 * 顶栏到底显示哪些入口：设置里「顶栏」那组勾选框说了算（存 localStorage）。
-	 * 默认只显示模型 / 技能 / 语音 / MCP（见 `APPBAR_ITEM_DEFAULT_ON`）。
-	 * 「设置」永远留着 —— 它就是把这些入口重新勾回来的地方。
+	 * 默认只显示模型 / 定时任务 / 技能（见 `APPBAR_ITEM_DEFAULT_ON`）。
+	 * 「设置」顶上那颗也吃同一套勾选（默认不显示）：底部状态栏最左边那颗就是同一张面板。
 	 */
 	const [appbarItems] = useAppbarItems();
+	/**
+	 * 「从别处开面板」：右下角的朗读小宠物右键里有「设置语音功能」，
+	 * 它住在 App 之外，所以走 `open-panel.ts` 那条模块级事件回这儿来开（`menuPanel` 只有这份说了算）。
+	 */
+	useEffect(() => onOpenPanelRequest((panel) => setMenuPanel(panel)), []);
 	/** 顶栏那颗「临时会话」要不要画：设置 → 界面 → 顶栏里勾（默认不显示，见 ui-prefs） */
 	const [showTempChat] = useStoredBool(APPBAR_TEMPCHAT_KEY, APPBAR_TEMPCHAT_DEFAULT);
-	const menuItems: MenuPanel[] = [...APPBAR_ITEMS.filter((item) => appbarItems[item]), "settings"];
+	/** 「设置」也吃那一套勾选（2026-11-23）：默认勾上，藏掉之后走状态栏右下角那颗回来 */
+	const menuItems: MenuPanel[] = [
+		...APPBAR_ITEMS.filter((item) => appbarItems[item]),
+		...(appbarItems.settings ? (["settings"] as MenuPanel[]) : []),
+	];
 	/**
 	 * 这里不能再走全量订阅（store 的默认钩子）：draft 每敲一个字符都会 setAppState，
 	 * 全量订阅会把侧栏（几百行项目 / 会话）和整屏消息一起重渲染 —— 打字先卡住输入框自己。
 	 */
 	const snapshot = useAppSelector((state) => state.snapshot);
+	/**
+	 * 顶栏 / 标签页的默认自称跟着**当前引擎**走（用户 2026-11-24：「我用 Pi 就显示 PiAgent」）。
+	 *
+	 * 名字用引擎选择器里那个**蓝色短标签**（badge：PI / CODEX / DSH / OC / CC）派生（OC → OcAgent），
+	 * 所以顶栏跟面板上看到的字母永远一致。只设「默认名」：用户自定义过的名字仍然优先。
+	 */
+	const engineBadge = snapshot?.engines.find((item) => item.name === snapshot.engine)?.badge ?? null;
+	useEffect(() => {
+		setDefaultBrandName(engineBrandName(snapshot?.engine, engineBadge));
+	}, [snapshot?.engine, engineBadge]);
 	/**
 	 * 外观字号（ADR-0050）：服务端那份变了就应用到浏览器。
 	 *
@@ -628,6 +662,28 @@ export function App() {
 		setPanelItems((current) => (current.some((item) => item.id === kind) ? current : [...current, { id: kind, kind }]));
 		setActiveItem(kind);
 	}, []);
+	/**
+	 * 打开（或切到）右侧面板里的「文件」工具页。
+	 *
+	 * 2026-11-23：侧栏底部那块「文件管理」搬进面板（用户：「下面这个文件移动到工具里」），
+	 * 所以「文件」这张卡 / 快捷键 / 项目菜单的「查看文件」都落到这里。
+	 * 同一时刻只有一页（按 `kind` 去重），再点就是切过去，不会越开越多。
+	 */
+	const openFilesTool = useCallback(() => {
+		setPreviewVisible(true);
+		setPanelLanding(false);
+		setPanelItems((current) =>
+			current.some((item) => item.kind === "files") ? current : [...current, { id: "files", kind: "files" }],
+		);
+		setActiveItem("files");
+	}, []);
+	/** 「文件」那一页此刻是不是真的在最前面（快捷键要用它判断「再按一下收起」） */
+	const isFilesTabActive = useCallback(() => {
+		if (!previewVisible || panelLanding) return false;
+		const item = panelItems.find((entry) => entry.id === (activeItem ?? panelItems[0]?.id ?? ""));
+		return item !== undefined && item.kind === "files";
+	}, [previewVisible, panelLanding, panelItems, activeItem]);
+
 	/** 文件树右键「在集成终端中打开」：底部终端新开一个标签到这个目录，顶手展开 */
 	const openBottomTerminalAt = useCallback((cwd: string) => {
 		setBottomTermRequest((current) => ({ cwd, seq: (current?.seq ?? 0) + 1 }));
@@ -644,6 +700,59 @@ export function App() {
 		setFileReveal((current) => ({ path, seq: current.seq + 1 }));
 	}, []);
 	/**
+	 * 面板「文件」页要的那一整套（2026-11-23 从侧栏搬来：功能一项不减）。
+	 *
+	 * 以前这些是 App → Sidebar → SidebarFiles 三段传下去的；现在入口在面板，
+	 * 就在这儿打成一份给 `PreviewPanel`，侧栏那边不再需要。
+	 * `root` 跟侧栏原来那份一致：**用户选过的根优先，没选过才跟着会话工作区**。
+	 */
+	const filesRootOptions = useMemo(() => {
+		const aliases = snapshot?.settings.projectPrefs?.aliases ?? {};
+		return (snapshot?.piProjects ?? []).map((project) => ({
+			cwd: project.cwd,
+			label: aliases[project.cwd] || project.name || project.cwd,
+		}));
+	}, [snapshot?.piProjects, snapshot?.settings.projectPrefs?.aliases]);
+	const filesToolProps: FilesToolProps = useMemo(() => {
+		const root = fileTreeRoot ?? workspaceRoot ?? null;
+		return {
+			root,
+			onRootChange: setFileTreeRoot,
+			options: filesRootOptions,
+			onOpenFile: (path: string) => openFileInPanel(path, root ?? ""),
+			onOpenChangedFile: (path: string) => openFileInPanel(path, root ?? "", "diff"),
+			onOpenTerminal: () => {
+				if (root) openBottomTerminalAt(root);
+			},
+			// 在 Finder 中显示：复用项目菜单那条后端接口（只定位，不执行文件）
+			onReveal: (cwd: string) => {
+				void fetch("/api/projects/reveal", {
+					method: "POST",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify({ cwd }),
+				});
+			},
+			onSearchContents: openContentSearch,
+			onOpenBottomTerminal: openBottomTerminalAt,
+			onFindInFolder: findInFolder,
+			activePath: activePanelFile?.path ?? null,
+			revealSeq: fileReveal.seq,
+			revealPath: fileReveal.path || null,
+			onRevealPath: revealPathInTree,
+		};
+	}, [
+		fileTreeRoot,
+		workspaceRoot,
+		filesRootOptions,
+		openFileInPanel,
+		openBottomTerminalAt,
+		openContentSearch,
+		findInFolder,
+		activePanelFile,
+		fileReveal,
+		revealPathInTree,
+	]);
+	/**
 	 * 落地页上点一个工具：文件 / 终端 / 临时聊天 / 网页。
 	 *
 	 * 「文件」和「临时聊天」同一个工具只开一个（再点一次就切回去，不往标签栏里堆）：
@@ -653,13 +762,12 @@ export function App() {
 	const openTool = useCallback(
 		(tool: WorkTool) => {
 			/**
-			 * 「文件」这张卡不在这里开标签：它做的是「把左边那栏文件管理打开」——
-			 * 挑文件发生在左边，点文件才在右边多一个标签（用户要求的顺序）。
-			 * 手机上顺手把抽屉抽出来，否则展开了也看不见。
+			 * 「文件」这张卡：2026-11-23 起**直接开面板里的「文件」工具页**
+			 * （侧栏底部那块文件管理已经搬过来了，用户：「下面这个文件移动到工具里」）。
+			 * 挑文件还是在这儿点，点开才在右边多一个文件标签 —— 顺序没变，只是入口从侧栏换成了面板。
 			 */
 			if (tool === "files") {
-				setFilesOpen(true);
-				setCollapsed(false);
+				openFilesTool();
 				return;
 			}
 			/**
@@ -765,13 +873,9 @@ export function App() {
 					return;
 				case "files":
 					// 一个键开 / 关（用户 2026-11-04：「打开收起也用一个」）：
-					// 树开着且侧栏没收 → 收起；其余情况一律打开 + 展开侧栏
-					// （侧栏收着时只 setFilesOpen 是看不见的，那个分支必须连展开一起做）。
-					if (filesOpen && !collapsed) setFilesOpen(false);
-					else {
-						setFilesOpen(true);
-						setCollapsed(false);
-					}
+					// 文件那一页正在最前面 → 收起整个分栏；否则打开它并切过去。
+					if (previewVisible && isFilesTabActive()) setPreviewVisible(false);
+					else openFilesTool();
 					return;
 				case "canvas":
 					toggleCanvas();
@@ -797,9 +901,25 @@ export function App() {
 				case "cheatSheet":
 					toggleShortcutSheet();
 					return;
+				/*
+				 * 对话操作（发送 / 排队 / 插队 / 停止）：执行在 Composer 里（它才持有草稿、附件、
+				 * running 与引擎能力），这里只把动作派过去。见 composer-actions.ts 的说明。
+				 */
+				case "sendMessage":
+					requestComposerAction("send");
+					return;
+				case "queueMessage":
+					requestComposerAction("queue");
+					return;
+				case "steerMessage":
+					requestComposerAction("steer");
+					return;
+				case "stopTurn":
+					requestComposerAction("stop");
+					return;
 			}
 		},
-		[collapsed, filesOpen, openTool, toggleCanvas, toggleSplit],
+		[collapsed, previewVisible, openTool, openFilesTool, isFilesTabActive, toggleCanvas, toggleSplit],
 	);
 	const runShortcutRef = useRef(runShortcutAction);
 	runShortcutRef.current = runShortcutAction;
@@ -832,7 +952,7 @@ export function App() {
 		press.timer = setTimeout(() => {
 			if (micPressRef.current !== press) return;
 			if (micPressResult(MIC_HOLD_DELAY_MS, isVoiceListening()) !== "startHold") return;
-			startVoiceInput();
+			void startVoiceInput();
 		}, MIC_HOLD_DELAY_MS);
 	}, []);
 	/** 松手：小于阈值 = 轻按开关，大于阈值（已经开了）= 停 */
@@ -1028,10 +1148,17 @@ export function App() {
 			return {
 				project: workspace ? basename(workspace) : "",
 				title: t("新对话", "New chat"),
+				/**
+				 * 还没有名字（这条会话还不存在 / 刚点「新会话」）。
+				 * 顶栏那块标题（气泡图标 + 「新对话」）在这一刻**不画** ——
+				 * 用户 2026-11-23：「新会话的话可以先不要上面这个图标跟这几个字，等有名字后才显示」。
+				 * 名字一有（首条消息发出去、或本地重命名），这个标记就没了，标题自己出现。
+				 */
+				unnamed: true,
 			};
 		}
 		const id = snapshot?.active.conversationId ?? null;
-		if (!snapshot || !id) return { project: "", title: "" };
+		if (!snapshot || !id) return { project: "", title: "", unnamed: true };
 		const own = snapshot.conversations.find((item) => item.id === id);
 		const piProject = (snapshot.piProjects ?? []).find((project) =>
 			project.sessions.some((session) => session.id === id),
@@ -1039,7 +1166,9 @@ export function App() {
 		const piSession = piProject?.sessions.find((session) => session.id === id);
 		return {
 			project: basename(own?.workspace ?? piProject?.cwd ?? snapshot.files?.root ?? ""),
+			// 名字还是空（比如服务端刚建会话、标题还没写）：也算「还没名字」
 			title: own?.title ?? piSession?.title ?? "",
+			unnamed: !(own?.title ?? piSession?.title ?? ""),
 		};
 	})();
 	/** 顶栏标题上右键：弹的是**跟侧栏那一行同一张菜单**（`SessionMenu`），动的是当前这条会话 */
@@ -1291,7 +1420,9 @@ export function App() {
 	/** 能不能从某条消息派生分支：引擎得有这能力，临时对话不行（没有会话文件可 fork） */
 	const canFork = (snapshot?.engineCapabilities.forkChat ?? false) && !ephemeralActive;
 	/**
-	 * 从某条消息派生分支。
+	 * 从某条消息派生分支。**消息气泡下面那颗**的语义是「只把这条消息作为开头开新会话」
+	 * （用户 2026-11-24）——之前的对话真的丢掉，所以这里传的是 `startMessageId`；
+	 * 「整段复制一份」走会话行右键 / 顶栏标题菜单（那边不传 startMessageId）。
 	 *
 	 * 必须 `useCallback`：这个函数会当作 prop 传给 `MessageView`，而它是 `memo` 的 ——
 	 * 每次渲染新建一个箭头函数会让 memo 全部失效，一个流式增量（甚至一次悬停）就把整屏消息
@@ -1299,7 +1430,7 @@ export function App() {
 	 */
 	const forkActiveMessage = useCallback(
 		(messageId: string) => {
-			if (activeSessionId) forkSession(activeSessionId, messageId);
+			if (activeSessionId) forkSession(activeSessionId, undefined, messageId);
 		},
 		[activeSessionId],
 	);
@@ -1310,23 +1441,6 @@ export function App() {
 	 * 那颗按钮点下去只会报 `engine.unsupported` —— 不如不画。提示条本身保留（那条事实是真的）。
 	 */
 	const canPersistEphemeral = snapshot?.engineCapabilities.ephemeralChat === true;
-	/**
-	 * 本轮起点 = 这一轮真正从哪开始（顶栏的子代理徽标只认这一轮）。
-	 *
-	 * 优先用**服务端**给的那一份（`runningByConversation` 里的 `turnStartedAt`，在发消息那一刻定下、
-	 * 不会再改）：它是唯一不受「插队」影响的口径 —— 插队消息是这一轮**内部**补的话，
-	 * 时间晚于本轮子代理的开始时间，拿它当起点会把没跑完的子代理全切掉（用户 2026-11-02：
-	 * 「子代理在跑时刷新，顶栏的子代理图标就没了」）。没有在跑的回合时，回落到最后一条
-	 * **不是插队**的用户消息。
-	 */
-	const runningTurnStart = (() => {
-		const conversation = snapshot?.active.conversationId ?? null;
-		if (!snapshot || !conversation) return null;
-		const own = snapshot.runningByConversation[conversation]?.turnStartedAt;
-		if (typeof own === "number") return own;
-		return snapshot.running.conversationId === conversation ? (snapshot.running.turnStartedAt ?? null) : null;
-	})();
-	const turnStartedAt = runningTurnStart ?? turnStartedAtOf(messages);
 	/** 归本会话（或与会话无关）的错误才显示 */
 	const visibleError =
 		lastError &&
@@ -1416,8 +1530,21 @@ export function App() {
 		snapshot.running.status !== "idle" &&
 		snapshot.running.conversationId === snapshot.active.conversationId;
 	useEffect(() => {
+		/**
+		 * 窗口标题（Dock 右键菜单 / Cmd-Tab / 浏览器标签页共用一行）：
+		 * **会话名打头**，后面跟项目名，最后兜底带产品名。
+		 *
+		 * 为什么这么排：macOS 的 Dock 菜单和 Cmd-Tab 都用窗口标题区分窗口，
+		 * 而多窗口并排时「会话名」才是每个窗口真正不同的东西；项目名放后面做补充，
+		 * 没有项目（新会话屏 / 刚打开还没选）就退到「新会话 · oh-my-agent-web」，
+		 * 这样两个窗口绝不会都只剩一个 "oh-my-agent-web" 分不出来。
+		 */
 		const { project, title } = activeHeading;
-		const base = project && title ? `${title} - ${project}` : brandName;
+		const base = title
+			? project
+				? `${title} · ${project}`
+				: `${title} · ${brandName}`
+			: `${t("新会话", "New session")} · ${brandName}`;
 		if (!activeTurnRunning) {
 			document.title = base;
 			return;
@@ -1433,7 +1560,7 @@ export function App() {
 			window.clearInterval(timer);
 			document.title = base;
 		};
-	}, [activeHeading.project, activeHeading.title, brandName, activeTurnRunning]);
+	}, [activeHeading.project, activeHeading.title, brandName, activeTurnRunning, t]);
 
 	// 粘底滚动：条数、末条正文长度、流式文本任一变化都算「内容更新」
 	const lastTextLength =
@@ -1541,11 +1668,28 @@ export function App() {
 		if (!main || !chat) return;
 		const measure = () => {
 			const mainBox = main.getBoundingClientRect();
-			const box = chat.getBoundingClientRect();
+			/**
+			 * 量的是**输入框**（`.composer`）而不是对话栏容器（`.workspace`）。
+			 *
+			 * 为什么（用户 2026-11-24：「上面标题跟着下面的内容宽度走，要和输入框对齐」）：
+			 * 对话栏在「限宽」档下有一对很大的左右内边距（居中留白），容器左沿离正文还有
+			 * 一两百像素 —— 标题贴在容器左沿时，在宽屏上就孤零零地飘在正文左边很远的地方。
+			 * 输入框是正文列里最直观的那条基准线，直接量它，三种宽度档位 / 分栏 / 手机都不用另算。
+			 */
+			const composer = chat.querySelector<HTMLElement>(".composer");
+			const box = (composer ?? chat).getBoundingClientRect();
 			// 顶栏被藏起来（`hidden`）/ 元素还没布局时 rect 全是 0：那一瞬不动，否则会把标题推到奇怪的地方
 			if (mainBox.width === 0 || box.width === 0) return;
-			const inset = Math.max(0, Math.round(box.left - mainBox.left));
-			const width = Math.round(box.width);
+			/**
+			 * 再往左压一点（用户 2026-11-24：「再往左点」）。
+			 *
+			 * 输入框自己有一圈边框 + 内边距，标题若严格贴着它的外沿，看起来仍比正文「缩进去一截」；
+			 * 左侧多让 `HEADING_LEAN_PX` 让视觉上跟内容齐平。宽度同步加回这一截，
+			 * 所以**右沿仍然对着输入框右边**，只是左边外扩一点。
+			 */
+			const HEADING_LEAN_PX = 12;
+			const inset = Math.max(0, Math.round(box.left - mainBox.left) - HEADING_LEAN_PX);
+			const width = Math.round(box.width) + HEADING_LEAN_PX;
 			setHeadingInset((current) => (current === inset ? current : inset));
 			setHeadingWidth((current) => (current === width ? current : width));
 		};
@@ -1553,6 +1697,10 @@ export function App() {
 		const observer = new ResizeObserver(measure);
 		observer.observe(main);
 		observer.observe(chat);
+		// 内容宽度（`--chat-max-width`）改了只影响容器内边距、不改容器本身大小 ——
+		// 不盯输入框的话 ResizeObserver 收不到这一下，标题会留在旧位置。
+		const composerEl = chat.querySelector<HTMLElement>(".composer");
+		if (composerEl) observer.observe(composerEl);
 		window.addEventListener("resize", measure);
 		return () => {
 			observer.disconnect();
@@ -1572,42 +1720,18 @@ export function App() {
 					{creating ? t("正在新建会话…", "Creating session…") : t("正在打开会话…", "Opening session…")}
 				</div>
 			) : null}
-			{/* 顶部区域：**分成两段** —— 左边一段（`.appbar-side`）放「品牌 + 新会话 + 全屏」，
-			   右边一段是各种入口。
-			   左段的宽度**跟着它自己的内容走，跟侧栏宽度无关**（用户：「顶部这个宽度要固定，
-			   下面的侧边栏变化跟上面没有关系」）：以前这里内联写 `width: sideWidth`，
-			   拖宽侧栏时上面这段跟着变、品牌名忽长忽短。现在宽度在 CSS 里按内容定
-			   （`.appbar-side-fixed`），拖侧栏只动下面那一栏。 */}
+			{/* 顶部区域：左段（品牌 + 新会话）+ 右段（会话标题 + 各种入口）。
+			   左段宽度**跟着自己的内容走，跟侧栏宽度无关**（用户：「顶部这个宽度要固定，
+			   下面的侧边栏变化跟上面没有关系」）。 */}
 			<div className="appbar" hidden={appbarHidden}>
-				<div
-					className={`appbar-side${collapsed || mobileShell ? "" : " appbar-side-fixed"}`}
-					// 宽度全靠 CSS：展开态 `max-content`（跟内容走，与侧栏宽度无关），收起 / 手机上也是
-					// 跟内容走 —— 所以这里不再写内联宽度
-				>
-					{/* 侧栏 / 抽屉开关**不在顶栏**：桌面和手机都走那一对舌形箭头
-					    （见下面 `side-collapse` / `side-expand` 两处，位置与图标完全一致）。 */}
+				<div className="appbar-side">
 					<span className="brand">
-						{/* logo 也能关、也能换（设置 → 外观 → 顶栏名称）：换过就用本机那张 data URL */}
 						{brand.logoShown ? (
-							<img className="brand-icon" src={brand.logo || "/favicon.svg?v=4"} alt="" aria-hidden="true" />
+							<img className="brand-icon" src={brand.logo || "/favicon.svg?v=9"} alt="" aria-hidden="true" />
 						) : null}
-						{/* 名字可以在设置 → 外观里隐藏或改名；藏掉后只留图标，宽度让给「新会话」 */}
 						{brand.shown ? <span className="brand-name">{brand.name}</span> : null}
 					</span>
-					{/*
-					 * 「新会话」：**常驻顶栏**，侧栏展开 / 收起都是这一颗（用户要求：放到顶部，
-					 * 跟侧栏收起时出现的位置一样）。不再跟着侧栏开合换地方。
-					 * 只有顶栏本身被藏起来（`appbarHidden`，状态栏那颗 ▴/▾）时，这一整条才不画，
-					 * 那一刻由侧栏抬头接管同一颗（`Sidebar` 的 `appbarHidden` 分支，见 Sidebar.tsx）——
-					 * 所以两处仍是「同一动作、任一时刻只有一颗」，只是优先级换成了「顶栏优先」。
-					 * 「临时对话」那颗已去掉。
-					 */}
 					<NewChatButton />
-					{/*
-					 * 整页全屏这颗按钮 **2026-11-04 挪到了右边入口排的末尾**（用户：「往后放，放设置后面试试」）。
-					 * 以前在左段最右边，紧挨「新会话」；现在跟「技能 / 模型 / 设置」同一排，见下面
-					 * `SidebarMenu` 之后那段。左段从此只剩「品牌 + 新会话」。
-					 */}
 				</div>
 				{/*
 				 * 标题一侧整组（会话名 + 子代理徽标 + 入口排 + 分栏）单独包一层：它同时是**尺寸容器**
@@ -1644,7 +1768,7 @@ export function App() {
 								: undefined
 						}
 					>
-						{activeHeading.title ? (
+						{activeHeading.title && !activeHeading.unnamed ? (
 							headingEditing ? (
 								<input
 									ref={headingInputRef}
@@ -1738,6 +1862,13 @@ export function App() {
 								onPin={() => toggleSessionPin(activeSessionId)}
 								// 改名 = 把顶栏那颗标题就地变成输入框（跟双击同一个动作）
 								onRename={() => setHeadingEditing(true)}
+								// AI 重命名 = 跟标题前那枚气泡图标同一个动作（同一份 `titling` 状态，两边互相禁用）
+								aiRenaming={titling}
+								onAiRename={() => {
+									if (!activeSessionId || titling) return;
+									setTitling(true);
+									void suggestSessionTitle(activeSessionId).finally(() => setTitling(false));
+								}}
 								onOpenInNewTab={() =>
 									window.open(sessionUrlFor(window.location.href, activeSessionId), "_blank", "noopener")
 								}
@@ -1748,8 +1879,9 @@ export function App() {
 					</span>
 					{/* 智能体引擎切换（ADR-0024）不在这排：它固定在底部状态栏「放行」（审批模式）后面 ——
 				    那是「这一步怎么跑」的开关，跟审批模式并排（见 StatusBar）。 */}
-					{/* 子代理徽标：几个在跑 / 各自花了多少，点开就是浮层（没有子代理时不占位） */}
-					<AgentsLiveBadge onOpenPanel={() => setMenuPanel("agents")} turnStartedAt={turnStartedAt} />
+					{/* 子代理徽标**2026-11-24 从顶栏撤掉**（用户：「子代理不要在顶部显示了」）：
+					 * 谁在跑、花了多少仍然在对话下方的卡片条（`AgentsRunStrip`）和「子代理」面板里，
+					 * 顶栏不再常驻一颗会自己冒出来的徽标。 */}
 					{/* 模型 / 技能 / 推送 / 语音 / 插件 / MCP / 子代理：显示哪些由设置 → 顶栏决定，设置永远在（窄屏只留图标） */}
 					<SidebarMenu
 						variant="full"
@@ -1783,61 +1915,14 @@ export function App() {
 						}
 					/>
 					{/*
-					 * 整页全屏（2026-11-04 从左段末端挪到这儿：用户「往后放，放设置后面试试」）。
-					 * 位置是入口排的末尾、分栏分隔线之前 —— 也就是「设置」右边。
-					 * `supported` 为 false 时整组不画（iOS Safari 不支持元素全屏）：
-					 * 点了没反应比没有按钮更糟。状态由 `fullscreenchange` 兜着，Esc 退出也亮/灭得对。
-					 */}
-					{fullscreen.supported ? (
-						<button
-							type="button"
-							className={`appbar-side-btn${fullscreen.active ? " appbar-side-btn-on" : ""}`}
-							onClick={fullscreen.toggle}
-							aria-pressed={fullscreen.active}
-							title={fullscreen.active ? t("退出全屏", "Exit full screen") : t("全屏", "Full screen")}
-							aria-label={fullscreen.active ? t("退出全屏", "Exit full screen") : t("全屏", "Full screen")}
-						>
-							{/* 四角图标：进全屏是「往外张」，已在全屏时是「往里收」——同一个语汇，方向相反 */}
-							<svg
-								className="appbar-side-btn-icon"
-								viewBox="0 0 16 16"
-								fill="none"
-								stroke="currentColor"
-								strokeWidth={1.4}
-								strokeLinecap="round"
-								strokeLinejoin="round"
-								aria-hidden="true"
-							>
-								{fullscreen.active ? (
-									<>
-										<path d="M2.6 6.4h3.8V2.6" />
-										<path d="M13.4 6.4H9.6V2.6" />
-										<path d="M2.6 9.6h3.8v3.8" />
-										<path d="M13.4 9.6H9.6v3.8" />
-									</>
-								) : (
-									<>
-										<path d="M6.4 2.6H2.6v3.8" />
-										<path d="M9.6 2.6h3.8v3.8" />
-										<path d="M6.4 13.4H2.6V9.6" />
-										<path d="M9.6 13.4h3.8V9.6" />
-									</>
-								)}
-							</svg>
-						</button>
-					) : null}
-					{/*
 					 * 分栏开关：点一下把屏幕分成两块 —— 左边还是对话，右边是工作区
 					 * （文件 / 终端 / 临时聊天 / 网页）；没标签时右边是工具落地页，
 					 * 所以第一下点开也不会是一块空白。
 					 * 面板一升到顶栏那一行（分栏 / 铺开），这一排的最右端就是面板标签条的右端，
 					 * 那颗按钮由 PreviewPanel 画（同一个 toggleSplit），这里就不再重复画一颗。
 					 */}
-					{/* 「设置那一串入口 | 分栏」之间竖一道线（跟侧栏右边那道同一种画法：
-				    1px `--border`、拉满顶栏高度）—— 分栏是「这一屏怎么摆」，跟前一排「开哪个面板」
-				    不是同一类动作，分开好看也好认。面板升到顶栏那一行时这颗按钮不画了，
-				    那条线由 `.appbar-split-divider` 接替。 */}
-					{splitLifted || wideLifted ? null : <span className="appbar-divider" aria-hidden="true" />}
+					{/* 分栏开关前面那道竖线 **2026-11-23 去掉**（用户：「默认右边没有展开时，那个竖线可以不显示」）：
+					 * 分栏按钮跟前面那排入口本来就能靠图标区分，多一道线在右上角更像一条没对齐的杂边。 */}
 					{splitLifted || wideLifted ? null : (
 						<button
 							type="button"
@@ -1889,6 +1974,9 @@ export function App() {
 					 * 这条竖线就是「顶栏 | 标签条」之间的那一道 —— 它是顶栏的最后一个元素，
 					 * 而顶栏又多让出了 `--split-w` 的右内边距，所以它正好落在分栏的那条边界上。
 					 */}
+					{/* 面板升到顶栏这一行时，边界上那道竖线（用户 2026-11-23：「右边展开时，
+					 * 那根竖线要有，这样才跟下面一致」）—— 它正好落在分栏边界，
+					 * 跟下面「对话｜面板」那条分栏线接成一条。收起态不画（上一条注释里说过）。 */}
 					{splitLifted ? <span className="appbar-split-divider" aria-hidden="true" /> : null}
 					{/*
 					 * 对调之后，分栏开关**留在这个窗口的右上角**（用户要求：这颗按钮的位置不能变）。
@@ -1898,7 +1986,6 @@ export function App() {
 					 */}
 					{splitLifted && chatSide === "right" ? (
 						<>
-							<span className="appbar-divider" aria-hidden="true" />
 							<button
 								type="button"
 								className="side-foot-btn appbar-panel-btn side-foot-btn-on"
@@ -1924,10 +2011,6 @@ export function App() {
 					) : null}
 				</div>
 			</div>
-			{/* 项目迁移公告：顶栏下面横贯整窗的一条，**不依赖顶栏在不在**（顶栏可以整条藏起来）。
-			   放这里是它要在任何页面状态下都看得见 —— 还没开会话、右侧面板铺开、手机单栏都一样；
-			   点掉之后写 localStorage，不再天天挡着（见 MigrationBanner.tsx）。 */}
-			<MigrationBanner />
 			<div className="app-main">
 				{/*
 				 * 「展开项目列表」：舌形小箭头（`>`），**顶栏在不在、桌面还是手机都一样**。
@@ -1977,28 +2060,18 @@ export function App() {
 								activeId={newSession ? null : (pendingActive ?? snapshot?.active.conversationId ?? null)}
 								piProjects={sidebarProjects}
 								runningIds={sidebarRunningIds}
-								/* 顶栏被藏起来了没有：「新会话」平时在顶栏，只有藏起来时才回落到侧栏抬头里画一颗 */
-								appbarHidden={appbarHidden}
-								/* 终端入口一律落到**底部终端**（文件管理那颗 `>_`、项目菜单的「在终端中打开」都走这里） */
+								/* 终端入口一律落到**底部终端**（项目菜单的「在终端中打开」走这里） */
 								onOpenTerminal={(cwd: string) => openBottomTerminalAt(cwd)}
-								onOpenBottomTerminal={openBottomTerminalAt}
-								onFindInFolder={findInFolder}
-								onOpenFile={openFileInPanel}
-								onOpenChangedFile={(path, root) => openFileInPanel(path, root, "diff")}
+								/* 项目菜单的「查看文件」：2026-11-23 起不再展开侧栏那块，
+								   而是把面板「文件」页的根切到这个项目并打开它 */
+								onOpenFiles={(cwd: string) => {
+									setFileTreeRoot(cwd);
+									openFilesTool();
+								}}
 								/* 侧栏会话右键「分叉」：不必先打开那条会话，服务端从它的当前叶子派生 */
 								canFork={snapshot?.engineCapabilities.forkChat ?? false}
 								onFork={(conversationId) => forkSession(conversationId)}
-								onSearchContents={openContentSearch}
 								onNewProject={openNewProjectDialog}
-								fileOpen={filesOpen}
-								onFileOpenChange={setFilesOpen}
-								root={fileTreeRoot}
-								onRootChange={setFileTreeRoot}
-								activePath={activePanelFile?.path ?? null}
-								revealSeq={fileReveal.seq}
-								/* 空串（还没定位过）= 交回 `activePath`，别把默认目标盖成空 */
-								revealPath={fileReveal.path || null}
-								onRevealPath={revealPathInTree}
 								/* 收起这一栏：**只有分割线上那颗舌形箭头**（侧栏底部那颗小的已去掉） */
 							/>
 							{/*
@@ -2178,9 +2251,9 @@ export function App() {
 								{/* 「回到最新」放在**输入框顶上**（它自己占一行，不浮在正文上）。
 								    以前它是滚动区里的 sticky：只能悬在正文右下角，最后一屏的字被它压住一块，
 								    而且每滚到一个新位置都得重新找它。现在紧贴输入框上沿、**水平居中**。
-								    形态：箭头 + 文案（文案曾被去掉、现在又按用户要求加回来），
-								    但仍是**透明底、无描边、无投影** —— 它只是「下面还有新内容」的提示，
-								    不该长成一颗抢眼的胶囊；悬停时才给一点浅底。 */}
+								    形态（2026-11-23 用户：「只留一个回到最新的小图标」）：
+								    **一枚圆形小箭头**，不写字、不铺白底；只有一圈 1px 细边 + 极淡的底（半透明），
+								    悬停才变深。文案挪进 `title` / `aria-label`，读屏和悬停提示还在。 */}
 								{scroll.stuck ? null : (
 									<div className="composer-wrap jump-bottom-host">
 										<button
@@ -2202,9 +2275,6 @@ export function App() {
 												<path d="M8 3.6v8.8" />
 												<path d="M4.3 9 8 12.7 11.7 9" />
 											</svg>
-											{/* 文案回来了（用户：「这个还是加上文案吧」）：光一枚箭头在大屏、低对比度下
-											    不够说明它干什么 —— 「回到底部」能一下说清「点了会往哪儿走」。 */}
-											<span className="jump-bottom-label">{t("回到最新", "Jump to latest")}</span>
 										</button>
 									</div>
 								)}
@@ -2276,6 +2346,7 @@ export function App() {
 								onWideChange={setPreviewWide}
 								onToggleSplit={toggleSplit}
 								root={workspaceRoot}
+								files={filesToolProps}
 								chatOnRight={chatSide === "right"}
 								showSplitButton={!(splitLifted && chatSide === "right")}
 								revealSeq={fileReveal.seq}
@@ -2296,6 +2367,10 @@ export function App() {
 					</div>
 				</div>
 			</div>
+			{/* 实时朗读的**小宠物**（右下角、麦克风上面一格）：在念的时候它就在说话，
+			 * 点它暂停 / 继续，下面那颗小「停止」叫停这一轮。只在真的在念时出现，
+			 * 挂在这里一份就够（`position: fixed`，不占布局）。 */}
+			<SpeechPet />
 			{/* 状态栏横贯整窗：挂在三栏之下（左栏底部的文件管理也在它上面），和顶栏对称 */}
 			<StatusBar
 				snapshot={snapshot}
@@ -2340,6 +2415,19 @@ export function App() {
 			/>
 
 			{snapshot?.pendingApproval ? <ApprovalDialog approval={snapshot.pendingApproval} /> : null}
+			{/*
+			 * 首启向导：只在本机第一次打开、且快照已经有数据时出现（引擎清单 / 工作区都从快照来）。
+			 * 挂在根节点这一层，跟别的全局浮层同一组；z-index 比 .modal 低一档，
+			 * 引擎没装时 App 自己的安装确认框能盖在它上面。
+			 */}
+			{!onboarded && snapshot ? (
+				<FirstRunWizard
+					onDone={() => {
+						localStorage.setItem("agent-web.onboarded", "1");
+						setOnboarded(true);
+					}}
+				/>
+			) : null}
 			{/* 可撤销的轻提示（归档后「撤销 / 查看」等）：全局挂一次，见 toast.ts */}
 			<ToastHost />
 			{/* 对话里点图片原地弹大图：全局挂一次，见 image-viewer.ts */}

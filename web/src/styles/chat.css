@@ -246,6 +246,12 @@
 	color: var(--red);
 }
 
+/* 被打断：中性色，不是红色（没报错，只是被停下了：插队 / 点停止） */
+.tool-status-interrupted {
+	color: var(--text-dim);
+	font-style: italic;
+}
+
 .tool-output {
 	margin: 4px 6px 6px;
 	padding: 8px 10px;
@@ -350,6 +356,30 @@
 	flex-direction: column;
 	gap: 6px;
 	min-width: 0;
+}
+
+/* 拖文件经过输入框：虚线主色框 + 一句"松手就加"。只在拖着文件时才出现，
+ * 平时不占任何位置（用户 2026-11-26 要求支持把文件拖进来）。 */
+.composer-wrap.is-drop .composer {
+	outline: 2px dashed var(--accent);
+	outline-offset: 2px;
+	background: color-mix(in srgb, var(--accent) 6%, var(--bg-elev));
+}
+
+.composer-drop-hint {
+	position: absolute;
+	left: 50%;
+	top: -10px;
+	translate: -50% -100%;
+	z-index: 3;
+	padding: 3px 9px;
+	border-radius: 999px;
+	background: var(--accent);
+	color: #fff;
+	font-size: 12px;
+	white-space: nowrap;
+	pointer-events: none;
+	box-shadow: 0 4px 12px rgb(0 0 0 / 16%);
 }
 
 .quick-row {

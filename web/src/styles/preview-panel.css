@@ -30,9 +30,36 @@
 	z-index: 5;
 }
 
-.preview-resizer:hover,
-.preview-resizer:active {
-	background: color-mix(in srgb, var(--accent) 35%, transparent);
+/* 命中区 7px（好抓），**画出来只有 2px** —— 跟侧栏那条拖拽线（`.side-resizer::after`）同一套做法
+ * （那边 2026-11-24 降到 1px 了，因为侧栏的线骑在原有边框上、叠起来显粗；这里旁边没有边框，保持 2px）。
+ * 用户 2026-11-23：「这个竖线，鼠标放上去太粗了，跟右边侧边的那样式用一样的」。
+ * 以前是把整个 7px 刷成 35% 主色，看着像在分栏线上贴了一条宽胶带。 */
+.preview-resizer::after {
+	content: "";
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	/* 手柄从 -3px 起、宽 7px → 面板左沿落在 left: 3px，那条 1px 分栏线就在这儿 */
+	left: 3px;
+	margin-left: -1px;
+	width: 2px;
+	border-radius: 2px;
+	background: transparent;
+	transition: background 0.12s ease;
+}
+
+.preview-resizer:hover::after,
+.preview-resizer:active::after,
+.is-resizing .preview-resizer::after {
+	background: var(--accent);
+}
+
+/* 对调（面板在左）时手柄挂在面板右边缘：细线跟着换到那边 */
+.right-upper-flip .preview-resizer::after {
+	left: auto;
+	right: 3px;
+	margin-left: 0;
+	margin-right: -1px;
 }
 
 /* 标签条那一行：标签装在内层（自己滚），「＋」和右边那排工具按钮固定不动 */
@@ -42,6 +69,10 @@
 	gap: 4px;
 	flex: none;
 	min-width: 0;
+	/* 面板能被拖到很窄（下限已取消）：窄到装不下时把这排按钮裁掉，
+	 * 而不是让它们溢到左边的对话区上。
+	 * 注意只在里面这一层裁，`.preview-panel` 自己不裁 —— 那条拖拽手柄挂在面板左外侧。 */
+	overflow: hidden;
 }
 
 /* 横向滚动层：标签**不压缩**（每个保持自己的宽度，否则挤成一排省略号就认不出了），
@@ -68,7 +99,7 @@
 	display: inline-flex;
 	align-items: center;
 	border: 1px solid var(--border);
-	border-radius: 7px;
+	border-radius: 6px;
 	background: var(--bg);
 	/* 宽度按内容走，但封顶 150px：短名字就是窄胶囊，长名字截断。
 	   flex: none 是关键 —— 标签一多不让它们互相挤，挤到最后只剩省略号就认不出是哪个了，
@@ -88,9 +119,12 @@
 	background: none;
 	color: var(--text-dim);
 	font: inherit;
-	font-size: 14px;
+	/* 2026-11-23 收一档（用户：「太高了，需要小点」）：14 → 13，上下内边距 2 → 1，
+	 * 一行标签的高度从 ~26px 落到 ~20px，整条标签栏跟着轻下来。 */
+	font-size: 13px;
+	line-height: 1.35;
 	/* 右边只留 2px：叉号要贴著文字（以前 6+5=11px，看着像叉号漂浮在标签里） */
-	padding: 2px 2px 2px 6px;
+	padding: 1px 2px 1px 6px;
 	cursor: pointer;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -109,9 +143,9 @@
 	background: none;
 	color: var(--text-faint);
 	font: inherit;
-	font-size: 14px;
+	font-size: 12px;
 	line-height: 1;
-	padding: 0 6px 0 3px;
+	padding: 0 5px 0 2px;
 	cursor: pointer;
 }
 
@@ -123,6 +157,8 @@
 	flex: 1 1 auto;
 	min-height: 0;
 	display: flex;
+	/* 同上：面板拖到一条缝时裁掉内容，别让它盖到对话区上 */
+	overflow: hidden;
 }
 
 .file-viewer {
@@ -135,7 +171,6 @@
 	/* 文件头那排按钮要不要让位，交给容器查询判断（面板被「文件列表」吃掉一截时变窄） */
 	container-type: inline-size;
 }
-
 
 /* 收起/展开：一个圆角浅底箭头（对齐你给的截图），展开在标签栏右侧、收起是独立的小块 */
 .preview-arrow {
@@ -208,24 +243,26 @@
 }
 
 /* 标签前的类型标示（一眼看出是 md / 代码 / 图片 / 终端） */
+/* 标签上那枚小图标：**只是一枚字形**，不画框（用户 2026-11-23：「里面的图标不需要有边框」）。
+ * 以前是 18px 起、带 1px 描边和圆角的小方块，一排标签看着像一排小按钮；
+ * 现在去掉边框/内边距，只留 iconfont 的字符本身，颜色用 `--text-faint` 压住，
+ * 选中的那个才变主色（还能看出「当前在哪个标签」）。 */
 .preview-tab-icon {
 	display: inline-block;
-	min-width: 18px;
-	margin-right: 5px;
-	padding: 0 3px;
-	border: 1px solid var(--border);
-	border-radius: 4px;
+	margin-right: 4px;
+	padding: 0;
+	border: none;
+	background: none;
 	color: var(--text-faint);
 	font-family: ui-monospace, monospace;
-	font-size: 12px;
-	line-height: 1.4;
+	font-size: 11px;
+	line-height: 1;
 	text-align: center;
-	vertical-align: 1px;
+	vertical-align: 0;
 }
 
 .preview-tab-on .preview-tab-icon {
 	color: var(--accent);
-	border-color: var(--accent-dim);
 }
 
 /* 图片预览：棋盘格底 + 自适应大小 */
@@ -309,28 +346,29 @@
  * 面板不再从顶栏下面开始，而是升到窗口最顶：它的标签条就落在顶栏那一行。
  *   - 分栏（.app-split）：标签条占顶栏的**右半段**，左半段仍是顶栏 ——
  *     顶栏自己用 padding-right 让出了那段宽度（见 app-bar.css 的 `.app-split .appbar`）；
- *   - 铺开（.app-wide-lift）：面板占满侧栏右边那一整块，于是顶栏的中间/右半段整个被它盖住，
- *     标签条一直往左靠到侧栏边上。这一档**不给顶栏让位** —— 让位是为了给标签条腾地方，
- *     这里标签条本来就占满整条。
+ *   - 铺开（.app-wide-lift）：**不升上去**（用户 2026-11-26：「这块点后将中间隐藏了，但上面那条也消失了，
+ *     导致无法再收回来 —— 上面这行不要隐藏」）。以前它把顶栏整条盖掉，而「铺开/收回」那颗按钮就在
+ *     被盖住的标签条里；以前顶栏 z-index 还比面板高，结果连标签条都看不见，等于把自己锁死在铺开态。
+ *     现在面板从顶栏下面开始铺，顶栏原样留着，随时能点回来。
  * 上移的量就是顶栏高（`.app-main` 的 padding 是 0，中间没有缝）；因为 `align-items: stretch`，
  * 负的 margin-top 会把它补成等高（底边仍与对话区对齐，不会被压短）。
  */
-.app-split .preview-panel,
-.app-wide-lift .preview-panel {
+.app-split .preview-panel {
 	margin-top: calc(-1 * var(--appbar-h, 46px));
 	/* 要盖在顶栏（z-index: 4）之上：否则顶栏的底色/阴影会压在标签条上 */
 	z-index: 6;
 	/*
 	 * 顶上那一条（= 顶栏那么高）必须**跟顶栏同色**：它本来就是同一条栏，
 	 * 左半段是顶栏、右半段让给了标签条。只铺纯白的话接缝处会露出一块色差。
-	 * 用两层渐变画（而不是新加一个元素）：
-	 *   1) 最底下一条 1px 的 --border：把顶栏的底边线接到面板这一侧（差 1px 也会断成两截）；
-	 *   2) 顶栏高的 --bg-elev 色块。
-	 * 顶栏收起（--appbar-h = 0）时两层都是 0 高，什么也不画。
+	 *
+	 * 2026-11-23（用户截图圈着标签条下面那条线）：「右边这条横线不要」——
+	 * 原来这里还画了一条 1px 的 `--border` 把顶栏的底边线接到面板这一侧；现在**只铺色块**。
+	 * 于是顶栏（左半段）下面那条线到分栏边界就停了，面板这边是干净的。
 	 */
+	/* 顶上那一条跟顶栏一样用 `--bg`（2026-11-23 用户：「上面顶栏跟下面颜色一样，都用白色」）——
+	 * 以前是 `--bg-elev`，于是标签条那一截明显比顶栏/正文深一个色阶。 */
 	background:
-		linear-gradient(var(--border), var(--border)) 0 calc(var(--appbar-h, 46px) - 1px) / 100% 1px no-repeat,
-		linear-gradient(var(--bg-elev), var(--bg-elev)) 0 0 / 100% var(--appbar-h, 46px) no-repeat,
+		linear-gradient(var(--bg), var(--bg)) 0 0 / 100% var(--appbar-h, 46px) no-repeat,
 		var(--bg) !important;
 }
 
@@ -344,13 +382,22 @@
 	padding-left: var(--top-lane, 0px);
 }
 
-.app-split .preview-tabs,
-.app-wide-lift .preview-tabs {
+.app-split .preview-tabs {
 	margin-top: -6px;
-	min-height: var(--appbar-h, 46px);
-	/* 顶栏底下有一条 1px 分隔线，它的内容盒比总量矮 1px，图标就比「纯居中」高半像素；
-	   这里补一条同样的下内边距，两边的图标纵向位置才真的一致（否则差 0.36px，放大看能看出歪） */
-	padding-bottom: 1px;
+	/* **高度直接等于顶栏高**（原来写的是 `min-height` + 下内边距补 1px）：
+	 * `min-height` 只是下限，内容一高它就会被撑出去，反而让标签看起来比顶栏那颗标题「低一点」。
+	 * 定高 + `align-items: center` 才是「上下居中」的确定说法（用户 2026-11-23 要求的）。
+	 * 那个 1px 的补偿也去掉了：分隔线画在 border box 里，定高之后上下余量一样，不需要再补。 */
+	height: var(--appbar-h, 35px);
+	min-height: 0;
+	align-items: center;
+	/* 2026-11-23（用户：「这里整个离上方再稍微远一点，跟左边学一学」）：
+	 * 顶栏那边的文字/按钮整体下移过 2px（跟原生红绿灯的视觉重心对齐），
+	 * 面板这一条原来是"贴窗口上沿居中"，看着比左边那颗标题高半格。
+	 * 这里用 translateY 把整条（标签 + 加号 + 右侧两颗按钮）一起下移 3px，
+	 * 与顶栏内容的基线齐平；不动 height/padding，所以不会把栏撑高或者把下边框推歪。 */
+	transform: translateY(3px);
+	padding-bottom: 0;
 	/* 右边也让出一道：顶栏是 10px × 顶栏缩放的内边距，面板是 6px，差的那点补上，
 	   最右那颗按钮才跟顶栏最右那颗落在同一条竖线上 */
 	padding-right: calc(10px * var(--appbar-scale, 1) - 6px);
@@ -358,7 +405,10 @@
 
 /* ---- 文件列表侧栏（看文件时常驻在内容右边）----
  * 面板本来就贴在窗口右边，所以文件树放最右、代码在它左边（跟你给的截图一致）。
- * 宽度由**左边那条可拖的竖线**控制（默认 224px，范围 140~520，并保证内容区至少 260px）。
+ * 宽度由**左边那条可拖的竖线**控制（默认 224px，范围 176~520，并保证内容区至少 260px）。
+ *
+ * 里面那一整套（工具条 / 项目下拉 / 分支 / 搜索 / 树）直接复用左侧文件树用的 `FilesTool`，
+ * 所以这里只管**宽度与位置**，别再给内部行写样式（写了就是两套）。
  */
 .preview-files {
 	flex: none;
@@ -368,8 +418,19 @@
 	min-height: 0;
 	display: flex;
 	flex-direction: column;
-	gap: 6px;
 	padding-left: 8px;
+}
+
+/* 复用进来的那块要吃掉整根侧栏的高度（它自己是 `flex: 1` 的一整页） */
+.preview-files > .side-files {
+	flex: 1 1 auto;
+	min-height: 0;
+}
+
+/* 「文件」工具页那边为了贴标签条抬了 4px（`.side-files-panel` 的负 margin），
+   这里是侧栏：没有标签条，再抬就会把第一排工具顶出去 —— 归零。 */
+.preview-files > .side-files-panel {
+	margin-top: 0;
 }
 
 /* 内容与文件列表之间那条竖线：它**就是把手**（拖动改文件列表宽度，双击复位）。
@@ -387,46 +448,6 @@
 .preview-files-resizer:hover,
 .preview-files-resizer:active {
 	background: color-mix(in srgb, var(--accent) 30%, transparent);
-}
-
-.preview-files-head {
-	flex: none;
-	display: flex;
-	align-items: center;
-	gap: 4px;
-}
-
-.preview-files-title {
-	flex: 1 1 auto;
-	min-width: 0;
-	display: flex;
-	align-items: baseline;
-	gap: 2px;
-	font-size: 12px;
-	color: var(--text-faint);
-}
-
-.preview-files-label {
-	flex: none;
-}
-
-/* 项目名跟在「文件列表」后面：面板可能挂着好几个工作区，确认一下看的是哪个。
-   只让它自己省略（否则窄面板上「文件列表」几个字会先被截掉） */
-.preview-files-root {
-	min-width: 0;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-	color: var(--text-dim);
-}
-
-/* 内容区：树 / 搜索结果各自在里面滚（两者都已经自带 overflow） */
-.preview-files-body {
-	flex: 1 1 auto;
-	min-height: 0;
-	display: flex;
-	flex-direction: column;
-	overflow: hidden;
 }
 
 /* 铺开按钮激活时的强调（和普通 btn-tiny 区分） */

@@ -25,13 +25,20 @@ const BRAND_NAME_SHOW_KEY = "agent-web.brand.show";
 export const BRAND_LOGO_KEY = "agent-web.brand.logo";
 /** 顶栏要不要显示 logo（默认显示：它比名字还省地方，一般没人要关） */
 const BRAND_LOGO_SHOW_KEY = "agent-web.brand.logo.show";
+/**
+ * 顶栏那串名字显示**什么**（用户 2026-11-24：「设置中可以设置，是显示品牌名，还是显示引擎名」）。
+ *   - `brand`（默认）：产品名（老用户存过的自定义名仍然优先，不被这次改动作废）；
+ *   - `engine`：当前引擎的名字（pi → PiAgent、codex → CodexAgent…，见 brand.ts 的 engineBrandName）。
+ */
+const BRAND_MODE_KEY = "agent-web.brand.mode";
+export type BrandMode = "brand" | "engine";
 /** 名字上限：顶栏是横向空间，超过这个长度只会被 CSS 截成省略号，不如直接拦在输入处 */
 export const BRAND_NAME_MAX = 24;
 
 /** 名字变了但 React 不知道 —— 同页靠这个事件通知（跨标签页另有 `storage`） */
 const BRAND_NAME_EVENT = "agent-web:brand-name";
 /** 与本模块相关的所有 key：任意一条变了都要叫醒订阅者（顶栏 / 设置面板重画） */
-const BRAND_KEYS = [BRAND_NAME_KEY, BRAND_NAME_SHOW_KEY, BRAND_LOGO_KEY, BRAND_LOGO_SHOW_KEY];
+const BRAND_KEYS = [BRAND_NAME_KEY, BRAND_NAME_SHOW_KEY, BRAND_LOGO_KEY, BRAND_LOGO_SHOW_KEY, BRAND_MODE_KEY];
 
 /** 去首尾空白、把连续空白折成一个空格、按上限截断（纯函数，好测） */
 function sanitizeBrandName(raw: string | null | undefined): string {
@@ -44,9 +51,44 @@ export function storedBrandName(): string {
 	return sanitizeBrandName(readStored(BRAND_NAME_KEY));
 }
 
-/** 界面上该显示的名字：用户改过就用他的，否则回落默认 */
+/** 界面上该显示的名字：按设置里的模式选（品牌名 / 引擎名） */
 export function currentBrandName(): string {
+	if (currentBrandMode() === "engine") return defaultBrandName;
 	return storedBrandName() || BRAND_NAME;
+}
+
+/** 顶栏显示什么：`brand` = 产品名（及老用户的自定义名），`engine` = 当前引擎名 */
+export function currentBrandMode(): BrandMode {
+	return readStored(BRAND_MODE_KEY) === "engine" ? "engine" : "brand";
+}
+
+/** 切换显示模式；变了才写 + 叫醒订阅者（顶栏 / 标签页标题 / 设置面板一起重画） */
+export function setBrandMode(mode: BrandMode): void {
+	if (mode === currentBrandMode()) return;
+	writeStored(BRAND_MODE_KEY, mode);
+	notifyBrandName();
+}
+
+/**
+ * 「没自定义名字时」的默认名：跟随当前引擎（App 在引擎变化时调 `setDefaultBrandName`）。
+ *
+ * 为什么不直接写 `BRAND_NAME`：引擎（pi / codex / opencode / dsh / claude）是可切的，
+ * 用户要知道「现在跟我说话的是谁」—— 用 pi 时顶栏就是 PiAgent。
+ * 存起来的自定义名字仍然优先，引擎变化抢不走它。
+ */
+let defaultBrandName: string = BRAND_NAME;
+
+/** 引擎变了（或首次拿到快照）：换默认名；与当前值相同时什么都不做（不白叫醒订阅者） */
+export function setDefaultBrandName(name: string | null | undefined): void {
+	const next = sanitizeBrandName(name) || BRAND_NAME;
+	if (next === defaultBrandName) return;
+	defaultBrandName = next;
+	notifyBrandName();
+}
+
+/** 当前的默认名（测试与设置面板的 placeholder 用它） */
+export function currentDefaultBrandName(): string {
+	return defaultBrandName;
 }
 
 /** 防抖窗口：比一个正常人的打字间隔长一点，停在半路就只同步最后那一个名字 */

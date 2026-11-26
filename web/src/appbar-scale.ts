@@ -18,10 +18,10 @@
  * 而用户觉得舒服的那一档是旧刻度的 115%，于是那个 115% 看着像个怪数。现在把**那一档改叫 100%**，
  * 物理大小一斤不动：CSS 侧乘的是 `percent / 100 * 1.15`（见 `CSS_PER_HUNDRED_PERCENT`），
  * 旧存储的百分比也按 1.15 折算过来（115 → 100），用户看到的尺寸不会因为这次改名而变。
+ *
+ * 2026-11-24：「顶栏高度」设置已移除，大小固定为标准档 →
+ * 存储与事件通知那一套（key / 迁移 / setter / 订阅）一并删了，只留纯函数与写入 CSS 变量那一步。
  */
-const APPBAR_SCALE_KEY = "agent-web.appbar-scale.v2";
-/** 旧刻度的键（100 = CSS 原值）：只读一次，按 1.15 折算写进 v2，之后不再使用 */
-const LEGACY_APPBAR_SCALE_KEY = "agent-web.appbar-scale";
 
 /**
  * 新刻度的 100% 在 CSS 里到底是多少倍 —— **1.15**。
@@ -117,72 +117,18 @@ export function presetOfAppbarScale(percent: number): AppbarScaleId | null {
 	return APPBAR_SCALE_PRESETS.find((item) => item.percent === value)?.id ?? null;
 }
 
-/** 变更事件：`<html>` 的变量变了但 React 不知道，用它通知设置面板里的选中态 */
-const APPBAR_SCALE_EVENT = "agent-web:appbar-scale";
 
-function readStored(): number {
-	if (typeof localStorage === "undefined") return DEFAULT_APPBAR_SCALE;
-	try {
-		const current = localStorage.getItem(APPBAR_SCALE_KEY);
-		if (current !== null && current !== "") return readStoredAppbarScale(current);
-		/* 没有新键：看看旧刻度下有没有存过值。有就折算一次（用户看不到任何变化），
-		 * 并写进新键 —— 不迁的话所有老用户下次开机就跳到新刻度的 115%（= 旧 132%，明显变大）。 */
-		const legacy = localStorage.getItem(LEGACY_APPBAR_SCALE_KEY);
-		if (legacy === null || legacy === "") return DEFAULT_APPBAR_SCALE;
-		const migrated = migrateLegacyAppbarScale(legacy);
-		try {
-			localStorage.setItem(APPBAR_SCALE_KEY, String(migrated));
-		} catch {
-			// 写不进去（隐私模式等）：本次已经用上迁移值了，下次开机再折一遍就行
-		}
-		return migrated;
-	} catch {
-		return DEFAULT_APPBAR_SCALE; // 隐私模式禁 localStorage：用默认值，不抛错
-	}
-}
-
-export function currentAppbarScale(): number {
-	return readStored();
-}
-
-/** 把系数写到 `<html>` 上并广播一次变更 */
-function applyAppbarScale(percent: number): void {
-	const value = clampAppbarScale(percent);
-	document.documentElement.style.setProperty("--appbar-scale", appbarScaleCss(value));
-	window.dispatchEvent(new CustomEvent<number>(APPBAR_SCALE_EVENT, { detail: value }));
-}
-
-/** 首帧前调用（`main.tsx`）：读存储并应用 */
+/**
+ * 顶栏大小现在是**固定值**（设置面板里的「顶栏高度」已移除）。
+ *
+ * 用户 2026-11-24：「这个设置不要了，固定不可改」。
+ * 保留这个函数是因为 `<html>` 上的 `--appbar-scale` 仍然必须有值 ——
+ * CSS 里到处都是 `calc(<原值> * var(--appbar-scale, 1))`（见 app-bar.css）。
+ *
+ * 注意：**不再读 localStorage**。老用户存过的 60% / 120% 一并作废，
+ * 大家的顶栏回到标准大小 —— 否则「固定不可改」只是嘴上说说，
+ * 换台机器还带着旧的自定义高度。
+ */
 export function initAppbarScale(): void {
-	applyAppbarScale(readStored());
-}
-
-export function setAppbarScale(percent: number): void {
-	const value = clampAppbarScale(percent);
-	try {
-		localStorage.setItem(APPBAR_SCALE_KEY, String(value));
-	} catch {
-		// 存不下就只在本页生效（与主题 / 字号同一处理）
-	}
-	applyAppbarScale(value);
-}
-
-/** 订阅变更（含其它标签页改同一项时的 `storage` 事件） */
-export function onAppbarScaleChange(callback: (percent: number) => void): () => void {
-	const onCustom = (event: Event) => {
-		const detail = (event as CustomEvent<number>).detail;
-		if (typeof detail === "number") callback(detail);
-	};
-	const onStorage = (event: StorageEvent) => {
-		if (event.key !== APPBAR_SCALE_KEY) return;
-		const next = readStored();
-		applyAppbarScale(next);
-		callback(next);
-	};
-	window.addEventListener(APPBAR_SCALE_EVENT, onCustom);
-	window.addEventListener("storage", onStorage);
-	return () => {
-		window.removeEventListener(APPBAR_SCALE_EVENT, onCustom);
-		window.removeEventListener("storage", onStorage);
-	};
+	document.documentElement.style.setProperty("--appbar-scale", appbarScaleCss(DEFAULT_APPBAR_SCALE));
 }

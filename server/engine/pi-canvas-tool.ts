@@ -47,7 +47,7 @@ function failure(error: unknown): Failure {
 
 export function makeCanvasToolExtension(options: CanvasToolOptions): InlineExtension {
 	return {
-		name: "agent-web-canvas",
+		name: "oh-my-agent-web-canvas",
 		hidden: true,
 		factory: (pi) => {
 			pi.registerTool(

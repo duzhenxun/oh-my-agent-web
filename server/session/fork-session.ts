@@ -28,7 +28,12 @@ export function createForkSession(deps: {
 	pushSnapshot: () => void;
 	refreshSessions: (force?: boolean) => Promise<void>;
 }) {
-	return async (conversationId: string, messageId?: string, clientId?: string): Promise<ForkResult> => {
+	return async (
+		conversationId: string,
+		messageId?: string,
+		clientId?: string,
+		startMessageId?: string,
+	): Promise<ForkResult> => {
 		const conversation = deps.conversations().find((item) => item.id === conversationId);
 		const info = conversation
 			? { title: conversation.title, workspace: conversation.workspace }
@@ -52,7 +57,9 @@ export function createForkSession(deps: {
 		const title = `分支 · ${info.title}`;
 		let id: string;
 		try {
-			id = await deps.create(title, info.workspace, { fork: { sourceConversationId: conversationId, messageId } });
+			id = await deps.create(title, info.workspace, {
+				fork: { sourceConversationId: conversationId, messageId, ...(startMessageId ? { startMessageId } : {}) },
+			});
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			deps.notice(`派生分支会话失败：${message}`, "error");
@@ -60,7 +67,12 @@ export function createForkSession(deps: {
 		}
 
 		if (clientId) deps.clientView.setActive(clientId, id);
-		deps.notice("🌱 已派生新分支会话并自动切换（原对话保持不变）", "info");
+		deps.notice(
+			startMessageId
+				? "🌱 已以这条消息为开头开了新会话（之前的对话没带过去）"
+				: "🌱 已派生新分支会话并自动切换（原对话保持不变）",
+			"info",
+		);
 		void deps.refreshSessions(true).catch(() => undefined);
 		deps.pushSnapshot();
 		return { ok: true, conversationId: id, workspace: info.workspace };

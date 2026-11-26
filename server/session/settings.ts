@@ -8,7 +8,7 @@
 import { readFileSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
-import type { AppearanceView, ProjectPrefs, PromptTemplate, SessionPrefs } from "../protocol.js";
+import type { AppearanceView, ProjectPrefs, PromptTemplate, QuickPhrase, SessionPrefs } from "../protocol.js";
 
 const SETTINGS_FILE = "settings.json";
 const SETTINGS_VERSION = 1;
@@ -17,7 +17,20 @@ const SETTINGS_VERSION = 1;
 const MAX_QUICK_PHRASES = 30;
 const MAX_QUICK_PHRASE_CHARS = 200;
 
-const DEFAULT_QUICK_PHRASES = ["继续", "总结一下", "详细解释一下", "检查并修复问题", "补充测试覆盖", "提交并跑测试"];
+/**
+ * 默认快捷指令：**只有两条**（用户 2026-11-23：「只要 继续、总结一下 默认只有这 2 个就可以」）。
+ *
+ * 两条都是**双语**存着的（`text` 中文原文 + `textEn` 英文副本）：英文界面下显示 / 发送英文那条，
+ * 中文界面用原文。用户自己加/改的短语没有英文副本，两种语言都原样显示 ——
+ * 短语是「用户自己的话」，不该被系统偷着翻（文案规则的权威说明见 `QuickPhrase`）。
+ */
+export const DEFAULT_QUICK_PHRASES: readonly QuickPhrase[] = [
+	{ text: "继续", textEn: "Continue" },
+	{ text: "总结一下", textEn: "Summarize" },
+];
+
+/** 内置短语的「中文原文 → 英文副本」：用来给老 settings.json 里那串纯中文补上第二份 */
+const BUILTIN_PHRASE_EN = new Map(DEFAULT_QUICK_PHRASES.map((phrase) => [phrase.text, phrase.textEn ?? ""]));
 
 /**
  * 「想想」参数上下限。
@@ -49,7 +62,76 @@ const MAX_TEMPLATE_TEXT_CHARS = 2000;
  * 默认模板库（P5）：都是「开箱即用、点一下就填进输入框」的工作流提示词。
  * 图标用 emoji，避免为一个图标位引入图标库（依赖预算）。
  */
-const DEFAULT_TEMPLATES: PromptTemplate[] = [
+/**
+ * 内置模板的英文副本（第二份）：`id` → 三个字段的英文。
+ *
+ * 单独一张表、而不是塞回 `DEFAULT_TEMPLATES`：中文原文是**身份**（判定「用户有没有改过」用的），
+ * 英文只是显示用的另一份；放两处、用 `id` 对齐，规则一眼能看清（见 `normalizeTemplates`）。
+ */
+const BUILTIN_TEMPLATE_EN: Record<string, { name: string; description: string; text: string }> = {
+	"t-spec": {
+		name: "Spec to done",
+		description: "Implement test-first from the spec",
+		text: "Implement this spec: write the failing tests first, then implement until they pass. If anything in the spec is ambiguous, ask me instead of guessing.",
+	},
+	"t-review": {
+		name: "Code review",
+		description: "Review the diff against the spec and conventions",
+		text: "Review the current changes: compare them against the spec and the repo's existing conventions, point out behaviour differences, missed edge cases, and code that can be deleted. Order the findings by severity.",
+	},
+	"t-map": {
+		name: "Task map",
+		description: "Turn a big project into a decision map",
+		text: "Turn this big task into a decision map: first list the choice points that have to be decided now and what each one costs, then give the shortest path to something shippable.",
+	},
+	"t-proto": {
+		name: "Quick prototype",
+		description: "Validate a design assumption with throwaway code",
+		text: "Validate this design assumption with a throwaway prototype: give the smallest runnable code, the metrics to watch, and a verdict (continue / change the approach).",
+	},
+	"t-research": {
+		name: "Cited research",
+		description: "Read primary sources, answer with citations",
+		text: "Research this question: read primary sources only (official docs / source code / specs), give conclusions with links, and clearly flag anything you are unsure about.",
+	},
+	"t-arch": {
+		name: "Architecture check-up",
+		description: "Find the modules worth refactoring",
+		text: "Do an architecture check-up of this project: find modules that are too tightly coupled or carry too many responsibilities, and rank the refactoring suggestions by payoff vs risk.",
+	},
+	"t-debug": {
+		name: "Systematic debugging",
+		description: "Start from a failure you can reproduce",
+		text: "Debug this systematically: first give me one command that reproduces it reliably, then bisect. Do not guess at causes before you have a reproduction.",
+	},
+	"t-conflict": {
+		name: "Resolve merge conflicts",
+		description: "Work through merge/rebase hunk by hunk",
+		text: "Resolve the merge conflicts: go hunk by hunk, read the intent on both sides, keep both meanings, run the tests afterwards, and explain every trade-off.",
+	},
+	"t-ask": {
+		name: "Grill the requirement",
+		description: "Interrogate the idea before coding",
+		text: "Grill me before you start: turn the vague parts of this request into questions (at most 5), each with the default answer you would pick.",
+	},
+	"t-handoff": {
+		name: "Handoff",
+		description: "Turn a long session into a handoff doc",
+		text: "Turn this session into a handoff document: done / not done / key constraints / the very next step — written for someone with no context at all.",
+	},
+	"t-plain": {
+		name: "Plain words",
+		description: "Re-explain that in everyday language",
+		text: "Explain that again in plain words: replace the jargon with everyday analogies, at most 10 lines.",
+	},
+	"t-tdd": {
+		name: "Test-driven",
+		description: "The red-green-refactor rule",
+		text: "Work test-driven: write one failing test and show me it failing, implement until it is green, then refactor. Every step needs command output.",
+	},
+};
+
+export const DEFAULT_TEMPLATES: PromptTemplate[] = [
 	{
 		id: "t-spec",
 		icon: "🏗",
@@ -136,8 +218,14 @@ const DEFAULT_TEMPLATES: PromptTemplate[] = [
 	},
 ];
 
+/** 内置模板的 id 集合：只有这些 id 才可能带英文副本（用户自建的 `tpl-*` 不带） */
+const BUILTIN_TEMPLATE_IDS: ReadonlySet<string> = new Set(DEFAULT_TEMPLATES.map((template) => template.id));
+
+/** 按 id 取内置原文（归一化时要逐格比对「用户改过没有」） */
+const BUILTIN_TEMPLATE_BY_ID = new Map(DEFAULT_TEMPLATES.map((template) => [template.id, template]));
+
 type ClientSettings = {
-	quickPhrases: string[];
+	quickPhrases: QuickPhrase[];
 	/**
 	 * @deprecated 显隐已改为本机偏好（`agent-web.composer.quick`，见 `web/src/ui-prefs.ts`）：
 	 * 手机和桌面要能各设各的，一个服务端开关做不到。这里只为老客户端兼容留着，
@@ -248,7 +336,7 @@ export function normalizeAppearance(input: unknown, current: AppearanceView = DE
 
 export function defaultSettings(): ClientSettings {
 	return {
-		quickPhrases: [...DEFAULT_QUICK_PHRASES],
+		quickPhrases: DEFAULT_QUICK_PHRASES.map((phrase) => ({ ...phrase })),
 		quickPhrasesEnabled: true,
 		templates: DEFAULT_TEMPLATES.map((template) => ({ ...template })),
 		projectPrefs: { order: [], pinned: [], aliases: {}, hidden: [] },
@@ -260,22 +348,42 @@ export function defaultSettings(): ClientSettings {
 	};
 }
 
+/** 单条短语的清洗：折空白、去首尾、裁长度（两个语言版本同一套规则） */
+function cleanPhraseText(value: unknown): string {
+	if (typeof value !== "string") return "";
+	const text = value.replace(/\s+/g, " ").trim();
+	return text.length > MAX_QUICK_PHRASE_CHARS ? text.slice(0, MAX_QUICK_PHRASE_CHARS) : text;
+}
+
 /**
  * 纯函数：规范化快捷短语列表 —— 去空白、限制单条长度、去重、限制条数。
  * 顺序保持用户给的原样（拖拽排序是后话，见 ADR-0020）。
+ *
+ * 两种输入都收：
+ *   - **纯字符串**（老 settings.json，以及老客户端发上来的 `quickPhrases: string[]`）→ `{ text }`；
+ *   - **`{ text, textEn }`**（新形状，见 `QuickPhrase`）。
+ *
+ * 英文副本的来源按「中文原文是不是还等于内置原文」判：
+ *   - 还等于（用户没改过这条）→ 用**内置表里的英文**（跟着代码升级，不是抄旧值）；
+ *   - 已经改过 / 用户自己写的 → 只认他自己带回来的 `textEn`，没有就不带
+ *     —— 绝不把用户写的句子偷着翻成英文。
  */
-function normalizeQuickPhrases(input: unknown): string[] {
+export function normalizeQuickPhrases(input: unknown): QuickPhrase[] {
 	if (!Array.isArray(input)) return [];
 	const seen = new Set<string>();
-	const out: string[] = [];
+	const out: QuickPhrase[] = [];
 	for (const item of input) {
-		if (typeof item !== "string") continue;
-		const text = item.replace(/\s+/g, " ").trim();
+		const raw = typeof item === "string" ? { text: item } : typeof item === "object" && item !== null ? item : null;
+		if (raw === null) continue;
+		const record = raw as Record<string, unknown>;
+		const text = cleanPhraseText(record.text);
 		if (text === "") continue;
-		const clipped = text.length > MAX_QUICK_PHRASE_CHARS ? text.slice(0, MAX_QUICK_PHRASE_CHARS) : text;
-		if (seen.has(clipped)) continue;
-		seen.add(clipped);
-		out.push(clipped);
+		const builtinEn = BUILTIN_PHRASE_EN.get(text);
+		const textEn = builtinEn || cleanPhraseText(record.textEn);
+		const key = `${text}\u0000${textEn}`;
+		if (seen.has(key)) continue;
+		seen.add(key);
+		out.push(textEn === "" ? { text } : { text, textEn });
 		if (out.length >= MAX_QUICK_PHRASES) break;
 	}
 	return out;
@@ -284,8 +392,15 @@ function normalizeQuickPhrases(input: unknown): string[] {
 /**
  * 纯函数：规范化模板列表 —— 每项必须像模板，字段裁剪长度、id 去重、条数上限。
  * 顺序保持用户给的原样（用户自己拖过的顺序不该被服务器重排）。
+ *
+ * **英文副本（第二份）在这里补**，规则一句话：
+ *   - 内置 id + 中文原文还等于内置原文 → 用内置表的英文（用户没动过这一格）；
+ *   - 别的情况（改过、或自建模板）→ 只认客户端自己带上来的 `*En`，没有就不带。
+ *
+ * 这样老 settings.json 里那批纯中文默认模板一升级就能在英文界面显示英文，
+ * 而用户改过的模板不会被塞一份对不上的过时译文。
  */
-function normalizeTemplates(input: unknown): PromptTemplate[] {
+export function normalizeTemplates(input: unknown): PromptTemplate[] {
 	if (!Array.isArray(input)) return [];
 	const seen = new Set<string>();
 	const out: PromptTemplate[] = [];
@@ -300,17 +415,33 @@ function normalizeTemplates(input: unknown): PromptTemplate[] {
 			typeof record.id === "string" && record.id.trim() !== "" ? record.id.trim() : `t-${out.length + 1}-${name}`;
 		if (seen.has(id)) continue;
 		seen.add(id);
+		const description =
+			typeof record.description === "string"
+				? record.description.replace(/\s+/g, " ").trim().slice(0, MAX_TEMPLATE_DESC_CHARS)
+				: "";
+		const builtin = BUILTIN_TEMPLATE_BY_ID.get(id);
+		const builtinEn = BUILTIN_TEMPLATE_IDS.has(id) ? BUILTIN_TEMPLATE_EN[id] : undefined;
+		/** 某一格的英文：中文原文没动过就用内置那份，否则用客户端带回来的 */
+		const englishOf = (field: "name" | "description" | "text", value: string, limit: number): string | undefined => {
+			if (builtin && builtinEn && value === builtin[field]) return builtinEn[field];
+			const provided = typeof record[`${field}En`] === "string" ? (record[`${field}En`] as string) : "";
+			const clipped = provided.replace(/\s+/g, " ").trim().slice(0, limit);
+			return clipped === "" ? undefined : clipped;
+		};
+		const nameEn = englishOf("name", name, MAX_TEMPLATE_NAME_CHARS);
+		const descriptionEn = englishOf("description", description, MAX_TEMPLATE_DESC_CHARS);
+		const textEn = englishOf("text", text, MAX_TEMPLATE_TEXT_CHARS);
 		out.push({
 			id,
 			name,
-			description:
-				typeof record.description === "string"
-					? record.description.replace(/\s+/g, " ").trim().slice(0, MAX_TEMPLATE_DESC_CHARS)
-					: "",
+			description,
 			icon: typeof record.icon === "string" ? ([...record.icon][0] ?? "✳️") : "✳️",
 			text,
 			// 软删除标记：只有明确 true 才带上，缺省即显示
 			...(record.hidden === true ? { hidden: true } : {}),
+			...(nameEn ? { nameEn } : {}),
+			...(descriptionEn ? { descriptionEn } : {}),
+			...(textEn ? { textEn } : {}),
 		});
 		if (out.length >= MAX_TEMPLATES) break;
 	}
@@ -349,7 +480,10 @@ function mergeSettings(current: ClientSettings, patch: unknown): ClientSettings 
 	// 外观：只传一处也算合法（agent 说「对话文字大一点」时不会把侧栏一起带上）
 	// null = 回到「没设过」（浏览器继续用本机那份）；对象 = 部分合并
 	if ("appearance" in record)
-		next.appearance = record.appearance === null ? null : normalizeAppearance(record.appearance, current.appearance ?? DEFAULT_APPEARANCE);
+		next.appearance =
+			record.appearance === null
+				? null
+				: normalizeAppearance(record.appearance, current.appearance ?? DEFAULT_APPEARANCE);
 	return next;
 }
 

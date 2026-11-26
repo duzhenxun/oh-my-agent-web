@@ -71,14 +71,14 @@ describe("cron 工具的默认值（在会话里说「建个定时任务」时�
 });
 
 describe("cron 工具端口：建 / 查 / 改 / 停 / 删", () => {
-	it("建出来的任务带 id 和下次时间，并且真写进了 cron.json", async () => {
+	it("建出来的任务带 id 和下次时间，并且真写进了 cron/pi.json", async () => {
 		const { dataDir, port } = await makePort();
 		const job = await port.create(cronDraftFromArgs({ prompt: "看一眼群", schedule: "*/10 * * * *" }, ctx));
 		assert.ok(job.id);
 		assert.equal(job.sessionId, "conv-1");
 		assert.equal(job.mode, "agent");
 		assert.ok(job.nextRunAt);
-		const raw = JSON.parse(await readFile(join(dataDir, "cron.json"), "utf8")) as {
+		const raw = JSON.parse(await readFile(join(dataDir, "cron", "pi.json"), "utf8")) as {
 			jobs: Array<{ id: string; sessionId?: string }>;
 		};
 		assert.equal(raw.jobs[0]?.id, job.id);

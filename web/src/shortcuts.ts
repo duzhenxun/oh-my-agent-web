@@ -34,10 +34,24 @@ export type ShortcutId =
 	| "toggleMic"
 	| "pauseSpeech"
 	| "stopSpeech"
-	| "cheatSheet";
+	| "cheatSheet"
+	| "sendMessage"
+	| "queueMessage"
+	| "steerMessage"
+	| "stopTurn";
+
+/**
+ * 分组（设置面板与速查表按它分类显示）。
+ *
+ * 2026-11-24 用户：「再整理一下这个地方，按功能分类一下」——
+ * 十几条平铺下来，「这个键是管什么的」要一条条读；分组之后一眼能找到。
+ */
+export type ShortcutGroup = "session" | "chat" | "panels" | "voice";
 
 export type ShortcutDefinition = {
 	id: ShortcutId;
+	/** 分组（顺序 = 面板里的先后，见 SHORTCUT_GROUPS） */
+	group: ShortcutGroup;
 	label: string;
 	labelEn: string;
 	/** 一句「这个动作到底干什么」；有坑的地方（比如 macOS 的 ⌘M）写在这里 */
@@ -63,33 +77,96 @@ export type ShortcutDefinition = {
  * （⌘M/⌘W/⌘T/⌘L 这些都被系统或浏览器先吃掉）。改默认值时**顺手改 `tests/unit/shortcuts.test.ts`
  * 里那份「默认键」断言**，那里是故意的二次确认。
  */
+export const SHORTCUT_GROUPS: readonly { id: ShortcutGroup; label: string; labelEn: string }[] = [
+	{ id: "session", label: "会话", labelEn: "Sessions" },
+	{ id: "chat", label: "对话操作", labelEn: "Conversation" },
+	{ id: "panels", label: "面板与视图", labelEn: "Panels & views" },
+	{ id: "voice", label: "语音", labelEn: "Voice" },
+];
+
 export const SHORTCUT_DEFS: readonly ShortcutDefinition[] = [
 	{
 		id: "newChat",
+		group: "session",
 		label: "新会话",
 		labelEn: "New session",
 		hint: "换掉左边这条主对话，会落盘",
 		hintEn: "Replaces the main chat on the left; it is saved",
-		defaultCombo: "Mod+Alt+N",
+		defaultCombo: "Alt+N",
 	},
 	{
 		id: "newProject",
+		group: "session",
 		label: "新项目",
 		labelEn: "New project",
 		hint: "打开目录选择器；macOS 上 ⌘M 会被系统「最小化」抢走，所以默认避开 ⌘M",
 		hintEn: "Opens the directory picker; ⌘M is taken by Window ▸ Minimize on macOS, so it is avoided",
-		defaultCombo: "Mod+Alt+X",
+		defaultCombo: "Alt+M",
 	},
 	{
 		id: "tempChat",
+		group: "session",
 		label: "临时会话",
 		labelEn: "Temp session",
-		hint: "在右侧另开一条不落盘的聊天",
-		hintEn: "Opens an unsaved chat on the right",
-		defaultCombo: "Mod+Alt+H",
+		hint: "在右侧另开一条不落盘的聊天（默认不绑键：它平时有按钮，绑上去反而占一个容易误触的组合）",
+		hintEn:
+			"Opens an unsaved chat on the right (unbound by default: it has a button, and a key here mostly gets mis-hit)",
+		defaultCombo: null,
+	},
+	/*
+	 * 对话操作（2026-11-24 用户：「这些也加一下快捷键吧」——截图是排队 / 插队 / 停止 / 发送四颗按钮）。
+	 *
+	 * 为什么这四条要能改：同一台机器上「发送」的手感差异很大（有人习惯 ⌘↩，有人习惯 ⌃↩），
+	 * 而且它们和别的动作不一样 —— **只在输入框聚焦时才有意义**，所以派发时会先看焦点在不在输入框
+	 * （见 App 里的 `composerActionOf`），不会在别处误触发。
+	 *
+	 * 默认值（2026-11-24 按用户手上那套定；Enter 也在可录制的主键白名单里）：
+	 *   ⌘↩ 发送（空闲）/ 插队（正在跑，与服务端降级规则一致）
+	 *   ⌥↩ 插队   ⌥S 停止
+	 *   排队**默认不绑键**：裸 Enter 在回合进行中本来就是排队，再给一个键只是多一个要记的东西。
+	 * 裸 Enter 仍然是「发送 / 排队」，那是输入框自己的约定，不占这四条
+	 * （不想让它发的，在 设置 → 界面 → 对话窗口 里取消「回车发送」即可）。
+	 */
+	{
+		id: "sendMessage",
+		label: "发送消息",
+		labelEn: "Send message",
+		hint: "回合空闲时发送；正在跑时按引擎能力插队或排队（与点「发送」一致）",
+		hintEn: "Sends when idle; when a turn is running it steers or queues like the Send button",
+		group: "chat",
+		defaultCombo: "Mod+Enter",
+	},
+	{
+		id: "queueMessage",
+		label: "排队发送",
+		labelEn: "Queue message",
+		hint: "这一轮结束后再发（和回合进行中点「排队」一样；默认不绑键，回车在回合进行中本来就是排队）",
+		hintEn:
+			"Sends after the current turn ends (same as the Queue button; unbound by default — Enter already queues while a turn runs)",
+		group: "chat",
+		defaultCombo: null,
+	},
+	{
+		id: "steerMessage",
+		label: "插队",
+		labelEn: "Steer",
+		hint: "插进当前这一轮；引擎不支持时会降级成排队并提示",
+		hintEn: "Inserts into the running turn; falls back to queueing (with a notice) when the engine cannot",
+		group: "chat",
+		defaultCombo: "Alt+Enter",
+	},
+	{
+		id: "stopTurn",
+		label: "停止当前回合",
+		labelEn: "Stop the running turn",
+		hint: "和「停止」按钮一样：停掉正在跑的这一轮",
+		hintEn: "Same as the Stop button: ends the running turn",
+		group: "chat",
+		defaultCombo: "Alt+S",
 	},
 	{
 		id: "settings",
+		group: "panels",
 		label: "设置",
 		labelEn: "Settings",
 		defaultCombo: "Mod+Comma",
@@ -105,49 +182,56 @@ export const SHORTCUT_DEFS: readonly ShortcutDefinition[] = [
 	 */
 	{
 		id: "toggleRight",
+		group: "panels",
 		label: "收起 / 展开右侧栏",
 		labelEn: "Toggle right panel",
 		hint: "同一个键开 / 关：关着就打开，开着就收起",
 		hintEn: "Opens and closes with the same key",
-		defaultCombo: "Mod+Alt+O",
+		defaultCombo: "Alt+R",
 	},
 	{
 		id: "toggleLeft",
+		group: "panels",
 		label: "收起 / 展开左侧栏",
 		labelEn: "Toggle left sidebar",
-		defaultCombo: "Mod+Alt+L",
+		defaultCombo: "Alt+L",
 	},
 	/*
-	 * 「项目管理」紧贴在「文件管理」上方（用户 2026-11-04：「跟文件管理上下靠着」）：
-	 * 这两个都是**左栏里的一轤**（管理哪几个项目 / 看哪个文件树），而上面两条是「整栏收起 / 展开」——
+	 * 「项目」紧贴在「文件」上方（2026-11-04 用户要求这两个上下靠着；2026-11-23 两者都改了短名）：
+	 * 这两个都是**内容区里的一块**（管哪几个项目 / 看哪个文件树），而上面两条是「整栏收起 / 展开」——
 	 * 两种粒度分开排，看的时候不用在一排里找。
+	 * 文件那一页 2026-11-23 搬到了右侧面板的工具里，快捷键仍然有效（现在开 / 关面板里的「文件」页）。
 	 */
 	{
 		id: "projects",
-		label: "项目管理",
+		group: "panels",
+		label: "项目",
 		labelEn: "Projects",
-		hint: "侧栏里「项目管理」那一栏的开关；侧栏收着时会先展开",
+		hint: "侧栏里「项目」那一栏的开关；侧栏收着时会先展开",
 		hintEn: "Toggles the Projects section in the sidebar; expands the sidebar if it was collapsed",
-		defaultCombo: "Mod+Alt+P",
+		defaultCombo: "Alt+X",
 	},
 	{
 		id: "files",
-		label: "文件管理",
+		group: "panels",
+		label: "文件",
 		labelEn: "Files",
-		hint: "同一个键开 / 关：树开着就收起；侧栏收着时会先展开",
+		hint: "同一个键开 / 关：右侧面板里的「文件」页开着就收起",
 		hintEn: "Opens and closes with the same key; expands the sidebar if it was collapsed",
-		defaultCombo: "Mod+Alt+F",
+		defaultCombo: "Alt+F",
 	},
 	{
 		id: "canvas",
+		group: "panels",
 		label: "画布",
 		labelEn: "Canvas",
 		hint: "同一个键开 / 关：没开就打开画布标签，已经开着就收起来",
 		hintEn: "Opens and closes the canvas tab with the same key",
-		defaultCombo: "Mod+Alt+C",
+		defaultCombo: "Alt+B",
 	},
 	{
 		id: "terminal",
+		group: "panels",
 		label: "切换终端",
 		labelEn: "Toggle terminal",
 		hint: "Ctrl+` —— 显示 / 隐藏对话框下面的终端（隐藏时进程不断）；mac ⌘` 会被系统「切换窗口」先吃掉，所以用 ⌃",
@@ -157,40 +241,46 @@ export const SHORTCUT_DEFS: readonly ShortcutDefinition[] = [
 	},
 	{
 		id: "contentSearch",
+		group: "panels",
 		label: "搜索文件内容",
 		labelEn: "Search file contents",
 		hint: "全文搜索浮层（改键后文件管理里那句提示也会跟着变）",
 		hintEn: "Full-text search overlay; the hint in the file manager follows this binding",
-		defaultCombo: "Mod+Shift+F",
+		defaultCombo: "Shift+Alt+F",
 	},
 	/*
 	 * 「开麦 / 关麦」放在两条朗读动作上面（2026-11-21 用户：「这个麦打开与关闭也设置一下快捷键」）：
 	 * 三条都是语音那一档，读起来就是一串「说 / 念 / 停」。
 	 *
-	 * 默认 `Mod+Alt+M` 而不是 `Mod+Shift+M`：后者在 Windows/Linux 的 Chrome 里是「切换用户」
-	 * （Ctrl+Shift+M），绑上去等于没绑 —— 这条在 `RESERVED_COMBOS` 里也没法表达（它是浏览器
-	 * 内部命令），所以直接选这一档：`Mod+Alt+字母` 在浏览器里几乎没人占。
+	 * 默认 `RightMod`（单按右 ⌘）：2026-11-24 用户把自己在用的这套拍成了默认值。
+	 * 选它而不是 `Mod+Alt+M` 的理由很实在 —— 开麦是「随手一下」的动作，
+	 * 两颗键一起按就要腾出手看键盘；单按右 ⌘ 只用右手拇指，跟按住说话一个手感。
+	 * （不能用 `Mod+Shift+M`：Windows/Linux 的 Chrome 里那是「切换用户」，绑上去等于没绑。
+	 * 这条在 `RESERVED_COMBOS` 里也没法表达，它是浏览器内部命令。）
 	 */
 	{
 		id: "toggleMic",
+		group: "voice",
 		label: "开始 / 停止语音输入",
 		labelEn: "Start / stop voice input",
 		hint: "按一下开、一直听着，再按一下关；也可以按住不放说一句短的，松手就停（设置里能录右⌘ / 右⌥，也能录成只按这一颗）",
 		hintEn:
 			"Tap to keep listening, tap again to stop; or hold and release to say one short thing (right ⌘ / right ⌥ work, alone or with a key)",
-		defaultCombo: "Mod+Alt+M",
+		defaultCombo: "RightMod",
 	},
 	{
 		id: "pauseSpeech",
+		group: "voice",
 		label: "暂停 / 继续朗读",
 		labelEn: "Pause / resume reading",
 		hint: "冻住正在念的这句，再按一次从原地接着念（不会跳过后面的内容）；朗读中浮条上也有这颗按钮",
 		hintEn:
 			"Freezes the current sentence; press again to continue from the same spot (nothing later gets skipped). Also a button on the floating bar",
-		defaultCombo: "Mod+Shift+P",
+		defaultCombo: "Alt+P",
 	},
 	{
 		id: "stopSpeech",
+		group: "voice",
 		label: "停止朗读",
 		labelEn: "Stop reading aloud",
 		hint: "停掉正在念的这句；这一轮剩下的文字也不再自动念（朗读中底部也会出现一颗按钮）",
@@ -199,6 +289,7 @@ export const SHORTCUT_DEFS: readonly ShortcutDefinition[] = [
 	},
 	{
 		id: "cheatSheet",
+		group: "panels",
 		label: "快捷键速查表",
 		labelEn: "Shortcut cheat sheet",
 		hint: "浮层列出当前所有绑定（就是这份表）；再按一次关掉",

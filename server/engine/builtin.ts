@@ -69,8 +69,8 @@ export function createBuiltinEngineRegistry(options: {
 	return createEngineRegistry([
 		{
 			name: "pi",
-			label: "pi 原生引擎",
-			badge: "PI",
+			label: "Pi 原生引擎",
+			badge: "Pi",
 			description: "完整插件与技能生态、工具延迟加载、审批门禁、目标模式与子代理",
 			providerConfig: true, // 模型 / provider 配置由本工作台管理（models-store.json + auth.json）
 			// 版本同步就有（SDK 导出的 VERSION），不用探测
@@ -99,21 +99,23 @@ export function createBuiltinEngineRegistry(options: {
 					{
 						name: "codex",
 						label: "Codex",
-						badge: "CODEX",
+						badge: "Codex",
 						// 能力如实写：审批是命令/文件级的（比 pi 粗一档），没有 provider 面板
 						description:
 							options.codex.description ?? "codex 官方 agent：独立 loop 与沙箱，会话与 Codex Desktop / CLI 共用",
 						providerConfig: false,
 						// 版本号跟本机的 codex CLI 走（`codex --version` → `codex-cli 0.162.1`）
 						version: () => probeCliVersion(options.codex?.bin ?? "codex"),
-						// steer: false —— 底层（JSON-RPC / ACP）没有「插进正在跑的这一轮」的语义，宿主会降级成排队
+						// steer: interrupt —— 插队 = 打断当前 turn（`turn/interrupt`）后立刻 `turn/start` 发出下一轮（ADR-0054）。
+						// 不是 pi 那种「同一轮里插一句」：协议没这个语义，但观感是「它停下来听我的」。
 						capabilities: {
 							approvals: true,
 							tools: true,
 							modelSwitch: true,
 							thinkingLevel: true,
 							resume: true,
-							steer: false,
+							steer: true,
+							steerMode: "interrupt" as const,
 							// 真回合探针：临时 thread 发一句 ping，量 TTFT / 出字速度（不偷 codex 的凭证，见 port.ts）
 							modelProbe: true,
 							// codex 自带多代理（spawn_agent 那一套）：显示成面板卡片 + 按会话注入模板
@@ -136,21 +138,23 @@ export function createBuiltinEngineRegistry(options: {
 					{
 						name: "dsh",
 						label: "DeepSeek Harness",
-						badge: "DSH",
+						badge: "Dsh",
 						description:
 							options.dsh.description ??
 							"DeepSeek 官方 agent（ACP）：模型与思考档可切、权限逐次确认，会话与 dsh web/tui 共用",
 						providerConfig: false,
 						// 版本号跟本机的 dsh CLI 走（`dsh --version` → `0.2.0-rc.2`）
 						version: () => probeCliVersion(options.dsh?.bin ?? "dsh"),
-						// steer: false —— 底层（JSON-RPC / ACP）没有「插进正在跑的这一轮」的语义，宿主会降级成排队
+						// steer: interrupt —— 插队 = 打断当前轮（`session/cancel`）后把这条当下一轮发（ADR-0054）。
+						// 实测：cancel 后约 21ms settle，并补一个 failed 的 tool_end。
 						capabilities: {
 							approvals: true,
 							tools: true,
 							modelSwitch: true,
 							thinkingLevel: true,
 							resume: true,
-							steer: false,
+							steer: true,
+							steerMode: "interrupt" as const,
 						},
 						create: () =>
 							createDshEngine({ client: options.dsh?.client, model: options.dsh?.model, log: options.onLog }),
@@ -161,8 +165,8 @@ export function createBuiltinEngineRegistry(options: {
 			? [
 					{
 						name: "opencode",
-						label: "opencode",
-						badge: "OC",
+						label: "Opencode",
+						badge: "Oc",
 						// 如实写：审批能不能真的拦住，取决于 opencode 自己的权限配置（见 engine/opencode.ts 头注释）
 						description:
 							options.opencode.description ??
@@ -171,14 +175,16 @@ export function createBuiltinEngineRegistry(options: {
 						// 版本号跟本机的 opencode CLI 走（`opencode --version` → `1.19.0`）
 						version: () => probeCliVersion(options.opencode?.bin ?? "opencode"),
 						// 没有子代理面板（ACP 不暴露 task 子代理的运行视图）→ subagents 不写，界面就不出现那块
-						// steer: false —— 底层（JSON-RPC / ACP）没有「插进正在跑的这一轮」的语义，宿主会降级成排队
+						// steer: interrupt —— 插队 = 打断当前轮（`session/cancel`）后把这条当下一轮发（ADR-0054）。
+						// 实测：cancel 后本轮约 65ms settle，且会补一个被取消的 tool_end。
 						capabilities: {
 							approvals: true,
 							tools: true,
 							modelSwitch: true,
 							thinkingLevel: true,
 							resume: true,
-							steer: false,
+							steer: true,
+							steerMode: "interrupt" as const,
 						},
 						create: () =>
 							createOpencodeEngine({
@@ -197,7 +203,7 @@ export function createBuiltinEngineRegistry(options: {
 						name: "claude",
 						label: "Claude Code",
 						// 短标签沿用 DSH / OC 的风格：长名字会把顶栏那枚胶囊撑开
-						badge: "CC",
+						badge: "Claude",
 						// 能力如实写：模型可切（session/set_model），**没有思考档**（协议不暴露），没有子代理面板
 						description:
 							options.claude.description ??
@@ -205,14 +211,16 @@ export function createBuiltinEngineRegistry(options: {
 						providerConfig: false,
 						// 版本 = ACP 适配器（claude-code-acp）的版本，与握手给的 "agentInfo.version" 一致
 						version: () => claudeVersionOf(options.claude?.bin),
-						// steer: false —— 底层（JSON-RPC / ACP）没有「插进正在跑的这一轮」的语义，宿主会降级成排队
+						// steer: interrupt —— 插队 = 打断当前轮（`session/cancel`）后把这条当下一轮发（ADR-0054）。
+						// 实测：cancel 后约 147ms settle，**不会**补 tool_end（工具卡由宿主收尾）。
 						capabilities: {
 							approvals: true,
 							tools: true,
 							modelSwitch: true,
 							thinkingLevel: false, // ACP 面里 Claude 不暴露 thinking/effort
 							resume: true,
-							steer: false,
+							steer: true,
+							steerMode: "interrupt" as const,
 						},
 						create: () =>
 							createClaudeEngine({
@@ -228,7 +236,7 @@ export function createBuiltinEngineRegistry(options: {
 		{
 			name: "fake",
 			label: "假引擎",
-			badge: "FAKE",
+			badge: "Fake",
 			description: "零 token 的脚本化引擎：没有真实模型，只用来验证协议、工具与审批流程",
 			providerConfig: false,
 			version: () => "fake",

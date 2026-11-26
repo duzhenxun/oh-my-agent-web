@@ -11,6 +11,7 @@
  */
 import { TOOL_EXCERPT_CHARS, type UiMessage } from "../protocol.js";
 import type { ApprovalRequest, EngineEvent, EngineModelInfo, EngineMessage } from "./port.js";
+import { missingEngineMessage } from "./engine-specs.js";
 
 export type CodexItem = {
 	id?: string;
@@ -335,6 +336,8 @@ export function toolEndOf(item: CodexItem): EngineEvent | null {
  */
 export function friendlyCodexError(error: unknown): string {
 	const message = error instanceof Error ? error.message : String(error);
+	// 必须排在 /not found/ 前面：spawn 失败的消息本身长这样，「文件没找到」和「会话没找到」是两回事
+	if (/ENOENT|command not found/i.test(message)) return missingEngineMessage("codex");
 	if (/active writer|thread-store conflict/i.test(message)) {
 		return "这个会话正被 Codex（桌面端/终端）打开着，写入锁被占用：先在那里关掉它，或新建一条会话";
 	}

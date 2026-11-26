@@ -86,6 +86,13 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		rawText: string;
 	};
 	const turns = new Map<string, TurnState>();
+	/**
+	 * 「这次 interrupted 是插队造成的」（ADR-0054）。
+	 *
+	 * 回合收尾靠它说对提示语：插队打断不是「回合已中断」（那句听起来像出错了），
+	 * 用户是主动让当前步骤停下来、换成自己这句话。用完就删，不跨回合遗留。
+	 */
+	const steerInterrupts = new Set<string>();
 	const clientView = createClientView(); // 每客户端在看哪个会话（ADR-0033）
 	state.versions = { web: webVersion(), engine: engine.version?.() ?? null, latest: null }; // 抬头显示的版本号
 
@@ -332,9 +339,23 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		pushSnapshot,
 		// 插队注入前要确认「这一轮真的还在跑」（见 turn-queue 的 flushSteer）
 		isTurnRunning: (conversationId) => turns.has(conversationId),
-		// 插队只对「底层协议真有 steer 语义」的引擎成立（目前只有 pi，ADR-0043）：
-		// 不能插队就降级成排队，不要自己去覆盖引擎的活跃回合（codex 会永久 busy）
+		// 插队只对「底层协议有插队语义」的引擎成立（ADR-0043）
 		supportsSteer: () => state.engineCapabilities.steer === true,
+		/**
+		 * 插队具体怎么做（ADR-0054）：pi 是 native（插进当前轮），codex 是 interrupt（打断后当下一轮发）。
+		 * 引擎被切走时能力跟着变，所以每次现读。
+		 */
+		steerMode: () => {
+			if (state.engineCapabilities.steer !== true) return "none" as const;
+			return state.engineCapabilities.steerMode ?? "native";
+		},
+		// 引擎实现了就交给它等落定（codex：等 turn/completed）；没实现则由队列层自己打断 + 轮询兑底
+		...(engine.interruptAndSettle
+			? { interruptAndSettle: (conversationId: string) => engine.interruptAndSettle!(conversationId) }
+			: {}),
+		interrupt: (conversationId) => engine.interrupt(conversationId),
+		// 打断之前先打个标：回合收尾才能说「已插队」而不是「回合已中断」
+		onInterruptForSteer: (conversationId) => steerInterrupts.add(conversationId),
 	});
 
 	const finishTurn = createRuntimeTurnFinisher({
@@ -342,9 +363,21 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 		turns,
 		nextId,
 		now,
-		shiftQueued: (conversationId) => queue.shift(conversationId),
+		shiftQueued: (conversationId) => queue.shiftSteerFirst(conversationId),
+		/**
+		 * 队列排空后要当「新一轮」发出去。
+		 * `steer` 标记要留着：interrupt 档的插队项是从队列里发出去的，
+		 * 不带上这个标记，界面上它就跟普通排队一模一样，看不出「这是插进来的」。
+		 */
 		sendNext: (message, conversationId) =>
-			setTimeout(() => void apiRef?.sendMessage(message.text, message.attachments, "now", conversationId), 0),
+			setTimeout(
+				() =>
+					void apiRef?.sendMessage(message.text, message.attachments, "now", conversationId, undefined, {
+						steer: message.mode === "steer",
+					}),
+				0,
+			),
+		interruptReasonOf: (conversationId) => (steerInterrupts.has(conversationId) ? "steer" : null),
 		cancelPending: (conversationId, cancelOptions) => approval.cancelPending(conversationId, cancelOptions),
 		onTurnFinished: (info) => {
 			// 先推进画布（同步、幂等），再把事件交给宿主（推送通知等）
@@ -857,7 +890,8 @@ export function createRuntime(options: RuntimeOptions): Runtime {
 
 		closeEphemeral: (conversationId) => closeEphemeral(conversationId),
 
-		forkSession: (conversationId, messageId, clientId) => forkSession(conversationId, messageId, clientId),
+		forkSession: (conversationId, messageId, clientId, startMessageId) =>
+			forkSession(conversationId, messageId, clientId, startMessageId),
 
 		deleteSession: (conversationId, options) => deleteSession(conversationId, options),
 

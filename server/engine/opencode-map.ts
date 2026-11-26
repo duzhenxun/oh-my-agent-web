@@ -28,6 +28,7 @@
  */
 import { TOOL_EXCERPT_CHARS, type SessionStats, type UiMessage } from "../protocol.js";
 import type { ApprovalRequest, EngineEvent, EngineMessage, EngineModelInfo } from "./port.js";
+import { missingEngineMessage } from "./engine-specs.js";
 
 type OpencodeChoice = { value: string; name?: string; description?: string; group?: string };
 
@@ -363,10 +364,17 @@ type OpencodeExportPart = {
 	text?: string;
 	tool?: string;
 	callID?: string;
+	/**
+	 * 新版（v2.3.x）的 tool part 用 `id` / `name` 而不是 `callID` / `tool`，
+	 * 输出在 `state.content`（数组）而不是 `state.output`（字符串）。归一化时会搬到老字段上。
+	 */
+	id?: string;
+	name?: string;
 	state?: {
 		status?: string;
 		input?: unknown;
 		output?: unknown;
+		content?: unknown;
 		title?: string;
 		error?: unknown;
 		metadata?: { exit?: unknown; truncated?: unknown } | null;
@@ -385,6 +393,22 @@ type OpencodeExportMessage = {
 		cost?: number;
 	};
 	parts?: OpencodeExportPart[];
+	/**
+	 * 新版（v2.3.2 实测）把消息**拍平了一层**：
+	 *   user   → `{id, time, type:"user", text}`
+	 *   assistant → `{id, time, type:"assistant", content:[…parts], tokens, cost, model}`
+	 *   system → `{id, time, type:"system", text}`（不是对话内容，归一化后会被跳过）
+	 * 旧的 `{info, parts}` 解析器对这些字段一概看不见，于是**整段会话被当成 0 条** ——
+	 * 用户看到的就是「点开一个 opencode 会话，中间一片空白」（2026-11-24 报的）。
+	 */
+	id?: string;
+	type?: string;
+	time?: { created?: number; completed?: number } | null;
+	text?: string;
+	content?: OpencodeExportPart[];
+	tokens?: OpencodeExportTokens | null;
+	cost?: number;
+	model?: { id?: string; providerID?: string } | null;
 };
 
 export type OpencodeExport = {
@@ -405,6 +429,63 @@ const textPartsOf = (message: OpencodeExportMessage, type: string): string =>
 		.filter((part) => part.type === type && typeof part.text === "string")
 		.map((part) => part.text ?? "")
 		.join("");
+
+/**
+ * 把一个 part 搬回老字段上（幂等：老格式原样返回）。
+ *
+ * 新版 tool part：`{id, name, state:{status, input, content, metadata}}`
+ * 老版 tool part：`{callID, tool, state:{status, input, output, metadata}}`
+ * 输出也要从 `state.content`（数组）搬到 `state.output`：下游的 `outputTextOf` 两种都接，
+ * 但 tool 卡片直接拿 `state.output` 的地方也要能拿到。
+ */
+function normalizePart(part: OpencodeExportPart): OpencodeExportPart {
+	if (part.type !== "tool") return part;
+	const state = part.state ?? undefined;
+	const hasOutput = state?.output !== undefined && state.output !== null && state.output !== "";
+	return {
+		...part,
+		callID: part.callID ?? part.id,
+		tool: part.tool ?? part.name,
+		state: state
+			? { ...state, ...(hasOutput ? {} : { output: state.content ?? state.output }) }
+			: part.state,
+	};
+}
+
+/**
+ * 把新版（拍平的）export 消息归一成老的 `{info, parts}` 形状。
+ *
+ * 为什么要归一化而不是在两个循环里各写一套：`exportToUiMessages` / `exportToTranscript` /
+ * `exportStats` / `hasPendingUsage` 四个消费者都靠 `info.role` 与 `parts`，
+ * 归一化一次比改四处可靠（也不会出现「历史修好了、统计还是 0」这种半截修）。
+ * 老格式（有 `info`）直接返回，不动。
+ */
+function normalizeMessage(raw: OpencodeExportMessage): OpencodeExportMessage {
+	if (raw.info) return { info: raw.info, parts: (raw.parts ?? []).map(normalizePart) };
+	const role = raw.type;
+	const info = {
+		id: raw.id,
+		role,
+		time: raw.time ?? null,
+		tokens: raw.tokens ?? null,
+		...(raw.cost === undefined ? {} : { cost: raw.cost }),
+		...(raw.model?.id ? { modelID: raw.model.id } : {}),
+		...(raw.model?.providerID ? { providerID: raw.model.providerID } : {}),
+	};
+	const parts: OpencodeExportPart[] =
+		role === "assistant"
+			? (raw.content ?? []).map(normalizePart)
+			: typeof raw.text === "string"
+				? [{ type: "text", text: raw.text }]
+				: [];
+	return { info, parts };
+}
+
+/** 把整份导出归一化（对话历史 / 转录 / 统计共用这一步） */
+export function normalizeExport(exported: OpencodeExport | null | undefined): OpencodeExport | null {
+	if (!exported) return null;
+	return { ...exported, messages: (exported.messages ?? []).map(normalizeMessage) };
+}
 
 /** 工具输出可能放在 `state.output`（字符串）或数组里 */
 function outputTextOf(value: unknown): string {
@@ -428,7 +509,7 @@ function outputTextOf(value: unknown): string {
  */
 export function exportToUiMessages(exported: OpencodeExport | null | undefined): UiMessage[] {
 	const messages: UiMessage[] = [];
-	for (const message of exported?.messages ?? []) {
+	for (const message of normalizeExport(exported)?.messages ?? []) {
 		const info = message.info ?? {};
 		const createdAt = info.time?.created;
 		const ts = typeof createdAt === "number" ? createdAt : 0;
@@ -507,7 +588,7 @@ export function exportToUiMessages(exported: OpencodeExport | null | undefined):
 /** export JSON → 引擎转录（只留正文） */
 export function exportToTranscript(exported: OpencodeExport | null | undefined): EngineMessage[] {
 	const out: EngineMessage[] = [];
-	for (const message of exported?.messages ?? []) {
+	for (const message of normalizeExport(exported)?.messages ?? []) {
 		const role = message.info?.role;
 		if (role !== "user" && role !== "assistant") continue;
 		const text = textPartsOf(message, "text");
@@ -526,7 +607,7 @@ export function exportToTranscript(exported: OpencodeExport | null | undefined):
  * 所以统计遇到 pending 就再等一帧重读，而不是把这个中间态写进面板。
  */
 export function hasPendingUsage(exported: OpencodeExport | null | undefined): boolean {
-	const assistants = (exported?.messages ?? []).filter((message) => message.info?.role === "assistant");
+	const assistants = (normalizeExport(exported)?.messages ?? []).filter((message) => message.info?.role === "assistant");
 	const last = assistants.at(-1);
 	if (!last) return true; // 连 assistant 都没有：这一轮肯定还没落完
 	const tokens = last.info?.tokens;
@@ -560,7 +641,7 @@ export function exportStats(exported: OpencodeExport | null | undefined): Sessio
 		totalTokens: 0,
 		contextTokens: 0,
 	};
-	for (const message of exported?.messages ?? []) {
+	for (const message of normalizeExport(exported)?.messages ?? []) {
 		const role = message.info?.role;
 		if (role === "user") {
 			stats.userMessages += 1;
@@ -600,7 +681,7 @@ export function exportStats(exported: OpencodeExport | null | undefined): Sessio
 export function friendlyOpencodeError(error: unknown): string {
 	const message = error instanceof Error ? error.message : String(error);
 	if (/ENOENT|spawn .* ENOENT|command not found/i.test(message)) {
-		return "没有找到 opencode 可执行文件：先安装它（`npm i -g opencode-ai`），或设 AGENT_WEB_OPENCODE_BIN 指向它";
+		return missingEngineMessage("opencode");
 	}
 	// 顺序有讲究：opencode 的拒绝理由常是「Invalid params: <东西> not found」，「<东西>」
 	// 到底是思考档 / 模型 / 会话，决定了该给人哪一句 —— 所以先认具体的关键字。

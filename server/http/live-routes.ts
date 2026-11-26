@@ -5,7 +5,7 @@
  *   - `GET  /api/events`   SSE 长连接：服务端 → 客户端（快照 / 事件）
  *   - `POST /api/rpc`      一问一答：客户端 → 服务端（协议不变，还是 ClientRequest）
  *
- * 客户端身份：`agent-web-client` cookie。有了它，快照才能按「这个客户端在看哪个会话」生成
+ * 客户端身份：`oh-my-agent-web-client` cookie。有了它，快照才能按「这个客户端在看哪个会话」生成
  * （否则两个标签页会互相拽着切换）。cookie 不存在时由 `/api/events` 发一个。
  */
 import { randomUUID } from "node:crypto";
@@ -13,7 +13,7 @@ import { constants as zlibConstants, createGzip } from "node:zlib";
 import type { Express } from "express";
 import type { Snapshot } from "../protocol.js";
 
-const CLIENT_COOKIE = "agent-web-client";
+const CLIENT_COOKIE = "oh-my-agent-web-client";
 /** 每个标签页自己的标识（cookie 是同浏览器共享的，不能用来区分标签页） */
 const CLIENT_HEADER = "x-agent-client";
 

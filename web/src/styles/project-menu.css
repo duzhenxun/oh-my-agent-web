@@ -290,6 +290,43 @@
 	min-height: 0;
 }
 
+/* ---- 面板里的「文件」页（`variant="panel"`，2026-11-23 从侧栏搬来）----
+ *
+ * 侧栏那套是为了「跟会话列表上下分块」：`flex: none` + 左右负 margin 把分隔线顶到侧栏两边。
+ * 搬到面板里就不能照抄 —— 实测它只有 291px 宽（面板 515px），右边空出一大块，
+ * 文件树的行也只铺到那一小段（用户 2026-11-23：「文件管理，右边有不要空隙」）。
+ * 这里把它还原成一整页：撑满宽度、去掉那条顶部分隔线与负 margin。 */
+.side-files-panel {
+	flex: 1 1 auto;
+	width: 100%;
+	max-width: none;
+	min-width: 0;
+	min-height: 0;
+	height: 100%;
+	border-top: none;
+	margin: 0;
+	padding: 0;
+}
+
+/* 里面那两个滚动区（树 / 搜索结果）在侧栏里靠 `margin-right: -10px` 把滚动条顶到侧栏边上；
+ * 面板里没有那 10px 内边距，再减就溢出去了（实测右边多出 10px，出横向滚动）。
+ * 滚动条本来也贴面板右沿，所以这里归零即可。 */
+.side-files-panel .side-files-body {
+	margin-right: 0;
+}
+
+/* 标签条和工具条之间那一段空白压掉（用户 2026-11-23：「这里空这么大」）。
+ * 两处叠出来的：面板自己的 `gap: 6px`，加上侧栏那套标题栏的 `margin-top: 5px`
+ * —— 侧栏里那一行是「文件管理」标题，面板里标题已经不画了，这 11px 就成了一整条白带。
+ * 文件页往上收 4px（`gap` 那一段），标题栏的 5px 归零，最后只剩 ~2px 的呼吸。 */
+.side-files-panel {
+	margin-top: -4px;
+}
+
+.side-files-panel .side-files-head {
+	margin-top: 0;
+}
+
 .side-files-head {
 	display: flex;
 	align-items: center;

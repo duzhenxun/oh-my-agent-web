@@ -3,6 +3,13 @@ node_modules/
 dist/
 web/dist/
 
+# Agent Computer helper 的分发产物：电脑控制面板里的「下载 Agent Computer」直接指
+# 仓库里的这个 zip（见 server/computer/paths.ts），文件不在功能就装不上 —— 所以入库。
+!helper/agent-computer/release/
+!helper/agent-computer/release/Agent Computer.zip
+# 裸二进制是 build:helper 的中间产物，分发用上面的 zip，不必重复入库。
+helper/agent-computer/release/agent-computer
+
 # 本机运行数据（默认在 ~/.oh-my-agent-web，这里是兜底）
 .oh-my-agent-web/
 .agent-web/
@@ -12,13 +19,6 @@ web/dist/
 .DS_Store
 .idea/
 .vscode/
-
-# 本地打包 / 分发产物（Electron 打包、内置 node 运行时、pkg 工作区、electron-builder 输出）
-# 注意：根锚定，避免误伤 helper/asr/release/ASRBridge.zip
-/electron-dist/
-/node-runtime/
-/.pkg/
-/release/
 
 # 本地运行日志与截图（npm run dev 的输出、UI 验证截图）
 .run/

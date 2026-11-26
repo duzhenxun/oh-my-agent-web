@@ -36,6 +36,30 @@ export type PromptTemplate = {
 	text: string;
 	/** 软删除（P5）：内置模板「移出模板库」只隐藏，恢复默认模板即可复原 */
 	hidden?: boolean;
+	/**
+	 * 内置项的**第二份：英文**（2026-11-23 用户：「这个如果是英文得自动显示英文的」）。
+	 *
+	 * 为什么存在数据里而不是界面里翻：模板正文是要被插进输入框的**内容**，
+	 * 不是界面文案 —— 英文界面下应当插入英文提示词，而不只是把标题翻掉。
+	 * 由服务端在归一化时补上（见 `session/settings.ts` 的 `normalizeTemplates`）：
+	 * **只有原文还等于内置原文时才补**，用户改过的模板不会被塞一份过时的译文。
+	 * 缺省 = 没有英文副本，界面就用存下来的原文。
+	 */
+	nameEn?: string;
+	descriptionEn?: string;
+	textEn?: string;
+};
+
+/**
+ * 快捷指令（输入框上方 / 提示词弹窗里那排胶囊）：同样是**存两份**。
+ *
+ * `text` 是中文原文（也是身份的判定依据），`textEn` 是英文副本。
+ * 老版本存的是纯字符串数组 —— `normalizeQuickPhrases` 会认，并给「还是内置原文」的那几条
+ * 自动补上英文（与内置模板同一条规则）。用户自己写的短语没有英文副本，两种语言下都原样显示。
+ */
+export type QuickPhrase = {
+	text: string;
+	textEn?: string;
 };
 
 /**
@@ -56,7 +80,7 @@ export type AppearanceView = {
 };
 
 export type SettingsView = {
-	quickPhrases: string[];
+	quickPhrases: QuickPhrase[];
 	/** @deprecated 仅老客户端兼容 / 一次性回落用，真正的显隐在本机偏好（见 `web/src/ui-prefs.ts`） */
 	quickPhrasesEnabled: boolean;
 	/** 提示词模板库（P5）：点卡片直接填进输入框；可增删改、可恢复默认 */

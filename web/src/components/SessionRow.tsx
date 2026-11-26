@@ -59,6 +59,7 @@ export function SessionRow({
 	onSwitch,
 	onPin,
 	onRename,
+	onAiRename,
 	onArchive,
 	onDelete,
 	onOpenInNewTab,
@@ -94,6 +95,11 @@ export function SessionRow({
 	onPin: () => void;
 	/** 提交新名字（就地编辑保存时调用） */
 	onRename: (title: string) => void;
+	/**
+	 * 菜单里的「AI 重命名」：按会话内容让 AI 起名，跟顶栏标题前那枚气泡图标同一个动作。
+	 * 返回 Promise 时这段期间菜单项显示「AI 正在起名…」（不传 = 没有这个能力）。
+	 */
+	onAiRename?: () => Promise<unknown> | void;
 	onArchive: () => void;
 	/** **真删**（服务端 `unlink`，不可恢复）：界面上只有这一种删除 */
 	onDelete: () => void;
@@ -117,6 +123,13 @@ export function SessionRow({
 	const t = useT();
 	// 就地编辑：打开输入框 / 草稿 / 提交
 	const [editing, setEditing] = useState(false);
+	/** AI 起名在跑：防连点，也让菜单项自己显示成「正在起名…」 */
+	const [aiRenaming, setAiRenaming] = useState(false);
+	const runAiRename = () => {
+		if (!onAiRename || aiRenaming) return;
+		setAiRenaming(true);
+		void Promise.resolve(onAiRename()).finally(() => setAiRenaming(false));
+	};
 	const [draft, setDraft] = useState(title);
 	const inputRef = useRef<HTMLInputElement>(null);
 
@@ -319,6 +332,8 @@ export function SessionRow({
 					onClose={onCloseMenu}
 					onPin={onPin}
 					onRename={() => setEditing(true)}
+					onAiRename={onAiRename ? runAiRename : undefined}
+					aiRenaming={aiRenaming}
 					onOpenInNewTab={onOpenInNewTab}
 					fork={
 						onFork

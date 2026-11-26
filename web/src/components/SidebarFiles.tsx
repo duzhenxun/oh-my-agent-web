@@ -18,6 +18,7 @@ import { useT } from "../use-language.ts";
  *   文件树，或者有搜索关键字时的搜索结果列表
  */
 export function SidebarFiles({
+	variant = "sidebar",
 	open,
 	onToggle,
 	height,
@@ -37,6 +38,12 @@ export function SidebarFiles({
 	revealPath,
 	onRevealPath,
 }: {
+	/**
+	 * `sidebar`（默认）= 侧栏底部那块可折叠、高度可拖的；
+	 * `panel` = 右侧分栏里的「文件」工具页（2026-11-23 从侧栏搬过来）：
+	 * 不画折叠标题、不占固定高度，工具栏 / 项目下拉 / git / 搜索 / 改动清单 / 树全都照旧。
+	 */
+	variant?: "sidebar" | "panel";
 	open: boolean;
 	onToggle: () => void;
 	height: number;
@@ -133,26 +140,31 @@ export function SidebarFiles({
 		if (changesOnly && gitStatus.isRepo && changedCount === 0) setChangesOnly(false);
 	}, [changesOnly, gitStatus.isRepo, changedCount]);
 
+	const panel = variant === "panel";
 	return (
 		<section
-			className={`side-files${open ? "" : " side-files-closed"}${fill && open ? " side-files-fill" : ""}`}
-			/* fill 时不写死高度：交给 flex 吃掉剩余空间 */
-			style={{ height: open && !fill ? height : undefined }}
+			className={`side-files${open ? "" : " side-files-closed"}${fill && open ? " side-files-fill" : ""}${
+				panel ? " side-files-panel" : ""
+			}`}
+			/* fill / panel 时不写死高度：交给 flex 吃掉剩余空间 */
+			style={{ height: open && !fill && !panel ? height : undefined }}
 		>
 			<div className="side-files-head">
 				{/* 点「文件」这个标题开/关（标题本身就是一个按钮）。
 				 * 三角跟上面「项目」用同一个类、同一个位置（都在**文字左边**）：两块标题的箭头尺寸、
 				 * 旋转与间距一致；文字侧栏拉窄时走省略号，三角不被挤掉。 */}
+				{panel ? null : (
 				<button
 					type="button"
 					className="side-files-title"
 					onClick={onToggle}
-					title={open ? t("收起文件管理", "Collapse files") : t("展开文件管理", "Expand files")}
+					title={open ? t("收起文件", "Collapse files") : t("展开文件", "Expand files")}
 					aria-expanded={open}
 				>
 					<span className={`sidebar-title-caret${open ? " sidebar-title-caret-open" : ""}`} aria-hidden="true" />
-					<span className="sidebar-title-label">{t("文件管理", "Files")}</span>
+					<span className="sidebar-title-label">{t("文件", "Files")}</span>
 				</button>
+				)}
 				<FilesToolbar
 					root={root}
 					showHidden={showHidden}
@@ -172,7 +184,9 @@ export function SidebarFiles({
 				/>
 				{/* 标题右边剩下的空白 = 同一个开关（跟「项目」那一行同一套，见 Sidebar.tsx）：
 				 * 透明热区按钮铺满剩余宽度，图标位置一点不动；键盘 / 读屏仍走标题那颗。 */}
-				<button type="button" className="sidebar-row-fill" aria-hidden="true" tabIndex={-1} onClick={onToggle} />
+				{panel ? null : (
+					<button type="button" className="sidebar-row-fill" aria-hidden="true" tabIndex={-1} onClick={onToggle} />
+				)}
 			</div>
 			{open ? (
 				<>

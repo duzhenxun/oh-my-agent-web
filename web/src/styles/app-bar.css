@@ -29,15 +29,45 @@
 	 * 看上去像一条「空得发胖」的带子。现在各留 2px（缩放后约 1.7px），栏高落到 28px 上下，
 	 * 字一个都没变小，只是不再空着一圈。
 	 *
-	 * 为什么用变量：`.appbar-side::after`（分段线）、`.appbar-split-divider` / `.appbar-divider`
-	 * （两条竖线）都靠 `margin/top/bottom: calc(-1 * 本值)` 把顶栏的内边距「吃掉」才能顶到栏的两头，
+	 * 为什么用变量：`.appbar-split-divider` / `.appbar-divider`（几条竖线）都靠
+	 * `margin/top/bottom: calc(-1 * 本值)` 把顶栏的内边距「吃掉」才能顶到栏的两头，
 	 * 所以这个数改一处、那三处必须跟着改 —— 抽成变量就只有一个地方了。 */
-	--appbar-pad-y: calc(2px * var(--ab));
+	/* 2026-11-23（用户：「顶部都多预留点空间」）：上下内边距 1px → 3px。
+	 * 之前为了「压矮」把它收到 1px，结果整条栏贴着窗口上沿、标题显得挤。
+	 * 加回来之后栏高 +4~5px，正文的 `padding-top`（取 `--appbar-h`）同样跟它走，
+	 * 所以「多预留」是整条顶行一起变。 */
+	--appbar-pad-y: calc(3px * var(--ab));
 	/* 左右内边距下放到两段自己身上：左边那段要占满「侧栏宽度」，
 	   而分段线必须正好落在 x = 侧栏宽度 上（顶栏自己有 padding 就会错位） */
 	padding: var(--appbar-pad-y) 0;
-	border-bottom: 1px solid var(--border);
-	background: var(--bg-elev);
+	/* 2026-11-23（用户圈着标题下面那条线）：「这条横线不要」——
+	 * 连这 1px 的底边线也去掉（上一轮已经去掉了压在它上面的那层投影）。
+	 * 顶栏与正文之间靠底色区分（`--bg-elev` / `--bg`），不再画线。 */
+	border-bottom: none;
+	/* 2026-11-23（用户：「上面顶栏也可以跟下面颜色一样，都用白色的；对话框拉上去时有个略微透明感就行」）：
+	 * 底色从 `--bg-elev` 换成跟正文同一个 `--bg`，并掺 16% 透明 + 背景模糊 ——
+	 * 内容滑到它下面时透出一点点，而不是一条明显比正文深的灰带。 */
+	/* 2026-11-23（用户：「顶栏要改成带透明度的，不要用这个纯白色的挡住文字」）：
+	 * 档位是拿真实滚动截图对比出来的（同一条正文滚到栏后面）：
+	 *   84% 白 —— 看着就是实白，什么也透不出来；
+	 *   45% + 18px 模糊 —— 有一点灰影，但 18px 把字糊成一片，等于还是白板；
+	 *   **35% + 8px 模糊 —— 能看出「后面是一行一行字」**，同时标题本身仍然清楚；
+	 *   28% + 4px —— 字几乎认得清，但栏自己开始被背景干扰，标题可读性下降。
+	 * 取中间那档。 */
+	/* 2026-11-23 第三次调这层：35% + 8px 模糊**太透**，正文的字看得清，像脏了一块。
+	 * 现在改成「上实下淡」的渐变 + 更大模糊：
+	 *   - 顶部 78% 不透明（标题、图标、红绿灯所在的那一带永远干净）；
+	 *   - 底边降到 58%，跟下面的正文柔和地接上，而不是一刀切；
+	 *   - 模糊拉到 22px：后面的字只剩一团灰影，不会读成字。
+	 * 效果是「磨砂玻璃压在内容上」，不是「半透明的纸」。 */
+	background: linear-gradient(
+		to bottom,
+		color-mix(in srgb, var(--bg) 78%, transparent) 0%,
+		color-mix(in srgb, var(--bg) 78%, transparent) 62%,
+		color-mix(in srgb, var(--bg) 58%, transparent) 100%
+	);
+	-webkit-backdrop-filter: blur(22px) saturate(1.25);
+	backdrop-filter: blur(22px) saturate(1.25);
 	/* 阴影要盖在下面的三栏上：不定位的话会被 .app-main 的背景/边框覆盖掉 */
 	position: relative;
 	z-index: 4;
@@ -45,7 +75,10 @@
 	 * 2026-11-04（用户：「这里有块阴影不好看」）：**去掉了那层 4px/12px 的柔散投影**。
 	 * 顶栏在布局里是普通一列、并不浮在内容上，那层 12% 的黑模糊在浅色主题下
 	 * 表现为顶栏下面一条灰带（截图里那一条）；分隔已经由 `border-bottom` 那条线承担。 */
-	box-shadow: 0 1px 0 var(--appbar-shadow-line, rgb(0 0 0 / 6%));
+	/* 2026-11-23（用户：「标题下面的这个阴影可以弱化一下，淡化掉」）：**整条去掉**。
+	 * 底下那条 1px 的 `border-bottom` 还在（那是「栏的边界」），
+	 * 这层 1px 的投影只是让边界显得更重，浅色主题下看着像一道压在正文上的灰边。
+	 * 变量 `--appbar-shadow-line` 留着：别的主题/别处的分隔线还在用它的同色系。 */
 	min-width: 0;
 }
 
@@ -63,13 +96,51 @@
 	position: relative;
 }
 
+/* ---- 浏览器版：把「侧栏｜对话」那条竖线补到顶栏这一段 ----
+ *
+ * 顶栏横跨整窗、侧栏从它下面才开始，所以那条竖线最上面缺一截（用户 2026-11-23：
+ * 「网页里，左边竖线上面还缺一块」）。这里用顶栏自己的 `::after` 补上：
+ * 位置取 `--side-w`（App 量好写进 `<html>` 的侧栏宽度），再往回 1px ——
+ * 侧栏那条 `border-right` 画在它自己的 border box 最后一格 `[w-1, w]` 里。 */
+.app:not(.app-collapsed) .appbar::after {
+	content: "";
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: calc(var(--side-w, 0px) - 1px);
+	width: 1px;
+	background: var(--border-strong);
+	pointer-events: none;
+}
+
+.is-mobile-shell .appbar::after {
+	display: none;
+}
+
+/**
+ * 鼠标移到侧栏那条分割线上时，**顶栏这一段也跟着变蓝**。
+ *
+ * 用户 2026-11-23：「网页里鼠标放上，上面那块没有变蓝色」——分割线的悬停高亮原来画在
+ * `.side-resizer::after` 上（在侧栏内部，只覆盖侧栏高度），所以那条蓝线到顶栏底下就断了。
+ * 这里用 `:has()` 从共同祖先 `.app` 反查命中：hover / active / 拖拽中（`html.is-resizing`）
+ * 三种状态都让顶栏那一段变主色，跟下面接成一条完整的竖线。
+ *
+ * 宽度保持 1px（2026-11-24 用户：「这根蓝线太粗了，跟上面一样细」）：
+ * 上下一律 1px，悬停只变颜色、不变粗细。*/
+.app:has(.side-resizer:hover) .appbar::after,
+.app:has(.side-resizer:active) .appbar::after,
+html.is-resizing .appbar::after {
+	left: calc(var(--side-w, 0px) - 1px);
+	width: 1px;
+	background: var(--accent);
+}
+
 /* ---- 顶栏左段：宽度按内容定，**与侧栏宽度无关** ----
  * 内边距跟侧栏的 `--side-pad` 对齐（10px）：品牌图标与「项目」左边缘在同一条竖线上。
  *
  * 以前宽度由 App 内联写成 `sideWidth`（与 `.side-host` 同一个数），拖宽侧栏时上面这段
  * 跟着一起变，品牌名忽长忽短 —— 用户要求「顶部这个宽度要固定，下面的侧边栏变化跟上面
- * 没有关系」，所以改成跟内容走（见下面的 `.appbar-side-fixed`）。左沿仍然对齐，
- * 但右沿那道分段线不再“接上侧栏右边框”：它现在只是**这一段自己的右边界**。
+ * 没有关系」。这一段现在装品牌 +「新会话」胶囊，宽度按内容定。
  */
 .appbar-side {
 	flex: none;
@@ -83,73 +154,36 @@
 	align-self: stretch;
 }
 
-/* 分段线：**收起态也要有** ——（用户要求）
- * 它是「左边那一路（品牌 / 新会话 / 全屏）| 会话标题」之间的分界。
- * 以前这条线挂在 `.appbar-side-fixed`（只在侧栏展开时加）的 `::after` 上，
- * 侧栏一收起就凭空少一截，顶栏看着像被切成两半却没画线。
- * 现在挂在 `.appbar-side` 上，展开 / 收起都画；位置仍是 `right: 0`（这一组的右沿）。
+/* ---- 侧栏收起时顶栏那颗「新会话」小图标（`NewChatButton variant="icon"`）----
  *
- * 注意：它是**这一段自己的边界**，不再跟侧栏右边框对齐 —— 左段宽度已经与侧栏解耦，
- * 拖侧栏时这条线不动（用户要的正是这个）。 */
-.appbar-side::after {
-	content: "";
-	position: absolute;
-	/* 往上 / 下各「吃掉」顶栏的内边距：线要顶到栏的两头 */
-	top: calc(-1 * var(--appbar-pad-y));
-	bottom: calc(-1 * var(--appbar-pad-y));
-	/* **必须 right: 0**：定位参照的是 padding box，而侧栏那条 1px 边框画在它 border box 的
-	   最后一格 [width-1, width] 里。写成 -1px 就会落到 [width, width+1] —— 上下两条线差 1px，
-	   放大能看出来（用户就是这么发现的）。 */
-	right: 0;
-	width: 1px;
-	background: var(--border);
-	pointer-events: none;
+ * 用户 2026-11-23：「标也不要出现在上方，只加一个新会话的小图就可以了，那跟竖线不要」——
+ * 这一段现在只在侧栏收起时出现，里面就这一颗方形的实心主色按钮（跟胶囊同一个语义：
+ * 整条栏里唯一的「新建」动作），没有品牌、没有分段线。
+ *
+ * 尺寸跟顶栏那排入口（`.side-foot-btn`，30 高）同一档，只是不带文字：
+ * 这个状态下它前后都是空白，做成一整颗小方块比拉成胶囊更好认。
+ * emoji 字号沿用胶囊里的 11.5×缩放（emoji 自带留白，同字号会显得比图标胖）。 */
+.newchat-icon-btn {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: calc(26px * var(--ab));
+	height: calc(26px * var(--ab));
+	padding: 0;
+	border: 1px solid transparent;
+	border-radius: calc(7px * var(--ab));
+	background: var(--accent);
+	color: var(--on-accent);
+	font-size: calc(11.5px * var(--ab));
+	line-height: 1;
+	cursor: pointer;
+	box-shadow: 0 calc(1px * var(--ab)) calc(2px * var(--ab)) color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
-/* 手机上这一段是「☰ + 图标」的抽屉开关，不跟着侧栏分栏，也就不画这条线 */
-.is-mobile-shell .appbar-side::after {
-	display: none;
+.newchat-icon-btn:hover {
+	background: color-mix(in srgb, var(--accent) 88%, var(--text));
 }
-
-/* 展开态：宽度 = **内容宽**（`max-content`），拖侧栏不影响它。
- *
- * 为什么不用 `width: auto` + 内容：`container-type: inline-size` 原本是为了那条
- * `@container appbar-side`（品牌名隐藏）的查询，那条规则已经删了，这里也就不需要容器；
- * 保留容器的话，`inline-size` 包含性会让“按内容定宽”失效（内容不参与尺寸计算）。
- *
- * `max-width` 是唯一的让步：自定义顶栏名称很长 / 窗口很窄时，先缩品牌名（省略号），
- * 不把整条顶栏吃光（右边还有会话标题与入口排）。
- *
- * 分段线为什么用 `::after` 而不是 `border-right`：`align-self: stretch` 只能拉满到顶栏的
- * **内容盒**（上下各有内边距），画成边框就只得到一小段。伪元素从内边距外再往上/下多伸一点
- * （`--ab` 同步缩），正好接到顶栏上下沿。 */
-.appbar-side-fixed {
-	box-sizing: border-box;
-	/* 按内容定宽：品牌 + 新会话 + 全屏，挤不动也不跟着侧栏变 */
-	width: max-content;
-	/* 上限两重取小：
-	 *   - `100vw - 240px`：窄窗（双栏 401~430）时给右边那排入口留够位置 ——
-	 *     只按 50vw 算的话，430px 窗口里这一段能占到 215px，最后两颗图标会被切掉；
-	 *   - 420px：自定义顶栏名称很长时不让它把整条栏吃光。
-	 * 超出部分由品牌名的省略号收（`.brand-name`）。 */
-	max-width: min(calc(100vw - 240px), 420px);
-}
-
-/* 左段里的「新会话」**紧跟在品牌后面**（不再 `margin-left: auto` 贴到分段线那边）。
- * 用户：「蓝线向左右滑动时，顶部不要动」—— 以前它是 `margin-left: auto`，也就是被推到
- * 左段的最右边：左段宽度 = 侧栏宽度，一拖分割线，它就跟着左右滑（品牌名却不动），
- * 看上去像顶栏里有一块在“跟着跑”。现在它在品牌右边一个 gap（8×缩放）的位置，
- * 而品牌的左边缘、顶栏的左内边距都不随侧栏宽度变 —— **拖多宽它都不动**。
- * 代价：侧栏拖得很宽时，胶囊右边会空出一截；但顶栏的分段线 / 标题区跟着动是本来就该动的，
- * 那颗按钮不是量尺。 */
-.appbar-side .newchat-pill {
-	margin-left: 0;
-}
-
-/* 以前这里有一条 `.appbar .appbar-side-fixed .newchat-pill { display: none }`：
- * 展开态把顶栏这颗收掉、交给侧栏抬头。现在反过来 —— **顶栏常驻**（用户要求放到顶部），
- * 只有整条顶栏被藏起来（`appbarHidden`）时，才由侧栏抬头补一颗（见 Sidebar.tsx 里的条件渲染）。
- * 所以这里不再需要任何 `display: none`：那一处已经由 JS 决定画不画了。 */
 
 /* ---- 顶栏左段末尾那一组：全屏那颗 ----
  *
@@ -298,8 +332,10 @@
 	/* 图标与文字的间距也收一档（5 → 3 → 2）：紧凑之后这一颗的内部留白成了主要宽度来源 */
 	gap: calc(2px * var(--ab));
 	/* 左右内边距 9 → 6 → 4：9 颗入口 × 两侧 ≈ 又省下 34px（按默认缩比算），
-	 * 而 4px 在悬停浅底时仍然看得出按钮的边界（图标本身就带一圈留白）。 */
-	padding: calc(4px * var(--ab)) calc(4px * var(--ab));
+	 * 而 4px 在悬停浅底时仍然看得出按钮的边界（图标本身就带一圈留白）。
+	 * 2026-11-23：上下也从 4 收到 3（用户：「顶部的高度默认改小点」）——
+	 * 这一排按钮是顶栏里最高的那个，收它才真的把栏高带下来（37 → 32px）。 */
+	padding: calc(3px * var(--ab)) calc(4px * var(--ab));
 	border-radius: calc(7px * var(--ab));
 	font-size: calc(12px * var(--ab));
 }
@@ -388,6 +424,13 @@
 	min-width: 0;
 	display: flex;
 	align-items: center;
+	/* 标题左边那枚气泡图标离左沿再远一点（用户 2026-11-23：「标题左边的小图标 距离左边可以加一点距离」）：
+	 * 这一块是贴在对话栏左沿上的，图标原来正好顶着那条线，看着像粘住了。 */
+	padding-left: calc(8px * var(--ab));
+	/* 新会话**还没有名字**时这一槽是空的（图标与文字都不画）——
+	 * 但位置要「站好」：把标题那一行的高度先占住，否则空槽只有 2px，
+	 * 顶栏里那块地方看着像塌了（用户 2026-11-23：「没有标题，可以先空着，但位置要站好」）。 */
+	min-height: calc(22px * var(--ab));
 	border-radius: 8px;
 	border: 1px dashed transparent;
 	/* 窄了就靠省略号自己收（会话名是唯一的内容，没有副标题可让位）；
@@ -414,7 +457,9 @@
 	 * 在「标准 / 紧凑」两档缩放里都不会糊成一片灰。
 	 * 更早的历史：15.5px 是 2026-10-29 在 0.85 默认缩放下定的，默认改回 115% 后整体变大。 */
 	font-size: calc(14px * var(--ab));
-	font-weight: 600;
+	/* 2026-11-23（用户：「这个标题的字体不用加粗了」）：600 → 400。
+	 * 不加粗之后靠字号与颜色（`--text-dim`）跟正文区分，不再靠字重。 */
+	font-weight: 400;
 	line-height: 1.4;
 }
 
@@ -431,7 +476,13 @@
 	flex: none;
 	display: grid;
 	place-items: center;
-	color: var(--accent);
+	/* 2026-11-23（用户：「把那个标题栏左边那个蓝色图标改成跟标题颜色一样的试试看」）：
+	 * 直接跟标题同一个颜色（`--text`），只在 hover / 聚焦时回到主色 ——
+	 * 平时它就是标题的一部分，不再是一枚蓝图标。 */
+	/* 2026-11-23（用户：「图标颜色再淡一点」）：跟标题同色太实，退成灰蓝一档；
+	 * hover / 聚焦时仍然回到主色（那颗是按钮，点一下让 AI 重新起名）。 */
+	color: var(--text-faint);
+	transition: color 0.12s ease;
 	/* 现在是**按钮**（点一下让 AI 按内容重新起名）：去掉浏览器默认的按钮壳，
 	   只留图标本身 —— 它长得必须还像「标题前面那枚气泡」，而不是一个控件。 */
 	padding: 0;
@@ -446,6 +497,7 @@
    平时保持裸图标，否则标题前面总挂着一块颜色，看着变重了 */
 .appbar-title-badge:hover:not(:disabled),
 .appbar-title-badge:focus-visible {
+	color: var(--accent);
 	background: color-mix(in oklab, var(--accent) 14%, transparent);
 	transform: scale(1.06);
 }
@@ -717,7 +769,9 @@
 	align-items: center;
 	gap: calc(5px * var(--ab));
 	flex: none;
-	padding: calc(4px * var(--ab)) calc(6px * var(--ab));
+	/* 上下 4 → 3（2026-11-23，与 `.side-foot-btn` 同步）：这颗是顶栏里最高的一个，
+	 * 它不跟着收，栏高就还是被它占着（用户：「顶部的高度默认改小点」）。 */
+	padding: calc(3px * var(--ab)) calc(6px * var(--ab));
 	border-radius: calc(7px * var(--ab));
 	font-size: calc(12px * var(--ab));
 	cursor: pointer;
@@ -787,47 +841,24 @@
 	z-index: 7;
 }
 
-/* 分栏那条竖线：换边后它落在**面板右边缘**（= 顶栏内容盒的起点），
- * 所以把那条线本身放到最前面（`order: -1`），而不是另画一条短的 ——
- * 它 `align-self: stretch`，正好拉满顶栏高度，跟下面 `.workspace` 的左边框接成一条。 */
-.app-split.app-flip .appbar-split-divider {
-	order: -1;
-}
-
-/*
- * 顶栏与右侧标签条之间那根竖线：正好落在分栏的边界上（顶栏最后一个元素）。
- *
- * 以前它只有 18×缩放 那么高、颜色也浅一档，看着就是顶栏里多出来一小截「竖着的小横线」——
- * 而它本该是**下面那条「对话｜面板」分栏线的上延**（两者在同一条竖直位置上）。
- * 所以：拉满整条顶栏（负 margin 吃掉顶栏自己的上下内边距，线才真的顶到两头），
- * 颜色跟另外两道分栏线统一成 `--border-strong`，三段接起来就是一条从窗口顶到底的线。
- */
+/* ---- 面板升到顶栏那一行时，边界那道竖线**要有** ----
+ * 用户 2026-11-23：先是「默认右边没展开时那竖线可以不显示」，接着「右边展开时那根竖线要有，
+ * 这样才跟下面一致」—— 所以只恢复**展开态**这一道：它落在分栏边界上，
+ * 跟下面那条「对话｜面板」的分栏线接成一条（从窗口顶通到底）。
+ * 收起态（面板没开）那道 `.appbar-divider` 仍然不画。 */
 .appbar-split-divider {
 	flex: none;
 	align-self: stretch;
 	width: 1px;
 	height: auto;
+	/* 吃掉顶栏自己的上下内边距：线要顶到栏的两头 */
 	margin: calc(-1 * var(--appbar-pad-y)) 0;
 	background: var(--border-strong);
 }
 
-/*
- * 「面板入口（… 设置）｜ 分栏」之间那道竖线。
- *
- * 颜色 / 高度**必须跟分栏展开时那根一模一样**（`--border-strong`、拉满整条顶栏）：
- * 这一颗按钮点开后面板会升到顶栏那一行，届时这条线换成 `.appbar-split-divider` 继续画在
- * 同一个位置 —— 两态颜色不同的话，一点分栏就会看到这条线「变色 + 变位置」。
- * （左段那条分段线是另一回事：它接的是侧栏边框，跟着 `--border` 走。）
- */
-.appbar-divider {
-	flex: none;
-	align-self: stretch;
-	width: 1px;
-	height: auto;
-	/* 线往右挪（用户要求）：左边加、右边减同样的量 —— 线右移，后面的分栏按钮位置不动，
-	 * 整排占宽不变，只是线到分栏按钮之间的空隙变小。 */
-	margin: calc(-1 * var(--appbar-pad-y)) calc(-12px * var(--ab)) calc(-1 * var(--appbar-pad-y)) calc(12px * var(--ab));
-	background: var(--border-strong);
+/* 对调（对话在右、面板在左）时，这条边界线是顶栏的**第一个**元素 */
+.app-split.app-flip .appbar-split-divider {
+	order: -1;
 }
 
 /* ---- 顶栏右侧那组自己当尺寸容器：挤窄了自动只留图标 ----
@@ -907,7 +938,9 @@
 	min-width: 0;
 	border-radius: 999px;
 	border: 1px solid transparent;
-	background: var(--accent);
+	/* 2026-11-23（用户：「网页中的改成这样暗的」）：实心主色 → 主色掺底色（跟侧栏品牌那颗同一档）。
+	 * 满主色在浅色顶栏上是一块很亮的蓝，跟旁边那排裸图标不在一个重量级上。 */
+	background: color-mix(in srgb, var(--accent) 72%, var(--bg-elev));
 	color: var(--on-accent);
 	font: inherit;
 	font-size: calc(12px * var(--ab));
@@ -918,7 +951,8 @@
 	   胶囊被撑到 30.5px 高 —— 比旁边那排入口按钮（24px）整整高出一头，
 	   用户看到的「太大了」主要就是这一截。1.15 让高度回到 22px 上下，跟那排齐平。 */
 	line-height: 1.15;
-	box-shadow: 0 calc(1px * var(--ab)) calc(2px * var(--ab)) color-mix(in srgb, var(--accent) 35%, transparent);
+	/* 那层同色投影一起去掉：掺过色的底上再加投影只会显得脏 */
+	box-shadow: none;
 	cursor: pointer;
 }
 
@@ -958,3 +992,36 @@
 
 /* 手机：顶栏要在一行里放得下「☰ + 图标 + 💬 + 四个入口」
    —— 品牌文字和「新会话」文字收起来（都有 title），入口只留图标 */
+
+/* ---- 左侧栏给一点淡灰底（**App 与网页一致**）----
+ *
+ * 用户 2026-11-23：「左侧这个颜色稍微有点颜色，有点小灰色那种感觉」，紧接着「网页也可以一样」。
+ * 之前为了让顶栏/侧栏/对话区"统一成一个白"，把侧栏从 `--bg-elev` 改成了 `--bg`；
+ * 现在反过来给**左栏**一档很轻的灰（`--bg-elev` #f7f8fa），右栏仍然是白 ——
+ * 一眼能分出「左边是导航、右边是内容」，又不会像深色侧栏那样压住内容。
+ *
+ * 选择器写成 `.app .sidebar`（比 sidebar.css 里的 `.sidebar` 高一档）而不是只靠源序：
+ * app-bar.css 虽然排在 sidebar.css 后面，但以后有人调 import 顺序就会悄悄失效。 */
+.app .sidebar {
+	background: var(--bg-elev);
+}
+
+/* ---- 顶栏**按列分色**，让左边的灰「透上来」----
+ *
+ * 用户 2026-11-23：「网页这个头上的话，它可以透明的好了，这样把后面这个灰色的就展示出来了」——
+ * 指的不是真的透明（顶栏是独立一行，后面没有东西可透），而是希望**顶栏在侧栏那一列也跟着变灰**，
+ * 跟下面的侧栏连成一片，不再是一条横贯全窗的白带把左边那块灰切断。
+ *
+ * 做法：用 `--side-w`（App 量好写进 `<html>` 的侧栏宽度）切一刀渐变 ——
+ * `[0, side-w)` 用侧栏的灰，剩下用正文的白；侧栏收起时 `--side-w` 是 0，整条就是纯白。
+ */
+:root .appbar {
+	background: linear-gradient(
+		to right,
+		var(--bg-elev) 0,
+		var(--bg-elev) calc(var(--side-w, 0px) - 1px),
+		var(--bg) var(--side-w, 0px)
+	);
+	-webkit-backdrop-filter: none;
+	backdrop-filter: none;
+}

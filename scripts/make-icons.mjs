@@ -49,16 +49,51 @@ function findChrome() {
 	return found;
 }
 
-/** 把 SVG 拉成指定边长的位图（transparent=false 时底色就是砖块本身，不带透明像素） */
-async function rasterize(page, svg, size, transparent) {
+/**
+ * 把 SVG 拉成指定边长的位图（transparent=false 时底色就是砖块本身，不带透明像素）。
+ *
+ * **每次新开一个 page**（2026-11-23 修）：以前复用同一个 page、逐次 `setViewportSize` + `setContent`，
+ * 换尺寸之后截出来的图会错位 —— 实测 512 那张被裁掉一截、底部还带出上一张图的一角
+ * （Chromium 在复用渲染表面 + 改视口时的一个老毛病）。一图一页最稳，代价可以忽略。
+ */
+async function rasterize(browser, svg, size, transparent) {
 	const markup = svg.includes("<svg")
 		? svg.replace("<svg", `<svg width="${size}" height="${size}" style="display:block"`)
 		: "";
-	await page.setViewportSize({ width: size, height: size });
-	await page.setContent(
-		`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;padding:0;background:transparent}</style></head><body>${markup}</body></html>`,
-	);
-	return page.screenshot({ omitBackground: transparent, animations: "disabled" });
+	const page = await browser.newPage({ deviceScaleFactor: 1 });
+	try {
+		await page.setViewportSize({ width: size, height: size });
+		await page.setContent(
+			`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;padding:0;background:transparent}</style></head><body>${markup}</body></html>`,
+		);
+		return await page.screenshot({ omitBackground: transparent, animations: "disabled" });
+	} finally {
+		await page.close();
+	}
+}
+
+/**
+ * macOS 应用图标：**画布 1024，圆角砖只占 824**，四周各留 100px 透明边。
+ *
+ * 这是 Apple 的图标网格（Big Sur 之后）：第三方的 Dock / Finder 图标要按这个比例，
+ * 跟系统自带 App 放在一起才是同一个视觉重量。铺满整个画布会明显"大一圈"
+ * （用户 2026-11-23：「太大了，你看看 mac 上的标准是多大」）。
+ *
+ * 圆角比例用的是 favicon.svg 里的 `rx=7/32 ≈ 21.9%`，与 Apple squircle 的 ~22.4% 基本一致。
+ */
+async function rasterizeAppIcon(browser, svg, size = 1024, ratio = 824 / 1024) {
+	const page = await browser.newPage({ deviceScaleFactor: 1 });
+	try {
+		await page.setViewportSize({ width: size, height: size });
+		const inner = Math.round(size * ratio);
+		const markup = svg.replace("<svg", `<svg width="${inner}" height="${inner}"`);
+		await page.setContent(
+			`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;padding:0;background:transparent;width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center}</style></head><body>${markup}</body></html>`,
+		);
+		return await page.screenshot({ omitBackground: true, animations: "disabled" });
+	} finally {
+		await page.close();
+	}
 }
 
 /**
@@ -100,7 +135,6 @@ async function main() {
 	await mkdir(ICONS_DIR, { recursive: true });
 
 	const browser = await chromium.launch({ executablePath: findChrome() });
-	const page = await browser.newPage({ deviceScaleFactor: 1 });
 	const written = [];
 
 	const save = async (path, buffer) => {
@@ -114,19 +148,24 @@ async function main() {
 		// 它们唯一的去处是 favicon.ico（下面从内存里的 faviconPngs 打包），落盘只是多两个文件
 		const faviconPngs = [];
 		for (const size of [16, 32, 48]) {
-			const data = await rasterize(page, roundedSvg, size, true);
+			const data = await rasterize(browser, roundedSvg, size, true);
 			faviconPngs.push({ size, data });
 			if (size === 32) await save(join(PUBLIC_DIR, "favicon-32.png"), data);
 		}
 		await save(join(PUBLIC_DIR, "favicon.ico"), buildIco(faviconPngs));
 
+		// 应用图标源：系统图标（.icns）需要 1024（512@2x），从这里那张生成。
+		// **必须用圆角版 + 透明角**（`roundedSvg` + transparent）：macOS 不会替第三方图标补圆角，
+		// 满幅版装进 Dock 就是个直角方块（用户 2026-11-23 截图：「要跟别的 app 一样，圆角」）。
+		await save(join(ICONS_DIR, "icon-1024.png"), await rasterizeAppIcon(browser, roundedSvg, 1024));
+
 		// PWA any：满幅、不透明（启动器会把它当整张图展示，透明角反而显脏）
 		for (const size of [192, 512]) {
-			await save(join(ICONS_DIR, `icon-${size}.png`), await rasterize(page, fullBleedSvg, size, false));
+			await save(join(ICONS_DIR, `icon-${size}.png`), await rasterize(browser, fullBleedSvg, size, false));
 		}
 
 		// PWA maskable：满幅 + 图案缩到安全圈内
-		await save(join(ICONS_DIR, "icon-maskable-512.png"), await rasterize(page, maskableSvg, 512, false));
+		await save(join(ICONS_DIR, "icon-maskable-512.png"), await rasterize(browser, maskableSvg, 512, false));
 
 		// iOS 主屏：满幅正方形，圆角由系统加
 		const appleSizes = [
@@ -135,7 +174,7 @@ async function main() {
 			[join(ICONS_DIR, "apple-touch-icon-180.png"), 180],
 		];
 		for (const [path, size] of appleSizes) {
-			await save(path, await rasterize(page, fullBleedSvg, size, false));
+			await save(path, await rasterize(browser, fullBleedSvg, size, false));
 		}
 	} finally {
 		await browser.close();

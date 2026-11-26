@@ -52,7 +52,7 @@ function deleterFor(sessionPath: string | null) {
 
 describe("删除会话：改名 vs 真删", () => {
 	before(async () => {
-		dir = await mkdtemp(join(tmpdir(), "agent-web-purge-"));
+		dir = await mkdtemp(join(tmpdir(), "oh-my-agent-web-purge-"));
 	});
 	after(() => undefined);
 

@@ -1,0 +1,64 @@
+# 把**已经发到 npm** 的版本，镜像一份到 GitHub Packages（`@duzhenxun/oh-my-agent-web`）。
+#
+# 与 release.yml 的关系：**并行、互不依赖、互不干扰**。
+#   - release.yml 走 OIDC 发 npmjs.org。npm 的 Trusted Publisher 白名单是绑**文件名**的
+#     （白名单里写的是 `release.yml`），新增本文件不会影响那条信任关系。
+#   - release.yml 有一条硬约束：工作流里不能出现 NODE_AUTH_TOKEN / NPM_TOKEN（空值也算，
+#     npm 会优先用它，导致 OIDC 失效）。**本文件不碰那条线**：只在临时目录的 .npmrc 里写
+#     _authToken，发完随临时目录删掉；变量名也叫 GITHUB_PACKAGES_TOKEN，避开 npm 的隐式读取。
+#   - 仓库里的 package.json 不改（npm 上仍然是 `oh-my-agent-web`）。改名发生在临时目录里，
+#     具体见 scripts/publish-gh-packages.sh 的头注释。
+#
+# 不构建：直接取 npm 上已发布的 tarball 再发，保证两边内容逐字节一致，也省掉一次完整构建。
+# 代价是本 job 要**等** release.yml 先把版本发到 npm（下面的轮询）。
+
+name: packages-mirror
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: # 补发 / 重试：发 package.json 里当前那个版本
+
+permissions:
+  contents: read
+  packages: write # 发布到 GitHub Packages 的唯一必需权限
+
+concurrency:
+  group: packages-mirror
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          # 刻意不传 registry-url：它会写 _authToken=${NODE_AUTH_TOKEN}，
+          # 跟 npm 那条 OIDC 线的约束撞车，且本 job 不需要它。
+
+      # release.yml 和本 job 同时被标签触发，它会先跑 typecheck / lint / build 才 publish，
+      # 所以这里要等 npm 上真的出现这个版本，否则 npm pack 会 404。
+      - name: 等 npm 上出现该版本
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          ver="${GITHUB_REF_NAME#v}"
+          for i in $(seq 1 60); do
+            if curl -fsS "https://registry.npmjs.org/oh-my-agent-web/${ver}" >/dev/null 2>&1; then
+              echo "npm 上已有 ${ver}"
+              exit 0
+            fi
+            echo "等 npm 发布 ${ver} …（${i}/60，最多 15 分钟）"
+            sleep 15
+          done
+          echo "::error::等了 15 分钟 npm 上仍没有 ${ver}；先看 release 工作流是不是失败了"
+          exit 1
+
+      - name: 镜像到 GitHub Packages
+        env:
+          GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash scripts/publish-gh-packages.sh

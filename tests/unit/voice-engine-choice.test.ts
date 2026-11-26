@@ -51,4 +51,11 @@ describe("开麦用哪套引擎", () => {
 		assert.equal(engineToStart("local", false), "local");
 		assert.equal(engineToStart("local", true), "local");
 	});
+
+	it("用户明确选云端 → 走服务端那条线，绝不回退到 Chrome", () => {
+		// 云端不依赖本机 Agent Computer，所以 localMissing 跟它无关；
+		// 也不能退回 Chrome —— 那会静默换供应商、并且需要连 Google
+		assert.equal(engineToStart("cloud", false), "local");
+		assert.equal(engineToStart("cloud", true), "local");
+	});
 });

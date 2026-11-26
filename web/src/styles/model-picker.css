@@ -3,6 +3,12 @@
 .model-picker {
 	position: relative;
 	min-width: 0;
+	/* 2026-11-23：**必须是 flex**。以前是 `display: block`，里面的按钮是 inline-flex →
+	 * 行盒会多出一截基线下的空隙（实测外壳 27.7px、按钮 23.3px），于是放进
+	 * `.composer-tools`（`align-items: center`）之后，模型 / 强度这两颗比旁边那排 chip
+	 * **高 2.2px**，看着"没对齐"（用户 2026-11-23 截图圈的就是它）。 */
+	display: inline-flex;
+	align-items: center;
 }
 
 .model-trigger {
@@ -284,4 +290,12 @@
 	opacity: 0.55;
 	font-size: 14px;
 	padding: 6px;
+}
+
+/* 思考强度那颗的外壳同理（它没有单独的样式表，类名只在组件里用） */
+.thinking-picker-box {
+	position: relative;
+	min-width: 0;
+	display: inline-flex;
+	align-items: center;
 }

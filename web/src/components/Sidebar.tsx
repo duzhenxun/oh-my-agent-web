@@ -1,12 +1,11 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { normalizeCwd } from "../path-utils.ts";
 import { buildProjectGroups } from "../project-groups.ts";
-import { useSplitHeight } from "../use-split-height.ts";
 import { useAppSelector } from "../store.ts";
 import type { ConversationMeta, PiProject, PiSessionSummary, ProjectPrefs } from "../types.ts";
 import { reorderProjects, sortProjects } from "../project-sort.ts";
 import { splitHiddenProjects } from "../project-hide.ts";
-import { moveSession, renameSession, setSettings, switchConversation } from "../ws.ts";
+import { moveSession, renameSession, setSettings, suggestSessionTitle, switchConversation } from "../ws.ts";
 import { ArchivedEntryRow } from "./ArchivedEntryRow.tsx";
 import { ArchivedSessions } from "./ArchivedSessions.tsx";
 import { SessionBatchMenu } from "./SessionBatchMenu.tsx";
@@ -24,9 +23,8 @@ import { HiddenProjectsRow } from "./HiddenProjectsRow.tsx";
 import { ProjectNameInput } from "./ProjectNameInput.tsx";
 import { ProjectMenu } from "./ProjectMenu.tsx";
 import type { MenuPoint } from "./ProjectMenuPopover.tsx";
-import { SideSplitter } from "./SideSplitter.tsx";
-import { SidebarFiles } from "./SidebarFiles.tsx";
 import { NewChatButton } from "./NewChatButton.tsx";
+import { useBrandName } from "../use-brand-name.ts";
 import { useT } from "../use-language.ts";
 import { useStoredNumber } from "../use-stored-number.ts";
 import {
@@ -56,25 +54,11 @@ function SidebarInner({
 	piProjects,
 	runningIds = [],
 	onOpenTerminal,
-	onOpenFile,
-	onOpenChangedFile,
-	onSearchContents,
-	onOpenBottomTerminal,
 	onFork,
 	canFork,
-	onFindInFolder,
-	fileOpen: fileOpenProp,
-	onFileOpenChange,
+	onOpenFiles,
 	/** 「＋ 新建项目」：对话框由 App 画（快捷键也要能开它，而侧栏收起时整个 Sidebar 是不挂载的） */
 	onNewProject,
-	/** 顶栏被藏起来了没有（「新会话」平时在顶栏，藏起来时回落到这一行里画一颗） */
-	appbarHidden = false,
-	root,
-	onRootChange,
-	activePath,
-	revealSeq,
-	revealPath,
-	onRevealPath,
 }: {
 	conversations: ConversationMeta[];
 	activeId: string | null;
@@ -83,50 +67,17 @@ function SidebarInner({
 	runningIds?: string[];
 	/** 在指定目录打开终端（项目菜单「在终端中打开」） */
 	onOpenTerminal?: (cwd: string) => void;
-	/** 点文件 → 打开预览（root 是该文件所属项目根） */
-	onOpenFile?: (path: string, root: string) => void;
-	/** 「改动过的文件」清单里点一个文件：以 diff 打开 */
-	onOpenChangedFile?: (path: string, root: string) => void;
-	/** 文件管理标题栏的「搜文件内容」：开全文搜索浮层（浮层挂在 App 上） */
-	onSearchContents?: () => void;
-	/** 文件树右键「在集成终端中打开」：在底部终端新开一个标签，cwd = 该目录（绝对路径） */
-	onOpenBottomTerminal?: (absDir: string) => void;
+	/** 项目菜单「查看文件」：切根并打开面板里的「文件」页（2026-11-23 从侧栏搬走） */
+	onOpenFiles?: (cwd: string) => void;
 	/** 侧栏会话右键「分叉」：从这条会话的当前叶子派生新会话（原会话不动） */
 	onFork?: (conversationId: string) => void;
 	/** 引擎支不支持分叉（`engineCapabilities.forkChat`） */
 	canFork?: boolean;
-	/** 文件树右键「在文件夹中查找」：传项目内的相对目录 */
-	onFindInFolder?: (relDir: string) => void;
-	/**
-	 * 文件树的根（＝「文件 ▾」下拉框选中的那个项目），`null` = 跟随当前会话工作区。
-	 * **由 App 持有**：全文搜索浮层要跟它走 —— 下拉框选了哪个项目，就只在那个项目里搜
-	 * （以前浮层自己取会话工作区，于是「选了 A 项目却搜出 B 项目的行」）。
-	 */
-	root: string | null;
-	onRootChange: (cwd: string | null) => void;
-	/** 预览面板里正在看的那个文件（相对它自己的项目根）：左树也把它选上，左右两边“说的是同一个文件” */
-	activePath?: string | null;
-	/** 变化一次 = 把 `activePath` 在左树里定位出来（展开祖先目录 + 滚进视野） */
-	revealSeq?: number;
-	/** 定位目标（默认跟 `activePath` 走）：文件名搜索点了目录时那个目录 */
-	revealPath?: string | null;
-	/** 请外面「在左树里定位这个路径」（加一次 revealSeq），点搜索结果的目录时用 */
-	onRevealPath?: (path: string) => void;
-	/**
-	 * 「文件管理」展开着没有（受控）：右侧工具落地页那张「文件」卡要能把它打开，
-	 * 所以状态放在 App；不传就退回组件内部自己管（老的调用方式照旧能用）。
-	 */
-	fileOpen?: boolean;
-	onFileOpenChange?: React.Dispatch<React.SetStateAction<boolean>>;
 	onNewProject: () => void;
-	/**
-	 * 顶栏是否被藏起来（状态栏那颗 ▴/▾）。
-	 * 「新会话」**默认在顶栏**（用户要求：放到顶部，跟侧栏收起时那颗同一个位置）；
-	 * 只有顶栏整条不画时才在这里补一颗，否则同一屏会出现两份。
-	 */
-	appbarHidden?: boolean;
 }) {
 	const t = useT();
+	/** 侧栏顶部那条「品牌 + 新会话」（2026-11-23 从顶栏左段搬来，网页与 App 同一套） */
+	const brand = useBrandName();
 	/**
 	 * 只订阅侧栏自己用到的那几片。整份 snapshot 每帧都是新对象（流式时约 60ms 一次），
 	 * 全量订阅会让这 200 多行会话行跟着一起重渲染 —— 输入框的手感就是这么丢的。
@@ -134,7 +85,6 @@ function SidebarInner({
 	 */
 	const projectPrefsFromStore = useAppSelector((state) => state.snapshot?.settings.projectPrefs ?? null);
 	const sessionPrefsFromStore = useAppSelector((state) => state.snapshot?.settings.sessionPrefs ?? null);
-	const filesRoot = useAppSelector((state) => state.snapshot?.files?.root ?? null);
 	// 每个项目默认展示几条会话：设置 → 界面 → 侧栏能改（默认 10），改完立刻生效
 	const [sessionsPerProject] = useStoredNumber(
 		SESSIONS_PER_PROJECT_KEY,
@@ -206,10 +156,6 @@ function SidebarInner({
 		/** 触发它的那一行（`.proj-head`）：浮窗的小尾巴指着它 */
 		anchor: HTMLElement | null;
 	} | null>(null);
-	// 文件区默认收起（只有标题栏一行），点箭头展开；外部（工具落地页的「文件」卡）也能打开它
-	const [fileOpenLocal, setFileOpenLocal] = useState(false);
-	const fileOpen = fileOpenProp ?? fileOpenLocal;
-	const setFileOpen = onFileOpenChange ?? setFileOpenLocal;
 	/**
 	 * 「项目」这一整块（所有项目 + 会话）是否展开。
 	 * 跟下面的「文件管理」同一个套路：点标题收起/展开整块。
@@ -311,7 +257,6 @@ function SidebarInner({
 	const archivedGroups = groupArchived(piProjects, sessionPrefs);
 	/** 归档总数（标题栏那个 🗄 入口的显示条件与提示） */
 	const archivedTotal = archivedGroups.reduce((sum, group) => sum + group.items.length, 0);
-	const currentRoot = filesRoot;
 	// 「还有 N 个…」点开后就显示全部（每个项目各自记）
 	const [showAll, setShowAll] = useState<Record<string, boolean>>({});
 	// 项目显示名（别名）：只改展示，不动 pi 的会话目录（ADR-0028：身份是 cwd）
@@ -415,10 +360,7 @@ function SidebarInner({
 		setSettings({ projectPrefs: { ...latest, hidden: [...latest.hidden, cwd] } });
 		setProjectMenu(null);
 		showToast({
-			text: t(
-				`已隐藏项目「${name}」（${sessionCount} 条会话）`,
-				`Hid project "${name}" (${sessionCount} session(s))`,
-			),
+			text: t(`已隐藏项目「${name}」（${sessionCount} 条会话）`, `Hid project "${name}" (${sessionCount} session(s))`),
 			actions: [
 				{ label: t("撤销", "Undo"), onClick: () => unhideProject(cwd) },
 				// 「已隐藏」入口默认是收着的 —— 给一颗一步跳过去的按钮，免得藏了找不到
@@ -426,14 +368,6 @@ function SidebarInner({
 			],
 		});
 	};
-
-	// 文件区默认高度：矮一点，「文件管理」标题离底部（文件树占的地方）更近；拖过的人按自己存的来
-	const split = useSplitHeight({
-		storageKey: "agent-web.side.filesHeight",
-		initial: 200,
-		min: 120,
-		legacyDefaults: [260],
-	});
 
 	// 把「本地待归档」的会话按 workspace 归组；workspace 不在已知项目里的，单独成组（避免新建的会话消失）
 	const knownWorkspaces = new Set(piProjects.map((project) => project.cwd)); /**
@@ -604,9 +538,7 @@ function SidebarInner({
 	 * 否则点了「全部收起」它自己还摊着，看着像没收干净。 */
 	const toggleAllProjects = () => {
 		// 隐藏区的项目也一起展开/收起：它们用的是同一份 openMap，漏掉就会出现「点了全部展开，隐藏区没动」
-		setOpenMap(
-			Object.fromEntries([...groups, ...hiddenProjects].map((group) => [group.cwd, !allOpen])),
-		);
+		setOpenMap(Object.fromEntries([...groups, ...hiddenProjects].map((group) => [group.cwd, !allOpen])));
 		setPinnedOpen(!allOpen);
 	};
 
@@ -740,6 +672,18 @@ function SidebarInner({
 					pinned: pinned.includes(session.id) ? pinned.filter((id) => id !== session.id) : [...pinned, session.id],
 				});
 			}}
+			/*
+			 * 菜单里的「AI 重命名」：跟顶栏标题前那枚气泡图标是同一个 RPC
+			 * （服务端拿不到内存里的消息时会去读转录，所以**不必先打开这条会话**）。
+			 *
+			 * 失败要说一声：`lastError` 只在「它属于当前会话」时才画在对话区，
+			 * 而这里是拿侧栏里任意一条去起名（很可能不是正在看的那条）——
+			 * 不说就会变成「点了没反应」。成功不用提示：那一行的标题当场就变了。
+			 */
+			onAiRename={async () => {
+				const ok = await suggestSessionTitle(session.id);
+				if (!ok) showToast({ text: getAppState().lastError?.text ?? t("AI 重命名失败，稍后再试") });
+			}}
 			onRename={(next) => {
 				// 就地编辑提交：名字写进 pi 的会话文件（session_info），不弹窗
 				renameSession(session.id, next);
@@ -779,6 +723,19 @@ function SidebarInner({
 
 	return (
 		<aside className="sidebar">
+			{/*
+			 * 顶部的「品牌 + 新会话」：浏览器里这一行不画（见 sidebar.css 的 `.sidebar-brand { display: none }`），
+			 * 品牌与新会话固定在顶栏左段（`.appbar-side`）。
+			 */}
+			<div className="sidebar-head sidebar-brand">
+				<span className="brand">
+					{brand.logoShown ? (
+						<img className="brand-icon" src={brand.logo || "/favicon.svg?v=9"} alt="" aria-hidden="true" />
+					) : null}
+					{brand.shown ? <span className="brand-name">{brand.name}</span> : null}
+				</span>
+				<NewChatButton variant="sidebar" />
+			</div>
 			{/*
 			 * 「置顶」排在整个「项目」这一块的**上面**，独立成一段（2026-10-29 用户两次确认：
 			 * 「置顶不能在里面」）。它仍是**跨项目汇总**的一组会话，跟某个项目不是一类。
@@ -832,7 +789,7 @@ function SidebarInner({
 				<button
 					type="button"
 					className="sidebar-title"
-					title={projectsOpen ? t("收起项目管理", "Collapse projects") : t("展开项目管理", "Expand projects")}
+					title={projectsOpen ? t("收起项目", "Collapse projects") : t("展开项目", "Expand projects")}
 					aria-expanded={projectsOpen}
 					onClick={() => setProjectsOpen((open) => !open)}
 				>
@@ -843,9 +800,10 @@ function SidebarInner({
 						aria-hidden="true"
 					/>
 					<span className="sidebar-title-label">
-						{/* 标题写「项目管理」（用户 2026-10-29）：跟下面「文件管理」对齐，一眼看出这是「管项目的」那一栏。
+						{/* 标题：2026-11-23 用户要求从「项目管理」缩成「项目」（原先是为了跟下面那块
+						 * 「文件管理」对仗，现在文件那块已经搬去右侧面板了，左栏只剩这一栏）。
 						 * 名字后面原来跟一个「（12）」的项目数 —— 不能点也没人数，纯噪声，早就去掉了。 */}
-						{t("项目管理", "Projects")}
+						{t("项目", "Projects")}
 					</span>
 				</button>
 				{/*
@@ -913,12 +871,10 @@ function SidebarInner({
 					</svg>
 				</button>
 				{/*
-				 * 「新会话」：**平时不在这一行** —— 它在顶栏（App.tsx），侧栏展开 / 收起都是那一颗。
-				 * 用户定的优先级：先放顶部；顶部不显示（顶栏被状态栏那颗 ▴/▾ 藏起来）时才放回这里，
-				 * 也就是现在这个位置（紧跟「项目 ⇕」、在「＋ 新建项目」之前）。
-				 * 两处是同一个动作、任一时刻只有一颗：这里加了条件，顶栏那条就不用再靠 CSS 收。
+				 * 这里**不再**放「新会话」：它已经固定在侧栏最上面那条 `.sidebar-brand` 里
+				 * （用户 2026-11-23：品牌与新会话一起搬到「项目管理」上面）。
+				 * 顶栏被藏起来（`appbarHidden`）也不影响 —— 那条在侧栏里，不会被顶栏带走。
 				 */}
-				{appbarHidden ? <NewChatButton variant="sidebar" /> : null}
 				{/*
 				 * 标题右边那一大片空白也是开关（用户 2026-10-29：「点旁边的空白处，它就可以展开或收起」）。
 				 * 这里是一颗**只当鼠标热区**的透明按钮，把这一行剩下的宽度占满就行。
@@ -1005,295 +961,297 @@ function SidebarInner({
 							{isHidden && hiddenProjects[0]?.cwd === project.cwd ? (
 								<HiddenProjectsRow count={hiddenProjects.length} open onToggle={() => setHiddenOpen(false)} />
 							) : null}
-						<details
-							data-cwd={project.cwd}
-							data-hidden={isHidden ? "true" : undefined}
-							className={`proj${isHidden ? " proj-hidden" : ""}${dragOverCwd === project.cwd ? " proj-drag-over" : ""}${
-								projDrag === project.cwd ? " proj-dragging" : ""
-							}${projDrop?.cwd === project.cwd ? (projDrop.after ? " proj-drop-after" : " proj-drop-before") : ""}`}
-							key={project.cwd || name}
-							open={projectOpen}
-							onMouseDown={(event) => {
-								// 右键 / 中键：记一笔，等会儿 onToggle 要据此把它压掉
-								if (event.button !== 0) nonPrimaryPressAt.current = performance.now();
-							}}
-							onToggle={(event) => {
-								const details = event.currentTarget as HTMLDetailsElement;
-								const next = details.open;
-								if (longPressOpened.current) {
-									/* 长按刚开过菜单：松手带出来的这次「展开 / 收起」不是用户要的。
-									 * 为什么只能在这里回滚、不能靠 `click` 里 `preventDefault`：
-									 * Chrome 的 `<details>` 是在 **mouseup** 那一刻就切了（上面
-									 * `nonPrimaryPressAt` 那段注释里也记着同一件事）——等 click 来时木已成舟。
-									 * 另外 `toggle` 事件是**异步**派发的：它比松手补的那次 click 还晚，
-									 * 所以「标记」必须在这里（onToggle）消费，不能在 onClick 里清掉。 */
-									longPressOpened.current = false;
-									details.open = projectOpen;
-									return;
-								}
-								if (performance.now() - nonPrimaryPressAt.current < 400) {
-									// 右键 / 中键带出来的折叠：DOM 改回去，也不写进状态（用户只想开菜单）
-									details.open = projectOpen;
-									return;
-								}
-								setOpenMap((current) => ({ ...current, [project.cwd]: next }));
-							}}
-							onDragOver={(event) => {
-								// 隐藏区不接拖放：拖进来看不见的项目 = 「会话莫名消失了」
-								if (isHidden) return;
-								// 拖的是项目 = 改顺序，走下面 summary 那套（这里不接）
-								if (projDrag || !drag) return;
-								/**
-								 * 两类都接受放下：
-								 *   - **别的项目**拖进来 → 搬家（落点项目第一条）；
-								 *   - **同一个项目**拖到项目名 / 行间空隙 → 挪到本项目第一条
-								 *     （2026-10-29 的拖动排序；行与行之间的细排由会话行自己接，它 stopPropagation）。
-								 *
-								 * 但**虚线框只给「跨项目」**：同项目排序时指针必然扫过整个项目区，
-								 * 框一亮一灭地闪反而像出错了。
-								 */
-								event.preventDefault();
-								if (drag.cwd !== project.cwd) setDragOverCwd(project.cwd);
-							}}
-							onDragLeave={() => {
-								if (isHidden) return;
-								setDragOverCwd((current) => (current === project.cwd ? null : current));
-							}}
-							onDrop={(event) => {
-								if (isHidden || projDrag) return;
-								event.preventDefault();
-								if (drag) dropOnProject(project);
-								endDrag();
-							}}
-						>
-							<summary
-								className="proj-head"
-								title={`${project.cwd || t("未分组", "Ungrouped")}\n${
-									isHidden
-										? t("右键：项目菜单（可取消隐藏）", "Right-click for the project menu (unhide)")
-										: t("拖动可换项目顺序　右键：项目菜单", "Drag to reorder projects · Right-click for the project menu")
-								}`}
-								/* 拖这一行 = 改项目顺序（会话拖动那套在行里，两套互不干扰）。
-								   改名时关掉：不然在输入框里选字会变成「拖着整行跑」。 */
-								draggable={!isHidden && renaming?.cwd !== project.cwd}
-								onDragStart={(event) => {
-									if (isHidden) return;
-									// 自带的「拖文本」也要压掉，否则会同时触发浏览器默认的选区拖拽
-									event.dataTransfer.setData("text/plain", project.cwd);
-									event.dataTransfer.effectAllowed = "move";
-									setProjDrag(project.cwd);
+							<details
+								data-cwd={project.cwd}
+								data-hidden={isHidden ? "true" : undefined}
+								className={`proj${isHidden ? " proj-hidden" : ""}${dragOverCwd === project.cwd ? " proj-drag-over" : ""}${
+									projDrag === project.cwd ? " proj-dragging" : ""
+								}${projDrop?.cwd === project.cwd ? (projDrop.after ? " proj-drop-after" : " proj-drop-before") : ""}`}
+								key={project.cwd || name}
+								open={projectOpen}
+								onMouseDown={(event) => {
+									// 右键 / 中键：记一笔，等会儿 onToggle 要据此把它压掉
+									if (event.button !== 0) nonPrimaryPressAt.current = performance.now();
 								}}
-								onDragEnd={() => {
-									setProjDrag(null);
-									setProjDrop(null);
-								}}
-								onContextMenu={(event) => {
-									// 右键 = 项目菜单（行尾那颗「⋯」在手机上已经收掉了）
-									event.preventDefault();
-									event.stopPropagation();
-									cancelLongPress();
-									setProjectMenu({
-										cwd: project.cwd,
-										point: { x: event.clientX, y: event.clientY },
-										anchor: event.currentTarget,
-									});
-								}}
-								/* 长按 = 同一张菜单（触摸屏没有右键，也没有那颗「⋯」了，见上面 longPress 的注释） */
-								onPointerDown={(event) => {
-									longPressOpened.current = false;
-									cancelLongPress();
-									// 只认手指：鼠标按住不动不该弹菜单（那是拖拽的起点）
-									if (event.pointerType !== "touch") return;
-									// 改名中：这一行是输入框，长按要留给选字
-									if (renaming?.cwd === project.cwd) return;
-									const anchor = event.currentTarget as HTMLElement;
-									const point = { x: event.clientX, y: event.clientY };
-									const timer = window.setTimeout(() => {
-										longPress.current = null;
-										longPressOpened.current = true;
-										setProjectMenu({ cwd: project.cwd, point, anchor });
-									}, 450);
-									longPress.current = { timer, x: point.x, y: point.y };
-								}}
-								onPointerMove={(event) => {
-									// 手指一动（滑动列表 / 拖项目）就不算长按
-									const press = longPress.current;
-									if (!press) return;
-									if (Math.abs(event.clientX - press.x) > 10 || Math.abs(event.clientY - press.y) > 10) {
-										cancelLongPress();
-									}
-								}}
-								onPointerUp={cancelLongPress}
-								onPointerCancel={cancelLongPress}
-								onPointerLeave={cancelLongPress}
-								onClick={(event) => {
-									// 长按刚开过菜单：这一次 click 是松手补上的，什么都不做
-									// （折叠那件事已经在 onToggle 里回滚掉了 —— 这里再 preventDefault 也拦不住）
+								onToggle={(event) => {
+									const details = event.currentTarget as HTMLDetailsElement;
+									const next = details.open;
 									if (longPressOpened.current) {
-										// 只跳过这次 click 的副作用，**标记留到 onToggle 里消费**：
-										// `toggle` 事件是异步派发的（比 click 还晚一个任务），在这里清掉的话
-										// 回滚分支永远等不到它 —— 项目就被顺手折叠了（实测过）。
+										/* 长按刚开过菜单：松手带出来的这次「展开 / 收起」不是用户要的。
+										 * 为什么只能在这里回滚、不能靠 `click` 里 `preventDefault`：
+										 * Chrome 的 `<details>` 是在 **mouseup** 那一刻就切了（上面
+										 * `nonPrimaryPressAt` 那段注释里也记着同一件事）——等 click 来时木已成舟。
+										 * 另外 `toggle` 事件是**异步**派发的：它比松手补的那次 click 还晚，
+										 * 所以「标记」必须在这里（onToggle）消费，不能在 onClick 里清掉。 */
+										longPressOpened.current = false;
+										details.open = projectOpen;
 										return;
 									}
-									// 正在改名时点这一行不要展开/收起（否则输入框会被卸载）
-									if (renaming?.cwd === project.cwd) event.preventDefault();
-									// 点一下项目行 = 我看到了它底下的东西：项目行上的圆点就抹掉
-									// （「一旦点击后圆点就消失」——圆点自己不是按钮，点击落在这一行上）
-									clearUnseenMany(project.sessions.map((session) => session.id));
+									if (performance.now() - nonPrimaryPressAt.current < 400) {
+										// 右键 / 中键带出来的折叠：DOM 改回去，也不写进状态（用户只想开菜单）
+										details.open = projectOpen;
+										return;
+									}
+									setOpenMap((current) => ({ ...current, [project.cwd]: next }));
+								}}
+								onDragOver={(event) => {
+									// 隐藏区不接拖放：拖进来看不见的项目 = 「会话莫名消失了」
+									if (isHidden) return;
+									// 拖的是项目 = 改顺序，走下面 summary 那套（这里不接）
+									if (projDrag || !drag) return;
+									/**
+									 * 两类都接受放下：
+									 *   - **别的项目**拖进来 → 搬家（落点项目第一条）；
+									 *   - **同一个项目**拖到项目名 / 行间空隙 → 挪到本项目第一条
+									 *     （2026-10-29 的拖动排序；行与行之间的细排由会话行自己接，它 stopPropagation）。
+									 *
+									 * 但**虚线框只给「跨项目」**：同项目排序时指针必然扫过整个项目区，
+									 * 框一亮一灭地闪反而像出错了。
+									 */
+									event.preventDefault();
+									if (drag.cwd !== project.cwd) setDragOverCwd(project.cwd);
+								}}
+								onDragLeave={() => {
+									if (isHidden) return;
+									setDragOverCwd((current) => (current === project.cwd ? null : current));
+								}}
+								onDrop={(event) => {
+									if (isHidden || projDrag) return;
+									event.preventDefault();
+									if (drag) dropOnProject(project);
+									endDrag();
 								}}
 							>
-								<ProjectFolderIcon open={projectOpen} />
-								{renaming?.cwd === project.cwd ? (
-									<ProjectNameInput
-										value={renaming.draft}
-										onChange={(next) => setRenaming({ cwd: project.cwd, draft: next })}
-										onCommit={commitRename}
-										onCancel={() => setRenaming(null)}
-									/>
-								) : (
-									// 不改名的话就是纯文字：项目名**没有双击改名**，改名走菜单（右键 / ＋）
-									<span className="proj-name">{name}</span>
-								)}
-								{/*
-								 * 项目行尾巴上的指示器：**两格固定**（① 在跑 / 未读 ② 已置顶）。
-								 *
-								 * 为什么要补空占位：以前是「有什么就摆什么」—— 有 📌 的行会多占一格，
-								 * 于是那颗转圈被往左挤一截，跟没置顶的行**对不齐**（用户 2026-11-04 报的
-								 * 「置顶的转圈圈怎么还不齐」）。现在只要这一行有任何一个指示器，
-								 * 两格都占上，缺的那格留空；一格都不需要时整组不渲染（名字能多显示几个字）。
-								 *
-								 * 折叠时把「在跑」顶到项目行上，而且**只留那颗转圈**（用户 2026-10-29：
-								 * 「运行中」几个字去掉）：项目名本来就长，再跟三个字进去会把名字挤没；
-								 * 转圈 + 悬浮提示已经够说清楚。
-								 */}
-								{(() => {
-									const showRunning = !projectOpen && projectRunning;
-									const showUnseen = !projectOpen && !projectRunning && projectUnseen.length > 0;
-									const showPin = pinned.includes(project.cwd);
-									if (!showRunning && !showUnseen && !showPin) return null;
-									return (
-										<>
-											{showRunning ? (
-												<span
-													className="proj-busy"
-													role="img"
-													aria-label={t("这个项目里有会话正在跑", "A session in this project is running")}
-													title={t(
-														"这个项目里有会话正在跑（展开就能看到是哪一条）",
-														"A session in this project is running (expand to see which)",
-													)}
-												>
-													<span className="proj-busy-ring" aria-hidden="true" />
-												</span>
-											) : showUnseen ? (
-												<span
-													className="proj-unseen"
-													role="img"
-													aria-label={t("有会话跑完了、你还没看", "A session finished and is not reviewed yet")}
-													title={t(
-														`有 ${projectUnseen.length} 条会话跑完了、你还没看（点一下这个项目就消失）`,
-														`${projectUnseen.length} session(s) finished and unreviewed (click the project to clear)`,
-													)}
-												/>
-											) : (
-												<span className="proj-ind-slot" aria-hidden="true" />
-											)}
-											{showPin ? (
-												<span className="proj-pin" title={t("已置顶")} aria-label={t("已置顶")}>
-													📌
-												</span>
-											) : (
-												<span className="proj-ind-slot" aria-hidden="true" />
-											)}
-										</>
-									);
-								})()}
-								<button
-									type="button"
-									className="proj-more"
-									title={t("项目菜单（新建会话 / 重命名 / 定位…）")}
-									onClick={(event) => {
-										event.preventDefault(); // 别把 details 一起展开/收起
+								<summary
+									className="proj-head"
+									title={`${project.cwd || t("未分组", "Ungrouped")}\n${
+										isHidden
+											? t("右键：项目菜单（可取消隐藏）", "Right-click for the project menu (unhide)")
+											: t(
+													"拖动可换项目顺序　右键：项目菜单",
+													"Drag to reorder projects · Right-click for the project menu",
+												)
+									}`}
+									/* 拖这一行 = 改项目顺序（会话拖动那套在行里，两套互不干扰）。
+								   改名时关掉：不然在输入框里选字会变成「拖着整行跑」。 */
+									draggable={!isHidden && renaming?.cwd !== project.cwd}
+									onDragStart={(event) => {
+										if (isHidden) return;
+										// 自带的「拖文本」也要压掉，否则会同时触发浏览器默认的选区拖拽
+										event.dataTransfer.setData("text/plain", project.cwd);
+										event.dataTransfer.effectAllowed = "move";
+										setProjDrag(project.cwd);
+									}}
+									onDragEnd={() => {
+										setProjDrag(null);
+										setProjDrop(null);
+									}}
+									onContextMenu={(event) => {
+										// 右键 = 项目菜单（行尾那颗「⋯」在手机上已经收掉了）
+										event.preventDefault();
 										event.stopPropagation();
-										// 和右键同一张菜单：从这一行的右下角弹出来
-										const rect = event.currentTarget.getBoundingClientRect();
+										cancelLongPress();
 										setProjectMenu({
 											cwd: project.cwd,
-											point: { x: rect.left, y: rect.bottom + 2 },
-											anchor: event.currentTarget.closest(".proj-head") as HTMLElement | null,
+											point: { x: event.clientX, y: event.clientY },
+											anchor: event.currentTarget,
 										});
 									}}
-								>
-									⋯
-								</button>
-							</summary>
-							{projectMenu?.cwd === project.cwd ? (
-								<ProjectMenu
-									anchor={projectMenu.anchor}
-									onClose={() => setProjectMenu(null)}
-									pinned={pinned.includes(project.cwd)}
-									onTogglePin={() => togglePin(project.cwd)}
-									/* 不在这里建会话：切到「新会话」那一屏并预选这个项目，发第一条消息时才建（见 store 的 newSession） */
-									onNewSession={() => startNewSession(project.cwd)}
-									onMoveUp={() => moveWithin(project.cwd, -1)}
-									onMoveDown={() => moveWithin(project.cwd, 1)}
-									onRename={() => setRenaming({ cwd: project.cwd, draft: name })}
-									onOpenFiles={() => {
-										// 定位 = 文件区打开 + 根切到这个项目（还能在下面的下拉框里再换）
-										onRootChange(project.cwd);
-										setFileOpen(true);
+									/* 长按 = 同一张菜单（触摸屏没有右键，也没有那颗「⋯」了，见上面 longPress 的注释） */
+									onPointerDown={(event) => {
+										longPressOpened.current = false;
+										cancelLongPress();
+										// 只认手指：鼠标按住不动不该弹菜单（那是拖拽的起点）
+										if (event.pointerType !== "touch") return;
+										// 改名中：这一行是输入框，长按要留给选字
+										if (renaming?.cwd === project.cwd) return;
+										const anchor = event.currentTarget as HTMLElement;
+										const point = { x: event.clientX, y: event.clientY };
+										const timer = window.setTimeout(() => {
+											longPress.current = null;
+											longPressOpened.current = true;
+											setProjectMenu({ cwd: project.cwd, point, anchor });
+										}, 450);
+										longPress.current = { timer, x: point.x, y: point.y };
 									}}
-									onOpenTerminal={() => onOpenTerminal?.(project.cwd)}
-									onReveal={() =>
-										void fetch("/api/projects/reveal", {
-											method: "POST",
-											headers: { "content-type": "application/json" },
-											body: JSON.stringify({ cwd: project.cwd }),
-										})
-									}
-									onDeleteAll={() =>
-										deleteSessions(
-											project.sessions.map((item) => item.id),
-											`「${name}」下的全部会话`,
-										)
-									}
-									/* 隐藏 = 只从侧栏收起来（会话/名称/顺序都还在），藏完给一条可撤销的提示 */
-									onHide={() => hideProject(project.cwd, name, project.sessions.length)}
-									/* 隐藏区里最后一项换成「取消隐藏」（它已经在里面了，再藏没有意义） */
-									hidden={isHidden}
-									onUnhide={() => unhideProject(project.cwd)}
-									sessionCount={project.sessions.length}
-								/>
-							) : null}
-							<div className="proj-body">
-								{shown.map((session) => renderSession(session, { project, noDrag: isHidden }))}
-								{rest > 0 ? (
-									<button
-										type="button"
-										className="pi-row pi-row-more"
-										title={
-											expanded
-												? t("收起，只显示前几个", "Collapse back to the first few")
-												: t(
-														`展开，显示全部 ${visibleSessions.length} 个会话`,
-														`Expand to show all ${visibleSessions.length} sessions`,
-													)
+									onPointerMove={(event) => {
+										// 手指一动（滑动列表 / 拖项目）就不算长按
+										const press = longPress.current;
+										if (!press) return;
+										if (Math.abs(event.clientX - press.x) > 10 || Math.abs(event.clientY - press.y) > 10) {
+											cancelLongPress();
 										}
-										onClick={() => setShowAll((current) => ({ ...current, [project.cwd]: !expanded }))}
-									>
-										{expanded ? t("收起", "Collapse") : t(`还有 ${rest} 个…`, `and ${rest} more…`)}
-									</button>
-								) : expanded && visibleSessions.length > sessionsPerProject ? (
+									}}
+									onPointerUp={cancelLongPress}
+									onPointerCancel={cancelLongPress}
+									onPointerLeave={cancelLongPress}
+									onClick={(event) => {
+										// 长按刚开过菜单：这一次 click 是松手补上的，什么都不做
+										// （折叠那件事已经在 onToggle 里回滚掉了 —— 这里再 preventDefault 也拦不住）
+										if (longPressOpened.current) {
+											// 只跳过这次 click 的副作用，**标记留到 onToggle 里消费**：
+											// `toggle` 事件是异步派发的（比 click 还晚一个任务），在这里清掉的话
+											// 回滚分支永远等不到它 —— 项目就被顺手折叠了（实测过）。
+											return;
+										}
+										// 正在改名时点这一行不要展开/收起（否则输入框会被卸载）
+										if (renaming?.cwd === project.cwd) event.preventDefault();
+										// 点一下项目行 = 我看到了它底下的东西：项目行上的圆点就抹掉
+										// （「一旦点击后圆点就消失」——圆点自己不是按钮，点击落在这一行上）
+										clearUnseenMany(project.sessions.map((session) => session.id));
+									}}
+								>
+									<ProjectFolderIcon open={projectOpen} />
+									{renaming?.cwd === project.cwd ? (
+										<ProjectNameInput
+											value={renaming.draft}
+											onChange={(next) => setRenaming({ cwd: project.cwd, draft: next })}
+											onCommit={commitRename}
+											onCancel={() => setRenaming(null)}
+										/>
+									) : (
+										// 不改名的话就是纯文字：项目名**没有双击改名**，改名走菜单（右键 / ＋）
+										<span className="proj-name">{name}</span>
+									)}
+									{/*
+									 * 项目行尾巴上的指示器：**两格固定**（① 在跑 / 未读 ② 已置顶）。
+									 *
+									 * 为什么要补空占位：以前是「有什么就摆什么」—— 有 📌 的行会多占一格，
+									 * 于是那颗转圈被往左挤一截，跟没置顶的行**对不齐**（用户 2026-11-04 报的
+									 * 「置顶的转圈圈怎么还不齐」）。现在只要这一行有任何一个指示器，
+									 * 两格都占上，缺的那格留空；一格都不需要时整组不渲染（名字能多显示几个字）。
+									 *
+									 * 折叠时把「在跑」顶到项目行上，而且**只留那颗转圈**（用户 2026-10-29：
+									 * 「运行中」几个字去掉）：项目名本来就长，再跟三个字进去会把名字挤没；
+									 * 转圈 + 悬浮提示已经够说清楚。
+									 */}
+									{(() => {
+										const showRunning = !projectOpen && projectRunning;
+										const showUnseen = !projectOpen && !projectRunning && projectUnseen.length > 0;
+										const showPin = pinned.includes(project.cwd);
+										if (!showRunning && !showUnseen && !showPin) return null;
+										return (
+											<>
+												{showRunning ? (
+													<span
+														className="proj-busy"
+														role="img"
+														aria-label={t("这个项目里有会话正在跑", "A session in this project is running")}
+														title={t(
+															"这个项目里有会话正在跑（展开就能看到是哪一条）",
+															"A session in this project is running (expand to see which)",
+														)}
+													>
+														<span className="proj-busy-ring" aria-hidden="true" />
+													</span>
+												) : showUnseen ? (
+													<span
+														className="proj-unseen"
+														role="img"
+														aria-label={t("有会话跑完了、你还没看", "A session finished and is not reviewed yet")}
+														title={t(
+															`有 ${projectUnseen.length} 条会话跑完了、你还没看（点一下这个项目就消失）`,
+															`${projectUnseen.length} session(s) finished and unreviewed (click the project to clear)`,
+														)}
+													/>
+												) : (
+													<span className="proj-ind-slot" aria-hidden="true" />
+												)}
+												{showPin ? (
+													<span className="proj-pin" title={t("已置顶")} aria-label={t("已置顶")}>
+														📌
+													</span>
+												) : (
+													<span className="proj-ind-slot" aria-hidden="true" />
+												)}
+											</>
+										);
+									})()}
 									<button
 										type="button"
-										className="pi-row pi-row-more"
-										onClick={() => setShowAll((current) => ({ ...current, [project.cwd]: false }))}
+										className="proj-more"
+										title={t("项目菜单（新建会话 / 重命名 / 定位…）")}
+										onClick={(event) => {
+											event.preventDefault(); // 别把 details 一起展开/收起
+											event.stopPropagation();
+											// 和右键同一张菜单：从这一行的右下角弹出来
+											const rect = event.currentTarget.getBoundingClientRect();
+											setProjectMenu({
+												cwd: project.cwd,
+												point: { x: rect.left, y: rect.bottom + 2 },
+												anchor: event.currentTarget.closest(".proj-head") as HTMLElement | null,
+											});
+										}}
 									>
-										{t("收起", "Collapse")}
+										⋯
 									</button>
+								</summary>
+								{projectMenu?.cwd === project.cwd ? (
+									<ProjectMenu
+										anchor={projectMenu.anchor}
+										onClose={() => setProjectMenu(null)}
+										pinned={pinned.includes(project.cwd)}
+										onTogglePin={() => togglePin(project.cwd)}
+										/* 不在这里建会话：切到「新会话」那一屏并预选这个项目，发第一条消息时才建（见 store 的 newSession） */
+										onNewSession={() => startNewSession(project.cwd)}
+										onMoveUp={() => moveWithin(project.cwd, -1)}
+										onMoveDown={() => moveWithin(project.cwd, 1)}
+										onRename={() => setRenaming({ cwd: project.cwd, draft: name })}
+										onOpenFiles={() => {
+											// 2026-11-23：文件管理搬到右侧面板了 —— 切根 + 打开那一页
+											onOpenFiles?.(project.cwd);
+										}}
+										onOpenTerminal={() => onOpenTerminal?.(project.cwd)}
+										onReveal={() =>
+											void fetch("/api/projects/reveal", {
+												method: "POST",
+												headers: { "content-type": "application/json" },
+												body: JSON.stringify({ cwd: project.cwd }),
+											})
+										}
+										onDeleteAll={() =>
+											deleteSessions(
+												project.sessions.map((item) => item.id),
+												`「${name}」下的全部会话`,
+											)
+										}
+										/* 隐藏 = 只从侧栏收起来（会话/名称/顺序都还在），藏完给一条可撤销的提示 */
+										onHide={() => hideProject(project.cwd, name, project.sessions.length)}
+										/* 隐藏区里最后一项换成「取消隐藏」（它已经在里面了，再藏没有意义） */
+										hidden={isHidden}
+										onUnhide={() => unhideProject(project.cwd)}
+										sessionCount={project.sessions.length}
+									/>
 								) : null}
-							</div>
-						</details>
+								<div className="proj-body">
+									{shown.map((session) => renderSession(session, { project, noDrag: isHidden }))}
+									{rest > 0 ? (
+										<button
+											type="button"
+											className="pi-row pi-row-more"
+											title={
+												expanded
+													? t("收起，只显示前几个", "Collapse back to the first few")
+													: t(
+															`展开，显示全部 ${visibleSessions.length} 个会话`,
+															`Expand to show all ${visibleSessions.length} sessions`,
+														)
+											}
+											onClick={() => setShowAll((current) => ({ ...current, [project.cwd]: !expanded }))}
+										>
+											{expanded ? t("收起", "Collapse") : t(`还有 ${rest} 个…`, `and ${rest} more…`)}
+										</button>
+									) : expanded && visibleSessions.length > sessionsPerProject ? (
+										<button
+											type="button"
+											className="pi-row pi-row-more"
+											onClick={() => setShowAll((current) => ({ ...current, [project.cwd]: false }))}
+										>
+											{t("收起", "Collapse")}
+										</button>
+									) : null}
+								</div>
+							</details>
 						</>
 					);
 				})}
@@ -1337,44 +1295,6 @@ function SidebarInner({
 					onClose={() => setBatchMenu(null)}
 				/>
 			) : null}
-			{/* 项目列表收起时文件区直接撑到底：这时没有「上下两块」可拖，隐藏分割条 */}
-			{!projectsOpen ? null : (
-				<SideSplitter open={fileOpen} onOpen={() => setFileOpen(true)} onStart={split.start} onReset={split.reset} />
-			)}
-			<SidebarFiles
-					open={fileOpen}
-					onToggle={() => setFileOpen((open) => !open)}
-					height={split.height}
-					/* 项目整块收起 → 文件区顶到底（原来它还是固定高度，下面空一大块） */
-					fill={!projectsOpen}
-					root={root ?? currentRoot ?? null}
-					onRootChange={onRootChange}
-					options={groups.map((project) => ({
-						cwd: project.cwd,
-						label: aliases[project.cwd] || project.name || project.cwd,
-					}))}
-					onOpenFile={(path) => onOpenFile?.(path, root ?? currentRoot ?? "")}
-					onOpenChangedFile={(path) => onOpenChangedFile?.(path, root ?? currentRoot ?? "")}
-					activePath={activePath ?? null}
-					revealSeq={revealSeq ?? 0}
-					revealPath={revealPath ?? null}
-					onRevealPath={onRevealPath}
-					onOpenTerminal={() => {
-						const target = root ?? currentRoot;
-						if (target) onOpenTerminal?.(target);
-					}}
-					// 在 Finder 中显示：复用项目菜单那条后端接口（只定位，不执行文件）
-					onSearchContents={onSearchContents}
-					onOpenBottomTerminal={onOpenBottomTerminal}
-					onFindInFolder={onFindInFolder}
-					onReveal={(cwd) =>
-						void fetch("/api/projects/reveal", {
-							method: "POST",
-							headers: { "content-type": "application/json" },
-							body: JSON.stringify({ cwd }),
-						})
-					}
-				/>
 			{/*
 			 * 侧栏底部那里**不再画「收起」**（用户：「这里这个不要呀」）。
 			 * 「收起 / 展开」现在只有一处：分割线上那颗舌形箭头（`.side-collapse` / `.side-expand`，

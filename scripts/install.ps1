@@ -12,17 +12,17 @@
   为什么不用 param() 块：`irm | iex` 是把脚本文本直接交给表达式求值，param() 在那儿不合法。
   所以配置一律走环境变量，在同一个命令里带着就行：
 
-    $env:OH_MY_AGENT_WEB_VERSION='0.6.0'
+    $env:AGENT_WEB_VERSION='0.6.0'
     powershell -c "irm .../install.ps1 | iex"
 
   环境变量：
-    OH_MY_AGENT_WEB_VERSION        指定版本，默认 latest
-    OH_MY_AGENT_WEB_HOME           安装目录，默认 $HOME\.oh-my-agent-web（就是数据目录：装进去的包/命令与 settings.json / uploads / logs 并排）
-    OH_MY_AGENT_WEB_REGISTRY       npm 源，例如 https://registry.npmmirror.com
-    OH_MY_AGENT_WEB_NODE           复用已有 node（node.exe 的路径，或它所在目录）
-    OH_MY_AGENT_WEB_NODE_CHANNEL   自动装 Node 时用哪个通道，默认 v22.x
-    OH_MY_AGENT_WEB_NO_PATH=1      不动 PATH
-    OH_MY_AGENT_WEB_UNINSTALL=1    卸载（只删安装目录，数据目录不动）
+    AGENT_WEB_VERSION        指定版本，默认 latest
+    AGENT_WEB_HOME           安装目录，默认 $HOME\.oh-my-agent-web（就是数据目录：装进去的包/命令与 settings.json / uploads / logs 并排）
+    AGENT_WEB_REGISTRY       npm 源，例如 https://registry.npmmirror.com
+    AGENT_WEB_NODE           复用已有 node（node.exe 的路径，或它所在目录）
+    AGENT_WEB_NODE_CHANNEL   自动装 Node 时用哪个通道，默认 v22.x
+    AGENT_WEB_NO_PATH=1      不动 PATH
+    AGENT_WEB_UNINSTALL=1    卸载（只删安装目录，数据目录不动）
 #>
 
 $ErrorActionPreference = 'Stop'
@@ -32,12 +32,12 @@ try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::
 $Pkg = 'oh-my-agent-web'
 # @earendil-works/pi-* 1.x 用到 Node 22.19 才有的 API；低于它运行时会炸，不该放进来
 $MinNode = '22.19.0'
-$NodeChannel = if ($env:OH_MY_AGENT_WEB_NODE_CHANNEL) { $env:OH_MY_AGENT_WEB_NODE_CHANNEL } else { 'v22.x' }
-$HomeDir = if ($env:OH_MY_AGENT_WEB_HOME) { $env:OH_MY_AGENT_WEB_HOME } else { Join-Path $HOME '.oh-my-agent-web' }
-$Version = if ($env:OH_MY_AGENT_WEB_VERSION) { $env:OH_MY_AGENT_WEB_VERSION } else { 'latest' }
-$Registry = $env:OH_MY_AGENT_WEB_REGISTRY
-$NoPath = $env:OH_MY_AGENT_WEB_NO_PATH -eq '1'
-$DoUninstall = $env:OH_MY_AGENT_WEB_UNINSTALL -eq '1'
+$NodeChannel = if ($env:AGENT_WEB_NODE_CHANNEL) { $env:AGENT_WEB_NODE_CHANNEL } else { 'v22.x' }
+$HomeDir = if ($env:AGENT_WEB_HOME) { $env:AGENT_WEB_HOME } else { Join-Path $HOME '.oh-my-agent-web' }
+$Version = if ($env:AGENT_WEB_VERSION) { $env:AGENT_WEB_VERSION } else { 'latest' }
+$Registry = $env:AGENT_WEB_REGISTRY
+$NoPath = $env:AGENT_WEB_NO_PATH -eq '1'
+$DoUninstall = $env:AGENT_WEB_UNINSTALL -eq '1'
 
 function Write-Step($text) { Write-Host "==> $text" -ForegroundColor White }
 function Write-Ok($text) { Write-Host "  ✓ $text" -ForegroundColor Green }
@@ -121,14 +121,14 @@ function Resolve-Node {
 	$managedNode = Join-Path $HomeDir 'node\node.exe'
 	$managedNpm = Join-Path $HomeDir 'node\npm.cmd'
 
-	if ($env:OH_MY_AGENT_WEB_NODE) {
-		$cand = $env:OH_MY_AGENT_WEB_NODE
+	if ($env:AGENT_WEB_NODE) {
+		$cand = $env:AGENT_WEB_NODE
 		if (Test-Path $cand -PathType Container) { $cand = Join-Path $cand 'node.exe' }
-		if (-not (Test-Path $cand)) { Fail "OH_MY_AGENT_WEB_NODE 指向的 node 不存在：$($env:OH_MY_AGENT_WEB_NODE)" }
+		if (-not (Test-Path $cand)) { Fail "AGENT_WEB_NODE 指向的 node 不存在：$($env:AGENT_WEB_NODE)" }
 		$script:NodeExe = $cand
 		$npm = Join-Path (Split-Path $cand -Parent) 'npm.cmd'
 		$script:NpmExe = if (Test-Path $npm) { $npm } else { (Get-Command npm.cmd).Source }
-		if (-not $script:NpmExe) { Fail 'OH_MY_AGENT_WEB_NODE 旁边没有 npm（需要 node 与 npm 同一个 prefix）' }
+		if (-not $script:NpmExe) { Fail 'AGENT_WEB_NODE 旁边没有 npm（需要 node 与 npm 同一个 prefix）' }
 		return
 	}
 
@@ -232,7 +232,7 @@ function Invoke-Uninstall {
 	if (Test-Path $pkgRoot) { Remove-Item $pkgRoot -Recurse -Force }
 	$managedNodeDir = Join-Path $HomeDir 'node'
 	if (Test-Path $managedNodeDir) { Remove-Item $managedNodeDir -Recurse -Force }
-	foreach ($name in @('aw', 'agent-web', 'oh-my-agent-web')) {
+	foreach ($name in @('aw', 'oh-my-agent-web', 'oh-my-agent-web')) {
 		foreach ($ext in @('', '.cmd', '.ps1')) {
 			$shim = Join-Path $HomeDir ($name + $ext)
 			if (Test-Path $shim) { Remove-Item $shim -Force }

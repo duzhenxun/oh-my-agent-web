@@ -11,13 +11,13 @@ import { createEngineWiring } from "./engine/wiring.js";
 import type { EnginePort, EngineProviderCatalogEntry } from "./engine/port.js";
 import { createFileRuleStore } from "./approval/rules.js";
 import { existsSync, mkdirSync } from "node:fs";
-import { PROTOCOL_VERSION, type ProtocolError, type ServerReply } from "./protocol.js";
+import { PROTOCOL_VERSION, type ProtocolError } from "./protocol.js";
 import { acquireLock, describeHolder, releaseLock } from "./session/lock.js";
 import { createRuntime } from "./session/runtime.js";
 import { createFileSettingsStore, readSettingsSync } from "./session/settings.js";
 import { createSender, type OutFrame } from "./snapshot/sender.js";
 import { createPiSessionsProvider, piAgentDir } from "./session/pi-sessions-provider.js";
-import { createUploadStore, uploadsDir } from "./uploads/upload-store.js";
+import { createUploadStore } from "./uploads/upload-store.js";
 import { createProviderWiring } from "./providers/provider-handlers.js";
 import { providerPool } from "./providers/provider-pool.js";
 import { probeProvider } from "./providers/probe.js";
@@ -56,24 +56,27 @@ import { registerAuxRoutes } from "./http/aux-routes.js";
 // ADR-0047：右侧「网页」页的代理（绕开 X-Frame-Options / CSP frame-ancestors）
 import { registerWebProxyRoutes } from "./web-proxy/proxy-routes.js";
 import { handleMessage, type ClientSink } from "./ws/handle-message.js";
+import { replyFrame } from "./ws/reply-frame.js";
 import { registerHealthAndStatic } from "./http/health-and-static.js";
 import { registerWebSocketRoutes } from "./http/ws-routes.js";
 import { decide, effectiveAddress, isCrossOriginRejected, isLoopback } from "./http/auth.js";
 import { registerUploadRoutes } from "./uploads/upload-routes.js";
-import { AsrBridge } from "./asr/bridge.js";
+import { AsrService } from "./asr/service.js";
 import { asrRawErrorHandler, registerAsrRoutes } from "./asr/routes.js";
 import { readConfig, validateConfig } from "./util/env.js";
 import { createLogger } from "./util/log.js";
 import { createRotatingFileSink, logFileName, type RotatingFileSink } from "./util/log-file.js";
 import { refreshPriceIndex } from "./util/pricing-index.js";
 import { pickExisting, webDistCandidates } from "./util/paths.js";
+import { registerEngineRoutes } from "./engine/engine-routes.js";
+import { ensurePrefixOnPath } from "./engine/engine-install.js";
 import { isLoopbackHostname } from "./util/origin.js";
 import { authMiddleware } from "./http/auth.js";
 import { createPasswordStore } from "./http/password-store.js";
 import { registerAuthRoutes } from "./http/auth-routes.js";
 import { createLoginGuard } from "./http/login-guard.js";
 import { createLoginActivity } from "./http/login-activity.js";
-import { BRAND_NAME, MIGRATION_NOTICE } from "./brand.js";
+import { BRAND_NAME } from "./brand.js";
 import { registerLiveRoutes, type Sink } from "./http/live-routes.js";
 import { registerClientLogRoutes } from "./http/client-log-routes.js";
 import { registerVoiceSettingsRoutes } from "./http/voice-settings-routes.js";
@@ -121,13 +124,13 @@ const {
 });
 let fileSink: RotatingFileSink | null = null;
 /**
- * 前台运行（CLI 默认）：终端只留 warn / error。
+ * 前台运行（CLI 默认）：终端只留 error。
  *
- * 以前后台才是默认，这些 info（装载会话索引、provider 列表……）都落在 daemon.log 里看不见；
- * 现在前台成了默认，再照旧打就会把用户自己的输机记录冲没。
- * 它们仍然**全部**进轮转日志文件；显式给了 `AGENT_WEB_LOG=debug|info` 就按用户的意思正常打。
- * （每来一个客户端一条的「SSE 已连接 / 已断开」已经降到 debug：每个标签页每次重连都写一行，
- * 正常运行时纯噪声，真排查时 `AGENT_WEB_LOG=debug aw` 再看。）
+ * 以前是 info，后来收到 warn/error；再收到只剩 error（用户 2026-11-26：「aw 启动时下面这堆文案
+ * 也不要显示」）—— 启动时打几行 JSON（装载会话索引、云端语音、上传…）对“我只是想打开页面”的人
+ * 就是噪声，把终端里他自己的历史冲没了。
+ * 它们仍然**全部**进轮转日志文件（`~/.oh-my-agent-web/daemon.log`）；想看回终端：
+ *   `AGENT_WEB_LOG=warn aw`（只看警告）、`AGENT_WEB_LOG=info|debug`（全打）。
  */
 const foreground = process.env.AGENT_WEB_FOREGROUND === "1";
 const quietConsole = foreground && !process.env.AGENT_WEB_LOG;
@@ -135,7 +138,7 @@ const logger = createLogger({
 	level: config.logLevel,
 	scope: "app",
 	sink: (line, level) => {
-		if (!quietConsole || level === "warn" || level === "error") process.stdout.write(`${line}\n`);
+		if (!quietConsole || level === "error") process.stdout.write(`${line}\n`);
 		fileSink?.write(line);
 	},
 });
@@ -150,6 +153,12 @@ if (startupPassword.source === "migrated") {
 } else if (startupPassword.conflict) {
 	logger.info(`环境变量里的密码与数据目录那份不一致：以 ${join(startupDataDir, "password")} 为准`);
 }
+/**
+ * 用户点「安装」装过的引擎落在 `<dataDir>/bin`（那是个标准 npm prefix，见 engine-install.ts）。
+ * 进程一重启这条 PATH 就没了 —— 不挂回来的话界面会说「没装」，而人明明刚装过。
+ */
+const enginesBin = ensurePrefixOnPath(config.dataDir);
+if (enginesBin) logger.info("已把装过的引擎目录挂回 PATH", { dir: enginesBin });
 
 // 单用户工作台：一处 fire-and-forget 的 Promise 拒绝（推送写盘失败、模型热重载失败……）
 // 不该把整个服务带走（Node ≥15 默认会直接退出）。记日志、继续跑。
@@ -409,7 +418,8 @@ const runtime = createRuntime({
 	subagentAgentDir: piAgentDir(),
 	uploadStore: {
 		read: (id) => uploadStore.read(id),
-		pathOf: (id) => join(uploadsDir(config.dataDir), id),
+		/** 路径必须跟实际落盘名一致（带原名的那份），不能再拿 `join(dir, id)` 自己拼 */
+		pathOf: (id) => uploadStore.pathOf(id),
 	},
 	piSessions: engineCatalog.sessionsFor(resolved.descriptor.name) ?? undefined,
 	engines: engineCatalog,
@@ -508,10 +518,8 @@ function reply(
 	id: string,
 	result: { ok: true; result?: unknown } | { ok: false; error: ProtocolError },
 ): void {
-	const message: ServerReply = result.ok
-		? { type: "reply", id, ok: true, ...(result.result === undefined ? {} : { result: result.result }) }
-		: { type: "reply", id, ok: false, error: result.error };
-	socket.send(JSON.stringify(message));
+	// 帧的形状（尤其是「载荷放在 `result` 这一格」）在 `ws/reply-frame.ts`，那里有单测钉着
+	socket.send(JSON.stringify(replyFrame(id, result)));
 }
 
 // ------------------------------ HTTP ------------------------------
@@ -594,6 +602,8 @@ const runAgentTask = createAgentRunner({
 
 const cron = createCronService({
 	dataDir: config.dataDir,
+	// 任务按引擎分开存（`cron/<engine>.json`）：切引擎时只看到、只调度当前引擎自己的任务
+	engine: () => runtime.state().engine,
 	// 已打开的会话也算工作区：在另一个目录里开的会话，用户可能直接让它建定时任务
 	workspaces: () => [
 		config.workspace,
@@ -642,7 +652,8 @@ const cron = createCronService({
 cronToolPort = createCronToolPort(cron);
 
 app.use(express.json()); // 终端/技能/导入要读 body
-const tts = createTtsService();
+// 云端 TTS 的密钥从 `<dataDir>/tts.json` 读（和 `<dataDir>/stt.json` 各管各的，用户 2026-11-24）
+const tts = createTtsService(undefined, { dataDir: config.dataDir });
 app.use("/api/tts", ttsJsonErrorHandler);
 app.use("/api/tts", createTtsRouter(tts));
 app.use("/api/computer", createComputerRouter());
@@ -685,7 +696,17 @@ app.use(
 		},
 	}),
 );
-const webDist = pickExisting(webDistCandidates(HERE), existsSync);
+const webDist = resolveWebDist();
+
+/** 前端目录：按「源码 / 全局安装 / 打包」几种布局的候选位置搜一份出来 */
+function resolveWebDist(): string | null {
+	return pickExisting(webDistCandidates(HERE), existsSync);
+}
+
+/** 监听全地址时，给人看的地址仍是本机回环 */
+function shownHostOf(host: string): string {
+	return host === "0.0.0.0" || host === "::" || host === "" ? "127.0.0.1" : host;
+}
 // 压缩 + 缓存头必须在 **API 路由注册之前** 挂：Express 按注册顺序匹配中间件，
 // 挂在后面就只影响之后注册的路由 —— `/api/rpc`（快照帧）这类大包会一直裸奔。
 // SSE / 终端流 / Range 媒体在 compress.ts 里显式跳过（不能攒、不能压）。
@@ -695,16 +716,18 @@ const uploadStore = createUploadStore({ dataDir: config.dataDir });
 registerUploadRoutes(app, { uploadStore, logger }); // 附件（ADR-0020 §P3）
 // 本地语音识别（macOS 原生、离线）：桥由 `open` 拉起，首次会弹一次系统授权。
 // .app 的路径不在这里定死 —— 桥每次启动时现找，用户刚点完「安装」就能直接用
-const asrBridge = new AsrBridge({ log: logger });
-registerAsrRoutes(app, asrBridge, logger);
+const asrService = new AsrService({ log: logger, dataDir: config.dataDir });
+registerAsrRoutes(app, asrService, logger);
 app.use("/api/asr", asrRawErrorHandler);
-process.once("exit", () => asrBridge.dispose());
+process.once("exit", () => asrService.dispose());
 // 网页代理（ADR-0047）：必须挂在鉴权之后 —— 它是「拿你的网络身份去取任意网页」的入口
 registerWebProxyRoutes(app, { log: (text) => logger.warn(text) });
 // 网页诊断日志（语音状态机那几个节点）：只写日志，见 client-log-routes.ts 的说明
 registerClientLogRoutes(app, logger);
 // 语音设置的宿主侧副本：手机 / 电脑 / 换浏览器共用一套（见 voice-settings-routes.ts）
 registerVoiceSettingsRoutes(app, { dataDir: config.dataDir, logger });
+// 引擎装没装 / 点一下装（ADR-0052）：只读查询 + 用户点了才装的安装接口
+registerEngineRoutes(app, { dataDir: config.dataDir, log: logger });
 
 const workspaceOf = () => runtime.state().files?.root ?? config.workspace;
 
@@ -915,10 +938,6 @@ function printStartBanner(options: { cli: string; version: string; url: string }
 	console.log(`  ${paint("bold", `oh-my-agent-web ${version}`)}  ${paint("dim", "·")}  ${paint("green", "started")}`);
 	console.log(`  ${paint("underline", url)}  ${paint("dim", "(Ctrl-C to exit)")}`);
 	console.log("");
-	// 项目已迁移：印在启动那一屏，是因为很多人是 `aw -d` 起完就再不看终端了，
-	// 只有这一屏是「每次启动都会经过」的位置。用黄色而不是灰色，别被当成普通说明划过去。
-	console.log(`  ${paint("yellow", `⚠ ${MIGRATION_NOTICE}`)}`);
-	console.log("");
 	console.log(row(`${cli} -d`, "run in background (logs to daemon.log)"));
 	console.log(row(`${cli} restart  /  ${cli} stop`, "restart / stop"));
 	console.log(row(`${cli} -H 0.0.0.0 -P <password>`, "remote access (password required)"));
@@ -927,7 +946,7 @@ function printStartBanner(options: { cli: string; version: string; url: string }
 }
 
 async function main(): Promise<void> {
-	// 旧数据目录（~/.agent-web）自动搬到新目录：dev 直接跑本文件时也要搬
+	// 旧数据目录（~/.oh-my-agent-web）自动搬到新目录：dev 直接跑本文件时也要搬
 	migrateLegacyDataDir({ dataDir: config.dataDir, log: (line) => logger.info(line) });
 	const problems = [...envProblems, ...validateConfig(config, { home: homedir() })];
 	if (problems.length > 0) {
@@ -959,8 +978,8 @@ async function main(): Promise<void> {
 	// 单实例锁（ADR-0007）：必须在读/写任何会话数据之前拿到
 	const acquired = await acquireLock(config.dataDir, { pid: process.pid, port: config.port, startedAt: Date.now() });
 	if (!acquired.ok) {
-		logger.error("已经有一个 agent-web 在跑，本进程退出", { holder: describeHolder(acquired.holder) });
-		console.error(`\n已经有一个 agent-web 在这个数据目录上跑着：\n  ${describeHolder(acquired.holder)}\n`);
+		logger.error("已经有一个 oh-my-agent-web 在跑，本进程退出", { holder: describeHolder(acquired.holder) });
+		console.error(`\n已经有一个 oh-my-agent-web 在这个数据目录上跑着：\n  ${describeHolder(acquired.holder)}\n`);
 		console.error(`  → 打开它：http://127.0.0.1:${acquired.holder.port}`);
 		console.error("  → 或者先停掉它（前台运行时 Ctrl-C 即可）\n");
 		process.exit(1);
@@ -981,7 +1000,7 @@ async function main(): Promise<void> {
 	 * 监听。开发态（`AGENT_WEB_DEV=1`，dev.mjs 传）对 EADDRINUSE 短暂重试：
 	 * `tsx --watch` 改文件就重启，新进程经常赶在**旧进程还没放开端口**时就 listen ——
 	 * 以前直接报「已被占用」退出，而 tsx 那边只说 `Failed running … Waiting for file changes`，
-	 * 于是后端就真的没了：界面上每个请求都是 502（Vite 反代连不上 25258），
+	 * 于是后端就真的没了：界面上每个请求都是 502（Vite 反代连不上 9091），
 	 * 红条一直挂着，直到你再改一个文件把它撞活。这里把这个窗口吃掉。
 	 * 生产态不变：该报错就报错、退出。
 	 */
@@ -1013,7 +1032,7 @@ async function main(): Promise<void> {
 				describeListenError(
 					error as NodeJS.ErrnoException,
 					config.port,
-					"可能是另一个 agent-web 或别的程序占着这个端口",
+					"可能是另一个 oh-my-agent-web 或别的程序占着这个端口",
 				),
 			);
 			await releaseLock(config.dataDir, process.pid);
@@ -1023,16 +1042,13 @@ async function main(): Promise<void> {
 
 	if (foreground) {
 		// 正常日志已经不在终端刷了，这屏就是「真的跑起来了」 + 最常用的几条命令。
-		// 命令名照用户实际敲的那个（aw / agent-web / oh-my-agent-web），由 cli.ts 传进来。
-		const shownHost =
-			config.host === "0.0.0.0" || config.host === "::" || config.host === "" ? "127.0.0.1" : config.host;
+		// 命令名照用户实际敲的那个（aw / oh-my-agent-web / oh-my-agent-web），由 cli.ts 传进来。
 		printStartBanner({
 			cli: process.env.AGENT_WEB_CLI_NAME || "aw",
 			version: packageMeta().version,
-			url: `http://${shownHost}:${config.port}`,
+			url: `http://${shownHostOf(config.host)}:${config.port}`,
 		});
 	}
-
 	/**
 	 * 「有没有新版」：前台启动时印在启动那屏（banner）**下面**。
 	 *
@@ -1053,7 +1069,7 @@ async function main(): Promise<void> {
 			.catch(() => undefined);
 	}
 
-	logger.info("agent-web 已启动", {
+	logger.info("oh-my-agent-web 已启动", {
 		url: `http://${config.host}:${config.port}`,
 		workspace: config.workspace,
 		dataDir: config.dataDir,

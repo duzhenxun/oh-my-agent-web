@@ -13,6 +13,7 @@ export type PanelIconName =
 	| "agents"
 	| "cron"
 	| "computer"
+	| "bug"
 	| "settings";
 
 /**
@@ -108,6 +109,15 @@ export function PanelIcon({ name }: { name: PanelIconName }) {
 				<circle cx="4" cy="5.15" r="0.6" fill="currentColor" stroke="none" />
 				<circle cx="4" cy="10.85" r="0.6" fill="currentColor" stroke="none" />
 				<path d="M10.5 5.15h1.4a1.2 1.2 0 0 1 1.2 1.2v3.3a1.2 1.2 0 0 0 1.2 1.2H15" />
+			</svg>
+		);
+	if (name === "bug")
+		return (
+			<svg {...common}>
+				{/* 小虫子：圆身子 + 一根中线 + 两侧三条腿，缩到 16px 还认得出「这是个 bug」 */}
+				<ellipse cx="8" cy="9.1" rx="4.3" ry="4.9" />
+				<path d="M8 4.4v9.6" />
+				<path d="M3.9 5.5 2.1 4M12.1 5.5 13.9 4M3.2 9h-1.9M12.8 9h1.9M4 12.6l-1.7 1.3M12 12.6l1.7 1.3" />
 			</svg>
 		);
 	return (

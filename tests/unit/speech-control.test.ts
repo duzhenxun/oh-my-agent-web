@@ -10,6 +10,7 @@ import { describe, it } from "node:test";
 import {
 	interruptSpeechForSend,
 	onInterruptSpeechRequest,
+	onStopManualSpeechRequest,
 	onStopSpeechRequest,
 	requestInterruptSpeech,
 	requestStopSpeech,
@@ -66,5 +67,53 @@ describe("发送模式 → 朗读动作", () => {
 			offStop();
 			offInterrupt();
 		}
+	});
+});
+
+/**
+ * 手动点「朗读」那一路（尾注那颗按钮自己 `speak()` 的）。
+ *
+ * 用户 2026-11-24：「我都在操作下一个了，播放还在上面」——
+ * 自动播报那两条通道它一概不订阅，所以以前**发消息、切会话都停不掉它**，
+ * 旧消息会一直在后台念，那颗「停止」也一直挂在旧消息的尾注上。
+ */
+describe("手动朗读：往下走了就停", () => {
+	it("三种发送模式都要停手动朗读（插队也算往下走）", () => {
+		let manual = 0;
+		const off = onStopManualSpeechRequest(() => {
+			manual += 1;
+		});
+		try {
+			interruptSpeechForSend("steer");
+			interruptSpeechForSend("queue");
+			interruptSpeechForSend("now");
+			assert.equal(manual, 3, "手动朗读不看发送模式");
+		} finally {
+			off();
+		}
+	});
+
+	it("点「停止」也要停手动朗读，否则只停了一半", () => {
+		let manual = 0;
+		const off = onStopManualSpeechRequest(() => {
+			manual += 1;
+		});
+		try {
+			requestStopSpeech();
+			assert.equal(manual, 1);
+		} finally {
+			off();
+		}
+	});
+
+	it("退订之后不再收到", () => {
+		let count = 0;
+		const off = onStopManualSpeechRequest(() => {
+			count += 1;
+		});
+		interruptSpeechForSend("now");
+		off();
+		interruptSpeechForSend("now");
+		assert.equal(count, 1);
 	});
 });

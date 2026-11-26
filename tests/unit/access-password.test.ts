@@ -22,7 +22,7 @@ import { createPasswordStore, resolveStartupPassword, writePasswordFile } from "
 const tempDirs: string[] = [];
 
 async function tempDir(): Promise<string> {
-	const dir = await mkdtemp(join(tmpdir(), "agent-web-password-"));
+	const dir = await mkdtemp(join(tmpdir(), "oh-my-agent-web-password-"));
 	tempDirs.push(dir);
 	return dir;
 }
@@ -104,7 +104,7 @@ describe("/api/auth/password：只认本机", () => {
 			body: JSON.stringify({ password: "newpass123" }),
 		});
 		assert.equal(saved.status, 200);
-		assert.match(String(saved.headers.get("set-cookie")), /agent-web-auth=/);
+		assert.match(String(saved.headers.get("set-cookie")), /oh-my-agent-web-auth=/);
 		assert.equal(password, "newpass123");
 
 		const again = await fetch(`${base}/api/auth/password`);
@@ -203,7 +203,7 @@ describe("/api/auth/password：只认本机", () => {
 			body: JSON.stringify({ password: "rotated-remote", currentPassword: "keep-me" }),
 		});
 		assert.equal(response.status, 200);
-		assert.match(String(response.headers.get("set-cookie")), /agent-web-auth=/);
+		assert.match(String(response.headers.get("set-cookie")), /oh-my-agent-web-auth=/);
 		assert.equal(password, "rotated-remote");
 		password = "keep-me";
 	});

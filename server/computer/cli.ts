@@ -15,11 +15,11 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { HelperClient, HelperError, type HelperSession } from "./helper-client.js";
-import { socketPath } from "./paths.js";
+import { helperBinaryPath, helperTransport, socketPath } from "./paths.js";
 
 type Flags = Record<string, string | true>;
 
-const USAGE = `电脑控制 CLI（需要本机 Agent Computer helper 在运行）
+const USAGE = `电脑控制 CLI（优先用内嵌 helper；旧版 .app 在运行时走 socket）
 
 用法：node <cli.js> <命令> [参数] [--选项 值]
 
@@ -296,8 +296,11 @@ async function main(): Promise<void> {
 		return;
 	}
 	const { positionals, flags } = parseArgs(rest);
+	const binary = helperBinaryPath();
 	const client = new HelperClient({
 		socketPath: socketPath(),
+		binaryPath: binary,
+		transport: helperTransport(process.env, binary),
 		clientName: "oh-my-agent-web",
 		session: buildSession(),
 	});

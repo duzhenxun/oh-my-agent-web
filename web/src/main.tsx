@@ -1,8 +1,10 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App.tsx";
+import { ErrorBoundary, saveCrashReport } from "./components/ErrorBoundary.tsx";
 import { connect, startOnEmptyScreen, watchVisibility } from "./ws.ts";
 import { sessionIdFromUrl } from "./session-url.ts";
+import { resetLegacyPrefsOnce } from "./pref-reset.ts";
 import { initTheme } from "./theme.ts";
 import { initChatDisplay } from "./chat-display.ts";
 import { initSidebarFonts } from "./sidebar-font.ts";
@@ -12,6 +14,10 @@ import { watchMobileShell } from "./mobile-shell-dom.ts";
 import { watchVisualViewport } from "./visual-viewport.ts";
 import { loadEnTable } from "./use-language.ts";
 import "./styles.css";
+
+// 一次性清掉旧的本机界面偏好（顶栏/底部/外观那几组），让新默认值真正生效。
+// 必须放在下面那些 init* 之前：先清再读，第一屏就是新默认（详见 pref-reset.ts）。
+resetLegacyPrefsOnce();
 
 // 主题也挂在 <html> 上（data-theme / data-theme-mode）：**首帧前**必须生效，
 // 否则深色主题会先白一下再变深。存储的读取和色板的定义都在 theme.ts。
@@ -38,11 +44,28 @@ watchVisualViewport();
 const container = document.getElementById("root");
 if (!container) throw new Error("缺少 #root 容器");
 
+/**
+ * 白屏兜底：**兜不住的错当场留证据**。
+ *
+ * React 的渲染错误由 `<ErrorBoundary>` 接住并画在屏幕上；但事件回调（点按钮、弹窗里操作）
+ * 里抛的错不经过 React，只会冒到 window —— 那些错往往就是「点了没反应 / 界面状态乱了」的真凶。
+ * 这里统一记进 localStorage（`agent-web.last-crash`），下次白屏至少还有现场可查。
+ */
+window.addEventListener("error", (event) => {
+	saveCrashReport(event.error ?? event.message);
+});
+window.addEventListener("unhandledrejection", (event) => {
+	saveCrashReport(event.reason);
+});
+
 const root = createRoot(container);
 const boot = () =>
 	root.render(
 		<StrictMode>
-			<App />
+			{/* 边界包在 App 外面：render 里抛一次错就会整棵卸载（= 白屏），必须有人接住 */}
+			<ErrorBoundary>
+				<App />
+			</ErrorBoundary>
 		</StrictMode>,
 	);
 

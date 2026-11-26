@@ -13,7 +13,7 @@
  */
 import type { UiMessage } from "./types.ts";
 
-const DB_NAME = "agent-web-cache";
+const DB_NAME = "oh-my-agent-web-cache";
 const DB_VERSION = 1;
 const STORE = "transcripts";
 /** 最多留多少个会话的正文（按 savedAt 淘汰最旧的） */

@@ -1,45 +1,23 @@
+import type { ComponentProps } from "react";
+import { SidebarFiles } from "./SidebarFiles.tsx";
+
 /**
- * 右侧分栏里的「文件」页：就是把侧栏那棵树搬过来（宽一点更好点）。
+ * 右侧分栏里的「文件」工具页。
  *
- * 为什么单独一个页而不是直接复用侧栏那块：侧栏的 `SidebarFiles` 自带标题栏、项目下拉框、
- * 高度拖拽与「收起」，绑在侧栏布局里；这里只要「树 + 点开进标签」，所以直接挂 `FileTree`。
- * 点文件仍然走主界面的 `openFileInPanel`（同一个标签体系，不会出现两份预览）。
+ * 用户 2026-11-23：「下面这个文件移动到工具里……移动过去时上面的小功能都要保留着」——
+ * 所以这里**不重写一个简化版**，而是直接把侧栏那块（`SidebarFiles`）以 `variant="panel"`
+ * 挂进来：工具栏（刷新 / 显隐 / 文件名搜索 / 改动清单 / 终端 / 在文件夹中显示）、
+ * 项目下拉框 + git 分支、搜索结果、文件树（含右键菜单）全都原样带着。
+ *
+ * 少掉的只有「侧栏那一层壳」：折叠标题、标题右侧的透明热区、可拖的高度 ——
+ * 在面板里它是常开的一整页，没有「收起」这回事。
  */
-import { useState } from "react";
-import { FileTree } from "./FileTree.tsx";
-import { useT } from "../use-language.ts";
+export type FilesToolProps = Omit<
+	ComponentProps<typeof SidebarFiles>,
+	"variant" | "open" | "onToggle" | "height" | "fill"
+>;
 
-export function FilesTool({ root, onOpenFile }: { root: string | null; onOpenFile: (path: string) => void }) {
-	const t = useT();
-	const [showHidden, setShowHidden] = useState(false);
-	const [refreshSeq, setRefreshSeq] = useState(0);
-
-	return (
-		<div className="work-files">
-			<div className="work-files-head">
-				<span className="work-files-root" title={root ?? undefined}>
-					{root ?? t("（还没有工作区）", "(no workspace yet)")}
-				</span>
-				<button
-					type="button"
-					className={`btn btn-tiny${showHidden ? " btn-wide-on" : ""}`}
-					onClick={() => setShowHidden((value) => !value)}
-					title={t("显示隐藏文件", "Show hidden files")}
-				>
-					👁
-				</button>
-				<button
-					type="button"
-					className="btn btn-tiny"
-					onClick={() => setRefreshSeq((value) => value + 1)}
-					title={t("刷新")}
-				>
-					↻
-				</button>
-			</div>
-			<div className="work-files-body">
-				<FileTree root={root} showHidden={showHidden} statusRevision={String(refreshSeq)} onOpenFile={onOpenFile} />
-			</div>
-		</div>
-	);
+export function FilesTool(props: FilesToolProps) {
+	// `open` / `height` 是 `SidebarFiles` 那两个必填项：面板里恒为开、高度由 CSS 撑满
+	return <SidebarFiles variant="panel" open height={0} onToggle={() => {}} {...props} />;
 }

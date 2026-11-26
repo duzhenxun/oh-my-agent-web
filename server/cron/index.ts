@@ -32,6 +32,8 @@ export type CronJob = {
 	sessionId?: string;
 	/** 指定模型（agent 任务）；空 = 新建会话跟随项目默认、续跑则沿用该会话原来的模型 */
 	model?: string;
+	/** 这条任务属于哪个引擎（存在哪份文件就是哪份）；老数据没有这个字段时按文件所在引擎算 */
+	engine?: string;
 };
 export type CronRun = {
 	id: string;
@@ -45,6 +47,8 @@ export type CronRun = {
 	error?: string;
 };
 export type CronSnapshot = {
+	/** 这份任务属于哪个引擎（任务按引擎分开存，见下面的存储说明） */
+	engine: string;
 	jobs: Array<CronJob & { nextRunAt: string | null }>;
 	runs: CronRun[];
 	workspaces: string[];
@@ -54,6 +58,8 @@ export type CronOptions = {
 	dataDir: string;
 	execute: (job: CronJob, signal: AbortSignal) => Promise<string>;
 	workspaces?: () => string[] | Promise<string[]>;
+	/** 当前引擎（pi / codex / claude / opencode / dsh）：任务与历史按它分文件存 */
+	engine?: () => string;
 	now?: () => Date;
 	historyCap?: number;
 	/** 调度循环自身的异常（不应该让进程静默停摆） */
@@ -62,7 +68,21 @@ export type CronOptions = {
 
 type State = { jobs: CronJob[]; runs: CronRun[] };
 type ParsedField = { values: Set<number>; restricted: boolean };
-const FILE = "cron.json";
+/**
+ * 任务存哪里：`<dataDir>/cron/<engine>.json`。
+ *
+ * 为什么按引擎分文件（用户 2026-11-24：「定时任务，不同的 agent 要区分开，要各保存各的，不要放一块」）：
+ * 一条定时任务绑定的是**那个引擎的会话与模型**（`sessionId` / `model`）——在 pi 里建的
+ * `deepseek-flash` 任务拿到 codex 底下跑，只会报「打开会话失败」。混在一个文件里后，
+ * 切到别的引擎会看到一堆跑不了的任务、还可能误触发。分开存之后：切引擎只会看到
+ * 和调度本该引擎自己的任务，互不干扰。
+ */
+const CRON_DIR = "cron";
+/** 老版本的单一文件（没有引擎归属）：首次启动时整批迁到 `pi` 那份里 */
+const LEGACY_FILE = "cron.json";
+/** 老任务的默认归属：历史上定时任务只可能在 pi 下建（其他引擎是后加的） */
+const LEGACY_ENGINE = "pi";
+const DEFAULT_ENGINE = "pi";
 const DEFAULT_CAP = 500;
 const QUEUE_CAP = 20;
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -218,7 +238,7 @@ function nextOccurrence(expression: string, timezone: string, after: Date): stri
 	}
 	return null;
 }
-function validateDraft(input: unknown, workspaces: string[], existingId?: string): CronJob {
+function validateDraft(input: unknown, workspaces: string[], existingId?: string, engine?: string): CronJob {
 	if (!input || typeof input !== "object") bad("job body is required");
 	const value = input as Record<string, unknown>;
 	const id = existingId ?? (typeof value.id === "string" && value.id ? value.id : randomUUID());
@@ -251,6 +271,8 @@ function validateDraft(input: unknown, workspaces: string[], existingId?: string
 		allowWrites: mode === "agent" ? (value.allowWrites as boolean | undefined) === true : false,
 		sessionId: mode === "agent" ? optionalText("sessionId") : undefined,
 		model: mode === "agent" ? optionalText("model") : undefined,
+		// 记下归属引擎：文件已经按引擎分了，这一位是给「以后合并/导出」和排错看的
+		...(engine ? { engine } : {}),
 	};
 }
 
@@ -259,17 +281,28 @@ export function createCronService(options: CronOptions) {
 	const cap = options.historyCap ?? DEFAULT_CAP;
 	let state: State = { jobs: [], runs: [] };
 	let loaded = false;
+	/** 当前内存里这份 `state` 属于哪个引擎（找不到就是 null） */
+	let loadedEngine: string | null = null;
+	/** 老 `cron.json` 的迁移只做一次（进程级，不随引擎切来切去重做） */
+	let legacyMigrated = false;
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let stopped = true;
 	/** 是否正在停服务（与「还没 start」区分：后者照样可以把排队任务跑完） */
 	let stopping = false;
-	let active: { run: CronRun; controller: AbortController; job: CronJob } | undefined;
+	let active: { run: CronRun; controller: AbortController; job: CronJob; engine: string | null } | undefined;
 	/** 别的任务正在跑时，到点的任务在这里等着（全局只同时跑一个） */
 	const pending: { run: CronRun; job: CronJob }[] = [];
 	let mutation: Promise<void> = Promise.resolve();
 	const lastScheduled = new Map<string, string>();
 	let lastCheck = now().getTime();
-	const path = join(options.dataDir, FILE);
+	const cronDir = join(options.dataDir, CRON_DIR);
+	const legacyPath = join(options.dataDir, LEGACY_FILE);
+	/** 当前引擎名（拿来决定读写哪份文件） */
+	const engineNow = (): string => {
+		const raw = (options.engine?.() ?? DEFAULT_ENGINE).trim();
+		return raw === "" ? DEFAULT_ENGINE : raw;
+	};
+	const pathOf = (engine: string): string => join(cronDir, `${engine}.json`);
 	const serialize = <T>(operation: () => Promise<T>): Promise<T> => {
 		const result = mutation.then(operation);
 		mutation = result.then(
@@ -278,21 +311,96 @@ export function createCronService(options: CronOptions) {
 		);
 		return result;
 	};
-	async function load(): Promise<void> {
-		if (loaded) return;
-		try {
-			const raw = JSON.parse(await readFile(path, "utf8")) as Partial<State>;
-			state = { jobs: Array.isArray(raw.jobs) ? raw.jobs : [], runs: Array.isArray(raw.runs) ? raw.runs : [] };
-		} catch (e) {
-			if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
-		}
-		loaded = true;
-	}
-	async function save(): Promise<void> {
+	/** 把 `state` 原样写到指定引擎的文件（原子写） */
+	async function writeState(engine: string, value: State): Promise<void> {
+		const path = pathOf(engine);
 		await mkdir(dirname(path), { recursive: true });
 		const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`;
-		await writeFile(temporary, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+		await writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 		await rename(temporary, path);
+	}
+	/** 读某份文件（不在就是空状态） */
+	async function readState(engine: string): Promise<State> {
+		try {
+			const raw = JSON.parse(await readFile(pathOf(engine), "utf8")) as Partial<State>;
+			return { jobs: Array.isArray(raw.jobs) ? raw.jobs : [], runs: Array.isArray(raw.runs) ? raw.runs : [] };
+		} catch (e) {
+			if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+			return { jobs: [], runs: [] };
+		}
+	}
+	/**
+	 * 老的单文件 `cron.json` → `<dataDir>/cron/pi.json`。
+	 *
+	 * 只做一次：迁完把老文件改名成 `cron.json.migrated`（不删，留个底），
+	 * 否则每切一次引擎都会把同一批任务又合并一遍。
+	 */
+	async function migrateLegacy(): Promise<void> {
+		if (legacyMigrated) return;
+		legacyMigrated = true;
+		let raw: string;
+		try {
+			raw = await readFile(legacyPath, "utf8");
+		} catch {
+			return;
+		}
+		let parsed: Partial<State>;
+		try {
+			parsed = JSON.parse(raw) as Partial<State>;
+		} catch {
+			// 手改坏了：不拖服务下水，但也不要反复重试
+			options.onError?.(new Error(`无法迁移旧的 cron.json（JSON 解析失败）：${legacyPath}`));
+			return;
+		}
+		const jobs = (Array.isArray(parsed.jobs) ? parsed.jobs : []).map((job) => ({ ...job, engine: LEGACY_ENGINE }));
+		const runs = Array.isArray(parsed.runs) ? parsed.runs : [];
+		const target = await readState(LEGACY_ENGINE);
+		const merged: State = {
+			jobs: [...target.jobs.filter((job) => !jobs.some((old) => old.id === job.id)), ...jobs],
+			runs: [...target.runs, ...runs].slice(-cap),
+		};
+		await writeState(LEGACY_ENGINE, merged);
+		await rename(legacyPath, `${legacyPath}.migrated`);
+	}
+	/**
+	 * 确保内存里装的是**当前引擎**那一份。
+	 *
+	 * 切引擎时（用户改了引擎设置）：先把旧引擎的状态落盘，再把它在跑/排队的任务收尾
+	 * —— 那些任务绑的是旧引擎的会话与模型，继续跑只会报错，也存在别人名下。
+	 */
+	async function load(): Promise<void> {
+		const engine = engineNow();
+		if (loaded && loadedEngine === engine) return;
+		await migrateLegacy();
+		if (loaded && loadedEngine !== null && loadedEngine !== engine) {
+			settleForSwitch();
+			await writeState(loadedEngine, state);
+		}
+		const next = await readState(engine);
+		// 老数据里没有 engine 字段的，按它所在的文件补上
+		state = { jobs: next.jobs.map((job) => ({ ...job, engine })), runs: next.runs };
+		loadedEngine = engine;
+		loaded = true;
+	}
+	/** 换引擎/停服时把在跑与排队中的任务收尾（不落盘：调用方负责） */
+	function settleForSwitch(): void {
+		const at = now().toISOString();
+		while (pending.length > 0) {
+			const queued = pending.shift();
+			if (!queued) break;
+			queued.run.status = "skipped";
+			queued.run.error = "engine switched";
+			queued.run.finishedAt = at;
+		}
+		if (active) {
+			active.run.status = "interrupted";
+			active.run.finishedAt = at;
+			active.controller.abort();
+			active = undefined;
+		}
+	}
+	async function save(): Promise<void> {
+		await writeState(loadedEngine ?? engineNow(), state);
 	}
 	async function workspaces(): Promise<string[]> {
 		return [
@@ -362,12 +470,19 @@ export function createCronService(options: CronOptions) {
 		run.status = "running";
 		run.startedAt = now().toISOString();
 		const controller = new AbortController();
-		active = { run, controller, job };
+		const engine = loadedEngine;
+		active = { run, controller, job, engine };
 		await save();
 		// 后台跑的这一轮没人 await：落盘/执行出错必须自己接住，不能变成未处理拒绝
-		void executeRun(run, controller, job).catch((e: unknown) => options.onError?.(e));
+		void executeRun(run, controller, job, engine).catch((e: unknown) => options.onError?.(e));
 	}
-	async function executeRun(run: CronRun, controller: AbortController, job: CronJob): Promise<void> {
+	async function executeRun(
+		run: CronRun,
+		controller: AbortController,
+		job: CronJob,
+		/** 这一轮属于哪个引擎：跑到一半用户切了引擎，这一轮的结果不能写进别人的文件 */
+		engine: string | null,
+	): Promise<void> {
 		try {
 			const result = await options.execute(job, controller.signal);
 			if (run.status === "running") {
@@ -381,6 +496,7 @@ export function createCronService(options: CronOptions) {
 			}
 		}
 		run.finishedAt ??= now().toISOString();
+		if (loadedEngine !== engine) return; // 已经切到别的引擎：这一轮的收尾归旧引擎的文件管
 		active = undefined;
 		state.runs = state.runs.slice(-cap);
 		await save();
@@ -395,6 +511,7 @@ export function createCronService(options: CronOptions) {
 		const ws = await workspaces();
 		const current = now();
 		return {
+			engine: loadedEngine ?? engineNow(),
 			jobs: state.jobs.map((job) => ({
 				...job,
 				nextRunAt: job.enabled ? nextOccurrence(job.expression, job.timezone, current) : null,
@@ -454,7 +571,7 @@ export function createCronService(options: CronOptions) {
 		async create(input: unknown) {
 			return serialize(async () => {
 				await load();
-				const job = validateDraft(input, await workspaces());
+				const job = validateDraft(input, await workspaces(), undefined, engineNow());
 				if (state.jobs.some((x) => x.id === job.id)) bad("job id already exists");
 				state.jobs.push(job);
 				await save();
@@ -465,7 +582,7 @@ export function createCronService(options: CronOptions) {
 			return serialize(async () => {
 				await load();
 				if (!state.jobs.some((x) => x.id === id)) bad("job not found");
-				const job = validateDraft(input, await workspaces(), id);
+				const job = validateDraft(input, await workspaces(), id, engineNow());
 				state.jobs = state.jobs.map((x) => (x.id === id ? job : x));
 				await save();
 				return job;

@@ -36,7 +36,8 @@ export type CronRun = {
 	result?: string;
 	error?: string;
 };
-export type CronState = { jobs: CronJob[]; runs: CronRun[]; workspaces: string[] };
+/** 任务与运行历史是**按引擎分开存**的：这份快照只包含当前引擎那一份 */
+export type CronState = { engine: string; jobs: CronJob[]; runs: CronRun[]; workspaces: string[] };
 /**
  * 编辑器里的「计划」选项：既包括「具体钟点」（每天 / 工作日 / 每周 / 每月），
  * 也包括「隔多久跑一次」（每隔几分钟 / 几小时）。它们最终都落成**一个五字段表达式**，

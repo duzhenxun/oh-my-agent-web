@@ -9,9 +9,20 @@ import { CopyButton } from "./CopyButton.tsx";
 import { tNow, useT } from "../use-language.ts";
 import { describeTool, ToolKindIcon } from "./tool-activity.tsx";
 
-const STATUS_LABEL: Record<ToolBlock["status"], string> = { running: "运行中…", ok: "完成", failed: "失败" };
+const STATUS_LABEL: Record<ToolBlock["status"], string> = {
+	running: "运行中…",
+	ok: "完成",
+	failed: "失败",
+	// 被打断 = 没跑完，但不是失败：插队 / 点停止会让正在跑的工具停在那里
+	interrupted: "已打断",
+};
 /** 英文说法（`t()` 只做中英两栏，所以状态词单独一份，渲染时按语言取） */
-const STATUS_LABEL_EN: Record<ToolBlock["status"], string> = { running: "running…", ok: "done", failed: "failed" };
+const STATUS_LABEL_EN: Record<ToolBlock["status"], string> = {
+	running: "running…",
+	ok: "done",
+	failed: "failed",
+	interrupted: "interrupted",
+};
 
 /** 名字看起来是「跑命令」的工具：这些即使参数很短也把命令块摆出来（就为了能一键复制） */
 const SHELL_NAMES = /^(bash|sh|shell|shell_command|exec|run|run_command|terminal)$/i;

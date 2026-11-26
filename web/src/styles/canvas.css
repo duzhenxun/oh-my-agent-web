@@ -13,6 +13,15 @@
 	min-width: 0;
 	min-height: 0;
 	overflow: hidden;
+	/* 画布全屏（元素级 Fullscreen API，见 CanvasView 的 toggleCanvasFullscreen）：
+	 * 浏览器会把这一块拉成整屏，底色得自己铺 —— 不铺就是透明的，后面露出来的可能是面板底色。
+	 * 工具栏在 `.canvas-view` 里面，所以全屏后它还在，不会没地方点退出。 */
+	background: var(--bg);
+}
+
+.canvas-view:fullscreen {
+	background: var(--bg);
+	border-radius: 0;
 }
 
 .canvas-viewport {
@@ -78,6 +87,9 @@
 }
 
 /* 连线层：在世界坐标系里，1px 描边跟着缩放 */
+/* 连线画在**卡片上面**（z-index 高于节点）：
+ * 压在下层的时候，线一进到卡片范围就被整块白色盖掉，看起来像断开 / 像挤成了一团
+ * （用户 2026-11-26：「这种线为什么不是在上面」）。pointer-events 已经是 none，不会挡点击。 */
 .canvas-edges {
 	position: absolute;
 	top: 0;
@@ -86,18 +98,96 @@
 	height: 1px;
 	overflow: visible;
 	pointer-events: none;
+	z-index: 3;
 }
 
+/* 连线：默认压暗一点，让「走完的路」和「正在走的那段」自己浮出来。
+ * 十几条一样亮的灰线挤在一起就是一团噪声（用户：「现在的线感觉很乱」）。 */
 .canvas-edges path {
 	fill: none;
 	stroke: var(--border-strong);
-	stroke-width: 1.5;
+	stroke-width: 1.4;
 	stroke-linecap: round;
+	opacity: 0.5;
+	transition:
+		stroke 0.18s ease,
+		opacity 0.18s ease;
+}
+
+/* 还没轮到：前置没完成，压到最暗。
+ * 但别压太狠（0.3 → 0.42）：箭头尖也吃这层透明度，太淡就只剩一根线、看不出方向了。 */
+.canvas-edges path.is-idle {
+	opacity: 0.42;
+}
+
+/* 已经走完的依赖：和 done 节点同色，缩略时也能和色块图对得上 */
+.canvas-edges path.is-done {
+	stroke: #16a34a;
+	stroke-width: 1.75;
+	opacity: 0.9;
+}
+
+/* 正在走的那一段：强调色 + 流动虚线，「现在干到哪了」一眼看出来 */
+.canvas-edges path.is-active {
+	stroke: var(--accent);
+	stroke-width: 2;
+	opacity: 1;
+	stroke-dasharray: 7 5;
+	animation: canvas-edge-flow 0.9s linear infinite;
+}
+
+/* 卡住的那条：和 blocked 节点同色，虚线表示断在半路 */
+.canvas-edges path.is-blocked {
+	stroke: #d97706;
+	stroke-width: 1.75;
+	stroke-dasharray: 4 4;
+	opacity: 0.9;
+}
+
+/* 方向箭头：空心的 V，不是实心三角 —— 太小太满的话一圈看下来全是黑点。
+ * marker 里的图形不吃外面 path 的 stroke，所以四种状态各给一条颜色规则；
+ * 透明度由 path 自己带（marker 会跟着父元素的不透明度），不用重复写。 */
+.canvas-arrow path {
+	fill: none;
+	stroke-width: 1.3;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+.canvas-arrow.is-idle path {
+	stroke: var(--border-strong);
+}
+
+.canvas-arrow.is-done path {
+	stroke: #16a34a;
+}
+
+.canvas-arrow.is-active path {
+	stroke: var(--accent);
+}
+
+.canvas-arrow.is-blocked path {
+	stroke: #d97706;
+}
+
+@keyframes canvas-edge-flow {
+	to {
+		/* 正好一个 dasharray 周期，循环时不会跳 */
+		stroke-dashoffset: -12;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.canvas-edges path.is-active {
+		animation: none;
+	}
 }
 
 /* 一个任务节点：世界坐标定位；拖动位移走独立的 translate，React 重渲染不会把它冲掉 */
 .canvas-node {
 	position: absolute;
+	/* 低于连线（z-index 3）：线要看得见；拖动时抬到 10，压在线上也不影响手感 */
+	z-index: 2;
 	width: 240px;
 	box-sizing: border-box;
 	translate: var(--card-dx, 0px) var(--card-dy, 0px);
@@ -109,6 +199,12 @@
 	cursor: grab;
 	user-select: none;
 	box-shadow: 0 1px 2px rgb(0 0 0 / 6%);
+	/* 缩到门槛切缩略时不要「啪」地变一下：padding / 底色补个短过渡 */
+	transition:
+		background-color 0.18s ease,
+		padding 0.18s ease,
+		min-height 0.18s ease,
+		border-color 0.18s ease;
 }
 
 .canvas-node.is-dragging {
@@ -236,11 +332,15 @@
 	font-variant-numeric: tabular-nums;
 }
 
+/* 缩略态（`k ≤ 0.4`，用户 2026-11-26：「缩小到 0.4 时才只显示标题」）：
+ * 高度**固定**成 `FAR_NODE_HEIGHT`（34px，见 CanvasView.tsx）—— 连线端点用的就是这个数。
+ * 所以这里不能写 min-height 让内容撑高：卡片 36px、线按 34px 算，差的那两像素就是「线没对齐」。 */
 .canvas-view.is-far .canvas-node {
-	padding: 6px 8px;
-	min-height: 34px;
+	height: 34px;
+	padding: 5px 8px;
 	display: flex;
 	align-items: center;
+	overflow: hidden;
 	border-left-width: 4px;
 }
 
@@ -259,8 +359,10 @@
 }
 
 .canvas-view.is-far .canvas-node-index {
-	font-size: 12px;
+	font-size: 15px;
+	font-weight: 700;
 	color: var(--text-dim);
+	flex: none;
 }
 
 /* 节点类型：不同类型给不同颜色和图标，避免整张图都是一模一样的卡片 */
@@ -581,6 +683,22 @@
 	transform: rotate(45deg);
 }
 
+/* 菜单贴着右边 / 下边装不下、翻到另一侧时，小三角也要跟到对应的角，
+ * 不然它指的就不是「我刚右键的那一点」了（用户 2026-11-26 报的就是这个）。 */
+.canvas-menu.is-flip-x::before {
+	left: auto;
+	right: -5px;
+	border-left: none;
+	border-right: 1px solid var(--border-strong);
+}
+
+.canvas-menu.is-flip-y::before {
+	top: auto;
+	bottom: -5px;
+	border-top: none;
+	border-bottom: 1px solid var(--border-strong);
+}
+
 .canvas-menu-item {
 	display: block;
 	width: 100%;
@@ -798,68 +916,38 @@
 	animation: none;
 }
 
-/* 节点上的操作行：悬停 / 选中才出现，平时不挡内容 */
-.canvas-node-actions {
-	display: none;
-	position: absolute;
-	top: -11px;
-	right: -1px;
-	gap: 4px;
-	align-items: center;
-	padding: 2px 3px;
-	border-radius: 7px;
-	background: var(--bg-elev);
-	border: 1px solid var(--border);
-	box-shadow: 0 2px 8px rgb(0 0 0 / 10%);
-	z-index: 5;
-}
-
-.canvas-node:hover .canvas-node-actions,
-.canvas-node.is-selected .canvas-node-actions {
+/* 缩略态只留「编号 + 标题」（用户 2026-11-26：「缩小时上面要显示当前这个卡片的标题，
+ * 可以不显内容」）—— 说明和状态行收起来，但标题得留着，否则一张图全是号码牌，
+ * 除了顺序什么也读不出来。
+ *
+ * 标题必须**按缩略尺度放大**：卡片这时候被缩到 0.35~0.4，原生的 12.5px 印出来只剩 4~5px。
+ * 20px 在 0.4 时约 8px（当轮廓读）、在 0.35 时约 7px；再小就只是个深色点了。
+ * 长标题单行省略，宁可截断也不折行（一折行每张卡高度都不一样，缩略图就没有节奏了）。 */
+.canvas-view.is-far .canvas-node-head {
 	display: flex;
+	align-items: center;
+	flex: 1 1 auto;
+	min-width: 0;
+	gap: 4px;
 }
 
-.canvas-node-status {
-	font: inherit;
-	font-size: 10.5px;
-	padding: 1px 2px;
-	border: 1px solid var(--border);
-	border-radius: 5px;
-	background: transparent;
-	color: var(--text-dim);
-	cursor: pointer;
+.canvas-view.is-far .canvas-node-title {
+	font-size: 20px;
+	font-weight: 600;
+	line-height: 1.1;
+	min-width: 0;
+	flex: 1 1 auto;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
-.canvas-node-status:hover {
-	border-color: var(--accent);
-	color: var(--accent);
+/* 整块底色已经在说状态了，缩略态里那颗小圆点和类型图标就撤掉，把宽度还给标题 */
+.canvas-view.is-far .canvas-node-head .canvas-dot,
+.canvas-view.is-far .canvas-node-head .canvas-node-kind {
+	display: none;
 }
 
-.canvas-node-delete {
-	font: inherit;
-	font-size: 12px;
-	line-height: 1;
-	width: 18px;
-	height: 18px;
-	padding: 0;
-	border-radius: 5px;
-	border: 1px solid var(--border);
-	background: transparent;
-	color: var(--text-faint);
-	cursor: pointer;
-}
-
-.canvas-node-delete:hover {
-	border-color: #dc2626;
-	color: #dc2626;
-}
-
-/* 缩略态下手都点不准，操作行收起来 */
-.canvas-view.is-far .canvas-node-actions {
-	display: none !important;
-}
-
-.canvas-view.is-far .canvas-node-head,
 .canvas-view.is-far .canvas-node-detail,
 .canvas-view.is-far .canvas-node-state {
 	display: none;

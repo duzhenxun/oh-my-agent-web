@@ -17,7 +17,21 @@ final class Onboarding: NSObject, NSWindowDelegate {
 	private var screenLabel: NSTextField?
 	private var hintLabel: NSTextField?
 	private var doneButton: NSButton?
+	/// 本次显示时是否「已经全就绪」。已经就绪就不跑倒计时自动关，
+	/// 否则从菜单打开会看到窗口一闪就没了（2026-11-24 反馈）。
+	private var readyWhenShown = false
+	/// 从「没就绪」变成「就绪」的时刻；只有本次显示内发生的转换才自动关窗
 	private var grantedAt: Date?
+	/**
+	 * 本次显示里，用户点过窗口上的「去授权」。
+	 *
+	 * 自动收窗**只认这条路**：`CGPreflightScreenCaptureAccess()` 在 App 刚起来、TCC 还没
+	 * 应答的时候会短暂返回 false，下一拍又变 true —— 那是一次假转换，不该被当成
+	 * 「用户刚授完权」而把窗口收掉（2026-11-24 用户看到的「一闪就没了」就是它）。
+	 * 用户自己去系统设置里勾的，窗口就老老实实等着他点「完成」。
+	 */
+	private var userWentToSettings = false
+	private var loggedInvisible = false
 	private var lastBeep = Date.distantPast
 
 	private let supportDir = FileManager.default.homeDirectoryForCurrentUser
@@ -74,12 +88,24 @@ final class Onboarding: NSObject, NSWindowDelegate {
 	}
 
 	func show() {
+		// 每次打开都重置倒计时：不能把上一次的 grantedAt 带过来，
+		// 否则 elapsed 早就超时，窗口刚出来就被 orderOut 掉。
+		grantedAt = nil
+		userWentToSettings = false
+		loggedInvisible = false
+		readyWhenShown = Permissions.accessibilityGranted() && Permissions.screenRecordingGranted()
+		Log.write(
+			"show()：readyWhenShown=\(readyWhenShown) accessibility=\(Permissions.accessibilityGranted()) screen=\(Permissions.screenRecordingGranted())"
+		)
 		if let window {
 			placeWindow(window)
 			window.makeKeyAndOrderFront(nil)
 			window.orderFrontRegardless()
 			NSApp.activate(ignoringOtherApps: true)
 			refresh()
+			// 上次隐藏时轮询自己停了（see startPolling），复用时得重新起来，
+			// 否则再打开这个窗口授权状态就不再跟着变了。
+			startPolling()
 			beepOnce()
 			return
 		}
@@ -247,6 +273,7 @@ final class Onboarding: NSObject, NSWindowDelegate {
 	// MARK: - 动作
 
 	@objc private func grantAccessibility() {
+		userWentToSettings = true
 		// 顺序很重要：先请求（让 app 出现在列表里），再打开面板
 		Permissions.requestAccessibility()
 		openSettings("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
@@ -254,6 +281,7 @@ final class Onboarding: NSObject, NSWindowDelegate {
 	}
 
 	@objc private func grantScreenRecording() {
+		userWentToSettings = true
 		Permissions.requestScreenRecording()
 		openSettings("x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")
 		refresh()
@@ -261,7 +289,9 @@ final class Onboarding: NSObject, NSWindowDelegate {
 
 	/// 按钮在「已就绪」后变成「完成」，点它直接关窗；否则只是重新检测
 	@objc private func donePressed() {
+		Log.write("donePressed()：accessibility=\(Permissions.accessibilityGranted()) screen=\(Permissions.screenRecordingGranted())")
 		if Permissions.accessibilityGranted() && Permissions.screenRecordingGranted() {
+			Log.write("donePressed：收窗")
 			window?.orderOut(nil)
 			return
 		}
@@ -274,6 +304,7 @@ final class Onboarding: NSObject, NSWindowDelegate {
 	}
 
 	@objc private func dismiss() {
+		Log.write("dismiss()：用户点稍后")
 		markDismissed()
 		window?.orderOut(nil)
 	}
@@ -290,9 +321,13 @@ final class Onboarding: NSObject, NSWindowDelegate {
 		if accessibility && screen {
 			hintLabel?.stringValue = "都好了，现在可以开始操作。"
 			doneButton?.title = "完成"
+			// 只对「看着它变成已允许」的那种收窗：留 1.5s 让用户看清绿勾再收起。
+			// 打开时就已经就绪（菜单里点进来的）就停在窗口上，等用户自己关。
+			guard !readyWhenShown, userWentToSettings else { return }
 			if grantedAt == nil { grantedAt = Date() }
 			// 让用户看见「已允许」再自动关掉，不要一闪而过
-			if let grantedAt, Date().timeIntervalSince(grantedAt) > 1.2 {
+			if let grantedAt, Date().timeIntervalSince(grantedAt) > 1.5 {
+				Log.write("自动收窗：grantedAt=+\(String(format: "%.2f", Date().timeIntervalSince(grantedAt)))s readyWhenShown=\(readyWhenShown)")
 				window?.orderOut(nil)
 			}
 		} else if accessibility {
@@ -310,6 +345,13 @@ final class Onboarding: NSObject, NSWindowDelegate {
 			guard let self else { return }
 			self.refresh()
 			if self.window?.isVisible != true {
+				if self.window != nil, !self.loggedInvisible {
+					self.loggedInvisible = true
+					Log.write(
+						"窗口变成不可见：isVisible=\(self.window?.isVisible ?? false) mini=\(self.window?.isMiniaturized ?? false) "
+							+ "onActiveSpace=\(self.window?.isOnActiveSpace ?? false) keys=\(self.window?.isKeyWindow ?? false)"
+					)
+				}
 				self.timer?.invalidate()
 				self.timer = nil
 			}
@@ -338,6 +380,7 @@ final class Onboarding: NSObject, NSWindowDelegate {
 	}
 
 	func windowWillClose(_ notification: Notification) {
+		Log.write("windowWillClose()")
 		timer?.invalidate()
 		timer = nil
 	}

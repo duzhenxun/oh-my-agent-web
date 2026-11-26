@@ -175,7 +175,7 @@ export function PushPanel() {
 					"This is a local notification test; it does not go through the server.",
 				),
 				icon: "/icons/icon-192.png",
-				tag: "agent-web-local",
+				tag: "oh-my-agent-web-local",
 			};
 			if (reg) await reg.showNotification(brandName, options);
 			else new Notification(brandName, options);

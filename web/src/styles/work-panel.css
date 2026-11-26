@@ -80,8 +80,9 @@
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: 24px;
-	height: 24px;
+	/* 2026-11-23 用户：「加号太大了」：24 → 20（图标 13 → 12） */
+	width: 20px;
+	height: 20px;
 	padding: 0;
 	border: 1px solid var(--border);
 	border-radius: 6px;
@@ -92,8 +93,8 @@
 }
 
 .preview-tab-add-icon {
-	width: 13px;
-	height: 13px;
+	width: 12px;
+	height: 12px;
 	display: block;
 }
 
@@ -467,20 +468,22 @@
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: calc(30px * var(--appbar-scale, 1) + 2px);
+	/* 2026-11-23 用户：「加号太大了」——宽 30 → 24、图标 18 → 14。
+	 * 高度仍是邻座那一档（视觉上还在同一排上），只是不再比它们胖一圈。 */
+	width: calc(24px * var(--appbar-scale, 1));
 	height: calc(26px * var(--appbar-scale, 1) + 2px);
 	padding: 0;
-	font-size: calc(18px * var(--appbar-scale, 1));
+	font-size: calc(16px * var(--appbar-scale, 1));
 	line-height: 1;
-	border-radius: calc(7px * var(--appbar-scale, 1));
+	border-radius: calc(6px * var(--appbar-scale, 1));
 }
 
 /* 「＋」的图标尺寸跟旁边那两颗按钮里的图标**一模一样**（18 × 顶栏缩放 = 15.3），
    这样三者并排时宽度、高度、墨迹都是同一套 */
 .app-split .preview-tab-add .preview-tab-add-icon,
 .app-wide-lift .preview-tab-add .preview-tab-add-icon {
-	width: calc(18px * var(--appbar-scale, 1));
-	height: calc(18px * var(--appbar-scale, 1));
+	width: calc(14px * var(--appbar-scale, 1));
+	height: calc(14px * var(--appbar-scale, 1));
 }
 
 .app-split .preview-tabs .preview-tool-btn .preview-wide-icon,

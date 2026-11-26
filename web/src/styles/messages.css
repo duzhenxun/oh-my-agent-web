@@ -809,6 +809,7 @@
 	background: none;
 }
 
+
 /* 绝对时间（10月16日 14:18:06）：只是参考信息，比按钮/用量再小一号、再淡一档。
    两种写法都在 DOM 里，宽度说了算（见下面的手机媒体查询）：桌面带秒，手机去秒。 */
 .msg-foot-stamp {
@@ -911,6 +912,34 @@
 .msg-foot .msg-foot-read-aloud:not(:disabled):hover,
 .msg-foot .msg-foot-read-aloud[aria-pressed="true"] {
 	color: var(--accent);
+}
+
+/* 「正在念」：喇叭**变蓝 + 一跳一跳**（用户 2026-11-24：「朗读时让那个小喇叭变成蓝色、在动的样子」）。
+   原来念起来是把图标换成一个方块（像播放器），配上旁边那两颗「暂停 / 停止」，
+   尾注一下出现三样东西 —— 现在只有这一颗，状态全靠这只喇叭动。
+   只动 transform / opacity：不引起重排，长回复尾巴上也不会抖。 */
+.msg-foot .msg-foot-read-aloud[aria-pressed="true"] svg {
+	animation: msg-read-aloud 1s ease-in-out infinite;
+}
+
+@keyframes msg-read-aloud {
+	0%,
+	100% {
+		transform: translateY(0) scale(1);
+		opacity: 0.75;
+	}
+	50% {
+		transform: translateY(-1px) scale(1.12);
+		opacity: 1;
+	}
+}
+
+/* 关了动效（前庭敏感 / 省电）：颜色还是蓝的，只是不跳 */
+@media (prefers-reduced-motion: reduce) {
+	.msg-foot .msg-foot-read-aloud[aria-pressed="true"] svg {
+		animation: none;
+		opacity: 1;
+	}
 }
 
 .msg-foot .msg-foot-read-aloud:disabled {

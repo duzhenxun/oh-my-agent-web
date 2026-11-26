@@ -51,7 +51,17 @@ import {
 } from "./dsh-map.js";
 
 type Binding = { sessionId: string; cwd: string; live: boolean; config: DshConfigOption[] };
-type ActiveTurn = { onEvent: (event: EngineEvent) => void; ended: boolean };
+type ActiveTurn = {
+	onEvent: (event: EngineEvent) => void;
+	ended: boolean;
+	/**
+	 * 这一轮真的落定了（`session/prompt` resolve / reject 后）。
+	 *
+	 * 插队要用它：ACP 同一会话只能挂一条 prompt（在飞时再发会被对端拒），
+	 * 所以必须等上一条 settle 才能发下一条。
+	 */
+	settled: Promise<void>;
+};
 type ToolFact = { title?: string; rawInput?: unknown };
 
 type DshEngineOptions = {
@@ -67,6 +77,13 @@ type DshEngineOptions = {
 type DshEngine = EnginePort & { client: DshClient };
 
 const MAX_TOOL_FACTS = 200;
+/**
+ * 插队打断后等「这一轮真的落定」的上限（ADR-0054）。
+ *
+ * 实测（dsh 0.2.0-rc.2）：`session/cancel` 到本轮 settle 约 21ms，且会补一个 failed 的 tool_end。
+ * 5 秒纯粋是兜底：超了就交回调用方降级成排队。
+ */
+const INTERRUPT_SETTLE_MS = 5000;
 
 export function createDshEngine(options: DshEngineOptions = {}): DshEngine {
 	/** DSH_HOME（会话日志与投影缓存都在它下面）；测试可覆盖 */
@@ -228,7 +245,7 @@ export function createDshEngine(options: DshEngineOptions = {}): DshEngine {
 			return;
 		}
 		// 认不出的服务端请求必须回包，否则 DSH 那一轮会一直等
-		client.respondError(request.id, -32601, `agent-web 未实现的服务端请求：${request.method}`);
+		client.respondError(request.id, -32601, `oh-my-agent-web 未实现的服务端请求：${request.method}`);
 	});
 
 	return {
@@ -294,8 +311,19 @@ export function createDshEngine(options: DshEngineOptions = {}): DshEngine {
 				throw new Error(friendlyDshError(error));
 			});
 			if (!binding) throw new Error("DSH 会话还没准备好（先新建一个会话）");
+			/**
+			 * 单飞守卫（ADR-0054）：同一会话已经有 prompt 在飞就自己拒掉。
+			 *
+			 * 对端也会拒（`Invalid params: a prompt is already in flight for this session`），
+			 * 但那是要等一次往返才拒、而且文案是协议原文；自己拦一下：快、能说人话。
+			 */
+			if (active.has(sessionId)) throw new Error("这个会话已经有回合在跑：DSH 同一会话同时只能跑一条 prompt");
 
-			const turn: ActiveTurn = { onEvent, ended: false };
+			let finish = (): void => {};
+			const finished = new Promise<void>((resolve) => {
+				finish = resolve;
+			});
+			const turn: ActiveTurn = { onEvent, ended: false, settled: finished };
 			active.set(sessionId, turn);
 			try {
 				const result = await client.request<{ stopReason?: string }>(
@@ -307,6 +335,8 @@ export function createDshEngine(options: DshEngineOptions = {}): DshEngine {
 				if (!turn.ended) onEvent({ type: "turn_end", reason: stopReasonToTurnEnd(result?.stopReason) });
 			} finally {
 				turn.ended = true;
+				// 兜底兑现 `settled`：不管正常结束、被打断还是抛错，等它的 interruptAndSettle 都不能永远挂着
+				finish();
 				active.delete(sessionId);
 			}
 		},
@@ -316,6 +346,27 @@ export function createDshEngine(options: DshEngineOptions = {}): DshEngine {
 			if (!binding) return;
 			// ACP 里 cancel 是**通知**（无 id）：发成请求会被当成未知方法丢掉 → 停止按钮没反应
 			client.notify("session/cancel", { sessionId: binding.sessionId });
+		},
+
+		/**
+		 * 打断 + 等落定（ADR-0054 的插队用它）。
+		 *
+		 * 实测（dsh 0.2.0-rc.2）：cancel 后 21ms 内这轮 settle 成 interrupted，并补一个 failed 的 tool_end，
+		 * 之后 717ms 内就能正常发下一轮。
+		 */
+		async interruptAndSettle(sessionId) {
+			const binding = bindingOf(sessionId);
+			const turn = active.get(sessionId);
+			// 没有在飞的回合 = 已经落定，调用方可以立刻发
+			if (!binding || !turn) return true;
+			client.notify("session/cancel", { sessionId: binding.sessionId });
+			return await Promise.race([
+				turn.settled.then(() => true),
+				new Promise<boolean>((resolve) => {
+					const timer = setTimeout(() => resolve(false), INTERRUPT_SETTLE_MS);
+					timer.unref?.();
+				}),
+			]);
 		},
 
 		/** 不看了：关掉会话释放写句柄（DSH 自己的 web/tui 才能打开它） */

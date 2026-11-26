@@ -1,10 +1,20 @@
 import { createEdgeEngine, TTS_TIMEOUT_MS } from "./edge.js";
 import { createLocalEngines } from "./local.js";
+import { readTtsConfig } from "./config.js";
+import { createCloudEngines } from "./registry.js";
 import { TtsError, type TtsAudio, type TtsEngine, type TtsInput, type TtsVoiceList } from "./types.js";
 import { DEFAULT_EDGE_VOICE } from "./voices.js";
 
 export const MAX_TEXT_CHARACTERS = 5000;
 export const MAX_CONCURRENT_TTS = 2;
+
+/** 面板需要知道的信息：哪家可用、哪家还没配密钥 */
+export type TtsProviderInfo = {
+	id: string;
+	label: string;
+	configured: boolean;
+	note?: string;
+};
 
 function providerName(value: unknown): string {
 	if (value === undefined) return "edge";
@@ -14,14 +24,18 @@ function providerName(value: unknown): string {
 
 export function createTtsService(
 	engines?: ReadonlyMap<string, TtsEngine>,
-	options: { maxConcurrent?: number; timeoutMs?: number } = {},
+	options: { maxConcurrent?: number; timeoutMs?: number; dataDir?: string } = {},
 ) {
 	const local = engines ? undefined : createLocalEngines(options.timeoutMs);
+	// 云端厂商（DeepSeek / 以后补的千问、豆包）：密钥从 ~/.oh-my-agent-web/tts.json 按厂商分块读
+	const config = engines ? undefined : readTtsConfig(options.dataDir);
+	const cloud = config ? createCloudEngines(config) : new Map<string, TtsEngine>();
 	const providers =
 		engines ??
 		new Map<string, TtsEngine>([
 			["edge", createEdgeEngine()],
 			...(local?.engines ?? []).map((engine) => [engine.id, engine] as const),
+			...(cloud.entries() as Iterable<[string, TtsEngine]>),
 		]);
 	let active = 0;
 	const engineFor = (provider: string) => {
@@ -32,6 +46,19 @@ export function createTtsService(
 	return {
 		close() {
 			local?.close();
+		},
+		/** 供设置面板渲染：哪些引擎可用、哪家还缺密钥（只报状态，不吐 key） */
+		providers(): TtsProviderInfo[] {
+			return [...providers.entries()].map(([id, engine]) => ({
+				id,
+				label: engine.label ?? id,
+				configured: engine.configured !== false,
+				note: engine.note,
+			}));
+		},
+		/** 云端配置文件的路径（面板上直接告诉用户改哪个文件） */
+		configPath(): string | undefined {
+			return config?.source;
 		},
 		voices(provider: unknown): TtsVoiceList {
 			return engineFor(providerName(provider)).voices();

@@ -10,7 +10,14 @@
  *   2. **按依赖分层**：没有前置的排最左，每条依赖往右推一层（最长路径），同层竖着排；
  *   3. **有上限**：40 个节点 / 80 条边。超出就截断并如实告诉模型，而不是画一张看不清的图。
  */
-import type { CanvasArtifact, CanvasDoc, CanvasEdge, CanvasNode, CanvasNodeKind, CanvasNodeStatus } from "../protocol.js";
+import type {
+	CanvasArtifact,
+	CanvasDoc,
+	CanvasEdge,
+	CanvasNode,
+	CanvasNodeKind,
+	CanvasNodeStatus,
+} from "../protocol.js";
 
 /** 图上最多这么多节点（再多就不是"一眼看全"，而是又一棵树） */
 export const CANVAS_MAX_NODES = 40;
@@ -19,11 +26,32 @@ export const CANVAS_MAX_EDGES = 80;
 const TITLE_MAX = 80;
 const DETAIL_MAX = 200;
 const GOAL_MAX = 120;
-/** 节点在世界坐标里的排布间距 */
-const COLUMN_WIDTH = 300;
-const ROW_HEIGHT = 132;
+/**
+ * 节点在世界坐标里的排布间距。
+ * 行列间距（世界坐标）。
+ *
+ * `ROW_HEIGHT` 给的是「一张普通卡片 + 一点余量」：卡片高度是自适应的，服务端不知道它到底多高，
+ * 所以这里只能给个偏宽松的值，剩下的由前端按实测高度做防叠（见 `CanvasView.tsx` 的 `cardRelief`）。
+ */
+const COLUMN_WIDTH = 320;
+/** 同一列里两张卡之间留的缝 */
+const ROW_GAP = 22;
 const ORIGIN_X = 40;
 const ORIGIN_Y = 64;
+
+/**
+ * 服务端按字数估一下卡片高度。
+ *
+ * 为什么要估：以前同列固定 156 一行，而一张带三行说明的卡就有 200 多高，
+ * 默认打开时整列卡片直接摞在一起（用户 2026-11-26 报的「默认卡牌片堆积在一块」）。
+ * 前端拿到实测高度后会再防一次叠（`CanvasView.tsx` 的 `cardRelief`），
+ * 这里只要别差太远，第一帧就不难看。
+ */
+function estimateCardHeight(node: CanvasNode): number {
+	const titleLines = Math.max(1, Math.ceil(node.title.length / 13));
+	const detailLines = node.detail ? Math.ceil(node.detail.length / 17) : 0;
+	return 56 + titleLines * 19 + detailLines * 19;
+}
 
 const STATUSES: readonly CanvasNodeStatus[] = ["todo", "doing", "done", "blocked"];
 const KINDS: readonly CanvasNodeKind[] = ["task", "milestone", "risk", "doc", "decision"];
@@ -67,7 +95,14 @@ function uniqueId(used: Set<string>, base: string): string {
 	return next;
 }
 
-export type NodeInput = { id?: unknown; title?: unknown; detail?: unknown; status?: unknown; kind?: unknown; order?: unknown };
+export type NodeInput = {
+	id?: unknown;
+	title?: unknown;
+	detail?: unknown;
+	status?: unknown;
+	kind?: unknown;
+	order?: unknown;
+};
 export type EdgeInput = { from?: unknown; to?: unknown; label?: unknown };
 
 /**
@@ -153,12 +188,13 @@ export function layout(nodes: readonly CanvasNode[], edges: readonly CanvasEdge[
 		.map((node, index) => ({ node, index }))
 		.sort((a, b) => (a.node.order ?? a.index) - (b.node.order ?? b.index));
 
-	const rows = new Map<number, number>();
+	// 每列各自往下堆：按这一张自己的估算高度走，短卡不浪费空、长卡不会压到下一张
+	const cursors = new Map<number, number>();
 	return ordered.map(({ node }) => {
 		const depth = depthOf(node.id);
-		const row = rows.get(depth) ?? 0;
-		rows.set(depth, row + 1);
-		return { ...node, x: ORIGIN_X + depth * COLUMN_WIDTH, y: ORIGIN_Y + row * ROW_HEIGHT };
+		const y = cursors.get(depth) ?? ORIGIN_Y;
+		cursors.set(depth, y + estimateCardHeight(node) + ROW_GAP);
+		return { ...node, x: ORIGIN_X + depth * COLUMN_WIDTH, y };
 	});
 }
 
@@ -167,7 +203,12 @@ function nextRev(previous: CanvasDoc | null): number {
 }
 
 /** 一份新画布（整体替换）：给目标 + 节点 + 连线，坐标由 `layout` 算 */
-export function planDoc(previous: CanvasDoc | null, goal: unknown, nodes: readonly NodeInput[], edges: readonly EdgeInput[]): CanvasDoc {
+export function planDoc(
+	previous: CanvasDoc | null,
+	goal: unknown,
+	nodes: readonly NodeInput[],
+	edges: readonly EdgeInput[],
+): CanvasDoc {
 	const normalized = normalizeNodes(nodes);
 	const normalizedEdges = normalizeEdges(edges, normalized);
 	return {
@@ -213,7 +254,12 @@ function withLevel(doc: CanvasDoc, parent: string | null, nodes: CanvasNode[], e
  * 给某个节点挂上一份子计划（会按依赖重新排坐标）。
  * 主图上这一个节点的坐标不动 —— 它还在原位，只是下面多了一层。
  */
-export function planSub(doc: CanvasDoc, id: string, inputs: readonly NodeInput[], edges: readonly EdgeInput[]): CanvasDoc | null {
+export function planSub(
+	doc: CanvasDoc,
+	id: string,
+	inputs: readonly NodeInput[],
+	edges: readonly EdgeInput[],
+): CanvasDoc | null {
 	const host = doc.nodes.find((node) => node.id === id);
 	if (host === undefined) return null;
 	const nodes = normalizeNodes(inputs);
@@ -255,12 +301,12 @@ export function setArtifacts(
 	const level = levelOf(doc, parent);
 	if (level === null) return doc;
 	const nodes = level.nodes.map((node) => {
-			if (node.id !== id) return node;
-			const next: CanvasNode = { ...node };
-			// 空数组就当没有：老画布不因为"跑了一次但什么都没产出"多出一个空字段
-			if (artifacts.length === 0) delete next.artifacts;
-			else next.artifacts = artifacts.map((each) => ({ ...each }));
-			return next;
+		if (node.id !== id) return node;
+		const next: CanvasNode = { ...node };
+		// 空数组就当没有：老画布不因为"跑了一次但什么都没产出"多出一个空字段
+		if (artifacts.length === 0) delete next.artifacts;
+		else next.artifacts = artifacts.map((each) => ({ ...each }));
+		return next;
 	});
 	return withLevel(doc, parent, nodes, level.edges) ?? doc;
 }
@@ -277,14 +323,14 @@ export function updateNode(
 	const title = patch.title === undefined ? null : text(patch.title, TITLE_MAX);
 	const detail = patch.detail === undefined ? null : text(patch.detail, DETAIL_MAX);
 	const nodes = level.nodes.map((node) => {
-			if (node.id !== id) return node;
-			const next: CanvasNode = { ...node };
-			if (title !== null && title !== "") next.title = title;
-			if (detail !== null) {
-				if (detail === "") delete next.detail;
-				else next.detail = detail;
-			}
-			return next;
+		if (node.id !== id) return node;
+		const next: CanvasNode = { ...node };
+		if (title !== null && title !== "") next.title = title;
+		if (detail !== null) {
+			if (detail === "") delete next.detail;
+			else next.detail = detail;
+		}
+		return next;
 	});
 	return withLevel(doc, parent, nodes, level.edges) ?? doc;
 }
@@ -339,11 +385,17 @@ export function moveNodes(
 export function describe(doc: CanvasDoc | null): string {
 	if (isEmptyDoc(doc)) return "画布是空的（还没有任何节点）。用户还没让你画，或者你还没画。";
 	const canvas = doc as CanvasDoc;
-	const lines = [`画布目标：${canvas.goal || "（没写）"}`, `节点 ${canvas.nodes.length} 个，依赖 ${canvas.edges.length} 条：`];
+	const lines = [
+		`画布目标：${canvas.goal || "（没写）"}`,
+		`节点 ${canvas.nodes.length} 个，依赖 ${canvas.edges.length} 条：`,
+	];
 	for (const node of canvas.nodes) {
 		const detail = node.detail ? ` —— ${node.detail}` : "";
 		const kind = node.kind ? `(${node.kind}) ` : "";
-		const sub = node.sub === undefined ? "" : ` 〔子计划 ${node.sub.nodes.filter((each) => each.status === "done").length}/${node.sub.nodes.length} 步〕`;
+		const sub =
+			node.sub === undefined
+				? ""
+				: ` 〔子计划 ${node.sub.nodes.filter((each) => each.status === "done").length}/${node.sub.nodes.length} 步〕`;
 		lines.push(`- [${node.status}] ${kind}${node.id}: ${node.title}${detail}${sub}`);
 	}
 	if (canvas.edges.length > 0) {

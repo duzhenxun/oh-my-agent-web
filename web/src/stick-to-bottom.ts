@@ -65,6 +65,29 @@ const ANCHOR_VERIFY_FRAMES = 6;
 const ANCHOR_GAP_PX = 10;
 
 /**
+ * 锚点该落在哪儿（scrollTop）：这条消息的顶边往上退「呼吸带 + 被浮层盖住的那一段」。
+ *
+ * `inset` 是视口顶部被浮层盖住的高度：顶栏是正常一行、不浮在内容上，`inset` 是 0，
+ * 行为跟以前一模一样；留着这个参数是为了以后真有浮层时不用再改调用方。
+ */
+export function anchorOffsetFor(offset: number, inset = 0): number {
+	// `Math.max(0, NaN)` 还是 NaN（会把 scrollTop 写成 NaN 直接不动），所以先自己兜住脏值
+	const covered = Number.isFinite(inset) && inset > 0 ? inset : 0;
+	return Math.max(0, offset - ANCHOR_GAP_PX - covered);
+}
+
+/**
+ * 视口顶部被浮层盖住的高度（px）。
+ *
+ * 那个数由 CSS 的 `scroll-padding-top` 给出（没被浮层盖住时它是 0）。
+ * 顺带让 `scrollIntoView` / Tab 聚焦也不会把人送进顶栏后面。
+ */
+function topInset(element: HTMLElement): number {
+	const value = Number.parseFloat(getComputedStyle(element).scrollPaddingTop);
+	return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+/**
  * 用户输入事件之后多久内发生的滚动算「人滚的」。
  * 滚轮一格格地来（每次都有新事件），所以这个窗口只需要盖住「事件 → 下一帧 scroll」那一点延迟。
  */
@@ -365,7 +388,7 @@ export function useStickToBottom(signal: string, resetKey?: string | null, activ
 			// 量「消息顶边离容器顶边多远」。末尾占位在内容之后，不影响这条消息的坐标，
 			// 所以不用先把它撤掉再量（代价是可能多一次重渲染，但少一次画面闪动）。
 			const offset = node.getBoundingClientRect().top - element.getBoundingClientRect().top + element.scrollTop;
-			anchorTopRef.current = Math.max(0, offset - ANCHOR_GAP_PX);
+			anchorTopRef.current = anchorOffsetFor(offset, topInset(element));
 			stuckRef.current = true;
 			setStuck(true);
 			// 补白变了就先等渲染（applyPad 返回 true），滚动交给下面那个 pad effect

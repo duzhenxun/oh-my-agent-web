@@ -14,28 +14,7 @@ import { useAppSelector } from "../store.ts";
 import { setEngine } from "../ws.ts";
 import type { EngineOption } from "../types.ts";
 import { useT } from "../use-language.ts";
-
-/** 机器人头 + 天线：和面板图标同一套描边，设置里的「引擎切换」也用它（见 SettingsPanel） */
-function EngineIcon() {
-	return (
-		<svg
-			className="engine-picker-icon"
-			viewBox="0 0 16 16"
-			fill="none"
-			stroke="currentColor"
-			strokeWidth={1.3}
-			strokeLinecap="round"
-			strokeLinejoin="round"
-			aria-hidden="true"
-		>
-			<rect x="2.6" y="5.2" width="10.8" height="7.6" rx="2.3" />
-			<path d="M8 5.2V3.3" />
-			<circle cx="8" cy="2.4" r="0.85" fill="currentColor" stroke="none" />
-			<circle cx="6" cy="9" r="0.8" fill="currentColor" stroke="none" />
-			<circle cx="10" cy="9" r="0.8" fill="currentColor" stroke="none" />
-		</svg>
-	);
-}
+import { EngineInstallDialog } from "./EngineInstallDialog.tsx";
 
 function Chevron() {
 	return (
@@ -114,6 +93,31 @@ export function EnginePicker({ placement = "appbar" }: { placement?: "appbar" | 
 	const activeName = snapshot?.engine ?? "";
 	const active = engines.find((engine) => engine.name === activeName);
 	const running = snapshot ? snapshot.running.status !== "idle" : false;
+	/**
+	 * 哪些引擎这台机器上没有（`/api/engines`，ADR-0052）。
+	 *
+	 * 为什么不塞进快照：查一次就够，而且「装没装」会随用户点安装变化 ——
+	 * 属于面板打开时的新鲜数据，不该每帧都推。没查到就当作「已装」（不挡人切换）。
+	 */
+	const [missing, setMissing] = useState<Record<string, boolean>>({});
+	/** 用户点了一个没装的引擎：弹出安装确认（**不主动弹**，只有点了才会有） */
+	const [installFor, setInstallFor] = useState<EngineOption | null>(null);
+	const refreshEngineStatus = () => {
+		void fetch("/api/engines")
+			.then(async (response) => (response.ok ? ((await response.json()) as { engines: { name: string; installed: boolean }[] }) : null))
+			.then((body) => {
+				if (!body) return;
+				const next: Record<string, boolean> = {};
+				for (const engine of body.engines) if (!engine.installed) next[engine.name] = true;
+				setMissing(next);
+			})
+			.catch(() => undefined);
+	};
+
+	// 每次打开面板都问一次「谁还没装」：用户可能刚在终端里装好了
+	useEffect(() => {
+		if (open) refreshEngineStatus();
+	}, [open]);
 
 	// 打开后量一次坐标：居中 + 小尾巴指着胶囊中心（与状态栏模型菜单、子代理浮层同一套算法）
 	useLayoutEffect(() => {
@@ -123,8 +127,8 @@ export function EnginePicker({ placement = "appbar" }: { placement?: "appbar" | 
 		}
 		const measure = () => {
 			const trigger = triggerRef.current?.getBoundingClientRect();
-			const pop = popRef.current?.getBoundingClientRect();
-			if (!trigger || !pop) return;
+			const aw = popRef.current?.getBoundingClientRect();
+			if (!trigger || !aw) return;
 			/**
 			 * 状态栏里的胶囊：状态栏贴着窗口最底，浮层只能**往上**长（往下就出屏了）。
 			 * 和状态栏那颗上下文胶囊用**同一套算法**（`centeredPopoverAnchor`）：
@@ -135,12 +139,12 @@ export function EnginePicker({ placement = "appbar" }: { placement?: "appbar" | 
 			if (placement === "statusbar") {
 				const { left, bottom, arrow } = centeredPopoverAnchor({
 					trigger: { left: trigger.left, top: trigger.top, width: trigger.width, height: trigger.height },
-					popover: { width: pop.width },
+					popover: { width: aw.width },
 					viewport: { width: window.innerWidth, height: window.innerHeight },
 					gap: 8,
 				});
 				// 浮层高度可能比一屏还高：夹一下，别让标题那一行跑到屏幕外
-				setAnchor({ left, top: Math.max(8, window.innerHeight - bottom - pop.height), arrow });
+				setAnchor({ left, top: Math.max(8, window.innerHeight - bottom - aw.height), arrow });
 				return;
 			}
 			// 从**顶栏下沿**掉下来，而不是从胶囊下沿：窄屏胶囊比顶栏矮，按胶囊算会把浮层压进顶栏一线
@@ -150,7 +154,7 @@ export function EnginePicker({ placement = "appbar" }: { placement?: "appbar" | 
 				belowPopoverAnchor({
 					// 只借它的水平中心与「底边」：高度不变，top 往上推到那条底边
 					trigger: { left: trigger.left, top: bottom - trigger.height, width: trigger.width, height: trigger.height },
-					popover: { width: pop.width },
+					popover: { width: aw.width },
 					viewport: { width: window.innerWidth, height: window.innerHeight },
 				}),
 			);
@@ -181,7 +185,12 @@ export function EnginePicker({ placement = "appbar" }: { placement?: "appbar" | 
 	if (engines.length === 0) return null;
 
 	const label = t(active?.label ?? activeName);
-	const badge = active?.badge ?? activeName.toUpperCase();
+	/**
+	 * 兜底：快照里没有这个引擎（老服务端 / 刚切过去一瞬）。**同样按首字母大写**拼，
+	 * 否则兜底那一刻会冒出 `OPENCODE` 这种全大写，跟其它行不一致（用户 2026-11-24）。
+	 */
+	const badge =
+		active?.badge ?? activeName.charAt(0).toUpperCase() + activeName.slice(1);
 
 	return (
 		<div className={`engine-picker${placement === "statusbar" ? " engine-picker-in-statusbar" : ""}`} ref={box}>
@@ -202,9 +211,8 @@ export function EnginePicker({ placement = "appbar" }: { placement?: "appbar" | 
 				aria-expanded={open}
 				aria-label={t(`智能体引擎：${label}`, `Agent engine: ${label}`)}
 			>
-				<span className="side-foot-icon" aria-hidden="true">
-					<EngineIcon />
-				</span>
+				{/* 短标签本身就是标识（用户 2026-11-24：「图标改掉」）——
+				    那个通用机器人头对分辨引擎没有任何帮助，五个引擎长得一模一样。 */}
 				<span className="engine-picker-badge">{badge}</span>
 				<Chevron />
 			</button>
@@ -241,7 +249,13 @@ export function EnginePicker({ placement = "appbar" }: { placement?: "appbar" | 
 									className={`engine-option${isActive ? " engine-option-on" : ""}`}
 									onClick={() => {
 										setOpen(false);
-										if (!isActive) setEngine(engine.name);
+										if (isActive) return;
+										// 没装就先问「要不要装」—— 直接切过去只会立刻报错，等于白跑一趟
+										if (missing[engine.name]) {
+											setInstallFor(engine);
+											return;
+										}
+										setEngine(engine.name);
 									}}
 									title={
 										running && !isActive
@@ -250,12 +264,18 @@ export function EnginePicker({ placement = "appbar" }: { placement?: "appbar" | 
 									}
 								>
 									<span className="engine-option-top">
-										<span className="engine-option-icon" aria-hidden="true">
-											<EngineIcon />
-										</span>
-										<span className="engine-option-badge">{engine.badge}</span>
+										{/*
+										 * 行里**不再单独列短标签**（用户 2026-11-24：「图标改掉」）：
+										 * 去掉机器人头之后，短标签 + 名称并排会读成「Codex Codex」「Claude Claude Code」，
+										 * 同一件事说两遍。名称本身已经按首字母大写（Pi / Codex / Opencode / Claude Code），
+										 * 短标签只在底部状态栏那颗小芯片上保留（那里横向空间只够几个字母）。
+										 */}
 										<span className="engine-option-label">{t(engine.label)}</span>
-										{versionText ? <span className="engine-option-version">{versionText}</span> : null}
+										{missing[engine.name] ? (
+											<span className="engine-option-version">{t("未安装", "not installed")}</span>
+										) : versionText ? (
+											<span className="engine-option-version">{versionText}</span>
+										) : null}
 										<span className="engine-option-tail">{isActive ? <Check /> : null}</span>
 									</span>
 									{engine.description ? <span className="engine-option-desc">{t(engine.description)}</span> : null}
@@ -271,6 +291,14 @@ export function EnginePicker({ placement = "appbar" }: { placement?: "appbar" | 
 						{running ? <div className="engine-pop-hint">{t("有回合在跑：先中断或等结束再切")}</div> : null}
 					</div>
 				</div>
+			) : null}
+
+			{installFor ? (
+				<EngineInstallDialog
+					engine={{ name: installFor.name, label: installFor.label }}
+					onClose={() => setInstallFor(null)}
+					onInstalled={refreshEngineStatus}
+				/>
 			) : null}
 		</div>
 	);

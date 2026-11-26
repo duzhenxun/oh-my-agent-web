@@ -3,9 +3,10 @@ import { useCallback, useEffect, useState } from "react";
 /**
  * 整页全屏（`document.documentElement` 那一套 Fullscreen API）。
  *
- * 现状（2026-10-28）：**没有入口**了 —— 顶栏那颗「全屏」按钮用户要求先撤掉
- * （见 App.tsx 里 appbar-side 的那段注释）。这个 hook 是完整可用的实现，
- * 想放回来只需在 App 里 `const fullscreen = useDocumentFullscreen()` 再画一颗按钮。
+ * 现状（2026-11-23）：**没有入口**了 —— 顶栏那颗「全屏」按钮用户又要求撤掉一次
+ * （「这个全屏可以先不要」；2026-10-28 也撤过一次）。这个 hook 是完整可用的实现，
+ * 想放回来只需在 App 里 `const fullscreen = useDocumentFullscreen()` 再画一颗按钮
+ * （原来的按钮就在分栏开关左边，`.appbar-side-btn` + 四角 SVG，历史见 git）。
  *
  * 为什么不用 F11：F11 是浏览器自己的全屏，网页拿不到状态（也没法从 UI 里退出），
  * 而顶栏这颗按钮要能「点一下进、再点一下出」，所以走 `requestFullscreen()`，

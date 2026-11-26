@@ -115,7 +115,9 @@
 	 *
 	 * 手机上不吃这条：抽屉宽度由 `responsive.css` 的 `--drawer-w` + `max-width: none` 管。
 	 */
-	max-width: max(240px, calc(100vw - 240px));
+	/* 注意这里是 `max(0px, ...)` 而不是 `max(240px, ...)`：那个 240 曾经同时充当
+	 * 「侧栏最小宽度」的兜底，现在下限取消了（见 sidebar-layout.ts）。 */
+	max-width: max(0px, calc(100vw - 240px));
 }
 
 .side-host > .sidebar {
@@ -142,7 +144,7 @@
 	background: transparent;
 }
 
-/* 命中区还是 8px（好抓），但**画出来只有 2px**：
+/* 命中区还是 8px（好抓），但**画出来只有 1px**：
  * 以前 hover 整个 8px 都刷成强调色，看着像侧栏边上贴了一条蓝胶带。
  * 现在细线压在分割线上（resizer 从侧栏右边缘起算，所以 left:0 正好骑在那条 1px 边框上），
  * 看起来像「这条线可以拖」，而不是「这里多了个色块」。 */
@@ -152,9 +154,9 @@
 	top: 0;
 	bottom: 0;
 	left: 0;
-	width: 2px;
+	width: 1px;
 	margin-left: -1px;
-	border-radius: 2px;
+	border-radius: 0;
 	background: transparent;
 	/* 宽度也一起过渡：hover 时这条线会从 2px 长到 4px（「变粗了 = 能抓」）。
 	 * 中间那颗 ↔ 胶囊把手已经去掉（用户 2026-10-29：「这个不要」），
@@ -199,13 +201,15 @@
 	cursor: col-resize;
 }
 
-/* hover / 拖动：线变粗变亮（**没有把手了**，粗线自己就是「能拖」的提示）。
+/* hover / 拖动：线**变蓝但不变粗**（**没有把手**，蓝线自己就是「能拖」的提示）。
  * 拖动中鼠标可能已经飘出 8px 命中区：靠 html 上的类名把这条线留住。 */
 .side-resizer:hover::after,
 .side-resizer:active::after,
 .is-resizing .side-resizer::after {
-	/* 2px：悬停只是把线染成主色，不再加粗、也不加外圈晕光（用户：线别这么粗） */
-	width: 2px;
+	/* 1px：跟顶栏那段分割线一样粗（用户 2026-11-24：「这根蓝线太粗了，跟上面一样细」）。
+	 * 前几轮已经从 4px 降到 2px，这次降到 1px —— 它压在侧栏原有边框上，
+	 * 再宽就不是「那条线变蓝」，而是「边上多了一道蓝条」。 */
+	width: 1px;
 	margin-left: -1px;
 	background: var(--accent);
 	box-shadow: none;
@@ -380,14 +384,21 @@
 	box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 16%, transparent);
 }
 
-/* 分割线上那颗「收起」小箭头：贴在侧栏最上面、**骑在分割线上**（压着线）。
+/* 分割线上那颗「收起」小箭头：**垂直居中**、骑在分割线上（压着线）。
+ *
+ * 原来贴在侧栏最上面（`top: 0`），用户 2026-11-23：「这个往中间放放呢」——
+ * 侧栏一长，贴在顶边那颗就跑到视野外了；居中之后不管侧栏多高，它总在眼睛那一带，
+ * 也跟手机上那颗（早就 `top: 50%`）同一套手感。
+ *
  * 它盖在拖拽条（7px）中间，所以按下时要 stopPropagation，否则会被当成一次拖动。
  *
  * 可见度：原来 opacity 0.55 + --text-faint，淡到几乎看不见（用户反馈「找不到」）——
  * 现在底色、边框、箭头都提亮一档，默认就能看清，hover 再变主色。 */
 .side-collapse {
 	position: absolute;
-	top: 0;
+	/* `translateY(-50%)` 必须跟着 top 一起写：只改 top 会把按钮的上沿对到中线，看着偏下半格 */
+	top: 50%;
+	transform: translateY(-50%);
 	/* 以分割线为中心（14px 宽 → 线两边各 7px），不再往侧栏里多伸，免得盖住行尾的 📌 与「⋯」 */
 	right: -7px;
 	/* 要压过分栏模式下抬到 8 的拖拽线（`.app-split .side-resizer`），否则线会盖住收起按钮 */
@@ -464,56 +475,77 @@
 	/* 按压式（用户：「改成按压式的，按住它弹出来」）：
 	 * 平时是半透明的一小片（看得见、但不像按钮），按住的那一下才「弹」出来 ——
 	 * 变实、变大一点、变主色，松开就执行收起。 */
-	opacity: 0.45;
+	/* 2026-11-23（用户：「这个按钮有点突兀」）：手机上默认**不画那个白胶囊** ——
+	 * 抽屉开着时它正压在遮罩上，一块半透明白色圆角砖特别跳。
+	 * 现在平时只有一枚淡淡的「‹」躺在遮罩上（无底色、无描边、无投影），
+	 * 按住 / 悬停才「弹」出实底与主色（按压式的原意保留，视觉噪点去掉）。 */
+	/* 半透明磨砂小片（不是原来的实白胶囊，也不是全透明）：压在暗遮罩上不跳，
+	 * 但一眼又还在。按住 / 悬停时才变成实底 + 主色。 */
+	opacity: 0.85;
+	background: color-mix(in srgb, var(--bg) 58%, transparent);
+	-webkit-backdrop-filter: blur(6px);
+	backdrop-filter: blur(6px);
+	border-color: color-mix(in srgb, var(--border) 60%, transparent);
+	box-shadow: none;
+	color: var(--text-dim);
 	transition:
 		opacity 0.12s ease,
 		transform 0.12s ease,
 		color 0.12s ease,
+		background 0.12s ease,
 		border-color 0.12s ease,
 		box-shadow 0.12s ease;
+}
+
+.is-mobile-shell .side-collapse:hover,
+.is-mobile-shell .side-collapse:focus-visible {
+	opacity: 0.9;
+	background: var(--bg);
+	border-color: var(--border-strong);
 }
 
 .is-mobile-shell .side-collapse:active {
 	opacity: 1;
 	transform: translateY(-50%) scale(1.12);
+	background: var(--bg);
 	color: var(--accent);
 	border-color: var(--accent-dim);
 	box-shadow: 0 2px 10px rgb(0 0 0 / 22%);
 }
 
 /*
- * 「展开项目列表」：舌形小箭头，**侧栏一收起就在**（顶栏在不在都一样）。
+ * 「展开项目列表」：**收起/展开是同一颗钮的两个面** —— 位置、尺寸、配色全部对齐
+ * `.side-collapse`（用户 2026-11-23：「这个收起时显示的这个图片，与没有收起时位置要统一、样式也要统一」）。
  *
- * 以前它只在「顶栏也藏起来」时出现（那时顶栏左上角那颗方图标也跟着没了，才补一颗兜底）。
- * 现在桌面上的收起 / 展开都走这一对舌形箭头（`side-collapse` / `side-expand`），
- * 用户的要求是「有没有顶部都一样，位置也一样」：两颗都挂在**内容行顶边 + 8px**。
- * 这颗的定位参照因此是 `.app-main`（见 app-bar.css），而不是窗口 ——
- * 用 `fixed` 的话顶栏一显一隐它就整体上下跳一个顶栏的高度。
- *  - 贴边、半圆「舌形」、只有 16px 宽 —— 它压着正文左边那条呼吸带，不该看着像一整颗按钮；
- *  - hover / 聚焦时向右长到 22px 并变主色，好按也不挡事。
+ * 对齐的三样东西：
+ *   ① 位置：**垂直居中**。收起那颗居中于 `.side-host`，这颗居中于 `.app-main` —— 两者同高
+ *      （app-bar.css 末尾把 `.app-main` 的内边距清成了 0，所以不必再补任何偏移；实测两颗中线一致）；
+ *   ② 尺寸：14×34 胶囊（原来 16×34 的半圆「舌形」，hover 还会长到 22px，看着像另一颗钮）；
+ *   ③ 配色：`--bg` 底、`--border-strong` 描边、`--text-dim` 箭头、同一层 1px 阴影，
+ *      hover / 聚焦只变主色（不再变宽）。
+ * 唯一的差别是方向（‹ / ›）和左右：收起那颗骑在分割线上（`right: -7px`），
+ * 展开这颗贴着窗口左缘（`left: 0`）—— 线外侧就是窗口外了，只能整颗留在里面。
  */
 .side-expand {
 	position: absolute;
 	left: 0;
-	top: 8px;
+	top: 50%;
+	transform: translateY(-50%);
 	z-index: 30; /* 压过正文与滚动条，但低于弹窗（60+）与提示（toast） */
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: 16px;
+	width: 14px;
 	height: 34px;
 	padding: 0;
 	border: 1px solid var(--border-strong, var(--border));
-	border-left: none;
-	border-radius: 0 999px 999px 0;
+	border-radius: 999px;
 	background: var(--bg);
 	color: var(--text-dim);
 	cursor: pointer;
-	opacity: 0.9;
+	opacity: 1;
 	box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
 	transition:
-		opacity 0.12s ease,
-		width 0.12s ease,
 		color 0.12s ease,
 		border-color 0.12s ease;
 }
@@ -526,8 +558,6 @@
 
 .side-expand:hover,
 .side-expand:focus-visible {
-	opacity: 1;
-	width: 22px;
 	color: var(--accent);
 	border-color: var(--accent-dim);
 }
@@ -548,7 +578,7 @@
 
 .is-mobile-shell .side-expand:hover,
 .is-mobile-shell .side-expand:focus-visible {
-	width: 20px;
+	width: 20px; /* 手机这颗本来就定宽 20，覆盖桌面那套 hover 规则（现在也不再加宽，留着防回归） */
 }
 
 /* 铺开 / 分栏时：右侧面板（z-index 6）整块贴在侧栏右边，会盖住侧栏边缘这 8px，

@@ -7,6 +7,7 @@ import { after, before, describe, it } from "node:test";
 import { FrameDecoder, encodeFrame } from "../../server/computer/framing.ts";
 import { HelperClient, HelperError, CLIENT_API_VERSION } from "../../server/computer/helper-client.ts";
 import { parseCommandPath } from "../../server/computer/cli.ts";
+import { computerControlMode } from "../../server/computer/status.js";
 
 /** 假 helper：按 JSON-RPC 回复，记录收到的请求，便于断言参数 */
 function startFakeHelper(
@@ -232,5 +233,22 @@ describe("设置与 Skill（使用临时 HOME，不碰真实用户目录）", ()
 		assert.throws(() => skill.enableSkill("node /abs/cli.js"), /不是本应用写入的/);
 		skill.disableSkill(); // 也不改名
 		assert.equal(skill.skillEnabled(), true);
+	});
+});
+
+/**
+ * 「哪种平台有什么」——纯函数，锁住三分支（2026-11-24）：
+ * Windows 版电脑控制先不做，但要能分辨「还没做（敬请期待）」和「这机器不支持」，
+ * 否则面板会给 Windows 用户看一句"这台机器上电脑控制不可用"，像是他自己装错了东西。
+ */
+describe("computerControlMode", () => {
+	it("macOS 有实现，不是 comingSoon", () => {
+		assert.deepEqual(computerControlMode("darwin"), { supported: true, comingSoon: false });
+	});
+	it("Windows 还没做 → comingSoon（前端显示「敬请期待」）", () => {
+		assert.deepEqual(computerControlMode("win32"), { supported: false, comingSoon: true });
+	});
+	it("其它平台既不支持也不承诺", () => {
+		assert.deepEqual(computerControlMode("linux"), { supported: false, comingSoon: false });
 	});
 });

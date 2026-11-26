@@ -307,6 +307,16 @@ body {
 	flex: 1 1 auto;
 }
 
+/**
+ * 有话筒时，文字再靠近它一点（用户 2026-11-24：「话筒右边的空间再小点」）。
+ *
+ * 只在**有话筒**时收：没有话筒的界面（surface / 关掉语音输入）文字左边距仍然是 12px，
+ * 不然正文会贴到框边上。用 `:has()` 按子元素反查，不用另加一个 class。
+ */
+.composer-row:has(.voice-mic) > .composer-input {
+	padding-left: 5px;
+}
+
 .composer-input {
 	flex: 1 1 auto;
 	min-width: 0;

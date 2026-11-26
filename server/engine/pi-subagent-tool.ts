@@ -95,7 +95,7 @@ export function waitForRun(port: SubagentEnginePort, id: string, timeoutMs: numb
 
 export function makeSubagentToolExtension(options: SubagentToolOptions): InlineExtension {
 	return {
-		name: "agent-web-subagents",
+		name: "oh-my-agent-web-subagents",
 		hidden: true,
 		factory: (pi) => {
 			const settings = readSubagentSettings(options.agentDir);

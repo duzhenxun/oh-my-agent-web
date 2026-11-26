@@ -59,7 +59,7 @@ describe("decide：本机直连的判定", () => {
 	});
 
 	it("带了正确 cookie / Basic 就放行（不再要一次密码）", () => {
-		const cookie = `agent-web-auth=${cookieToken(PASSWORD)}`;
+		const cookie = `oh-my-agent-web-auth=${cookieToken(PASSWORD)}`;
 		assert.equal(decide({ ...base, remoteAddress: "192.168.31.9", host: "192.168.31.112:25257", cookie }), "allow");
 		assert.equal(
 			decide({

@@ -20,6 +20,8 @@ async function makeService(
 		now?: () => Date;
 		workspaces?: string[];
 		dataDir?: string;
+		/** 当前引擎（任务按引擎分文件存） */
+		engine?: () => string;
 	} = {},
 ) {
 	const dataDir = options.dataDir ?? (await mkdtemp(join(tmpdir(), "cron-unit-")));
@@ -28,6 +30,7 @@ async function makeService(
 		dataDir,
 		execute: options.execute ?? (async () => "done"),
 		workspaces: () => options.workspaces ?? ["/work"],
+		...(options.engine ? { engine: options.engine } : {}),
 		...(options.now ? { now: options.now } : {}),
 	});
 	return { service, dataDir };
@@ -53,6 +56,96 @@ const waitFor = async (check: () => boolean | Promise<boolean>, label: string) =
 
 afterEach(async () => {
 	await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 })));
+});
+
+/**
+ * 任务**按引擎分开存**（用户 2026-11-24：「不同的 agent 要区分开，各保存各的，不要放一块」）。
+ *
+ * 原因：一条任务绑的是「那个引擎的会话与模型」，混在一个文件里切到别的引擎会看到一堆跑不了的
+ * 任务、还可能误触发；反过来把 pi 的任务丢给 codex 跑，只会报「打开会话失败」。
+ */
+describe("cron per-engine storage", () => {
+	it("两个引擎各存各的文件，互相看不到", async () => {
+		const dataDir = await mkdtemp(join(tmpdir(), "cron-engine-"));
+		dirs.push(dataDir);
+		let engine = "pi";
+		const { service } = await makeService({ dataDir, engine: () => engine });
+
+		const piJob = await service.create(draft({ name: "pi job" }));
+		engine = "codex";
+		assert.equal((await service.snapshot()).jobs.length, 0, "切到 codex 后不该看到 pi 的任务");
+		const codexJob = await service.create(draft({ name: "codex job" }));
+		assert.equal(codexJob.engine, "codex");
+		assert.deepEqual(
+			(await service.snapshot()).jobs.map((job) => job.name),
+			["codex job"],
+		);
+
+		engine = "pi";
+		assert.deepEqual(
+			(await service.snapshot()).jobs.map((job) => job.name),
+			["pi job"],
+		);
+
+		// 两份文件都在，且各只有自己那条
+		const piRaw = JSON.parse(await readFile(join(dataDir, "cron", "pi.json"), "utf8"));
+		const codexRaw = JSON.parse(await readFile(join(dataDir, "cron", "codex.json"), "utf8"));
+		assert.equal(piRaw.jobs[0]?.id, piJob.id);
+		assert.equal(codexRaw.jobs[0]?.id, codexJob.id);
+	});
+
+	it("老的 cron.json 一次性迁到 pi，并改名留底（不重复迁）", async () => {
+		const dataDir = await mkdtemp(join(tmpdir(), "cron-legacy-"));
+		dirs.push(dataDir);
+		const { writeFile, mkdir } = await import("node:fs/promises");
+		await mkdir(join(dataDir, "cron"), { recursive: true });
+		await writeFile(
+			join(dataDir, "cron.json"),
+			JSON.stringify({ jobs: [{ ...draft({ name: "old" }), id: "legacy-1" }], runs: [] }),
+			"utf8",
+		);
+
+		const { service } = await makeService({ dataDir, engine: () => "pi" });
+		const snapshot = await service.snapshot();
+		assert.deepEqual(
+			snapshot.jobs.map((job) => job.id),
+			["legacy-1"],
+		);
+		assert.equal(snapshot.jobs[0]?.engine, "pi");
+		// 老文件改名留底，不会每切一次引擎又迁一遍
+		await assert.rejects(() => readFile(join(dataDir, "cron.json"), "utf8"));
+		const kept = await readFile(join(dataDir, "cron.json.migrated"), "utf8");
+		assert.ok(kept.includes("legacy-1"));
+	});
+
+	it("切引擎时，旧引擎还在跑的那一轮不会被写进新引擎的文件", async () => {
+		const dataDir = await mkdtemp(join(tmpdir(), "cron-switch-"));
+		dirs.push(dataDir);
+		let engine = "pi";
+		let release: (value: string) => void = () => undefined;
+		const gate = new Promise<string>((resolve) => {
+			release = resolve;
+		});
+		const { service } = await makeService({
+			dataDir,
+			engine: () => engine,
+			execute: async () => await gate,
+		});
+		const job = await service.create(draft({ enabled: true }));
+		await service.start();
+		const run = await service.run(job.id);
+		assert.equal(run.status, "running");
+
+		// 跑一半切引擎：旧的一轮记成 interrupted，且不污染 codex 那份
+		engine = "codex";
+		const codexSnapshot = await service.snapshot();
+		assert.equal(codexSnapshot.runs.length, 0, "codex 不该有 pi 的运行记录");
+		release("done");
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		const piRaw = JSON.parse(await readFile(join(dataDir, "cron", "pi.json"), "utf8"));
+		assert.equal(piRaw.runs[0]?.status, "interrupted");
+		await service.stop();
+	});
 });
 
 describe("cron expression and preview", () => {
@@ -114,7 +207,8 @@ describe("cron job storage", () => {
 		const reloaded = await restarted.service.snapshot();
 		assert.equal(reloaded.jobs[0]?.id, created.id);
 		await restarted.service.stop();
-		const raw = await readFile(join(dataDir, "cron.json"), "utf8");
+		// 任务按引擎分文件存（`cron/<engine>.json`）：默认引擎是 pi
+		const raw = await readFile(join(dataDir, "cron", "pi.json"), "utf8");
 		assert.equal(JSON.parse(raw).jobs[0].id, created.id);
 	});
 

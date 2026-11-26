@@ -1,17 +1,16 @@
-/** 模型标识：三层结构线性图标，比机器人更适合放在模型名称前。 */
+/**
+ * 模型标识：**一圈 + 一个实心圆心**（"核心"的语汇）。
+ *
+ * 为什么换掉原来那枚「三层堆叠」：它的视觉重心压在 viewBox 上半
+ * （顶上一个菱形 + 下面两道横线），跟旁边的文字放一起总觉得偏高，靠 `translateY(1px)` 硬补也只有
+ * 4x 放大才对得上（用户 2026-11-23：「要是图标放了不跟文案对齐就换 2 个图标」）。
+ * 现在这个图形**上下左右都对称**，光学中心就是几何中心，任何字号下都不会偏。
+ */
 export function ModelIcon() {
 	return (
-		<svg
-			viewBox="0 0 16 16"
-			fill="none"
-			stroke="currentColor"
-			strokeWidth="1.3"
-			strokeLinecap="round"
-			strokeLinejoin="round"
-			aria-hidden="true"
-		>
-			<path d="M8 2.4 13.2 5 8 7.6 2.8 5 8 2.4Z" />
-			<path d="m2.8 8 5.2 2.6L13.2 8M2.8 11 8 13.6l5.2-2.6" />
+		<svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+			<circle cx="8" cy="8" r="5.4" stroke="currentColor" strokeWidth="1.4" />
+			<circle cx="8" cy="8" r="1.9" fill="currentColor" />
 		</svg>
 	);
 }

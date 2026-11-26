@@ -271,7 +271,7 @@ export function ProviderForm({
 									`已有：${initial.headerNames.join(", ")}；留空保持不变`,
 									`Saved: ${initial.headerNames.join(", ")} — leave empty to keep`,
 								)
-							: "X-Client: agent-web"
+							: "X-Client: oh-my-agent-web"
 					}
 				/>
 			</label>

@@ -5,24 +5,24 @@
 #   curl -fsSL https://raw.githubusercontent.com/duzhenxun/oh-my-agent-web/main/scripts/install.sh | sh
 #
 # 它做的事，按顺序：
-#   1. 找一个够新的 Node（>= 22.19，pi 1.x 的硬要求）；没有就自己下官方包到 $OH_MY_AGENT_WEB_HOME/node；
+#   1. 找一个够新的 Node（>= 22.19，pi 1.x 的硬要求）；没有就自己下官方包到 $AGENT_WEB_HOME/node；
 #   2. Linux 上先查 node-pty 的编译三件套（它只给 macOS / Windows 带预编译产物）；
-#   3. `npm install -g --prefix $OH_MY_AGENT_WEB_HOME` 装包（**不污染系统的全局 npm**，也不用 sudo）；
-#   4. 把 aw / agent-web / oh-my-agent-web 挂到 ~/.local/bin（必要时补 PATH）；
+#   3. `npm install -g --prefix $AGENT_WEB_HOME` 装包（**不污染系统的全局 npm**，也不用 sudo）；
+#   4. 把 aw / oh-my-agent-web / oh-my-agent-web 挂到 ~/.local/bin（必要时补 PATH）；
 #   5. 冒烟一次：版本号 + node-pty 能不能真的 require（终端能不能开）。
 #
 # 为什么不用 `npm i -g` 直接装：全局目录常常要 sudo，或者被 Homebrew / nvm 的 prefix 抢走，
 # 装完 `aw` 不在 PATH 上。装到自己的 prefix 里，"升级 / 卸载 / 换 Node" 都只动一个目录。
 #
 # 环境变量（也可以走同名命令行选项）：
-#   OH_MY_AGENT_WEB_VERSION        指定版本，默认 latest
-#   OH_MY_AGENT_WEB_HOME           安装目录，默认 ~/.oh-my-agent-web（**就是数据目录**：装进去的 bin/ lib/ node/ 和 settings.json / uploads / logs 并排）
-#   OH_MY_AGENT_WEB_REGISTRY       走镜像源，例如 https://registry.npmmirror.com
-#   OH_MY_AGENT_WEB_NODE           复用已有的 node（给二进制路径，或它所在的 bin 目录）
-#   OH_MY_AGENT_WEB_NODE_CHANNEL   需要自动装 Node 时用哪个通道，默认 v22.x
-#   OH_MY_AGENT_WEB_NO_PATH=1      不碰 shell 配置、不建 ~/.local/bin 里的软链
-#   OH_MY_AGENT_WEB_BUILD_TOOLS=1  Linux 上缺编译工具时尝试用 sudo 装（apt / dnf / apk / pacman）
-#   OH_MY_AGENT_WEB_SKIP_BUILD_CHECK=1  Linux 上跳过编译工具检查（自己知道有工具链时用）
+#   AGENT_WEB_VERSION        指定版本，默认 latest
+#   AGENT_WEB_HOME           安装目录，默认 ~/.oh-my-agent-web（**就是数据目录**：装进去的 bin/ lib/ node/ 和 settings.json / uploads / logs 并排）
+#   AGENT_WEB_REGISTRY       走镜像源，例如 https://registry.npmmirror.com
+#   AGENT_WEB_NODE           复用已有的 node（给二进制路径，或它所在的 bin 目录）
+#   AGENT_WEB_NODE_CHANNEL   需要自动装 Node 时用哪个通道，默认 v22.x
+#   AGENT_WEB_NO_PATH=1      不碰 shell 配置、不建 ~/.local/bin 里的软链
+#   AGENT_WEB_BUILD_TOOLS=1  Linux 上缺编译工具时尝试用 sudo 装（apt / dnf / apk / pacman）
+#   AGENT_WEB_SKIP_BUILD_CHECK=1  Linux 上跳过编译工具检查（自己知道有工具链时用）
 #
 # 卸载：sh install.sh --uninstall   （只删装进去的包、bin 里的命令和 ~/.local/bin 里的软链；settings / 密码 / 上传 / 日志一律不动）
 
@@ -31,13 +31,13 @@ set -eu
 PKG="oh-my-agent-web"
 # @earendil-works/pi-* 1.x 用到 Node 22.19 才有的 API；低于它会在运行时炸，不该放进来
 MIN_NODE="22.19.0"
-NODE_CHANNEL="${OH_MY_AGENT_WEB_NODE_CHANNEL:-v22.x}"
-HOMEDIR="${OH_MY_AGENT_WEB_HOME:-$HOME/.oh-my-agent-web}"
-VERSION="${OH_MY_AGENT_WEB_VERSION:-latest}"
-REGISTRY="${OH_MY_AGENT_WEB_REGISTRY:-}"
-NO_PATH="${OH_MY_AGENT_WEB_NO_PATH:-0}"
-BUILD_TOOLS="${OH_MY_AGENT_WEB_BUILD_TOOLS:-0}"
-SKIP_BUILD_CHECK="${OH_MY_AGENT_WEB_SKIP_BUILD_CHECK:-0}"
+NODE_CHANNEL="${AGENT_WEB_NODE_CHANNEL:-v22.x}"
+HOMEDIR="${AGENT_WEB_HOME:-$HOME/.oh-my-agent-web}"
+VERSION="${AGENT_WEB_VERSION:-latest}"
+REGISTRY="${AGENT_WEB_REGISTRY:-}"
+NO_PATH="${AGENT_WEB_NO_PATH:-0}"
+BUILD_TOOLS="${AGENT_WEB_BUILD_TOOLS:-0}"
+SKIP_BUILD_CHECK="${AGENT_WEB_SKIP_BUILD_CHECK:-0}"
 DO_UNINSTALL=0
 
 # ---------- 输出 ----------
@@ -81,8 +81,8 @@ usage() {
   --uninstall          卸载（只删装进去的包与命令；数据目录里的配置/上传不动）
   -h, --help           显示本帮助
 
-也可以直接用环境变量（同名，OH_MY_AGENT_WEB_ 前缀），例如：
-  curl -fsSL .../install.sh | OH_MY_AGENT_WEB_VERSION=0.6.0 sh
+也可以直接用环境变量（同名，AGENT_WEB_ 前缀），例如：
+  curl -fsSL .../install.sh | AGENT_WEB_VERSION=0.6.0 sh
 EOF
 }
 
@@ -167,19 +167,19 @@ is_musl() {
 # ---------- 1. Node ----------
 ensure_node() {
 	# (a) 用户指了就用他的
-	if [ -n "${OH_MY_AGENT_WEB_NODE:-}" ]; then
-		cand="$OH_MY_AGENT_WEB_NODE"
+	if [ -n "${AGENT_WEB_NODE:-}" ]; then
+		cand="$AGENT_WEB_NODE"
 		# 允许给二进制路径，也允许给目录（`set -e` 下别用 `[ ] &&`，条件为假会把脚本带走）
 		if [ -d "$cand" ]; then cand="$cand/node"; fi
-		[ -x "$cand" ] || die "OH_MY_AGENT_WEB_NODE 指向的 node 不可执行：$OH_MY_AGENT_WEB_NODE"
+		[ -x "$cand" ] || die "AGENT_WEB_NODE 指向的 node 不可执行：$AGENT_WEB_NODE"
 		NODE_BIN="$cand"
 		NPM_BIN="$(dirname "$cand")/npm"
 		[ -x "$NPM_BIN" ] || NPM_BIN="$(command -v npm || true)"
-		[ -n "$NPM_BIN" ] || die "OH_MY_AGENT_WEB_NODE 旁边没有 npm（需要 node 与 npm 同一个 prefix）"
+		[ -n "$NPM_BIN" ] || die "AGENT_WEB_NODE 旁边没有 npm（需要 node 与 npm 同一个 prefix）"
 		return 0
 	fi
 
-	# (b) 上次装到 $OH_MY_AGENT_WEB_HOME/node 里的那份
+	# (b) 上次装到 $AGENT_WEB_HOME/node 里的那份
 	if [ -x "$HOMEDIR/node/bin/node" ]; then
 		NODE_BIN="$HOMEDIR/node/bin/node"
 		NPM_BIN="$HOMEDIR/node/bin/npm"
@@ -332,7 +332,7 @@ install_pkg() {
 link_entry() {
 	if [ "$NO_PATH" = "1" ]; then return 0; fi
 	mkdir -p "$LOCAL_BIN"
-	for name in aw agent-web oh-my-agent-web; do
+	for name in aw oh-my-agent-web oh-my-agent-web; do
 		if [ -e "$BIN_DIR/$name" ]; then ln -sf "$BIN_DIR/$name" "$LOCAL_BIN/$name"; fi
 	done
 	ok "软链：$LOCAL_BIN/aw → $ENTRY"
@@ -381,7 +381,7 @@ uninstall() {
 	# 里面还躺着 settings.json / password / uploads / logs —— 整目录 rm -rf 会连配置和上传一起干掉。
 	rm -rf "$HOMEDIR/lib/node_modules/$PKG"
 	rm -rf "$HOMEDIR/node"            # 安装器自己下的那份 Node（用系统 Node 时本来就不存在）
-	for name in aw agent-web oh-my-agent-web; do
+	for name in aw oh-my-agent-web oh-my-agent-web; do
 		rm -f "$HOMEDIR/bin/$name"
 		rm -f "$LOCAL_BIN/$name"
 	done

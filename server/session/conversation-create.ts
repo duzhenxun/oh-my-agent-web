@@ -25,8 +25,11 @@ type ConversationFactory = {
 export type ConversationSeed = {
 	/** 临时会话：只在内存里跑、不落盘，之后可以「保存为正式对话」 */
 	ephemeral?: boolean;
-	/** 派生：新会话的历史 = 源会话「根 → messageId」那条路径；messageId 缺省 = 源会话当前叶子 */
-	fork?: { sourceConversationId: string; messageId?: string };
+	/**
+	 * 派生：新会话的历史 = 源会话从根到 `messageId` 那条路径；`messageId` 缺省 = 源会话当前叶子。
+	 * 给了 `startMessageId` 就改成「从这条消息起、到末尾为止」，之前的历史丢掉（2026-11-24）。
+	 */
+	fork?: { sourceConversationId: string; messageId?: string; startMessageId?: string };
 };
 
 export function createConversationFactory(options: {
@@ -77,7 +80,13 @@ export function createConversationFactory(options: {
 				workspace,
 				...(ephemeral ? { ephemeral: true } : {}),
 				...(seed?.fork
-					? { fork: { sourceSessionId: seed.fork.sourceConversationId, leafId: seed.fork.messageId } }
+					? {
+							fork: {
+								sourceSessionId: seed.fork.sourceConversationId,
+								leafId: seed.fork.messageId,
+								...(seed.fork.startMessageId ? { startId: seed.fork.startMessageId } : {}),
+							},
+						}
 					: {}),
 			});
 			// 派生时引擎会给会话自己分配 id（pi 的 `createBranchedSession` 行为），必须改用它的：

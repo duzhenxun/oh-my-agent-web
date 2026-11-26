@@ -30,14 +30,13 @@ import { ActionSuggestions } from "./ActionSuggestions.tsx";
 import { ChangedFiles } from "./ChangedFiles.tsx";
 import { CopyButton } from "./CopyButton.tsx";
 import { ReadAloudButton } from "./ReadAloudButton.tsx";
+import { useTtsSettings } from "../use-tts-settings.ts";
 import { Markdown } from "./Markdown.tsx";
 import { urlTokens } from "../url-tokens.ts";
 import { SelectionToolbar, type SelectionAddInput } from "./SelectionToolbar.tsx";
 import { AnnotationMarks } from "./AnnotationMarks.tsx";
 import type { Annotation } from "../annotations.ts";
 import { ToolCard } from "./ToolCard.tsx";
-import { SpeechStopBadge } from "./SpeechStopBadge.tsx";
-import { useVoiceInputSettings } from "../voice-input.ts";
 import { AgentsRunStrip } from "./AgentsRunStrip.tsx";
 import { assignRunsToMessages, isActive, subagentUsageOf } from "../subagent-view.tsx";
 
@@ -462,7 +461,7 @@ function MessageViewInner({
 	onOpenFile,
 	subagentRuns,
 	onFork,
-	withSpeechDock = false,
+	speechOn = true,
 }: {
 	message: UiMessage;
 	modelLabel: string;
@@ -481,10 +480,10 @@ function MessageViewInner({
 	/** 「从这里创建分支」：给了才画那枚图标（引擎不支持 / 临时对话时不给） */
 	onFork?: (messageId: string) => void;
 	/**
-	 * 在这条消息的尾注末尾画朗读控制（只有**最后一条**给）。
-	 * 用户 2026-11-21：朗读控制要放在「in/out/cache/$」那行的右端、固定位置、一直显示。
+	 * 语音播报**启用着**才画朗读控件（「🔊 朗读」+「暂停 / 停止」）。
+	 * 由 `MessageList` 读一次设置后传下来：每条消息各订阅一次 tts 事件没必要。
 	 */
-	withSpeechDock?: boolean;
+	speechOn?: boolean;
 }) {
 	const t = useT();
 	/**
@@ -909,6 +908,13 @@ function MessageViewInner({
 						</span>
 					) : null}
 
+					{/*
+					 * 「朗读」排在**复制左边**，而且是**朗读 / 停止一体**（用户 2026-11-24）：
+					 * 点一下开始念 → 同一颗按钮的喇叭变蓝、一跳一跳，文字变「停止」，再点就停。
+					 * 以前旁边那两条独立的「暂停 / 停止」已经撤掉（同一件事分三颗太吵）；
+					 * 语音播报没启用时整颗不画（`speechOn`）。
+					 */}
+					{speechOn && !live && text.trim() ? <ReadAloudButton text={text} /> : null}
 					{/* 复制只等跑完：复制一个还在长的东西没意义（用户反馈也是这么说的） */}
 					{live ? null : (
 						<CopyButton text={text} className="msg-foot-copy" title={t("复制这条回复", "Copy this reply")} />
@@ -921,8 +927,11 @@ function MessageViewInner({
 							type="button"
 							className="msg-foot-copy msg-foot-fork"
 							onClick={() => onFork(message.id)}
-							title={t("从这里创建分支（原对话保持不变）", "Branch from here (original chat stays unchanged)")}
-							aria-label={t("从这里创建分支", "Branch from here")}
+							title={t(
+								"以这条消息为开头开一条新会话（之前的对话不会带过去，原会话不变）",
+								"Start a new chat from this message (earlier turns are dropped; original chat stays unchanged)",
+							)}
+							aria-label={t("以这条消息为开头开新会话", "Start a new chat from this message")}
 						>
 							<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
 								<path d="M4.4 3.6v6.2a2.4 2.4 0 0 0 2.4 2.4h2.4" strokeLinecap="round" />
@@ -933,10 +942,7 @@ function MessageViewInner({
 							<span>{t("分叉", "Fork")}</span>
 						</button>
 					)}
-					{live || !text.trim() ? null : <ReadAloudButton text={text} />}
 					<span className="topbar-spacer" />
-					{/* 朗读控制：这一行的**右端**（用户 2026-11-21 指定位置），一直显示 */}
-					{withSpeechDock ? <SpeechStopBadge docked /> : null}
 					{/* 时间：**一开始就显示**（先给开始时间），跑完再换成完成时间 —— 不再等结束才出现 */}
 					<FootStamp
 						ts={finishedAt ?? message.ts}
@@ -1077,15 +1083,6 @@ const MessageView = memo(MessageViewInner);
  */
 const NO_SUBAGENT_RUNS: readonly SubagentRunView[] = [];
 
-/** 最后一条助手消息的 id：朗读控制条挂在它尾注的右端（没有助手消息时另起一行） */
-function lastAssistantIdOf(messages: readonly UiMessage[]): string | null {
-	for (let index = messages.length - 1; index >= 0; index -= 1) {
-		const message = messages[index];
-		if (message && message.role === "assistant") return message.id;
-	}
-	return null;
-}
-
 export function MessageList({
 	messages,
 	hasMoreBefore,
@@ -1166,14 +1163,22 @@ export function MessageList({
 	 * 不挪的话看着像先答后问，气泡上却还挂着「插队」（见 `steer-order.ts`）。
 	 * 只改显示顺序，消息本身一个字不动。
 	 *
-	 * 两个 O(消息数) 的纯函数用 `useMemo` 记一份：本组件会因为输入框、悬停、选中这些
+	 * 这个 O(消息数) 的纯函数用 `useMemo` 记一份：本组件会因为输入框、悬停、选中这些
 	 * 与会话内容无关的状态频繁重渲染，每帧重算 + 重建 Map 在手机上可感。
 	 * **必须在下面那个早退之前调**（hooks 不能有条件地调用）。
 	 */
 	const shown = useMemo(() => liftSteeredMessages(messages), [messages]);
-	const lastAssistantId = useMemo(() => lastAssistantIdOf(shown), [shown]);
+	/**
+	 * 朗读控件（「🔊 朗读」+「暂停 / 停止」）**只在语音播报启用时出现**
+	 * （用户 2026-11-24：「语音设置中没有启动的话，就默认不需要显示这个」）。
+	 *
+	 * 判据用「启用语音播报」那个总开关（`tts.enabled`）：关掉它的人不想在这套界面上看到语音，
+	 * 再摆两颗灰着的朗读按钮只是噪声。它存在本机 localStorage，所以靠 `useTtsSettings()` 订阅
+	 * 那个自定义事件，设置里一取消勾选，这边当场就把控件撤掉。
+	 */
+	const ttsSettings = useTtsSettings();
+	const speechUiOn = ttsSettings.enabled;
 	// 「显示朗读控制条」由设置决定（默认显示）；关掉后消息下面那条就不画了
-	const voiceSettings = useVoiceInputSettings();
 	// 子代理卡片挂在哪条消息上：按「开始时间落在哪条助手消息」分配（见 assignRunsToMessages）
 	const runsByMessage = useMemo(() => assignRunsToMessages(subagentRuns, shown), [subagentRuns, shown]);
 	// 空会话（新会话）什么都不画：标题/引导在输入框上方那块（NewChatMeta），这里留白
@@ -1203,17 +1208,12 @@ export function MessageList({
 					<AgentsRunStrip runs={orphanRunning} />
 				</div>
 			) : null}
-			{lastAssistantId === null && voiceSettings.showReadingDock ? (
-				/* 还没有助手消息（新会话 / 只发了消息还没回）：单独一行右对齐，保证一直可见 */
-				<div className="msg-foot msg-foot-solo">
-					<SpeechStopBadge docked />
-				</div>
-			) : null}
 			{shown.map((message) => (
 				<MessageView
 					key={message.id}
 					/* 朗读控制挂**最后一条助手消息**的尾注上（和 in/out/cache/$ 同一行、右端） */
-					withSpeechDock={voiceSettings.showReadingDock && message.id === lastAssistantId}
+					// 语音播报没启用就整块不画（用户 2026-11-24：没启动的话就不需要显示）
+					speechOn={speechUiOn}
 					message={message}
 					modelLabel={labelOf(message.model)}
 					live={message.id === liveId}

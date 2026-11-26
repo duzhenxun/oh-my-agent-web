@@ -37,8 +37,19 @@
    顶栏在的时候那一行里根本没有这颗，也就不会同一屏出现两份。 */
 
 .is-mobile-shell .appbar .newchat-pill {
-	padding: calc(4px * var(--ab)) calc(10px * var(--ab));
+	/* 2026-11-23（用户：「小点，暗点，跟 PC web 里的颜色一样暗」）：
+	 * 手机上这颗原来比 PC 那颗更大更亮（padding 4/10、满主色）。
+	 * 现在尺寸收到 PC 那一档（2.5/9），颜色也用 PC 侧栏品牌那颗的掺色（主色 72% + 底色），
+	 * 投影一起去掉 —— 压在顶栏那条浅色栏上不再是一块跳眼的蓝。 */
+	padding: calc(2.5px * var(--ab)) calc(9px * var(--ab));
 	gap: calc(4px * var(--ab));
+	background: color-mix(in srgb, var(--accent) 72%, var(--bg-elev));
+	box-shadow: none;
+	font-size: calc(11.5px * var(--ab));
+}
+
+.is-mobile-shell .appbar .newchat-pill:hover {
+	background: color-mix(in srgb, var(--accent) 88%, var(--text));
 }
 
 /* 四个入口（模型/技能/推送/设置）只留图标 */

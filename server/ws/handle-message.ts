@@ -22,7 +22,16 @@ type HandleDeps = {
 	runtime: Runtime;
 	/** 哪个客户端发的（ADR-0033：会话视图按它区分） */
 	clientId?: string;
-	reply: (socket: ClientSink, id: string, result: { ok: true } | { ok: false; error: ProtocolError }) => void;
+	/**
+	 * 回包：`{ ok: true }` 是「做成了、没有载荷」，`{ ok: true, result }` 是「做成了、带上载荷」。
+	 * **载荷一定要塞进 `result`**（`reply()` 只转发这一格，见 server/index.ts）；
+	 * 扁平地写成 `{ ok: true, conversationId }` 会被静默丢掉，客户端读不到。
+	 */
+	reply: (
+		socket: ClientSink,
+		id: string,
+		result: { ok: true; result?: unknown } | { ok: false; error: ProtocolError },
+	) => void;
 	sender: { pushSnapshot: (snapshot: Snapshot) => void; flush: (now: number) => void };
 	logger: Logger;
 	runProviderRequest: (
@@ -99,11 +108,14 @@ export async function handleMessage(socket: ClientSink, raw: string, deps: Handl
 			case "new_chat": {
 				// 临时对话（pi 的 `--no-session`）只在显式要的时候开：不传就是普通会话
 				const seed = request.payload?.ephemeral ? { ephemeral: true } : undefined;
-				deps.reply(
-					socket,
-					request.id,
-					await deps.runtime.newConversation(request.payload?.workspace, deps.clientId, seed),
-				);
+				const created = await deps.runtime.newConversation(request.payload?.workspace, deps.clientId, seed);
+				/**
+				 * **载荷要塞进 `result` 里**：`reply()`（server/index.ts）只转发 `result.result`，
+				 * 扁平地传 `{ ok: true, conversationId }` 会被它当成「没有载荷」丢掉 ——
+				 * 客户端读 `message.result.conversationId` 就永远是 undefined，
+				 * 「新建会话顶到侧栏第一位」那条逻辑于是从来没生效过（分叉同理，见下面）。
+				 */
+				deps.reply(socket, request.id, created.ok ? { ok: true, result: created } : created);
 				return;
 			}
 			case "persist_conversation":
@@ -112,13 +124,17 @@ export async function handleMessage(socket: ClientSink, raw: string, deps: Handl
 			case "close_ephemeral":
 				deps.reply(socket, request.id, deps.runtime.closeEphemeral(request.payload.conversationId));
 				return;
-			case "fork_session":
-				deps.reply(
-					socket,
-					request.id,
-					await deps.runtime.forkSession(request.payload.conversationId, request.payload.messageId, deps.clientId),
+			case "fork_session": {
+				const forked = await deps.runtime.forkSession(
+					request.payload.conversationId,
+					request.payload.messageId,
+					deps.clientId,
+					request.payload.startMessageId,
 				);
+				// 同上：`conversationId` 必须包在 `result` 里，客户端才能把这条新分支顶到侧栏第一位
+				deps.reply(socket, request.id, forked.ok ? { ok: true, result: forked } : forked);
 				return;
+			}
 			case "rename_session":
 				deps.reply(
 					socket,
@@ -126,10 +142,13 @@ export async function handleMessage(socket: ClientSink, raw: string, deps: Handl
 					await deps.runtime.renameSession(request.payload.conversationId, request.payload.title),
 				);
 				return;
-			case "suggest_title":
+			case "suggest_title": {
 				// AI 起名：一次问答 + 改名都在服务端跑完，回包带最终标题（界面拿去做提示）
-				deps.reply(socket, request.id, await deps.runtime.suggestSessionTitle(request.payload.conversationId));
+				// 客户端按 `message.result.ok` / `message.result.error` 读，所以整份塞进 `result`
+				const suggested = await deps.runtime.suggestSessionTitle(request.payload.conversationId);
+				deps.reply(socket, request.id, suggested.ok ? { ok: true, result: suggested } : suggested);
 				return;
+			}
 			case "refresh_resources":
 				// 刷新网页时前端喷一次：让引擎把技能 / MCP / AGENTS.md 重读一遒
 				deps.reply(

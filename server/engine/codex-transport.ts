@@ -38,7 +38,7 @@ export type CodexClient = ReturnType<typeof createJsonRpcStdioClient>;
 
 /**
  * codex app-server 客户端 = 通用 JSON-RPC stdio 客户端 + codex 的握手。
- * 握手结果里的 userAgent 形如 `agent-web/0.163.0 (Mac OS …)`，取中间的版本号。
+ * 握手结果里的 userAgent 形如 `oh-my-agent-web/0.163.0 (Mac OS …)`，取中间的版本号。
  */
 export function createCodexClient(options: CodexClientOptions = {}): CodexClient {
 	const log = options.log ?? (() => {});
@@ -54,8 +54,8 @@ export function createCodexClient(options: CodexClientOptions = {}): CodexClient
 		async handshake(call) {
 			const result = (await call("initialize", {
 				clientInfo: {
-					name: options.clientName ?? "agent-web",
-					title: "agent-web",
+					name: options.clientName ?? "oh-my-agent-web",
+					title: "oh-my-agent-web",
 					version: options.clientVersion ?? "0.1.0",
 				},
 				// experimentalApi 打开隐藏方法（project/* 等）；实测 0.162/0.163 都支持

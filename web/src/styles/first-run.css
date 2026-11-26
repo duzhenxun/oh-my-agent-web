@@ -1,0 +1,280 @@
+/* ---- 首启向导（三步浮层）----
+ *
+ * 只在本机第一次打开、且快照已有数据时出现一次（完成标记在 localStorage，见 App.tsx）。
+ * 卡片沿用 `.modal` 那套变量（`--bg-elev` 底 / `var(--radius)` 圆角 / `var(--border)` 描边），
+ * 但 z-index 比 `.modal-backdrop` 低一档：引擎没装时，App 自己的安装确认框要能盖在它上面。
+ */
+.first-run-backdrop {
+	position: fixed;
+	inset: 0;
+	z-index: 45;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	/* 沿用 .modal-backdrop 的模态遮罩，只是把四边留白固定住（`--gap` 是 0 时不至于贴边） */
+	padding: clamp(12px, 3vw, 24px);
+	background: rgb(0 0 0 / 45%);
+	overscroll-behavior: contain;
+}
+
+.first-run-card {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+	width: min(680px, 100%);
+	max-height: min(86vh, 720px);
+	overflow: auto;
+	padding: 20px;
+	background: var(--bg-elev);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	overscroll-behavior: contain;
+}
+
+.first-run-head {
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+}
+
+.first-run-title {
+	margin: 0;
+	font-size: 18px;
+}
+
+.first-run-subtitle {
+	margin: 4px 0 0;
+	font-size: 13px;
+	color: var(--text-faint);
+}
+
+.first-run-skip {
+	margin-left: auto;
+	flex: none;
+}
+
+/* 顶部步骤指示：当前步用主色，走过的步把圆点描成主色（不再抢当前步的实心圆点） */
+.first-run-steps {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px 16px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.first-run-step {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 13px;
+	color: var(--text-faint);
+}
+
+.first-run-step-on {
+	color: var(--text);
+	font-weight: 600;
+}
+
+.first-run-step-index {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 20px;
+	height: 20px;
+	border: 1px solid var(--border-strong);
+	border-radius: 999px;
+	font-size: 12px;
+}
+
+.first-run-step-on .first-run-step-index {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: var(--on-accent);
+}
+
+.first-run-step-done .first-run-step-index {
+	border-color: var(--accent);
+	color: var(--accent);
+}
+
+.first-run-body {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	/* 三步高度不一样时底部按钮不跳：给一个下限，内容多就往下长 */
+	min-height: 220px;
+}
+
+.first-run-engines {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+	gap: 10px;
+}
+
+/* 引擎卡片：整张可点，选中态只用描边 + 一点主色底，不把整块染蓝 */
+.first-run-engine {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding: 10px;
+	background: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	color: var(--text);
+	text-align: left;
+	font: inherit;
+	cursor: pointer;
+}
+
+.first-run-engine:hover {
+	border-color: var(--accent-dim);
+}
+
+.first-run-engine-on {
+	background: color-mix(in srgb, var(--accent) 8%, var(--bg));
+	border-color: var(--accent);
+}
+
+.first-run-engine-top {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	min-width: 0;
+}
+
+.first-run-engine-name {
+	min-width: 0;
+	font-size: 14px;
+	font-weight: 600;
+	overflow-wrap: anywhere;
+}
+
+.first-run-engine-state {
+	margin-left: auto;
+	flex: none;
+	font-size: 12px;
+	color: var(--text-faint);
+}
+
+.first-run-engine-state-on {
+	color: var(--green);
+}
+
+.first-run-engine-state-warn {
+	color: var(--amber);
+}
+
+.first-run-engine-desc,
+.first-run-engine-hint {
+	font-size: 12px;
+	line-height: 1.5;
+	color: var(--text-faint);
+}
+
+.first-run-engine-hint {
+	color: var(--amber);
+}
+
+/* 服务商预设：胶囊按钮，一眼看出现在选的是哪一家 */
+.first-run-presets {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.first-run-preset {
+	padding: 5px 10px;
+	background: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	color: var(--text-dim);
+	font: inherit;
+	font-size: 13px;
+	cursor: pointer;
+}
+
+.first-run-preset:hover {
+	border-color: var(--accent-dim);
+}
+
+.first-run-preset-on {
+	background: color-mix(in srgb, var(--accent) 8%, var(--bg));
+	border-color: var(--accent);
+	color: var(--accent);
+	font-weight: 600;
+}
+
+.first-run-field {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	font-size: 13px;
+	color: var(--text-faint);
+}
+
+.first-run-field input,
+.first-run-field select {
+	min-width: 0;
+	padding: 6px 8px;
+	background: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: 7px;
+	color: var(--text);
+	font: inherit;
+	font-size: 14px;
+}
+
+.first-run-field input[readonly] {
+	background: var(--bg-elev-2);
+	color: var(--text-dim);
+}
+
+.first-run-field input:focus-visible {
+	outline: 2px solid var(--accent-dim);
+	outline-offset: 1px;
+}
+
+.first-run-hint {
+	font-size: 12.5px;
+	line-height: 1.6;
+	color: var(--text-faint);
+}
+
+.first-run-error {
+	font-size: 13px;
+	color: var(--red);
+}
+
+.first-run-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding-top: 12px;
+	border-top: 1px solid var(--border);
+}
+
+.first-run-actions-grow {
+	flex: 1 1 auto;
+}
+
+/* 主按钮：实心主色 + 反白字（跟「发送」那颗同一套取色） */
+.btn.first-run-primary {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: var(--on-accent);
+}
+
+.btn.first-run-primary:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--accent) 88%, #ffffff);
+}
+
+@media (max-width: 520px) {
+	.first-run-card {
+		padding: 14px;
+	}
+
+	.first-run-steps {
+		gap: 6px 10px;
+	}
+}

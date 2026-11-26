@@ -14,17 +14,44 @@ const SKILL_FILE = "SKILL.md";
 const SKILL_FILE_DISABLED = ".SKILL.md.disabled";
 /** 写在 SKILL.md 第二行：只有带这个标记的文件才归我们管，别人手写的同名技能不覆盖 */
 const MANAGED_MARKER = "<!-- managed-by: oh-my-agent-web agent-computer -->";
+/**
+ * 前身（oh-my-agent-web）写过的同一份技能也算我们的。
+ *
+ * 这个应用就是那个项目改名过来的：老用户机器上躺着 `managed-by: oh-my-agent-web` 那份，
+ * 只认新标记的话「启用电脑控制」会报「已存在且不是本应用写入的」，只能让人先去手删文件。
+ */
+const LEGACY_MARKERS = ["<!-- managed-by: oh-my-agent-web agent-computer -->"];
+
+function isManagedByUs(text: string): boolean {
+	return text.includes(MANAGED_MARKER) || LEGACY_MARKERS.some((marker) => text.includes(marker));
+}
 
 export function skillDir(): string {
 	return join(defaultSkillsDir(), SKILL_ID);
+}
+
+/**
+ * 跑 CLI 用哪个 node：**写绝对路径**，不要只写 `node`。
+ *
+ * 2026-11-24 实测：Agent 执行 bash 时的 PATH 可能只有 `/Users/dds/.pi/agent/bin:/usr/bin:/bin:…`
+ * （nvm 那种靠 shell 初始化注入的 node 不在里面），技能里写 `node xxx/cli.js` 就是
+ * `node: command not found` —— 技能装好了却一条命令都跑不动。
+ *
+ * 用 `process.execPath`：生成这份技能时是哪颗 node 在跑服务（用户的 nvm node / 系统 node），
+ * 写进技能的就是哪颗，不赌对方 shell 的环境。
+ */
+function nodeCommand(): string {
+	const execPath = process.execPath;
+	// 只认真正的 node 可执行文件：拿不到就退回 PATH 里的 `node`
+	return typeof execPath === "string" && /(^|\/)node(\.exe)?$/.test(execPath) ? shellQuote(execPath) : "node";
 }
 
 /** 生成 CLI 的命令前缀：编译后用 node 直接跑 cli.js；开发环境（.ts）用 tsx */
 export function cliCommand(): string {
 	const here = dirname(fileURLToPath(import.meta.url));
 	const compiled = join(here, "cli.js");
-	if (existsSync(compiled)) return `node ${shellQuote(compiled)}`;
-	return `node --import tsx ${shellQuote(join(here, "cli.ts"))}`;
+	if (existsSync(compiled)) return `${nodeCommand()} ${shellQuote(compiled)}`;
+	return `${nodeCommand()} --import tsx ${shellQuote(join(here, "cli.ts"))}`;
 }
 
 function shellQuote(text: string): string {
@@ -41,7 +68,7 @@ export function enableSkill(cli: string = cliCommand()): void {
 	const file = join(dir, SKILL_FILE);
 	if (existsSync(file)) {
 		const current = readFileSync(file, "utf8");
-		if (!current.includes(MANAGED_MARKER)) {
+		if (!isManagedByUs(current)) {
 			throw new Error(`${file} 已存在且不是本应用写入的，请先改名或删除它再启用`);
 		}
 	}
@@ -56,7 +83,7 @@ export function disableSkill(): void {
 	const file = join(dir, SKILL_FILE);
 	if (!existsSync(file)) return;
 	const current = readFileSync(file, "utf8");
-	if (!current.includes(MANAGED_MARKER)) return; // 不是我们的文件，不动它
+	if (!isManagedByUs(current)) return; // 不是我们的文件，不动它
 	renameSync(file, join(dir, SKILL_FILE_DISABLED));
 }
 
@@ -82,7 +109,7 @@ const SKILL_TEMPLATE = [
 	"",
 	"## 标准流程",
 	"",
-	"1. `{{CLI}} status`：确认 `running` 为 true，且 `accessibility`、`screenRecording` 都为 true。不满足时告诉用户到「设置 → 电脑控制」处理，不要自己绕过。",
+	"1. `{{CLI}} status`：确认 `running` 为 true，且 `accessibility`、`screenRecording` 都为 true。不满足时先看下面「权限明明勾了，status 还是 false」——多数情况不是用户没勾，是授权被算到了别的 App 头上。",
 	"2. `{{CLI}} apps`：列出可操作的应用，记下目标应用的名字。",
 	'3. `{{CLI}} observe <应用>`：返回 `result.text`（带编号的界面元素，如 `#12 button "保存"`）和 `result.screenshot.path`（截图文件，用 read 工具打开可以看图）。',
 	'4. 按编号操作：`click <应用> --element 12`，`type <应用> "文字" --element 5`，`keys <应用> cmd+s`。',
@@ -93,14 +120,49 @@ const SKILL_TEMPLATE = [
 	"",
 	"用户说「给某人发微信 / 发消息」时，默认走电脑版微信，不用手机。流程要快：找到人后不截图确认，不问用户「要不要发」。",
 	"",
+	"0. **先看当前会话，已经是目标人就跳过搜索。** `observe 微信` 看一眼右侧聊天窗口标题（截图上标题在聊天区顶部）：**标题 == 目标联系人时，直接跳到第 4 步粘贴文案、第 5 步回车发送**，不要按 cmd+f 重搜。搜索是最容易翻车的一环（粘贴不触发实时过滤、结果行可能点错），能省就省。只有当前会话不是目标人时才做第 1~3 步。",
+	"",
 	"1. 激活：`osascript -e 'tell application \"WeChat\" to activate'`。",
 	"2. 搜索：`{{CLI}} keys 微信 cmd+f`，再 `{{CLI}} paste 微信 \"姓名\" --format text` 粘贴姓名。不要用 `type` 输入中文，不生效。",
 	"3. 回车：`{{CLI}} keys 微信 Return`。会打开最靠上的精确匹配会话，光标自动落在输入框里。",
 	"4. 粘贴文案：`{{CLI}} paste 微信 \"文案\" --format text`。",
 	"5. 回车发送：`{{CLI}} keys 微信 Return`。",
-	"6. 只在第 1 步之后截图一次，确认会话标题对得上；发送后截图确认气泡出现即可。",
+	"6. 全程只需两次观察：进入会话后确认标题对得上（第 0 或第 1 步那次观察就能确认）、发送后确认气泡出现。中间不要再反复截图验收。",
 	"",
 	"注意：微信界面树里没有搜索框和输入框的编号元素，不要用 `click --x/--y` 去点，实测坐标会点偏。名字有歧义（多个近似联系人）时停下来让用户选；用户明确要求发送时才执行第 4、5 步。",
+	"",
+	"另外两点实测结论：",
+	"",
+	"- **微信几乎不向系统暴露聊天文字**（`observe 微信 --full` 往往只有窗口 + 几个角落按钮，`elementCount` 个位数）。所以「谁说了什么」只能靠截图：`observe` 拿 `result.screenshot.path`，再用 read 工具看图。没录屏权限就等于完全看不见内容。",
+	"- **发消息优先用 `keys 微信 Return`**，不要点右下角「发送」按钮：那个按钮没有编号元素，坐标点击会偏（helper 的 `--x/--y` 换算存在 `2*值+窗口原点` 的偏差）。",
+	"",
+	"## 权限明明勾了，status 还是 false",
+	"",
+	"系统设置里「Agent Computer」两项都打了勾，`status` 却持续报 `false` 时，**九成是「责任进程」问题，不是用户没勾**：",
+	"macOS 的 TCC 会把被拉起的子进程的授权算到最上层那个 App 头上，helper 自己那份授权就没被用上。",
+	"",
+	"判断依据：`accessibility` 为 true、`screenRecording` 为 false 这种「只通一半」的症状最常见——说明判定落在宿主 App 身上，而宿主只被勾了辅助功能。",
+	"",
+	"修法（不用再让用户补任何授权）：让 helper 以自己的身份独立启动，改用 socket 通信。",
+	"",
+	"```bash",
+	"open -a \"/Applications/Agent Computer.app\"   # 独立进程，TCC 判定落回它自己",
+	"sleep 3",
+	"CLI={{CLI}}",
+	"AGENT_COMPUTER_TRANSPORT=socket $CLI status   # 应变成两个 true",
+	"```",
+	"",
+	"确认通了之后，后续每条命令都带上 `AGENT_COMPUTER_TRANSPORT=socket`（建议包一层 shell 脚本免得每行都写）：",
+	"",
+	"```bash",
+	"cat > /tmp/ac.sh <<'EOF'",
+	"#!/bin/bash",
+	"AGENT_COMPUTER_TRANSPORT=socket exec {{CLI}} \"$@\"",
+	"EOF",
+	"chmod +x /tmp/ac.sh",
+	"```",
+	"",
+	"补充：仓库开发态如果有 `helper/agent-computer/release/agent-computer` 这个构建产物，`helperTransport()` 会优先走 stdio（内嵌二进制），于是必然踩上面这个坑——显式指定 socket 即可绕开。用户正常自己装 .app 的场景默认就走 socket，不受影响。",
 	"",
 	"## 命令速查",
 	"",

@@ -309,10 +309,12 @@
 .big-modal-head {
 	display: flex;
 	align-items: center;
-	gap: 6px;
+	/* 2026-11-24（用户：「上面这些太大，占用空间也太大，都整体改小点，距离近一点」）：
+	 * 6 → 4，一行 10 个 tab 时省下的宽度够再塞半个入口。 */
+	gap: 4px;
 	flex: none;
 	border-bottom: 1px solid var(--border);
-	padding-bottom: 8px;
+	padding-bottom: 6px;
 	/* 右边给固定在上角的 ✕ 让位：这一行会横向滚动，别让最后一个 tab 被按钮压住 */
 	padding-right: 38px;
 }
@@ -328,7 +330,8 @@
 .big-tab {
 	display: inline-flex;
 	align-items: center;
-	gap: 6px;
+	/* 图标与文案之间 6 → 4（同一次「紧凑点」） */
+	gap: 4px;
 	/* 每个入口都描一圈：一排七个摆在一起时，“这是一个个能点的按钮”比纯文字更清楚。
 	 * 用 border-strong 而不是 border：border 在浅色主题下几乎看不见（用户 2026-10-30 要求“加边框”）。 */
 	border: 1px solid var(--border-strong);
@@ -336,14 +339,18 @@
 	background: none;
 	color: var(--text-dim);
 	font: inherit;
-	font-size: 15px;
-	padding: 5px 12px;
+	/* 2026-11-24（用户：「上面这些太大…都整体改小点」）：15 → 13px，内边距 5×12 → 3×8。
+	 * 这一排是「切换面板」的入口，不是正文 —— 比正文字号小一档反而更像工具条；
+	 * 单颗高度随之 30 → 24px，十个一起排也不再顶着弹窗标题栏。 */
+	font-size: 13px;
+	padding: 3px 8px;
 	cursor: pointer;
 }
 
 .big-tab-icon {
-	width: 16px;
-	height: 16px;
+	/* 16 → 14：跟 13px 的文案同高，不再比字高出一截 */
+	width: 14px;
+	height: 14px;
 }
 
 .big-tab:hover {

@@ -1,6 +1,6 @@
 import { tNow } from "./use-language.ts";
 
-export type RemoteTtsProvider = "edge" | "kokoro" | "qwen3";
+export type RemoteTtsProvider = "edge" | "kokoro" | "qwen3" | "deepseek" | "qwen";
 export type RemoteVoice = { id: string; name: string; lang: string; gender?: string };
 export type RemoteSpeechHooks = {
 	onStart?: () => void;
@@ -87,6 +87,8 @@ const PROVIDER_LABEL: Record<RemoteTtsProvider, string> = {
 	edge: "Edge",
 	kokoro: "Kokoro",
 	qwen3: "Qwen3",
+	deepseek: "DeepSeek",
+	qwen: "千问",
 };
 
 export async function fetchRemoteVoices(signal: AbortSignal, provider: RemoteTtsProvider): Promise<RemoteVoice[]> {

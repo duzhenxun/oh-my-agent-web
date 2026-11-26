@@ -19,10 +19,11 @@ type ChatWidthId = "narrow" | "normal" | "wide" | "full";
 type ChatWidthDef = { id: ChatWidthId; label: string; labelEn: string; /** 0 = 满宽（不限制） */ px: number };
 
 /**
- * 宽度：默认 `full` = 不限制（原先就是铺满对话区）。
- * 窄/标准/宽只是给「一行太长读着累」的人一个上限，列会居中。
+ * 宽度：默认 **标准（900px）**—— 2026-11-23 用户要求「外观设置全用标准」，
+ * 原来默认是「满宽」（不限制）。
  *
- * 这四档现在只是**滑杆旁边的快捷卡**（点一下就到位）；真正的状态是一个像素值（见下）。
+ * 四档只是**滑杆旁边的快捷卡**（点一下就到位）；真正的状态是一个像素值（见下），
+ * 所以「标准」也只是把 900 写进去，跟从没存过时读到的值一致。
  */
 export const CHAT_WIDTHS: readonly ChatWidthDef[] = [
 	{ id: "narrow", label: "窄", labelEn: "Narrow", px: 720 },
@@ -31,15 +32,20 @@ export const CHAT_WIDTHS: readonly ChatWidthDef[] = [
 	{ id: "full", label: "满宽", labelEn: "Full width", px: 0 },
 ];
 
+/** 没存过 / 存的不是数 → 这个宽度（「标准」那一档）= 900px */
+export const CHAT_WIDTH_DEFAULT_PX = CHAT_WIDTHS.find((item) => item.id === "normal")?.px ?? 900;
+
 /**
- * 宽度滑杆：**480px 起，右端就是「满屏」**。
+ * 宽度滑杆：**360px 起，右端就是「满屏」**。
  *
  * 2026-10-30 用户：「也加一个滑动条吧，但最大只能是满屏」——
  * 所以右端不是一个写死的数字，而是 `chatWidthCap()` 量出来的「对话区实际可用宽度」：
  * 拖到最右 = 不限制（= 满宽），再往右本来也没有意义。
- * 左端 480px：再窄就不是「读得舒服」而是「挤成一根条」了（窄屏本来也会自动铺满）。
+ * 左端 360px：2026-11-23 用户要求「宽度设置时可以再小一点」——
+ * 原来是 480，收到 360（够放下代码块一行 + 侧栏并排看）。再小就不是「读得舒服」，
+ * 而是「挤成一根条」了；窄屏本来也会自动铺满。
  */
-export const CHAT_WIDTH_MIN_PX = 480;
+export const CHAT_WIDTH_MIN_PX = 360;
 /** 滑杆步长：20px。再细就是无意义的拖拽精度，再粗就跳得肉眼可见 */
 export const CHAT_WIDTH_STEP_PX = 20;
 
@@ -86,12 +92,12 @@ function readFontWithLegacy(fallback: number): number {
 }
 
 export function readStoredWidth(raw: string | null): number {
-	if (raw === null || raw === "") return 0;
+	if (raw === null || raw === "") return CHAT_WIDTH_DEFAULT_PX;
 	// 老版本存的是档位 id（narrow/normal/wide/full）：照旧认，映射成对应的像素
 	const legacy = findChatWidth(raw);
 	if (legacy) return legacy.px;
-	// 新版本存的是像素：非数字（含 `"9999px"` 这种带单位的）一律当坏值 → 满宽
-	return /^\d+$/.test(raw.trim()) ? clampChatWidthPx(Number(raw)) : 0;
+	// 新版本存的是像素：非数字（含 `"9999px"` 这种带单位的）一律当坏值 → 回「标准」
+	return /^\d+$/.test(raw.trim()) ? clampChatWidthPx(Number(raw)) : CHAT_WIDTH_DEFAULT_PX;
 }
 
 /**

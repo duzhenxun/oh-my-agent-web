@@ -102,7 +102,7 @@ function failure(error: unknown): {
 
 export function makeCronToolExtension(options: CronToolOptions): InlineExtension {
 	return {
-		name: "agent-web-cron",
+		name: "oh-my-agent-web-cron",
 		hidden: true,
 		factory: (pi) => {
 			pi.registerTool(

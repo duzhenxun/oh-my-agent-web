@@ -12,7 +12,7 @@ export type VoiceSettingsShape = {
 	autoSend: boolean;
 	continuous: boolean;
 	submitMode: "queue" | "steer";
-	engine: "auto" | "browser" | "local";
+	engine: "auto" | "browser" | "local" | "cloud";
 	/** 近讲灵敏度（dB）：0 = 关闭（同时打开自动增益） */
 	nearTalkDb: number;
 	/** 说完多久算说完（毫秒）—— 决定「自动发送」 */
@@ -60,7 +60,10 @@ export function normalizeVoiceSettings(input: unknown, fallback = VOICE_SETTINGS
 		autoSend: typeof raw.autoSend === "boolean" ? raw.autoSend : fallback.autoSend,
 		continuous: typeof raw.continuous === "boolean" ? raw.continuous : fallback.continuous,
 		submitMode: raw.submitMode === "steer" ? "steer" : raw.submitMode === "queue" ? "queue" : fallback.submitMode,
-		engine: raw.engine === "local" || raw.engine === "browser" || raw.engine === "auto" ? raw.engine : fallback.engine,
+		engine:
+			raw.engine === "local" || raw.engine === "browser" || raw.engine === "auto" || raw.engine === "cloud"
+				? raw.engine
+				: fallback.engine,
 		nearTalkDb: Math.round(clamp(num(raw.nearTalkDb, fallback.nearTalkDb), NEAR_TALK_RANGE_DB.min, NEAR_TALK_RANGE_DB.max)),
 		silenceMs: Math.round(
 			clamp(num(raw.silenceMs, fallback.silenceMs), SILENCE_RANGE_MS.min, SILENCE_RANGE_MS.max),

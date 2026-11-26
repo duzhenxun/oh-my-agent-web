@@ -35,14 +35,59 @@ import {
 } from "../ws.ts";
 import { useT } from "../use-language.ts";
 
-const MIN_K = 0.2;
+/**
+ * 缩放上下限（手动：滚轮 / 捏合 / ± 按钮）。
+ * 下限从 0.2 抬到 0.35（用户 2026-11-25：「全局缩小时不要太小」）：
+ * 0.2 的时候一张卡只有 48px 宽、字号不到 3px，除了色块什么也看不出来。
+ */
+const MIN_K = 0.35;
 const MAX_K = 2.5;
+/**
+ * 「看全局」的缩放下限：**比手动下限还高一档**。
+ *
+ * 以前它一路缩到 MIN_K，节点多了就是一堆看不清的小方块；现在宁可只装下大部分、
+ * 靠平移看剩下的，也不再往下缩 —— 真要更小可以自己用 − 或滚轮（能到 MIN_K）。
+ */
+const FIT_MIN_K = 0.5;
+/**
+ * 切「缩略」（只留编号 + 标题，不显描述）的门槛。
+ *
+ * 走势：0.5（一开始）→ 0.4（2026-11-26「先不要马上变成点」）→ 0.6 → 0.7（同日「0.7 以下就不显描述」）
+ * → **0.4（同日收尾定稿，用户 2026-11-26：「缩小到 0.4 时才只显示标题，0.4 以上保持原来卡片」）**。
+ * 0.7 那一档太早了：0.5～0.7 明明还读得清描述，却被抽成一行标题。
+ * 现在：**> 0.4 是完整卡片**（标题 + 描述 + 状态），**≤ 0.4 只留编号 + 标题**。
+ * 这个数与悬停预览的开关（`k < FAR_K` 才弹预览）同一档，两套行为不会打架。
+ */
+const FAR_K = 0.4;
+/**
+ * 缩略态卡片的**固定**高度（世界坐标），与 `canvas.css` 的
+ * `.canvas-view.is-far .canvas-node { height: 34px }` 是一个数。
+ *
+ * 为什么要写成常量而不用量出来的值：连线端点要的是「缩略时的高度」，
+ * 而量高度那一步量的是完整卡片（布局要用它）。两套数字分开，
+ * 缩过门槛时连线才能立刻跟着卡片变矮，不用等下一轮重排。
+ */
+const FAR_NODE_HEIGHT = 34;
 /** 与 `panel-tab-dnd.ts` 一致：5px 内算点击，不算拖 */
 const DRAG_THRESHOLD = 5;
 /** 吸附距离（**屏幕**像素）：缩得越小越难对齐，所以按屏幕算、用的时候再除以缩放 */
 const SNAP_PX = 6;
 /** 节点的世界宽度：和 CSS 里的 `.canvas-node` 保持一致（算连线端点要用） */
 const NODE_WIDTH = 240;
+/** 连线终点离卡片侧边留的空：箭头尖正好停在卡片外面，不压在边框和字上 */
+const ARROW_GAP = 7;
+/** 同一列卡片之间至少留的空隙（世界坐标） */
+const COLUMN_GAP = 20;
+
+/**
+ * 还没量到真实高度时的估算：标题 + 说明按字数折行，再加状态行。
+ * 只是第一帧的兜底 —— 渲染完 `useLayoutEffect` 会拿实测高度重排一次。
+ */
+function estimateNodeHeight(node: CanvasNode): number {
+	const titleLines = Math.max(1, Math.ceil(node.title.length / 15));
+	const detailLines = node.detail ? Math.ceil(node.detail.length / 17) : 0;
+	return 46 + titleLines * 19 + detailLines * 19;
+}
 
 /** 布局风格（本机偏好，按会话存）：卡片 = 自由摆放；另外两种是客户端按依赖重排 */
 type LayoutStyle = "card" | "timeline" | "checklist" | "mindmap" | "swimlane";
@@ -265,7 +310,11 @@ function swimlaneLayout(
 
 	if (lanes.length === 0) {
 		// 没有分支（只有一个根，或者全是环）：就一条泳道
-		placeLane(root.title, nodes.filter((node) => node.id !== root.id).map((node) => node.id), depthOf);
+		placeLane(
+			root.title,
+			nodes.filter((node) => node.id !== root.id).map((node) => node.id),
+			depthOf,
+		);
 	} else {
 		const covered = new Set<string>();
 		for (const headId of lanes) {
@@ -300,7 +349,9 @@ function loadMoves(): Record<string, Record<string, Record<string, Pos>>> {
 		const raw = localStorage.getItem(MOVES_KEY);
 		if (raw === null) return {};
 		const value = JSON.parse(raw) as unknown;
-		return typeof value === "object" && value !== null ? (value as Record<string, Record<string, Record<string, Pos>>>) : {};
+		return typeof value === "object" && value !== null
+			? (value as Record<string, Record<string, Record<string, Pos>>>)
+			: {};
 	} catch {
 		return {};
 	}
@@ -342,7 +393,6 @@ function saveStyle(conversationId: string | null, style: LayoutStyle): void {
 
 type Pos = { x: number; y: number };
 
-
 /** 状态 → 色点 / 文案 / 颜色类 */
 function statusOf(node: CanvasNode): { tone: string; zh: string; en: string } {
 	if (node.status === "doing") return { tone: "doing", zh: "正在做", en: "Doing" };
@@ -358,7 +408,12 @@ function statusOf(node: CanvasNode): { tone: string; zh: string; en: string } {
  * 秒数从 `turnStartedAt` 算：用户在画布上盯着的就是"它跑了多久了"。
  */
 function describeRun(
-	run: { status: string; turnStartedAt?: number | null; activeTool?: { name?: string; argsSummary?: string } | null; retrying?: unknown },
+	run: {
+		status: string;
+		turnStartedAt?: number | null;
+		activeTool?: { name?: string; argsSummary?: string } | null;
+		retrying?: unknown;
+	},
 	t: (zh: string, en: string) => string,
 ): string {
 	const elapsed =
@@ -415,7 +470,8 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 		setPath([]);
 	}, [conversationId]);
 	const level = useMemo(() => {
-		if (doc === null) return { nodes: [] as CanvasNode[], edges: [] as CanvasDoc["edges"], host: null as CanvasNode | null };
+		if (doc === null)
+			return { nodes: [] as CanvasNode[], edges: [] as CanvasDoc["edges"], host: null as CanvasNode | null };
 		if (parentId === null) return { nodes: doc.nodes, edges: doc.edges, host: null as CanvasNode | null };
 		const host = doc.nodes.find((node) => node.id === parentId) ?? null;
 		return { nodes: host?.sub?.nodes ?? [], edges: host?.sub?.edges ?? [], host };
@@ -450,6 +506,15 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 
 	/** 右键菜单：`nodeId` 为 null 表示点在空白处 */
 	const [menu, setMenu] = useState<{ x: number; y: number; nodeId: string | null } | null>(null);
+	/**
+	 * 菜单的**实际落点**：必须量出来再定。
+	 *
+	 * 以前是拿「菜单项数 × 26」估高度去夹下边缘：13 项估成 338px，菜单被一路顶到上面去，
+	 * 左上角那个小三角就指向了空气（用户 2026-11-26：「右键时弹窗不是指的自己」）。
+	 * 现在量真实宽高：装不下就往左上翻，小三角跟着翻到对应的角。
+	 */
+	const [menuBox, setMenuBox] = useState<{ left: number; top: number; flipX: boolean; flipY: boolean } | null>(null);
+	const menuElRef = useRef<HTMLDivElement | null>(null);
 	/** 「N 项产出」弹层：1:1 时悬停预览不出现，产出得有别的入口 */
 	const [artifactsOf, setArtifactsOf] = useState<{ id: string; x: number; y: number } | null>(null);
 	/** 「就这几步说两句」的候选指令（AI 生成，失败时服务端退回固定候选） */
@@ -470,14 +535,39 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 		const rect = rootRef.current?.getBoundingClientRect();
 		const x = event.clientX - (rect?.left ?? 0);
 		const y = event.clientY - (rect?.top ?? 0);
+		// 落点要重量：新菜单高度不一样，上一次算出来的位置不一定是这一次的
+		setMenuBox(null);
 		return { x, y, nodeId };
 	}, []);
 
-	/** 菜单项数量：只为"别让菜单超出画布下边缘"估个高度 */
-	const menuKinds = menu?.nodeId === null ? 9 : 13;
+	/** 菜单渲出来以后再量一次宽高，然后夹进视口；往哪边翻要记下来，小三角跟着走 */
+	useLayoutEffect(() => {
+		if (menu === null) {
+			setMenuBox(null);
+			return;
+		}
+		const element = menuElRef.current;
+		const viewport = viewportRef.current;
+		if (element === null || viewport === null) return;
+		const GAP = 10;
+		const EDGE = 4;
+		const width = element.offsetWidth;
+		const height = element.offsetHeight;
+		const flipX = menu.x + GAP + width > viewport.clientWidth - EDGE;
+		const flipY = menu.y + GAP + height > viewport.clientHeight - EDGE;
+		setMenuBox({
+			left: flipX
+				? Math.max(EDGE, menu.x - GAP - width)
+				: Math.min(menu.x + GAP, Math.max(EDGE, viewport.clientWidth - EDGE - width)),
+			top: flipY
+				? Math.max(EDGE, menu.y - GAP - height)
+				: Math.min(menu.y + GAP, Math.max(EDGE, viewport.clientHeight - EDGE - height)),
+			flipX,
+			flipY,
+		});
+	}, [menu]);
 
 	const closeMenu = useCallback(() => setMenu(null), []);
-
 
 	const [selected, setSelected] = useState<string[]>([]);
 	const selectedRef = useRef<Set<string>>(new Set());
@@ -502,6 +592,16 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 	/** 节点的实际高度（连线端点要用；宽度是固定常量） */
 	const [heights, setHeights] = useState<Record<string, number>>({});
 	const nodeElsRef = useRef(new Map<string, HTMLElement>());
+	/**
+	 * 当前是不是「缩略态」（`k ≤ FAR_K`）。
+	 *
+	 * 用 React state 而不仅是一个 class：缩略时卡片**变矮**（`FAR_NODE_HEIGHT`），
+	 * 连线端点得跟着改 —— 而连线是 `useMemo` 算出来的，不给它一个依赖就永远用老高度，
+	 * 表现为「字还在卡上，线却挂到半空中」（用户 2026-11-26：「显示标题时外面的线位置也要跟着调」）。
+	 * `farRef` 负责去重：只在跨门槛那一下触发一次重渲染，不是每帧都触发。
+	 */
+	const [far, setFar] = useState(false);
+	const farRef = useRef(false);
 
 	/**
 	 * 布局风格：卡片（自由摆放，服务端坐标） / 时间线（按依赖分栏） / 清单（单列竖排）。
@@ -576,6 +676,46 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 	const laneBands = layoutResult.bands;
 
 	/**
+	 * 卡片样式下的**防叠**。
+	 *
+	 * 服务端排坐标时只有一套固定行列间距（`ROW_HEIGHT`），它不知道卡片实际有多高；
+	 * 说明写长一点，同一列的两张就摞在一起（用户 2026-11-25：「互相压到」）。
+	 * 这里按**实测高度**把被压住的节点往下推：只推不改顺序、也不写回服务端，
+	 * 而且推完再算一遍不会继续动（幂等），所以拖完一轮也不会跳。
+	 *
+	 * 一开始只认「x 完全一样」那一列，卡片被拖歪几十像素就不再避让，于是又叠上了
+	 * （用户 2026-11-25 第二次：「有时还会叠加在一块」）。现在按**两张卡片的矩形真的相交**
+	 * 来判：同一列互压、错开半格、上下行错位都算在内，只搬「被压在下面」的那张，
+	 * 所以不会无缘无故拉出一片空白。
+	 */
+	const cardRelief = useMemo(() => {
+		if (style !== "card" || level.nodes.length === 0) return null;
+		/** 从左上往右下放：先在上面的先占位，后面的给它让路 */
+		const nodes = [...level.nodes].sort((a, b) => a.y - b.y || a.x - b.x);
+		const placed: { x: number; y: number; w: number; h: number }[] = [];
+		const map = new Map<string, Pos>();
+		for (const node of nodes) {
+			const height = heights[node.id] ?? estimateNodeHeight(node);
+			let y = node.y;
+			// 每轮至少跨过一张卡，最多跑「节点数 + 余量」轮就一定能停
+			for (let guard = 0; guard <= nodes.length; guard += 1) {
+				const clash = placed.find(
+					(other) =>
+						node.x < other.x + other.w &&
+						node.x + NODE_WIDTH > other.x &&
+						y < other.y + other.h + COLUMN_GAP &&
+						y + height + COLUMN_GAP > other.y,
+				);
+				if (clash === undefined) break;
+				y = clash.y + clash.h + COLUMN_GAP;
+			}
+			map.set(node.id, { x: node.x, y });
+			placed.push({ x: node.x, y, w: NODE_WIDTH, h: height });
+		}
+		return map;
+	}, [heights, level.nodes, style]);
+
+	/**
 	 * 非卡片样式下**手摆的位置**（本机，按 会话+样式 分别记）。
 	 *
 	 * 为什么只存本机：服务端的 x/y 只有一份，而"时间线里我想把这张挪开"是某个样式的个人偏好，
@@ -584,11 +724,14 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 	const [moves, setMoves] = useState<Record<string, Record<string, Record<string, Pos>>>>(loadMoves);
 	const styleMoves = style === "card" ? undefined : moves[conversationId ?? ""]?.[style];
 
-	/** 节点坐标：手摆（非卡片样式） > 派生布局 > 刚松手的乐观值 > 服务端坐标 */
+	/** 节点坐标：手摆（非卡片样式） > 派生布局 > 刚松手的乐观值 > 卡片防叠 > 服务端坐标 */
 	const posOf = useCallback(
 		(node: CanvasNode): Pos =>
-			styleMoves?.[node.id] ?? derived?.get(node.id) ?? pending[node.id] ?? { x: node.x, y: node.y },
-		[derived, pending, styleMoves],
+			styleMoves?.[node.id] ??
+			derived?.get(node.id) ??
+			pending[node.id] ??
+			cardRelief?.get(node.id) ?? { x: node.x, y: node.y },
+		[cardRelief, derived, pending, styleMoves],
 	);
 	/** 现在所有样式都能拖（以前只有卡片能拖，用户 2026-11-23 要求其他样式也能） */
 	const canDrag = true;
@@ -612,18 +755,19 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 			}
 			if ((event.metaKey || event.ctrlKey) && (event.key === "a" || event.key === "A")) {
 				event.preventDefault();
-				setSelected((doc?.nodes ?? []).map((node) => node.id));
+				// 只选**当前这一层**：钻进子计划时全选不能把主图的节点 id 也塞进来
+				setSelected(level.nodes.map((node) => node.id));
 				return;
 			}
 			if ((event.key === "Delete" || event.key === "Backspace") && selected.length > 0 && conversationId !== null) {
 				event.preventDefault();
-				canvasDeleteNodes(conversationId, selected);
+				canvasDeleteNodes(conversationId, selected, parentId ?? undefined);
 				setSelected([]);
 			}
 		};
 		window.addEventListener("keydown", onKeyDown);
 		return () => window.removeEventListener("keydown", onKeyDown);
-	}, [closeMenu, conversationId, doc, selected]);
+	}, [closeMenu, conversationId, level.nodes, parentId, selected]);
 
 	/**
 	 * 快照里节点变了（agent 重画 / 加节点）之后重新量高度。
@@ -635,11 +779,22 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 		setPending({});
 	}, [revision]);
 	useLayoutEffect(() => {
+		/**
+		 * 量的是**完整卡片**的高度：布局（时间线 / 清单的列宽行高）要的是它。
+		 * 缩略态下 `offsetHeight` 只有 34px，直接量会把布局算成一条条细缝，
+		 * 所以量之前先把 `is-far` 摘掉，量完再挂回去（一进一出多一次布局，量高度本来就很少发生）。
+		 */
+		const root = rootRef.current;
+		const wasFar = root?.classList.contains("is-far") === true;
+		if (wasFar) root?.classList.remove("is-far");
 		const next: Record<string, number> = {};
 		for (const [id, element] of nodeElsRef.current) next[id] = element.offsetHeight;
+		if (wasFar) root?.classList.add("is-far");
 		if (Object.keys(next).length === 0) return;
 		setHeights((current) => {
-			const same = Object.keys(next).length === Object.keys(current).length && Object.entries(next).every(([id, h]) => current[id] === h);
+			const same =
+				Object.keys(next).length === Object.keys(current).length &&
+				Object.entries(next).every(([id, h]) => current[id] === h);
 			return same ? current : next;
 		});
 	}, [revision, pending, runningNodeId, run?.status, run?.activeTool?.name, style]);
@@ -655,10 +810,17 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 		viewport.style.backgroundSize = `${cell}px ${cell}px`;
 		viewport.style.backgroundPosition = `${view.x}px ${view.y}px`;
 		/**
-		 * 远距离（缩到 0.5 以下）切「缩略」：节点里只留一个编号 + 状态色块。
-		 * 这个尺寸下任何文字都是 4–5px，留着只是噪声；要看内容靠悬停预览。
+		 * 远距离（`FAR_K` 以下）才切「缩略」：节点里只留一个编号 + 标题。
+		 * 门槛是 0.4（用户 2026-11-26 定稿）：0.4 以上完整卡片，再往下才抽成一行标题 ——
+		 * 而且 `setFar` 要跟着变：连线端点用的是缩略高度，
+		 * 只换 class 不换坐标的话，卡片矮了、线还挂在高处。
 		 */
-		rootRef.current?.classList.toggle("is-far", view.k < 0.5);
+		const isFar = view.k < FAR_K;
+		if (isFar !== farRef.current) {
+			farRef.current = isFar;
+			rootRef.current?.classList.toggle("is-far", isFar);
+			setFar(isFar);
+		}
 		if (readoutRef.current) {
 			readoutRef.current.textContent = `${view.k.toFixed(2)}×`;
 			// x/y 挪到 title：工具栏里那一长串是最容易被压到折行的部分
@@ -725,7 +887,9 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 	const hoverRef = useRef(false);
 
 	/* ── 框选 ─────────────────────────────────────────── */
-	const marqueeRefState = useRef<{ id: number; sx: number; sy: number; additive: boolean; moved: boolean } | null>(null);
+	const marqueeRefState = useRef<{ id: number; sx: number; sy: number; additive: boolean; moved: boolean } | null>(
+		null,
+	);
 
 	/* ── 节点拖动（可能多张，带吸附） ─────────────────────── */
 	const dragRef = useRef<{
@@ -765,12 +929,24 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 			ids = [id];
 		}
 
+		/**
+		 * 起点坐标必须从**当前这一层**取（`level.nodes`）。
+		 * 以前这里写的是 `doc.nodes`（主图）：钻进子计划后子节点的 id 在主图里根本找不到，
+		 * `origins` 是空的 → 拖动一动不动（用户 2026-11-25 报的「画布拖动不了」）。
+		 */
 		const origins = new Map<string, Pos>();
 		for (const each of ids) {
-			const node = doc?.nodes.find((entry) => entry.id === each);
+			const node = level.nodes.find((entry) => entry.id === each);
 			if (node) origins.set(each, posOf(node));
 		}
-		dragRef.current = { pointerId: event.pointerId, ids: [...origins.keys()], sx: event.clientX, sy: event.clientY, origins, moved: false };
+		dragRef.current = {
+			pointerId: event.pointerId,
+			ids: [...origins.keys()],
+			sx: event.clientX,
+			sy: event.clientY,
+			origins,
+			moved: false,
+		};
 		event.currentTarget.setPointerCapture(event.pointerId);
 	};
 
@@ -797,7 +973,7 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 
 			const targetXs: number[] = [];
 			const targetYs: number[] = [];
-			for (const node of doc?.nodes ?? []) {
+			for (const node of level.nodes) {
 				if (drag.origins.has(node.id)) continue;
 				const pos = posOf(node);
 				const height = nodeElsRef.current.get(node.id)?.offsetHeight ?? heights[node.id] ?? 84;
@@ -818,7 +994,7 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 			}
 			showGuides(snapX?.at ?? null, snapY?.at ?? null);
 		},
-		[doc?.nodes, heights, posOf, showGuides],
+		[heights, level.nodes, posOf, showGuides],
 	);
 
 	/** 框选放大：按住 Z 拖（或点工具条按钮切成常开） */
@@ -848,7 +1024,13 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 		if (target.closest(".canvas-node")) return;
 		const wantMarquee = event.shiftKey || event.altKey;
 		if (event.button === 1 || (event.button === 0 && !wantMarquee)) {
-			panRef.current = { id: event.pointerId, sx: event.clientX, sy: event.clientY, ox: viewRef.current.x, oy: viewRef.current.y };
+			panRef.current = {
+				id: event.pointerId,
+				sx: event.clientX,
+				sy: event.clientY,
+				ox: viewRef.current.x,
+				oy: viewRef.current.y,
+			};
 			viewportRef.current?.classList.add("is-panning");
 			viewportRef.current?.setPointerCapture(event.pointerId);
 			return;
@@ -943,19 +1125,16 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 			const worldBottom = (top + height - view.y) / view.k;
 
 			const hits: string[] = [];
-			for (const node of doc?.nodes ?? []) {
+			for (const node of level.nodes) {
 				const pos = posOf(node);
 				const nodeHeight = nodeElsRef.current.get(node.id)?.offsetHeight ?? heights[node.id] ?? 84;
 				const overlaps =
-					pos.x < worldRight &&
-					pos.x + NODE_WIDTH > worldLeft &&
-					pos.y < worldBottom &&
-					pos.y + nodeHeight > worldTop;
+					pos.x < worldRight && pos.x + NODE_WIDTH > worldLeft && pos.y < worldBottom && pos.y + nodeHeight > worldTop;
 				if (overlaps) hits.push(node.id);
 			}
 			setSelected((current) => (additive ? [...new Set([...current, ...hits])] : hits));
 		},
-		[doc?.nodes, heights, posOf],
+		[heights, level.nodes, posOf],
 	);
 
 	/** 把框选出来的那块屏幕矩形放大到铺满视口（框选放大） */
@@ -1159,59 +1338,125 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 		};
 	}, []);
 
-	/** 适应内容：把所有节点的包围盒塞进视口 */
-	const fit = useCallback(() => {
-		const viewport = viewportRef.current;
-		if (!viewport) return;
-		if (viewport.clientWidth === 0 || viewport.clientHeight === 0) return;
-		const fitNodes = level.nodes;
-		if (fitNodes.length === 0) return;
-		let minX = Number.POSITIVE_INFINITY;
-		let minY = Number.POSITIVE_INFINITY;
-		let maxX = Number.NEGATIVE_INFINITY;
-		let maxY = Number.NEGATIVE_INFINITY;
-		for (const node of fitNodes) {
-			const pos = posOf(node);
-			const height = nodeElsRef.current.get(node.id)?.offsetHeight ?? heights[node.id] ?? 84;
-			minX = Math.min(minX, pos.x);
-			minY = Math.min(minY, pos.y);
-			maxX = Math.max(maxX, pos.x + NODE_WIDTH);
-			maxY = Math.max(maxY, pos.y + height);
-		}
-		const pad = 40;
-		/**
-		 * 上限 1（只有两个节点时不要按比例"放大填满"）、下限到 MIN_K（真的装下全部）。
-		 * 用户要的是「看到全局所有的」—— 宁可小，也要全都看得见。
-		 */
-		const k = Math.min(
-			1,
-			clampK(
-				Math.min(
-					(viewport.clientWidth - pad * 2) / Math.max(1, maxX - minX),
-					(viewport.clientHeight - pad * 2) / Math.max(1, maxY - minY),
+	/**
+	 * 适应内容：把所有节点的包围盒塞进视口。
+	 *   `maxK`   自动算比例时的上限（菜单里的「看全局」用它，别把小图放大填满）
+	 *   `exactK` 给了就不再算比例，直接按这个缩放居中 —— 首次打开固定 0.8 走这条，
+	 *            否则会被 `FIT_MIN_K`（0.5）那条「别缩太小」的底线吃掉
+	 */
+	const fit = useCallback(
+		(maxK = 1, exactK?: number) => {
+			const viewport = viewportRef.current;
+			if (!viewport) return;
+			if (viewport.clientWidth === 0 || viewport.clientHeight === 0) return;
+			const fitNodes = level.nodes;
+			if (fitNodes.length === 0) return;
+			let minX = Number.POSITIVE_INFINITY;
+			let minY = Number.POSITIVE_INFINITY;
+			let maxX = Number.NEGATIVE_INFINITY;
+			let maxY = Number.NEGATIVE_INFINITY;
+			for (const node of fitNodes) {
+				const pos = posOf(node);
+				const height = nodeElsRef.current.get(node.id)?.offsetHeight ?? heights[node.id] ?? 84;
+				minX = Math.min(minX, pos.x);
+				minY = Math.min(minY, pos.y);
+				maxX = Math.max(maxX, pos.x + NODE_WIDTH);
+				maxY = Math.max(maxY, pos.y + height);
+			}
+			const pad = 40;
+			/**
+			 * 上限 1（只有两个节点时不要按比例"放大填满"）、下限到 `FIT_MIN_K`。
+			 *
+			 * 以前这里一路缩到 MIN_K（0.2），节点一多就沦为一堆读不出字的小方块
+			 * （用户 2026-11-25：「全局缩小时不要太小」）。现在宁可装不下、靠平移补，
+			 * 也不把字缩到看不见 —— 装下的部分居中，装不下的靠左上。
+			 */
+			const autoK = Math.min(
+				maxK,
+				Math.max(
+					FIT_MIN_K,
+					clampK(
+						Math.min(
+							(viewport.clientWidth - pad * 2) / Math.max(1, maxX - minX),
+							(viewport.clientHeight - pad * 2) / Math.max(1, maxY - minY),
+						),
+					),
 				),
-			),
-		);
-		viewRef.current.k = k;
-		// 装得下就居中；装不下就靠左上（否则"居中"会把最左边那排推到屏幕外）
-		const centeredX = (viewport.clientWidth - (maxX - minX) * k) / 2 - minX * k;
-		const centeredY = (viewport.clientHeight - (maxY - minY) * k) / 2 - minY * k;
-		viewRef.current.x = Math.max(centeredX, pad - minX * k);
-		viewRef.current.y = Math.max(centeredY, pad - minY * k);
-		paint();
-	}, [doc?.nodes, heights, paint, posOf]);
+			);
+			// exactK 是「就按这个比例」，不走自动算的那套下限
+			const k = exactK === undefined ? autoK : clampK(exactK);
+			viewRef.current.k = k;
+			// 装得下就居中；装不下就靠左上（否则"居中"会把最左边那排推到屏幕外）
+			const centeredX = (viewport.clientWidth - (maxX - minX) * k) / 2 - minX * k;
+			const centeredY = (viewport.clientHeight - (maxY - minY) * k) / 2 - minY * k;
+			viewRef.current.x = Math.max(centeredX, pad - minX * k);
+			viewRef.current.y = Math.max(centeredY, pad - minY * k);
+			paint();
+		},
+		[heights, level.nodes, paint, posOf],
+	);
 
 	const reset = useCallback(() => {
 		viewRef.current = { x: 0, y: 0, k: 1 };
 		paint();
 	}, [paint]);
 
+	/**
+	 * **只把画布全屏**（用户 2026-11-26：「我是要只画布全屏，放到画布里的这个里面」）。
+	 *
+	 * 用的是元素级 Fullscreen API（对 `rootRef` 这个画布节点），不是整页那套：
+	 * 整页全屏会把侧栏和对话一起留下，而这里要的是"这张图占满屏幕、其余全让开"。
+	 * 顺便白拿两件事：一个系统级的退出出口（Esc），以及不会踩到祖先 `transform` 的定位坑
+	 * （`position: fixed` 那种做法一旦上层的某个祖先有 transform 就会错位）。
+	 */
+	const [canvasFull, setCanvasFull] = useState(false);
+	const toggleCanvasFullscreen = useCallback(() => {
+		const element = rootRef.current;
+		if (element === null) return;
+		if (document.fullscreenElement === element) {
+			void document.exitFullscreen?.().catch(() => undefined);
+			return;
+		}
+		void element.requestFullscreen?.({ navigationUI: "hide" }).catch(() => undefined);
+	}, []);
+	useEffect(() => {
+		const onChange = () => {
+			setCanvasFull(document.fullscreenElement === rootRef.current);
+			// 进出全屏视口尺寸都变了：重排一次，否则连线端点还是按旧尺寸算的
+			paint();
+			setHover(null);
+		};
+		document.addEventListener("fullscreenchange", onChange);
+		return () => document.removeEventListener("fullscreenchange", onChange);
+	}, [paint]);
+
+	/**
+	 * 第一次打开这张画布时先缩到 0.8。
+	 *
+	 * 1:1 打开时一张卡 240px 宽、整张图通常比视口还大，第一眼看到的就是「卡片挤成一堆」
+	 * （用户 2026-11-26：「默认打开时可以缩放 0.8 吧」）。只在**这张画布第一次开**时做一次，
+	 * 之后视图归用户；换会话 / 钻进子计划算新的一张。
+	 */
+	const openKey = `${conversationId ?? ""}|${parentId ?? ""}`;
+	const openedRef = useRef<string | null>(null);
+	useEffect(() => {
+		if (openedRef.current === openKey) return;
+		const viewport = viewportRef.current;
+		// 右栏收起来 / 切到别的标签时视口是 0，这时候 fit 算出来全是 NaN，等它真的显示出来再算
+		if (viewport === null || viewport.clientWidth === 0 || viewport.clientHeight === 0) return;
+		// 等实测高度回来再算，否则按估算高度居中，量完会跳一下
+		if (level.nodes.length === 0) return;
+		if (!level.nodes.every((node) => heights[node.id] !== undefined)) return;
+		openedRef.current = openKey;
+		fit(0.8, 0.8);
+	}, [fit, heights, level.nodes, openKey]);
+
 	/** 重命名提交：标题不能为空，说明可以清空 */
 	const commitEditing = useCallback(() => {
 		const draft = editingRef.current;
 		setEditing(null);
 		if (draft === null || conversationId === null) return;
-		const node = doc?.nodes.find((each) => each.id === draft.id);
+		const node = level.nodes.find((each) => each.id === draft.id);
 		if (node === undefined) return;
 		const title = draft.title.trim();
 		const detail = draft.detail.trim();
@@ -1220,7 +1465,7 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 		if (detail !== (node.detail ?? "")) patch.detail = detail;
 		if (patch.title !== undefined || patch.detail !== undefined)
 			canvasUpdateNode(conversationId, draft.id, patch, parentId ?? undefined);
-	}, [conversationId, doc]);
+	}, [conversationId, level.nodes, parentId]);
 
 	/** 右边菜单 / 内联编辑要用的"当前编辑值"，提交时不想因为闭包拿不到最新值 */
 	const editingRef = useRef<{ id: string; title: string; detail: string } | null>(null);
@@ -1254,14 +1499,15 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 	const sendAsk = useCallback(() => {
 		if (ask === null || conversationId === null) return;
 		const picked = ask.nodeIds
-			.map((id) => doc?.nodes.find((node) => node.id === id))
+			.map((id) => level.nodes.find((node) => node.id === id))
 			.filter((node): node is CanvasNode => node !== undefined);
 		const requirement = ask.text.trim();
 		if (picked.length === 0 || requirement === "") return;
 		const lines = [
 			`【画布选区】针对这 ${picked.length} 个节点：`,
 			...picked.map(
-				(node) => `- ${node.id}（${node.status}${node.kind ? `，${node.kind}` : ""}）：${node.title}${node.detail ? ` —— ${node.detail}` : ""}`,
+				(node) =>
+					`- ${node.id}（${node.status}${node.kind ? `，${node.kind}` : ""}）：${node.title}${node.detail ? ` —— ${node.detail}` : ""}`,
 			),
 			"",
 			`我的要求：${requirement}`,
@@ -1272,7 +1518,7 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 		requestInterruptSpeech();
 		sendMessage(lines.join("\n"));
 		setAsk(null);
-	}, [ask, conversationId, doc]);
+	}, [ask, conversationId, level.nodes]);
 
 	/** 手改节点状态（服务端落盘 + 推快照，这里不做乐观更新：一次往返很快） */
 	const setNodeStatus = useCallback(
@@ -1348,7 +1594,6 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 	const nodes = level.nodes;
 	const chosen = useMemo(() => new Set(selected), [selected]);
 
-
 	/** 悬停的节点（缩得很小时弹一张不缩放的预览卡，否则字永远看不清） */
 	const [hover, setHover] = useState<{ id: string; x: number; y: number; w: number; h: number } | null>(null);
 	const hoverNode = hover === null ? null : (nodes.find((node) => node.id === hover.id) ?? null);
@@ -1384,7 +1629,10 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 			const height = nodeElsRef.current.get(node.id)?.offsetHeight ?? heights[node.id] ?? 84;
 			const pad = 60;
 			const k = clampK(
-				Math.min((viewport.clientWidth - pad * 2) / NODE_WIDTH, (viewport.clientHeight - pad * 2) / Math.max(1, height)),
+				Math.min(
+					(viewport.clientWidth - pad * 2) / NODE_WIDTH,
+					(viewport.clientHeight - pad * 2) / Math.max(1, height),
+				),
 			);
 			viewRef.current.k = k;
 			viewRef.current.x = viewport.clientWidth / 2 - (pos.x + NODE_WIDTH / 2) * k;
@@ -1411,26 +1659,86 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 	const edges = useMemo(() => {
 		if (doc === null || level.edges.length === 0) return [];
 		const posById = new Map(level.nodes.map((node) => [node.id, posOf(node)]));
-		const heightById = new Map(level.nodes.map((node) => [node.id, heights[node.id] ?? 84]));
+		const heightById = new Map(
+			level.nodes.map((node) => [node.id, far ? FAR_NODE_HEIGHT : (heights[node.id] ?? 84)]),
+		);
+		const statusById = new Map(level.nodes.map((node) => [node.id, node.status]));
+		/**
+		 * 同一个节点出去的线、进来的线各占一个纵向位置。
+		 *
+		 * 不分开的话所有线从卡片右侧**同一个点**出发，看上去就是一根灰线分叉，
+		 * 根本数不出这是几条依赖（用户 2026-11-26：「连线可以区分一下」）。
+		 */
+		const outCount = new Map<string, number>();
+		const inCount = new Map<string, number>();
+		for (const edge of level.edges) {
+			outCount.set(edge.from, (outCount.get(edge.from) ?? 0) + 1);
+			inCount.set(edge.to, (inCount.get(edge.to) ?? 0) + 1);
+		}
+		const outSeen = new Map<string, number>();
+		const inSeen = new Map<string, number>();
+		/** 第 index 条（共 count 条）在卡片侧边上的落点：均分、上下对称，别超出上下圆角 */
+		const portOffset = (index: number, count: number, height: number) => {
+			if (count <= 1) return 0;
+			const usable = Math.max(0, height - 26);
+			return (index - (count - 1) / 2) * Math.min(16, usable / (count - 1));
+		};
 		return level.edges
 			.map((edge) => {
 				const from = posById.get(edge.from);
 				const to = posById.get(edge.to);
 				if (!from || !to) return null;
+				/**
+				 * 连线的颜色跟着**下游**走：这条依赖是为下游服务的，下游什么状态它就是什么状态。
+				 *   done    下游已完成 → 这条路走完了
+				 *   active  上游已完成 + 下游正在做 → 正在走的那一段
+				 *   blocked 下游卡住 → 琥珀色虚线
+				 *   idle    还没轮到 → 压暗，别和主线抢眼（十几条线一样亮就是一团灰）
+				 */
+				const fromStatus = statusById.get(edge.from) ?? "todo";
+				const toStatus = statusById.get(edge.to) ?? "todo";
+				const fromHeight = heightById.get(edge.from) ?? 84;
+				const toHeight = heightById.get(edge.to) ?? 84;
+				// 这一条是这个节点伸出去 / 接进来的第几条（按 level.edges 顺序，稳定）
+				const outIndex = outSeen.get(edge.from) ?? 0;
+				outSeen.set(edge.from, outIndex + 1);
+				const inIndex = inSeen.get(edge.to) ?? 0;
+				inSeen.set(edge.to, inIndex + 1);
+				const tone =
+					toStatus === "done"
+						? "done"
+						: toStatus === "blocked"
+							? "blocked"
+							: toStatus === "doing" && fromStatus === "done"
+								? "active"
+								: "idle";
 				const x1 = from.x + NODE_WIDTH;
-				const y1 = from.y + (heightById.get(edge.from) ?? 84) / 2;
+				const y1 = from.y + fromHeight / 2 + portOffset(outIndex, outCount.get(edge.from) ?? 1, fromHeight);
 				const x2 = to.x;
-				const y2 = to.y + (heightById.get(edge.to) ?? 84) / 2;
+				const y2 = to.y + toHeight / 2 + portOffset(inIndex, inCount.get(edge.to) ?? 1, toHeight);
 				// 目标在左边时（用户可能把节点拖乱了）从源节点左侧出，别画一条横穿整张图的线
 				const backwards = x2 < x1;
 				const sx = backwards ? from.x : x1;
 				const ex = backwards ? to.x + NODE_WIDTH : x2;
-				const bend = Math.max(48, Math.abs(ex - sx) * 0.45) * (backwards ? -1 : 1);
-				const d = `M ${sx} ${y1} C ${sx + bend} ${y1}, ${ex - bend} ${y2}, ${ex} ${y2}`;
-				return { key: `${edge.from}->${edge.to}`, d, label: edge.label, mid: { x: (sx + ex) / 2, y: (y1 + y2) / 2 } };
+				/**
+				 * 收一点点，把箭头留在卡片外面。
+				 * 不收回来的话箭头尖会顶在卡片边框上、一半压在字上，反而更像"接错了"。
+				 */
+				const tip = backwards ? ex + ARROW_GAP : ex - ARROW_GAP;
+				const bend = Math.max(48, Math.abs(tip - sx) * 0.45) * (backwards ? -1 : 1);
+				const d = `M ${sx} ${y1} C ${sx + bend} ${y1}, ${tip - bend} ${y2}, ${tip} ${y2}`;
+				return {
+					key: `${edge.from}->${edge.to}`,
+					d,
+					label: edge.label,
+					tone,
+					mid: { x: (sx + ex) / 2, y: (y1 + y2) / 2 },
+				};
 			})
-			.filter((edge): edge is { key: string; d: string; label: string | undefined; mid: Pos } => edge !== null);
-	}, [doc, level, heights, posOf]);
+			.filter(
+				(edge): edge is { key: string; d: string; label: string | undefined; tone: string; mid: Pos } => edge !== null,
+			);
+	}, [doc, level, heights, far, posOf]);
 
 	/* 空状态：还没有画布 */
 	if (doc === null || nodes.length === 0) {
@@ -1494,8 +1802,35 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 					{/* 连线画在世界坐标系里，跟着一起缩放 */}
 					{edges.length > 0 ? (
 						<svg className="canvas-edges">
+							{/*
+							 * 方向箭头：只要一个瘦瘦的 V，跟着线自己的颜色走。
+							 * 没有它的时候，弯线从卡片右侧出发绕到下一张，看着像"接反了"
+							 * （用户 2026-11-26：「带上一个小箭头我看看方向，不要太明显」）。
+							 */}
+							<defs>
+								{(["idle", "active", "done", "blocked"] as const).map((tone) => (
+									<marker
+										key={tone}
+										id={`canvas-arrow-${tone}`}
+										className={`canvas-arrow is-${tone}`}
+										viewBox="0 0 8 8"
+										refX="6.4"
+										refY="4"
+										markerWidth="4.6"
+										markerHeight="4.6"
+										orient="auto"
+									>
+										<path d="M 1.6 1.4 L 6.4 4 L 1.6 6.6" />
+									</marker>
+								))}
+							</defs>
 							{edges.map((edge) => (
-								<path key={edge.key} d={edge.d} />
+								<path
+									key={edge.key}
+									className={`is-${edge.tone}`}
+									d={edge.d}
+									markerEnd={`url(#canvas-arrow-${edge.tone})`}
+								/>
 							))}
 						</svg>
 					) : null}
@@ -1522,14 +1857,20 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 									setMenu(openMenuAt(event, node.id));
 								}}
 								onPointerEnter={() => {
-									// 只在小尺度时弹预览：放大到看得清的时候弹反而是干扰
-									if (viewRef.current.k >= 0.7) {
+									// 只在小尺度（已切缩略）时弹预览：放大到看得清的时候弹反而是干扰
+									if (viewRef.current.k >= FAR_K) {
 										setHover(null);
 										return;
 									}
 									const view = viewRef.current;
 									const height = nodeElsRef.current.get(node.id)?.offsetHeight ?? 84;
-									setHover({ id: node.id, x: pos.x * view.k + view.x, y: pos.y * view.k + view.y, w: NODE_WIDTH * view.k, h: height * view.k });
+									setHover({
+										id: node.id,
+										x: pos.x * view.k + view.x,
+										y: pos.y * view.k + view.y,
+										w: NODE_WIDTH * view.k,
+										h: height * view.k,
+									});
 								}}
 								onPointerLeave={scheduleDropHover}
 								onDoubleClick={() => {
@@ -1539,7 +1880,7 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 								}}
 								title={t("双击让 agent 开始做这一步", "Double-click to have the agent start this step")}
 							>
-								{/* 缩略时显示的顺序号：小尺度下它是唯一看得清的东西 */}
+								{/* 缩略时的顺序号：标题也一起留在卡上（见 canvas.css 的 is-far 那一段），编号负责对顺序 */}
 								<span className="canvas-node-index">{index + 1}</span>
 								{editing !== null && editing.id === node.id ? (
 									/* 重命名：标题一行输入 + 说明多行输入，Enter 保存 / Esc 取消 */
@@ -1634,30 +1975,6 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 										</button>
 									) : null}
 								</div>
-								{/* 悬停/选中才出现：平时不挡内容 */}
-								<div className="canvas-node-actions">
-									<select
-										className="canvas-node-status"
-										value={node.status}
-										aria-label={t("改状态", "Change status")}
-										onPointerDown={(event) => event.stopPropagation()}
-										onChange={(event) => setNodeStatus(node, event.target.value as CanvasNodeStatus)}
-									>
-										<option value="todo">{t("待办", "To do")}</option>
-										<option value="doing">{t("正在做", "Doing")}</option>
-										<option value="done">{t("已完成", "Done")}</option>
-										<option value="blocked">{t("卡住了", "Blocked")}</option>
-									</select>
-									<button
-										type="button"
-										className="canvas-node-delete"
-										title={t("删掉这一步", "Delete this step")}
-										aria-label={t("删掉这一步", "Delete this step")}
-										onClick={() => deleteNode(node)}
-									>
-										×
-									</button>
-								</div>
 							</div>
 						);
 					})}
@@ -1665,7 +1982,6 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 				<div className="canvas-marquee" ref={marqueeRef} />
 				<div className="canvas-guide canvas-guide-x" ref={guideXRef} />
 				<div className="canvas-guide canvas-guide-y" ref={guideYRef} />
-
 			</div>
 			{/* 悬停预览：**不在世界里**，所以不会被缩放 —— 缩到 0.36 时它是唯一能看清字的入口 */}
 			{hover !== null && hoverNode !== null && previewLayout !== null ? (
@@ -1692,27 +2008,29 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 					</div>
 				</div>
 			) : null}
-{/* 「N 项产出」弹层 */}
-			{artifactsOf !== null ? (() => {
-				const node = nodes.find((each) => each.id === artifactsOf.id);
-				if (node === undefined) return null;
-				return (
-					<>
-						<div className="canvas-menu-backdrop" onPointerDown={() => setArtifactsOf(null)} />
-						<div
-							className="canvas-ask"
-							style={{
-								left: Math.min(artifactsOf.x, (viewportRef.current?.clientWidth ?? 600) - 300),
-								top: Math.min(artifactsOf.y, (viewportRef.current?.clientHeight ?? 600) - 160),
-							}}
-						>
-							<div className="canvas-ask-head">{node.title}</div>
-							{renderArtifacts(node)}
-						</div>
-					</>
-				);
-			})() : null}
-						{/* 「就这几步说两句」：一个小输入框，正文里带上节点 id 和现状发给 agent */}
+			{/* 「N 项产出」弹层 */}
+			{artifactsOf !== null
+				? (() => {
+						const node = nodes.find((each) => each.id === artifactsOf.id);
+						if (node === undefined) return null;
+						return (
+							<>
+								<div className="canvas-menu-backdrop" onPointerDown={() => setArtifactsOf(null)} />
+								<div
+									className="canvas-ask"
+									style={{
+										left: Math.min(artifactsOf.x, (viewportRef.current?.clientWidth ?? 600) - 300),
+										top: Math.min(artifactsOf.y, (viewportRef.current?.clientHeight ?? 600) - 160),
+									}}
+								>
+									<div className="canvas-ask-head">{node.title}</div>
+									{renderArtifacts(node)}
+								</div>
+							</>
+						);
+					})()
+				: null}
+			{/* 「就这几步说两句」：一个小输入框，正文里带上节点 id 和现状发给 agent */}
 			{ask !== null ? (
 				<>
 					<div className="canvas-menu-backdrop" onPointerDown={() => setAsk(null)} />
@@ -1725,7 +2043,12 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 					>
 						<div className="canvas-ask-head">
 							<span>{t(`对这 ${ask.nodeIds.length} 步说：`, `About these ${ask.nodeIds.length}:`)}</span>
-							<button type="button" className="canvas-ask-refresh" disabled={suggesting} onClick={() => void loadSuggestions()}>
+							<button
+								type="button"
+								className="canvas-ask-refresh"
+								disabled={suggesting}
+								onClick={() => void loadSuggestions()}
+							>
 								{suggesting ? t("正在想…", "Thinking…") : t("换一批", "Shuffle")}
 							</button>
 						</div>
@@ -1737,9 +2060,7 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 										type="button"
 										key={text}
 										className="canvas-ask-chip"
-										onClick={() =>
-											setAsk((current) => (current === null ? current : { ...current, text }))
-										}
+										onClick={() => setAsk((current) => (current === null ? current : { ...current, text }))}
 									>
 										{text}
 									</button>
@@ -1751,7 +2072,10 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 							value={ask.text}
 							autoFocus
 							rows={3}
-							placeholder={t("比如：这几步太粗，拆细一点 / 合并成一步 / 顺序不对", "e.g. too coarse — split them / merge / wrong order")}
+							placeholder={t(
+								"比如：这几步太粗，拆细一点 / 合并成一步 / 顺序不对",
+								"e.g. too coarse — split them / merge / wrong order",
+							)}
 							onChange={(event) => setAsk({ ...ask, text: event.target.value })}
 							onKeyDown={(event) => {
 								if (event.key === "Enter" && !event.shiftKey) {
@@ -1791,25 +2115,45 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 						aria-hidden="true"
 					/>
 					<div
-						className="canvas-menu"
+						className={`canvas-menu${menuBox?.flipX ? " is-flip-x" : ""}${menuBox?.flipY ? " is-flip-y" : ""}`}
+						ref={menuElRef}
 						style={{
-							// 往右下挪一点：菜单左上角的小三角正好指向右键那一点
-							left: Math.min(menu.x + 8, (viewportRef.current?.clientWidth ?? 600) - 200),
-							top: Math.min(menu.y + 8, (viewportRef.current?.clientHeight ?? 600) - 40 - menuKinds * 26),
+							// 落点是上面那个 effect **量出来**的：装不下就往左上翻，小三角跟着翻过去
+							left: menuBox?.left ?? menu.x,
+							top: menuBox?.top ?? menu.y,
+							// 还没量到就先藏着，别让人看到它先闪一下再跳位置
+							visibility: menuBox === null ? "hidden" : "visible",
 						}}
 					>
 						{menu.nodeId === null ? (
 							<>
-								<button type="button" className="canvas-menu-item" onClick={() => { closeMenu(); fit(); }}>
+								<button
+									type="button"
+									className="canvas-menu-item"
+									onClick={() => {
+										closeMenu();
+										fit();
+									}}
+								>
 									{t("看全局", "Fit all")}
 								</button>
-								<button type="button" className="canvas-menu-item" onClick={() => { closeMenu(); reset(); }}>
+								<button
+									type="button"
+									className="canvas-menu-item"
+									onClick={() => {
+										closeMenu();
+										reset();
+									}}
+								>
 									{t("回到 100%", "Back to 100%")}
 								</button>
 								<button
 									type="button"
 									className={`canvas-menu-item${zoomArmed ? " is-on" : ""}`}
-									onClick={() => { closeMenu(); setZoomArmed((value) => !value); }}
+									onClick={() => {
+										closeMenu();
+										setZoomArmed((value) => !value);
+									}}
 								>
 									{zoomArmed ? "✓ " : ""}
 									{t("框选放大", "Zoom to area")}
@@ -1831,18 +2175,23 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 								) : null}
 								<div className="canvas-menu-sep" />
 								<div className="canvas-menu-label">{t("布局", "Layout")}</div>
-								{([
-									["card", t("卡片", "Cards")],
-									["timeline", t("时间线", "Timeline")],
-									["checklist", t("清单", "Checklist")],
-									["mindmap", t("导图", "Mind map")],
-									["swimlane", t("泳道", "Swimlanes")],
-								] as [LayoutStyle, string][]).map(([value, label]) => (
+								{(
+									[
+										["card", t("卡片", "Cards")],
+										["timeline", t("时间线", "Timeline")],
+										["checklist", t("清单", "Checklist")],
+										["mindmap", t("导图", "Mind map")],
+										["swimlane", t("泳道", "Swimlanes")],
+									] as [LayoutStyle, string][]
+								).map(([value, label]) => (
 									<button
 										type="button"
 										key={value}
 										className={`canvas-menu-item${style === value ? " is-on" : ""}`}
-										onClick={() => { closeMenu(); changeStyle(value); }}
+										onClick={() => {
+											closeMenu();
+											changeStyle(value);
+										}}
 									>
 										{style === value ? "✓ " : ""}
 										{label}
@@ -1850,99 +2199,125 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 								))}
 							</>
 						) : null}
-						{menu.nodeId !== null ? (() => {
-							const node = nodes.find((each) => each.id === menu.nodeId);
-							if (node === undefined) return null;
-							const padreHint = (() => {
-								const parents = level.edges.filter((edge) => edge.to === node.id).map((edge) => edge.from);
-								if (parents.length === 0) return null;
-								const pending = parents.filter((id) => (nodes.find((each) => each.id === id)?.status ?? "todo") !== "done");
-								if (pending.length === 0) return null;
-								return t(`前置还有 ${pending.length} 步没完成`, `${pending.length} earlier step(s) not done yet`);
-							})();
-							return (
-								<>
-									<button
-										type="button"
-										className="canvas-menu-item is-accent"
-										onClick={() => {
-											// 右键的那个节点在选区里就带整个选区，否则只带它自己
-											const picked = selected.includes(node.id) && selected.length > 0 ? selected : [node.id];
-											setAsk({ x: menu.x, y: menu.y, nodeIds: picked, text: "" });
-											closeMenu();
-										}}
-									>
-										{selected.includes(node.id) && selected.length > 1
-											? t(`就这 ${selected.length} 步说两句…`, `Ask about these ${selected.length}…`)
-											: t("就这一步说两句…", "Ask about this step…")}
-									</button>
-									{/* 文案跟状态走：已完成的还写"开始做"就是骗人 */}
-									<button type="button" className="canvas-menu-item" onClick={() => { closeMenu(); startNode(node); }}>
-										{node.status === "done"
-											? t("重新做一遍", "Run it again")
-											: node.status === "doing"
-												? t("重新开始这一步", "Restart this step")
-												: node.status === "blocked"
-													? t("重试这一步", "Retry this step")
-													: t("开始做这一步", "Start this step")}
-									</button>
-									{node.status === "doing" ? (
-										<button
-											type="button"
-											className="canvas-menu-item"
-											onClick={() => {
-												closeMenu();
-												if (conversationId !== null) interrupt(conversationId);
-											}}
-										>
-											{t("停下来", "Stop it")}
-										</button>
-									) : null}
-									{/* 前置没做完就开工：允许（有时就是要跳），但得说一声 */}
-									{padreHint !== null ? <div className="canvas-menu-hint">{padreHint}</div> : null}
-									<div className="canvas-menu-sep" />
-									<div className="canvas-menu-label">{t("状态", "Status")}</div>
-									{([
-										["todo", t("待办", "To do")],
-										["doing", t("正在做", "Doing")],
-										["done", t("已完成", "Done")],
-										["blocked", t("卡住了", "Blocked")],
-									] as [CanvasNodeStatus, string][]).map(([value, label]) => (
-										<button
-											type="button"
-											key={value}
-											className={`canvas-menu-item${node.status === value ? " is-on" : ""}`}
-											onClick={() => { closeMenu(); setNodeStatus(node, value); }}
-										>
-											{node.status === value ? "✓ " : ""}
-											{label}
-										</button>
-									))}
-									<div className="canvas-menu-sep" />
-									<button
-										type="button"
-										className="canvas-menu-item"
-										onClick={() => {
-											closeMenu();
-											setEditing({ id: node.id, title: node.title, detail: node.detail ?? "" });
-										}}
-									>
-										{t("重命名 / 改说明", "Rename")}
-									</button>
-									<button type="button" className="canvas-menu-item" onClick={() => { closeMenu(); zoomToNode(node); }}>
-										{t("放大看这一步", "Zoom in")}
-									</button>
-									<div className="canvas-menu-sep" />
-									<button
-										type="button"
-										className="canvas-menu-item is-danger"
-										onClick={() => { closeMenu(); deleteNode(node); }}
-									>
-										{t("删除这一步", "Delete")}
-									</button>
-								</>
-							);
-						})() : null}
+						{menu.nodeId !== null
+							? (() => {
+									const node = nodes.find((each) => each.id === menu.nodeId);
+									if (node === undefined) return null;
+									const padreHint = (() => {
+										const parents = level.edges.filter((edge) => edge.to === node.id).map((edge) => edge.from);
+										if (parents.length === 0) return null;
+										const pending = parents.filter(
+											(id) => (nodes.find((each) => each.id === id)?.status ?? "todo") !== "done",
+										);
+										if (pending.length === 0) return null;
+										return t(`前置还有 ${pending.length} 步没完成`, `${pending.length} earlier step(s) not done yet`);
+									})();
+									return (
+										<>
+											<button
+												type="button"
+												className="canvas-menu-item is-accent"
+												onClick={() => {
+													// 右键的那个节点在选区里就带整个选区，否则只带它自己
+													const picked = selected.includes(node.id) && selected.length > 0 ? selected : [node.id];
+													setAsk({ x: menu.x, y: menu.y, nodeIds: picked, text: "" });
+													closeMenu();
+												}}
+											>
+												{selected.includes(node.id) && selected.length > 1
+													? t(`就这 ${selected.length} 步说两句…`, `Ask about these ${selected.length}…`)
+													: t("就这一步说两句…", "Ask about this step…")}
+											</button>
+											{/* 文案跟状态走：已完成的还写"开始做"就是骗人 */}
+											<button
+												type="button"
+												className="canvas-menu-item"
+												onClick={() => {
+													closeMenu();
+													startNode(node);
+												}}
+											>
+												{node.status === "done"
+													? t("重新做一遍", "Run it again")
+													: node.status === "doing"
+														? t("重新开始这一步", "Restart this step")
+														: node.status === "blocked"
+															? t("重试这一步", "Retry this step")
+															: t("开始做这一步", "Start this step")}
+											</button>
+											{node.status === "doing" ? (
+												<button
+													type="button"
+													className="canvas-menu-item"
+													onClick={() => {
+														closeMenu();
+														if (conversationId !== null) interrupt(conversationId);
+													}}
+												>
+													{t("停下来", "Stop it")}
+												</button>
+											) : null}
+											{/* 前置没做完就开工：允许（有时就是要跳），但得说一声 */}
+											{padreHint !== null ? <div className="canvas-menu-hint">{padreHint}</div> : null}
+											<div className="canvas-menu-sep" />
+											<div className="canvas-menu-label">{t("状态", "Status")}</div>
+											{(
+												[
+													["todo", t("待办", "To do")],
+													["doing", t("正在做", "Doing")],
+													["done", t("已完成", "Done")],
+													["blocked", t("卡住了", "Blocked")],
+												] as [CanvasNodeStatus, string][]
+											).map(([value, label]) => (
+												<button
+													type="button"
+													key={value}
+													className={`canvas-menu-item${node.status === value ? " is-on" : ""}`}
+													onClick={() => {
+														closeMenu();
+														setNodeStatus(node, value);
+													}}
+												>
+													{node.status === value ? "✓ " : ""}
+													{label}
+												</button>
+											))}
+											<div className="canvas-menu-sep" />
+											<button
+												type="button"
+												className="canvas-menu-item"
+												onClick={() => {
+													closeMenu();
+													setEditing({ id: node.id, title: node.title, detail: node.detail ?? "" });
+												}}
+											>
+												{t("重命名 / 改说明", "Rename")}
+											</button>
+											<button
+												type="button"
+												className="canvas-menu-item"
+												onClick={() => {
+													closeMenu();
+													zoomToNode(node);
+												}}
+											>
+												{t("放大看这一步", "Zoom in")}
+											</button>
+											<div className="canvas-menu-sep" />
+											<button
+												type="button"
+												className="canvas-menu-item is-danger"
+												onClick={() => {
+													closeMenu();
+													deleteNode(node);
+												}}
+											>
+												{t("删除这一步", "Delete")}
+											</button>
+										</>
+									);
+								})()
+							: null}
 					</div>
 				</>
 			) : null}
@@ -1961,8 +2336,8 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 				<button
 					type="button"
 					className="canvas-icon-btn"
-					onClick={fit}
-					title={t("看全局（缩到能看见全部）", "Fit all")}
+					onClick={() => fit()}
+					title={t("看全局（尽量都装下；装不下就平移看）", "Fit all (as much as stays readable; pan for the rest)")}
 					aria-label={t("看全局", "Fit all")}
 				>
 					<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
@@ -1984,6 +2359,42 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 				>
 					1:1
 				</button>
+				{/*
+				 * 画布全屏 / 退出全屏。图标刻意跟左边那颗「看全局」区分开：
+				 * 那颗是四个角括号（装下全部），这颗是**对角双箭头**（铺满整屏）。
+				 */}
+				{typeof document !== "undefined" && document.fullscreenEnabled ? (
+					<button
+						type="button"
+						className={`canvas-icon-btn${canvasFull ? " is-on" : ""}`}
+						onClick={toggleCanvasFullscreen}
+						aria-pressed={canvasFull}
+						title={canvasFull ? t("退出全屏（Esc）", "Exit full screen (Esc)") : t("画布全屏", "Full screen canvas")}
+						aria-label={canvasFull ? t("退出全屏", "Exit full screen") : t("画布全屏", "Full screen canvas")}
+					>
+						<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+							{canvasFull ? (
+								<path
+									d="M6.2 2.6v3.6H2.6M9.8 2.6v3.6h3.6M6.2 13.4v-3.6H2.6M9.8 13.4v-3.6h3.6"
+									fill="none"
+									stroke="currentColor"
+									strokeWidth="1.4"
+									strokeLinecap="round"
+									strokeLinejoin="round"
+								/>
+							) : (
+								<path
+									d="M2.6 6.2V2.6h3.6M13.4 6.2V2.6H9.8M2.6 9.8v3.6h3.6M13.4 9.8v3.6H9.8"
+									fill="none"
+									stroke="currentColor"
+									strokeWidth="1.4"
+									strokeLinecap="round"
+									strokeLinejoin="round"
+								/>
+							)}
+						</svg>
+					</button>
+				) : null}
 				<select
 					className="canvas-style"
 					value={style}
@@ -2006,17 +2417,37 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 					aria-label={t("框选放大", "Zoom to area")}
 				>
 					<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
-						<rect x="1.5" y="1.5" width="8" height="8" rx="1" fill="none" stroke="currentColor" strokeWidth="1.3" strokeDasharray="2 1.6" />
+						<rect
+							x="1.5"
+							y="1.5"
+							width="8"
+							height="8"
+							rx="1"
+							fill="none"
+							stroke="currentColor"
+							strokeWidth="1.3"
+							strokeDasharray="2 1.6"
+						/>
 						<circle cx="10.6" cy="10.6" r="3" fill="none" stroke="currentColor" strokeWidth="1.4" />
 						<path d="M12.9 12.9 15 15" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
 					</svg>
 				</button>
 				{/* 缩放按钮：和键盘 +/- 、触摸板捏合走同一个 zoomBy */}
 				<span className="canvas-zoom">
-					<button type="button" onClick={() => zoomBy(1 / 1.15)} title={t("缩小", "Zoom out")} aria-label={t("缩小", "Zoom out")}>
+					<button
+						type="button"
+						onClick={() => zoomBy(1 / 1.15)}
+						title={t("缩小", "Zoom out")}
+						aria-label={t("缩小", "Zoom out")}
+					>
 						−
 					</button>
-					<button type="button" onClick={() => zoomBy(1.15)} title={t("放大", "Zoom in")} aria-label={t("放大", "Zoom in")}>
+					<button
+						type="button"
+						onClick={() => zoomBy(1.15)}
+						title={t("放大", "Zoom in")}
+						aria-label={t("放大", "Zoom in")}
+					>
 						+
 					</button>
 				</span>
@@ -2038,7 +2469,13 @@ export function CanvasView({ onOpenFile }: { root: string | null; onOpenFile: (p
 							aria-label={t("取消选择", "Clear selection")}
 						>
 							<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
-								<path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+								<path
+									d="M4 4l8 8M12 4l-8 8"
+									fill="none"
+									stroke="currentColor"
+									strokeWidth="1.6"
+									strokeLinecap="round"
+								/>
 							</svg>
 						</button>
 					</>

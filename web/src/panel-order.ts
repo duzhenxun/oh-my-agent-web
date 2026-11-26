@@ -25,6 +25,8 @@ export const DEFAULT_PANEL_ORDER: readonly PanelKey[] = [
 	"agents",
 	"cron",
 	"computer",
+	/* 「提 Bug」排在设置前：两者都是「有事才来找」的入口，并排比混在面板中间好找 */
+	"bug",
 	"settings",
 ];
 

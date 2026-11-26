@@ -88,6 +88,26 @@ export function finishTool(
 }
 
 /**
+ * 回合收尾时把还挂在 `running` 的工具块补成终态。
+ *
+ * 为什么必须有：adapter 打断一个回合时，被打断那一刻正在跑的工具**不会**再补一个 `tool_end`
+ * （实测 codex：`turn/interrupt` 后直接 `turn/completed`，中间什么都没有）。不补的话那个工具卡
+ * 在界面上永远转圈 —— 用户看到的是「它还在跑」，其实这一轮早就结束了。
+ *
+ * `status: "interrupted"` 而不是 `failed`：它不是失败（没报错，也不是自己翘掉的），
+ * 是“被停下了”。算是插队/点停止之后最诚实的交代。
+ */
+export function settleRunningTools(message: UiMessage, input: { at: number; text: string }): UiMessage {
+	let changed = false;
+	const blocks = message.blocks.map((block): MessageBlock => {
+		if (block.kind !== "tool" || block.status !== "running") return block;
+		changed = true;
+		return { ...block, status: "interrupted", outputExcerpt: input.text, truncated: false, endedAt: input.at };
+	});
+	return changed ? { ...message, blocks } : message;
+}
+
+/**
  * 追加一条错误提示。
  *
  * **同一条错误只留一个块**（2026-11-13 用户：「这种出来一条提示就行，不用这么多」）：

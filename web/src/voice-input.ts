@@ -53,9 +53,12 @@ export type VoiceInputSettings = {
 	 *   - `auto`：优先本地（离线、带标点；Chrome 的识别要连 Google，这网络连不上）；
 	 *     本地不可用（没编译 / 起不来）时自动退回 Chrome；
 	 *   - `browser`：Chrome 原生 Web Speech（实时性最好，但必须能连 Google）；
-	 *   - `local`：只用 macOS 原生离线识别（首次要授权一次）。
+	 *   - `local`：只用 macOS 原生离线识别（首次要授权一次）；
+	 *   - `cloud`：只用服务端转发给厂商 API 的云端识别（DeepSeek / 千问 / 豆包，
+	 *     密钥在 `~/.oh-my-agent-web/stt.json`）。它和本地一样走 `/api/asr/*`，
+	 *     但不依赖本机的 Agent Computer —— 别的机器（Windows / Linux）也能用。
 	 */
-	engine: "auto" | "browser" | "local";
+	engine: "auto" | "browser" | "local" | "cloud";
 	/**
 	 * 静音多久算「说完了」（毫秒）。设置里按秒调（0.6–10s），这里存毫秒。
 	 * 说话快、句子长的人调大一点，就不会被句中停顿切断。
@@ -106,6 +109,12 @@ const SILENCE_TICK_MS = 200;
 const DEFAULT_SETTINGS: VoiceInputSettings = {
 	autoSend: true,
 	submitMode: "queue",
+	/**
+	 * 默认 `auto`（先试本地、不行才退 Chrome）。
+	 *
+	 * 浏览器里没有本机 helper，钉死成 local 就是彻底不能用；Chrome 自己的 Web Speech
+	 * 在浏览器里是能用的，所以交给 `auto` 自己选。
+	 */
 	engine: "auto",
 	continuous: false,
 	// 0 = 不自动关麦：用户明确要求「麦克风一直开着」
@@ -136,7 +145,10 @@ function readSettings(): VoiceInputSettings {
 			idleStopSec: clampIdleStopSec(parsed.idleStopSec),
 			// 只认这几个值；存坏了就回落默认，别让一个手改的字符串把「发送」弄成无动作
 			submitMode: parsed.submitMode === "steer" ? "steer" : "queue",
-			engine: parsed.engine === "browser" || parsed.engine === "local" ? parsed.engine : "auto",
+			engine:
+				parsed.engine === "browser" || parsed.engine === "local" || parsed.engine === "cloud"
+					? parsed.engine
+					: "auto",
 			nearTalkDb: clampNearTalkDb(parsed.nearTalkDb),
 			silenceMs: clampSilenceMs(parsed.silenceMs === undefined ? undefined : parsed.silenceMs / 1000, VOICE_SILENCE_MS),
 			readingResumeMs: clampSilenceMs(
@@ -178,11 +190,13 @@ export function forgetLocalUnavailable(): void {
  *
  * - `browser`：用户明确要 Chrome；
  * - `local`：用户明确要本地 —— 就算是坏的也按本地跑，报错让他看见（不悄悄换）；
+ * - `cloud`：用户明确要云端（服务端用厂商 API）—— 同样走「本地那条」HTTP 链路
+ *   （`/api/asr/*` 由服务端转发），**绝不回退到 Chrome**：那样会静默换供应商、还要连 Google；
  * - `auto`：本地能用就本地（离线、带标点），**确认用不了就直接 Chrome**，不先试一遍。
  */
 export function engineToStart(engine: VoiceInputSettings["engine"], localMissing: boolean): "local" | "browser" {
 	if (engine === "browser") return "browser";
-	if (engine === "local") return "local";
+	if (engine === "local" || engine === "cloud") return "local";
 	return localMissing ? "browser" : "local";
 }
 
@@ -191,17 +205,21 @@ export function engineToStart(engine: VoiceInputSettings["engine"], localMissing
  * 不会拉起进程、不会弹系统授权）。回答 `missing` 就把 `localUnusable` 记上，
  * 这样连**第一次**点麦克风都已经走 Chrome —— 开箱即用，不用先撞一次墙。
  */
-function probeLocalAvailability(): void {
+async function probeLocalAvailability(): Promise<void> {
 	if (typeof window === "undefined" || typeof fetch !== "function") return;
-	void fetch("/api/asr/status")
-		.then(async (response) => (response.ok ? ((await response.json()) as { state?: string }) : null))
-		.catch(() => null)
-		.then((status) => {
-			if (status?.state === "missing") localUnusable = true;
-		})
-		.catch(() => undefined);
+	try {
+		const response = await fetch("/api/asr/status");
+		if (!response.ok) return;
+		const status = (await response.json()) as { state?: string };
+		// **双向**：只有明确的 missing 才算「这条路不存在」；idle / starting / ready / error
+		// 都说明本地这层是活的（error 会在 onError 里退回 Chrome）。以前只往 true 写，
+		// 于是用户后来装好、打开了 helper，这个页面还是永远走 Chrome。
+		localUnusable = status?.state === "missing";
+	} catch {
+		// 服务端一时答不上来：保持原判断，别把「问不到」当成「不可用」
+	}
 }
-probeLocalAvailability();
+void probeLocalAvailability();
 
 /**
  * 本地保存的序号。用于解决一个真实存在的竞态：
@@ -247,7 +265,7 @@ export function saveVoiceInputSettings(next: VoiceInputSettings): void {
 		continuous: next.continuous === true,
 		idleStopSec: clampIdleStopSec(next.idleStopSec),
 		submitMode: next.submitMode === "steer" ? "steer" : "queue",
-		engine: next.engine === "browser" || next.engine === "local" ? next.engine : "auto",
+		engine: next.engine === "browser" || next.engine === "local" || next.engine === "cloud" ? next.engine : "auto",
 		nearTalkDb: clampNearTalkDb(next.nearTalkDb),
 		silenceMs: clampSilenceMs(next.silenceMs / 1000, VOICE_SILENCE_MS),
 		readingResumeMs: clampSilenceMs(next.readingResumeMs / 1000, 4000),
@@ -701,7 +719,7 @@ function scheduleContinuousResume(): void {
 			return;
 		}
 		voiceLog("continuous:resume", { engine: settings.engine });
-		startVoiceInput();
+		void startVoiceInput();
 	}, CONTINUOUS_RESUME_MS);
 }
 
@@ -914,6 +932,12 @@ export function startVoiceInput(): void {
 	// 用户自己点的：解除「暂停」，并清掉之前的错误计数
 	manualPause = false;
 	errorStreak = 0;
+	// 本地可用性会变（用户可能刚装好 helper、刚打开它、刚授权），判过不可用就重新问一次。
+	// **但绝不能 await**：下面的启动链路必须在同一个用户手势里走到 ensureContext()，
+	// 否则 AudioContext 会停在 suspended、ScriptProcessor 永不回调 —— 表现就是
+	// 「红点在闪、麦克风在录，但一个字都不出」（这个坑代码里本来就写了注释，我又踩了一次）。
+	// 所以这次探测只影响**下一次**开麦，不阻塞本次。
+	if (localUnusable) void probeLocalAvailability();
 	voiceLog("start", {
 		engineSetting: settings.engine,
 		autoSend: settings.autoSend,
@@ -960,7 +984,7 @@ export function stopVoiceInput(): void {
 }
 
 export function toggleVoiceInput(): void {
-	if (status === "idle") startVoiceInput();
+	if (status === "idle") void startVoiceInput();
 	else stopVoiceInput();
 }
 

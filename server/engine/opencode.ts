@@ -74,6 +74,13 @@ type Binding = { engineSessionId: string; cwd: string; live: boolean; config: Op
 type ActiveTurn = {
 	onEvent: (event: EngineEvent) => void;
 	ended: boolean;
+	/**
+	 * 这一轮真的落定了（`session/prompt` resolve / reject 后）。
+	 *
+	 * 插队要用它：ACP 同一会话只能挂一条 prompt（在飞时再发，对端直接报
+	 * `Session already has an active ACP prompt`），所以必须等上一条 settle 才能发下一条。
+	 */
+	settled: Promise<void>;
 	/** 已经开过卡片的 toolCallId（opencode 的 in_progress 会重复推同一条） */
 	started: Set<string>;
 	/** 已经收口的 toolCallId（重复的 completed 不要再发一次 tool_end） */
@@ -112,6 +119,14 @@ const EXPORT_CACHE_MS = 3000;
  * 先让出 600ms 再读，并且不吃缓存。
  */
 const EXPORT_SETTLE_MS = 3000;
+/**
+ * 插队打断后等「这一轮真的落定」的上限（ADR-0054）。
+ *
+ * 实测（opencode v2.3.2）：`session/cancel` 到本轮 settle 约 65ms；但 settle 之后对端还要
+ * 约 3s 才能接下一轮（这期间发的 prompt 会撞上它内部的清理）。5s 是给这段清理留的余量，
+ * 超了就让调用方降级成排队，而不是攒着用户等。
+ */
+const INTERRUPT_SETTLE_MS = 5000;
 
 export function createOpencodeEngine(options: OpencodeEngineOptions = {}): OpencodeEngine {
 	const bin = options.bin ?? "opencode";
@@ -302,7 +317,7 @@ export function createOpencodeEngine(options: OpencodeEngineOptions = {}): Openc
 			return;
 		}
 		// 认不出的服务端请求必须回包，否则 opencode 那一轮会一直等
-		client.respondError(request.id, -32601, `agent-web 未实现的服务端请求：${request.method}`);
+		client.respondError(request.id, -32601, `oh-my-agent-web 未实现的服务端请求：${request.method}`);
 	});
 
 	/** 读一条会话的导出（带缓存）：历史回放与统计共用 */
@@ -395,8 +410,26 @@ export function createOpencodeEngine(options: OpencodeEngineOptions = {}): Openc
 				throw new Error(friendlyOpencodeError(error));
 			});
 			if (!binding) throw new Error("opencode 会话还没准备好（先新建一个会话）");
+			/**
+			 * 单飞守卫（ADR-0054）：同一会话已经有 prompt 在飞就自己拒掉。
+			 *
+			 * 对端（ACP）其实也会拒（`Session already has an active ACP prompt`），但它报的是
+			 * "Internal error"，而且要在一次往返之后才拒；自己拦一下：快、文案能说人话、
+			 * 也不依赖对端版本的行为。
+			 */
+			if (active.has(sessionId)) throw new Error("这个会话已经有回合在跑：opencode 同一会话同时只能跑一条 prompt");
 
-			const turn: ActiveTurn = { onEvent, ended: false, started: new Set(), finished: new Set() };
+			let finish = (): void => {};
+			const finished = new Promise<void>((resolve) => {
+				finish = resolve;
+			});
+			const turn: ActiveTurn = {
+				onEvent,
+				ended: false,
+				settled: finished,
+				started: new Set(),
+				finished: new Set(),
+			};
 			active.set(sessionId, turn);
 
 			const model = currentModelId(binding.config);
@@ -429,6 +462,8 @@ export function createOpencodeEngine(options: OpencodeEngineOptions = {}): Openc
 				throw new Error(friendlyOpencodeError(error));
 			} finally {
 				turn.ended = true;
+				// 兜底兑现 `settled`：不管正常结束、被打断还是抛错，等它的 interruptAndSettle 都不能永远挂着
+				finish();
 				active.delete(sessionId);
 			}
 		},
@@ -438,6 +473,29 @@ export function createOpencodeEngine(options: OpencodeEngineOptions = {}): Openc
 			if (!binding) return;
 			// ACP 里 cancel 是**通知**（无 id）：发成请求会被当成未知方法丢掉 → 停止按钮没反应
 			client.notify("session/cancel", { sessionId: binding.engineSessionId });
+		},
+
+		/**
+		 * 打断 + 等落定（ADR-0054 的插队用它）。
+		 *
+		 * 实测（opencode v2.3.2）：`session/cancel` 后 65ms 内这轮就 settle 成 cancelled，
+		 * 且**会**补一个被取消的 `tool_end`（与 codex 不同，所以工具卡不需要宿主兜底）。
+		 * 但 settle 之后对端还要约 3s 才能真正接下一轮：这期间发的 prompt 会撞上内部清理，
+		 * 所以这里给 5s 的等待窗口，拿不到就交回调用方降级成排队。
+		 */
+		async interruptAndSettle(sessionId) {
+			const binding = bindingOf(sessionId);
+			const turn = active.get(sessionId);
+			// 没有在飞的回合 = 已经落定，调用方可以立刻发
+			if (!binding || !turn) return true;
+			client.notify("session/cancel", { sessionId: binding.engineSessionId });
+			return await Promise.race([
+				turn.settled.then(() => true),
+				new Promise<boolean>((resolve) => {
+					const timer = setTimeout(() => resolve(false), INTERRUPT_SETTLE_MS);
+					timer.unref?.();
+				}),
+			]);
 		},
 
 		/** 不看了：关掉会话释放写句柄（opencode 自己的 TUI / CLI 才能打开它） */

@@ -91,7 +91,7 @@ export function createTurnSender(deps: TurnSenderDeps) {
 		mode: SendMode = "steer",
 		targetConversationId?: string,
 		clientId?: string,
-		options: { hidden?: boolean } = {},
+		options: { hidden?: boolean; /** 这条是「插队」插进来的（interrupt 档由队列排空发出也要保留这个标记） */ steer?: boolean } = {},
 	): Promise<{ ok: true } | { ok: false; error: ProtocolError }> => {
 		const resolved = await resolveAttachments(text, attachments, deps.uploadStore);
 
@@ -153,6 +153,8 @@ export function createTurnSender(deps: TurnSenderDeps) {
 
 			const ts = deps.now();
 			const userMessage = appendText(createMessage(deps.nextId("msg"), "user", ts), text);
+			// 插队来的消息要带标记：否则 interrupt 档下它从队列里发出去，界面上跟普通排队没有任何区别
+			if (options.steer) userMessage.steer = true;
 			const assistantMessage = createMessage(deps.nextId("msg"), "assistant", ts);
 
 			// 隐藏回合（「想一想」）：不落任何消息，只靠 rawText 收标记

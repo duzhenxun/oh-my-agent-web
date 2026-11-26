@@ -5,7 +5,8 @@
  *   1. 宽窗：**没有固定的 520 上限了**（用户 2026-11-04：「最大宽度可以不限制」）——
  *      上限 = `窗口宽 - SIDEBAR_CHAT_RESERVE`（240px，留给对话区与那条拖拽把手）；
  *   2. 窄窗：同一条公式（不再有「窗口 - 430px」那套单独规则）；
- *   3. 任何窗口下都不低于 `SIDEBAR_MIN_WIDTH`（别把侧栏夹成一条缝）；
+ *   3. **没有下限了**（用户 2026-11-26：「把限制取消，可以想改多小改多少」）——
+ *      `SIDEBAR_MIN_WIDTH` 现在是 0，拖到一条缝也随你；上限永远给对话区留 240px；
  *      坏值（NaN / 0 / 负数）→ 上限算「不设」，不抛错。
  *
  * CSS 侧同一个数在 `styles/project-icon.css`（`.side-host` 的 `max-width`）——
@@ -27,16 +28,24 @@ describe("sidebarMaxWidth", () => {
 		assert.ok(sidebarMaxWidth(1440) > 520, "以前硬顶 520，现在要能拖得更宽");
 	});
 
-	it("窄窗：同一条公式（窗口 - 240，保底 MIN）", () => {
+	it("窄窗：同一条公式（窗口 - 240，不再有 240 的保底）", () => {
 		assert.equal(sidebarMaxWidth(1000), 760);
 		assert.equal(sidebarMaxWidth(700), 460);
 		assert.equal(sidebarMaxWidth(560), 320);
-		assert.equal(sidebarMaxWidth(405), SIDEBAR_MIN_WIDTH); // 405-240 < 240 → 保底
+		assert.equal(sidebarMaxWidth(405), 165); // 以前这里被抬回 240，现在照实算
 	});
 
-	it("极窄窗：不低于 SIDEBAR_MIN_WIDTH", () => {
-		assert.equal(sidebarMaxWidth(320), SIDEBAR_MIN_WIDTH);
-		assert.equal(sidebarMaxWidth(100), SIDEBAR_MIN_WIDTH);
+	it("极窄窗：夹到 0，不出现负数", () => {
+		assert.equal(sidebarMaxWidth(320), 80);
+		assert.equal(sidebarMaxWidth(240), 0);
+		assert.equal(sidebarMaxWidth(100), 0);
+	});
+
+	it("下限取消了：想拖多窄就多窄", () => {
+		assert.equal(SIDEBAR_MIN_WIDTH, 0);
+		assert.equal(clampSidebarWidth(160), 160);
+		assert.equal(clampSidebarWidth(24), 24);
+		assert.equal(clampSidebarWidth(0), 0);
 	});
 
 	it("坏值：按「不设上限」处理（不抛错）", () => {
@@ -50,7 +59,7 @@ describe("sidebarMaxWidth", () => {
 		const max = sidebarMaxWidth(1440); // 1200
 		assert.equal(clampSidebarWidth(1600, max), 1200);
 		assert.equal(clampSidebarWidth(900, max), 900); // 中间值原样保留
-		assert.equal(clampSidebarWidth(200, max), SIDEBAR_MIN_WIDTH); // 比下限还窄 → 抬到下限
+		assert.equal(clampSidebarWidth(200, max), 200); // 没有下限了，原样保留
 		// 窄窗：窗口 560 → 上限 320
 		assert.equal(clampSidebarWidth(516, sidebarMaxWidth(560)), 320);
 	});

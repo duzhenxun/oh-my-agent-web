@@ -13,7 +13,7 @@ import { describe, it } from "node:test";
 import { createCloseEphemeral } from "../../server/session/close-ephemeral.ts";
 import type { ConversationMeta } from "../../server/protocol.ts";
 
-const WORKSPACE = "/tmp/agent-web-close-ephemeral";
+const WORKSPACE = "/tmp/oh-my-agent-web-close-ephemeral";
 
 function makeHarness(options: { ephemeral?: boolean; busy?: boolean } = {}) {
 	const conversations: ConversationMeta[] = [

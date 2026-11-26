@@ -1,5 +1,5 @@
 /**
- * `aw` 的「查询类命令」：status / version / upgrade。
+ * `aw` 的「查询类命令」：status / version / upgrade / engine。
  *
  * 为什么单独成文件：cli.ts 已经要管参数解析、前后台切换、停止/重启，
  * 再加状态查询就过 400 行护栏了（ADR-0010：一个文件只干一件事）。
@@ -8,7 +8,8 @@
 import { spawn } from "node:child_process";
 import process from "node:process";
 import { defaultIsAlive, readLock } from "./session/lock.js";
-import { resolveCli } from "./util/spawn-cli.js";
+import { resolveCli, findExecutable } from "./util/spawn-cli.js";
+import { ENGINE_KEYS, ENGINE_SPECS, isEngineKey, missingEngineMessage, type EngineKey } from "./engine/engine-specs.js";
 import { packageMeta, resetPackageMetaCache } from "./util/version.js";
 
 type Health = {
@@ -122,4 +123,56 @@ export async function upgrade(options: { quietTail?: boolean } = {}): Promise<nu
 	// quietTail：调用方（update-prompt）自己会说「正在用新版重启」，这里就不用再教人敲 aw restart
 	if (!options.quietTail) console.log(`已升级到 v${packageMeta().version}（新进程才用新版：aw restart -d）`);
 	return 0;
+}
+
+/**
+ * 某个引擎在哪：`AGENT_WEB_*_BIN` 优先（显式指定就是最终答案），其次 PATH。
+ * 找不到返回 `null` —— 界面上就是「未安装 + 安装引导」，我们不替他装（ADR-0052）。
+ */
+export function engineBinOf(
+	engine: EngineKey,
+	env: NodeJS.ProcessEnv = process.env,
+	find: (bin: string, env: NodeJS.ProcessEnv) => string | null = (bin, e) => findExecutable(bin, e),
+): string | null {
+	const spec = ENGINE_SPECS[engine];
+	const explicit = env[spec.binEnv]?.trim();
+	if (explicit) return explicit;
+	for (const bin of spec.bins) {
+		const found = find(bin, env);
+		if (found) return found;
+	}
+	return null;
+}
+
+/**
+ * `aw engine` / `aw engine install codex` —— **只给引导，不装任何东西**（ADR-0052）。
+ *
+ * 为什么要有这条命令：报错里的引导只在「已经踩到」时才看得到，而人更常在「想换引擎」时
+ * 找怎么装。这里把四个引擎的状态一次说清：已装在哪、没装怎么装。
+ * `install` 这个动词是故意留的（人会这么敲）——但回应永远是「我们不装，你自己执行这条」。
+ */
+export function showEngines(argv: string[] = [], env: NodeJS.ProcessEnv = process.env): void {
+	// `install` / `list` 这类动词不算引擎名：人多半是顺手敲的
+	const words = argv.filter((word) => !["install", "add", "list", "ls", "status"].includes(word.toLowerCase()));
+	const asked = words[0];
+	if (asked !== undefined && !isEngineKey(asked)) {
+		console.error(`没有这个引擎：${asked}`);
+		console.error(`  可选：${ENGINE_KEYS.join(" / ")}（pi 是自带的，不用装）`);
+		return;
+	}
+
+	const targets = asked === undefined ? ENGINE_KEYS : [asked];
+	for (const key of targets) {
+		const spec = ENGINE_SPECS[key];
+		const bin = engineBinOf(key, env);
+		if (bin) {
+			console.log(`  ✓ ${key.padEnd(9)} ${spec.label}  ${bin}`);
+			continue;
+		}
+		console.log(`  · ${key.padEnd(9)} ${spec.label}  未安装`);
+		console.log(`      ${missingEngineMessage(key)}`);
+	}
+	if (asked === undefined) {
+		console.log("\n  pi 是自带的（工作台的依赖），不需要安装；上面这几个用你自己的，我们不装也不改你的环境。");
+	}
 }

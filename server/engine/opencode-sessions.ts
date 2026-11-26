@@ -11,7 +11,8 @@
  *      曾经以为不带参就是全局的，于是侧栏只看得到「宿主从哪个目录启动」那一个目录，其余全丢。
  *      现在的做法是**逐个目录点名**：宿主给出「有过会话的目录集合」
  *      （见 wiring.ts 的 opencodeWorkspaces / opencode-projects.ts），这里并发点名 + 按 sessionId 去重。
- *   2. **转录与统计**：走 CLI `opencode export <sid>`（stdout 是纯 JSON，日志走 stderr）。
+ *   2. **转录与统计**：走 CLI（新版 `opencode session export <sid>`，老版 `opencode export <sid>`，
+ *      见 `runExport` 的兼容探测）—— stdout 是纯 JSON，日志走 stderr。
  *      为什么不自己读 SQLite：会话正文的结构会变，`export` 是它自己给的稳定出口
  *      （「有哪些目录有过会话」这种索引才敢只读一次，见 opencode-projects.ts）。
  *
@@ -218,6 +219,40 @@ function runOpencode(bin: string, args: string[], options: { timeoutMs?: number;
 	});
 }
 
+/**
+ * `export` 命令的位置：新版在 `session` 子命令下（`opencode session export <id>`），
+ * 老版是顶层的 `opencode export <id>`。第一次探到就记下来，后面直接走对的那条。
+ *
+ * 为什么要兼容而不是直接换成新命令：用户机器上的 opencode 版本不一样（本项目自己也会装），
+ * 而这一步失败的表现是「点开会话中间一片空白」（用户 2026-11-24 报的就是它：
+ * `Unexpected positional argument: "ses_…"`），代价很高但根因只是一个子命令改名。
+ */
+let exportSubcommand: "session" | "legacy" | null = null;
+
+/** 按已知/探测到的位置跑一次 export，返回 stdout；失败抛出最后一次错误 */
+async function runExport(
+	bin: string,
+	sessionId: string,
+	options: { timeoutMs?: number } = {},
+): Promise<string> {
+	const attempts: Array<"session" | "legacy"> = exportSubcommand
+		? [exportSubcommand]
+		: // 优先试新版：主流安装都是新版，探测代价只有一次
+			["session", "legacy"];
+	let lastError: unknown = null;
+	for (const mode of attempts) {
+		try {
+			const args = mode === "session" ? ["session", "export", sessionId] : ["export", sessionId];
+			const stdout = await runOpencode(bin, args, { timeoutMs: options.timeoutMs });
+			exportSubcommand = mode;
+			return stdout;
+		} catch (error) {
+			lastError = error;
+		}
+	}
+	throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
 /** 读一条会话的完整导出（JSON）。读不到返回 null（界面上就是「暂无历史」） */
 export async function readOpencodeExport(
 	bin: string,
@@ -225,7 +260,7 @@ export async function readOpencodeExport(
 	options: { log?: (text: string) => void; timeoutMs?: number } = {},
 ): Promise<OpencodeExport | null> {
 	try {
-		const stdout = await runOpencode(bin, ["export", sessionId], { timeoutMs: options.timeoutMs });
+		const stdout = await runExport(bin, sessionId, { timeoutMs: options.timeoutMs });
 		const start = stdout.indexOf("{");
 		if (start < 0) return null;
 		return JSON.parse(stdout.slice(start)) as OpencodeExport;

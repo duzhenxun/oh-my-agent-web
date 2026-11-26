@@ -57,6 +57,17 @@ describe("parseClientRequest 基本形状", () => {
 			delete_subagent_profile: { profileId: "x" },
 			set_subagent_settings: { enabled: true },
 			interrupt_subagent: { runId: "r1" },
+			/*
+			 * 画布写操作（ADR 里的 canvas_* 一族）：payload 是**必填**的，
+			 * 所以不能靠上面那个 `{}` 兜底 —— 缺了就会被判成 null。
+			 * 这里只给最小合法形状，细节分支在下面单个测。
+			 */
+			canvas_set_status: { conversationId: "c1", nodeId: "n1", status: "doing" },
+			canvas_delete: { conversationId: "c1", ids: ["n1"] },
+			canvas_move: { conversationId: "c1", moves: [{ id: "n1", x: 10, y: 20 }] },
+			canvas_start_node: { conversationId: "c1", nodeId: "n1" },
+			canvas_update_node: { conversationId: "c1", nodeId: "n1", title: "改个名字" },
+			canvas_suggest: { conversationId: "c1", nodeIds: ["n1"] },
 		};
 		const unknown: string[] = [];
 		for (const type of REQUEST_TYPES) {

@@ -7,6 +7,7 @@
  */
 import { applyMarkersToMessage, reduceActionMarkers } from "../markers/actions.js";
 import type { ActionItem, UiMessage } from "../protocol.js";
+import { settleRunningTools } from "../snapshot/messages.js";
 
 type TurnMarkersInput = {
 	state: { messages: Record<string, UiMessage[]> };
@@ -40,13 +41,30 @@ export function settleTurnMarkers(input: TurnMarkersInput): { actions: ActionIte
 	const applied = applyMarkersToMessage(assistant, actions, () => input.nextId("act"));
 	actions = applied.actions;
 	const endedAt = input.at ?? Date.now();
+	/**
+	 * 被打断的回合可能留下「还在跑」的工具块（引擎不会补 tool_end，见 settleRunningTools）。
+	 * 这里统一补成终态，否则那个工具卡会永远转圈。
+	 */
+	const settled =
+		input.reason === "interrupted" || input.reason === "error"
+			? settleRunningTools(
+					{ ...assistant, blocks: applied.blocks },
+					{
+						at: endedAt,
+						text:
+							input.reason === "interrupted"
+								? "这一步被打断了（没有执行完）"
+								: "这一轮出错了，这一步没有执行完",
+					},
+				)
+			: { ...assistant, blocks: applied.blocks };
 	/** 被停掉的回合：标在身上（只加不清 —— 停过就是停过，重算不该把它抹掉） */
 	const stopped = input.reason === "interrupted";
-	const blocksChanged = applied.blocks !== assistant.blocks;
+	const blocksChanged = settled.blocks !== assistant.blocks;
 	if (blocksChanged || assistant.endedAt !== endedAt || (stopped && assistant.stopped !== true)) {
 		state.messages[conversationId] = (state.messages[conversationId] ?? []).map((message) =>
 			message.id === messageId
-				? { ...message, blocks: applied.blocks, endedAt, ...(stopped ? { stopped: true } : {}) }
+				? { ...message, blocks: settled.blocks, endedAt, ...(stopped ? { stopped: true } : {}) }
 				: message,
 		);
 	}

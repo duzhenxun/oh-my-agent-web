@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { PromptTemplate } from "../types.ts";
-import { visibleTemplates } from "../templates-lib.ts";
-import { useT } from "../use-language.ts";
+import { localizeTemplate, visibleTemplates } from "../templates-lib.ts";
+import { useLanguage, useT } from "../use-language.ts";
 import { TemplateEditor } from "./TemplateModals.tsx";
 
 /**
@@ -16,27 +16,33 @@ export function NewChatTemplates({
 	conversationId?: string | null;
 }) {
 	const t = useT();
+	// 内置模板存了两份（中文原文 + 英文副本）：界面是英文就画英文那份（见 templates-lib）
+	const { language } = useLanguage();
 	const [editing, setEditing] = useState<{ template: PromptTemplate | null } | null>(null);
 
 	return (
 		<>
 			<div className="newchat-tpls" role="list" aria-label={t("提示词列表", "Prompt list")}>
-				{visibleTemplates(templates).map((template) => (
-					<button
-						type="button"
-						role="listitem"
-						className="tpl-card newchat-tpl"
-						key={template.id}
-						onClick={() => setEditing({ template })}
-						title={t("点击编辑", "Click to edit")}
-					>
-						<span className="tpl-icon" aria-hidden="true">
-							{template.icon}
-						</span>
-						<span className="tpl-name">{template.name}</span>
-						<span className="tpl-desc">{template.description}</span>
-					</button>
-				))}
+				{visibleTemplates(templates).map((template) => {
+					// 卡片上画的是**当前语言**那一份，但点进去编辑的仍是原始对象（编辑器自己再取一次）
+					const shown = localizeTemplate(template, language);
+					return (
+						<button
+							type="button"
+							role="listitem"
+							className="tpl-card newchat-tpl"
+							key={template.id}
+							onClick={() => setEditing({ template })}
+							title={t("点击编辑", "Click to edit")}
+						>
+							<span className="tpl-icon" aria-hidden="true">
+								{template.icon}
+							</span>
+							<span className="tpl-name">{shown.name}</span>
+							<span className="tpl-desc">{shown.description}</span>
+						</button>
+					);
+				})}
 				<button
 					type="button"
 					role="listitem"

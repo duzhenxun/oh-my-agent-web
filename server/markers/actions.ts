@@ -15,7 +15,7 @@ import type { ActionItem, MessageBlock, TextBlock, UiMessage } from "../protocol
 /**
  * 「想一想」（换一批建议）用的隐藏指令哨兵。
  *
- * 它不是一个 action 标记（命名空间 `agent-web` 不在 KNOWN_TOOLS 里），
+ * 它不是一个 action 标记（命名空间 `oh-my-agent-web` 不在 KNOWN_TOOLS 里），
  * 作用只有一个：让历史回放能认出「这条用户消息是我们自己发的重生成请求」并把它丢掉，
  * 否则用户会在对话里看到一条莫名其妙的「请再给三条建议」。
  */

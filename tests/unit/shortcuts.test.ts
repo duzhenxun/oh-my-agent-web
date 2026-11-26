@@ -172,22 +172,37 @@ describe("展示文案", () => {
 });
 
 describe("默认表", () => {
-	it("默认值 = 用户实际在用的那一套（2026-11-04 定）", () => {
+	it("默认值 = 用户实际在用的那一套（2026-11-24 按他的设置定）", () => {
 		const defaults = defaultShortcuts();
-		assert.equal(defaults.newChat, "Mod+Alt+N");
-		assert.equal(defaults.newProject, "Mod+Alt+X");
-		assert.equal(defaults.tempChat, "Mod+Alt+H");
+		assert.equal(defaults.newChat, "Alt+N");
+		assert.equal(defaults.newProject, "Alt+M");
+		assert.equal(defaults.tempChat, null);
 		assert.equal(defaults.settings, "Mod+Comma");
-		assert.equal(defaults.toggleRight, "Mod+Alt+O");
-		assert.equal(defaults.toggleLeft, "Mod+Alt+L");
-		assert.equal(defaults.projects, "Mod+Alt+P");
-		assert.equal(defaults.files, "Mod+Alt+F");
+		assert.equal(defaults.toggleRight, "Alt+R");
+		assert.equal(defaults.toggleLeft, "Alt+L");
+		assert.equal(defaults.projects, "Alt+X");
+		assert.equal(defaults.files, "Alt+F");
+		assert.equal(defaults.canvas, "Alt+B");
 		assert.equal(defaults.terminal, "Ctrl+Backquote");
-		assert.equal(defaults.contentSearch, "Mod+Shift+F");
-		assert.equal(defaults.toggleMic, "Mod+Alt+M");
-		assert.equal(defaults.pauseSpeech, "Mod+Shift+P");
+		assert.equal(defaults.contentSearch, "Shift+Alt+F");
+		assert.equal(defaults.toggleMic, "RightMod");
+		assert.equal(defaults.pauseSpeech, "Alt+P");
 		assert.equal(defaults.stopSpeech, "Mod+Alt+S");
 		assert.equal(defaults.cheatSheet, "Mod+Slash");
+		// 对话操作（2026-11-24 加）：发送 / 排队 / 插队 / 停止
+		// 排队默认不绑键：回合进行中裸 Enter 本来就是排队
+		assert.equal(defaults.sendMessage, "Mod+Enter");
+		assert.equal(defaults.queueMessage, null);
+		assert.equal(defaults.steerMessage, "Alt+Enter");
+		assert.equal(defaults.stopTurn, "Alt+S");
+	});
+
+	it("每条都有分组（设置面板按它分类），且四条对话操作在同一组", () => {
+		for (const def of SHORTCUT_DEFS) {
+			assert.ok(def.group, `${def.id} 缺 group`);
+		}
+		const chat = SHORTCUT_DEFS.filter((def) => def.group === "chat").map((def) => def.id);
+		assert.deepEqual(chat, ["sendMessage", "queueMessage", "steerMessage", "stopTurn"]);
 	});
 
 	it("默认值互不重复，且没有任何一条是「裸键」或浏览器保留键", () => {
@@ -202,17 +217,17 @@ describe("默认表", () => {
 
 	it("测试里那份「默认键」常量与实际默认值一致", () => {
 		// 用户在用的那一套：改默认值就得来这里确认一下
-		assert.equal(defaultShortcuts().newChat, "Mod+Alt+N");
-		assert.equal(defaultShortcuts().newProject, "Mod+Alt+X");
+		assert.equal(defaultShortcuts().newChat, "Alt+N");
+		assert.equal(defaultShortcuts().newProject, "Alt+M");
 	});
 });
 
 describe("去重与冲突", () => {
 	it("同一组合只留给表里靠前的动作，后来的置空", () => {
 		const map = defaultShortcuts();
-		map.tempChat = "Mod+Alt+N"; // 跟 newChat 撞了
+		map.tempChat = map.newChat; // 跟 newChat 撞了（默认 Alt+N）
 		const clean = dedupeShortcuts(map);
-		assert.equal(clean.newChat, "Mod+Alt+N");
+		assert.equal(clean.newChat, "Alt+N");
 		assert.equal(clean.tempChat, null);
 	});
 
@@ -224,19 +239,16 @@ describe("去重与冲突", () => {
 
 	it("shortcutFor：事件 → 命中的动作（派发器只用它）", () => {
 		const map = defaultShortcuts();
-		assert.equal(shortcutFor(map, key({ key: "n", code: "KeyN", meta: true, alt: true }), true), "newChat");
-		assert.equal(shortcutFor(map, key({ key: "x", code: "KeyX", meta: true, alt: true }), true), "newProject");
-		assert.equal(shortcutFor(map, key({ key: "o", code: "KeyO", meta: true, alt: true }), true), "toggleRight");
+		assert.equal(shortcutFor(map, key({ key: "n", code: "KeyN", alt: true }), true), "newChat");
+		assert.equal(shortcutFor(map, key({ key: "m", code: "KeyM", alt: true }), true), "newProject");
+		assert.equal(shortcutFor(map, key({ key: "r", code: "KeyR", alt: true }), true), "toggleRight");
 		// 未设置的动作永远命中不了
-		assert.equal(
-			shortcutFor({ ...map, newChat: null }, key({ key: "n", code: "KeyN", meta: true, alt: true }), true),
-			null,
-		);
+		assert.equal(shortcutFor({ ...map, newChat: null }, key({ key: "n", code: "KeyN", alt: true }), true), null);
 	});
 
 	it("findConflict 能报出「这条组合被谁占了」，且能排除自己", () => {
 		const map = defaultShortcuts();
-		assert.equal(findConflict(map, "Mod+Alt+N"), "newChat");
+		assert.equal(findConflict(map, "Alt+N"), "newChat");
 		assert.equal(findConflict(map, "Mod+Alt+N", "newChat"), null);
 		assert.equal(findConflict(map, "Mod+F9"), null);
 	});
@@ -294,13 +306,13 @@ describe("速查表（浮层）", () => {
 			SHORTCUT_DEFS.map((def) => def.id),
 			"顺序要跟设置面板一致",
 		);
-		assert.equal(rows.find((row) => row.id === "newChat")?.combo, "⌘⌥N");
+		assert.equal(rows.find((row) => row.id === "newChat")?.combo, "⌥N");
 		assert.equal(rows.find((row) => row.id === "cheatSheet")?.combo, "⌘/");
 	});
 
 	it("Windows 文案用长名", () => {
 		const rows = sheetRows(defaultShortcuts(), false);
-		assert.equal(rows.find((row) => row.id === "newChat")?.combo, "Ctrl+Alt+N");
+		assert.equal(rows.find((row) => row.id === "newChat")?.combo, "Alt+N");
 	});
 
 	it("未绑定的动作照样列出来（显示成 null，由界面画「未设置」）", () => {

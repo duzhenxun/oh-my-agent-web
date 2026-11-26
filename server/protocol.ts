@@ -20,7 +20,7 @@ export type ToolBlock = {
 	 * 「完整命令 + 复制」（服务端也截，上限 4000 字，不让快照被参数撞大）。
 	 */
 	argsFull?: string;
-	status: "running" | "ok" | "failed";
+	status: "running" | "ok" | "failed" | "interrupted";
 	outputExcerpt: string;
 	truncated: boolean;
 	exitCode?: number;
@@ -253,7 +253,14 @@ export type SessionStats = {
 	cost?: number;
 };
 
-export type { AppearanceView, ProjectPrefs, PromptTemplate, SessionPrefs, SettingsView } from "./protocol-settings.js";
+export type {
+	AppearanceView,
+	ProjectPrefs,
+	PromptTemplate,
+	QuickPhrase,
+	SessionPrefs,
+	SettingsView,
+} from "./protocol-settings.js";
 import type { PromptTemplate, SettingsView } from "./protocol-settings.js";
 import type { PriceSegment } from "./util/pricing.js";
 
@@ -369,6 +376,17 @@ export type EngineCapabilities = {
 	 * 而不是硬发第二条 —— 那会覆盖引擎自己的活跃回合，导致永久 busy 或整轮输出丢失。
 	 */
 	steer?: boolean;
+	/**
+	 * 「插队」是怎么做出来的（ADR-0054）：
+	 *   - `native`：引擎协议**原生**支持把消息插进正在跑的这一轮（目前只有 pi 的
+	 *     `streamingBehavior: "steer"`）；插队对用户是「同一轮里多了一句」，回合不结束；
+	 *   - `interrupt`：协议没有插话语义，宿主**打断当前轮**、再把这条消息当**下一轮**立刻发出
+	 *     （codex 的 `turn/interrupt` + `turn/start`；ACP 三家的 `session/cancel` + `session/prompt`）。
+	 *     观感是「它停下来了，然后听我的」，所以界面上会看到本轮被打断的收尾。
+	 *
+	 * 不写 = `native`（pi 的现状 / 老版本服务端）。`steer: false` 时本字段无意义。
+	 */
+	steerMode?: "native" | "interrupt";
 	/**
 	 * 能不能给某个模型「测速」（真跑一个最小回合，量首字节延迟 / 出字速度）。
 	 *
@@ -547,7 +565,7 @@ export type Snapshot = {
 	/** pi 已有项目与会话（ADR-0021 §1）。可选：带 `slim=1` 的客户端只在清单变了时才收到，省下上百 KB */
 	piProjects?: PiProject[];
 	/**
-	 * 版本号（抬头显示）：web = agent-web 自己，engine = 引擎 SDK（拿不到为 null）。
+	 * 版本号（抬头显示）：web = oh-my-agent-web 自己，engine = 引擎 SDK（拿不到为 null）。
 	 * latest = 上游（GitHub `main`）最新版本，查不到为 null（离线/超时）；
 	 * outdated = 上游比本机新，抬头那行标红提醒「有新版」。都由服务端算好，界面不自己比版本号。
 	 */
@@ -883,19 +901,26 @@ type CloseEphemeralRequest = {
 };
 
 /**
- * 从某条消息派生一条新会话（分支）。
+ * 从某条消息派生一条新会话（分支）。两种语义靠 `startMessageId` 分：
  *
- * 与 pi CLI 的 `/fork`、`/clone` 同义：新会话只保留**从根到这条消息**的历史，
- * 落在同一个工作区里（分支是「同一个项目里的另一条思路」，不换目录）。
+ *   - **不给 `startMessageId`**（侧栏会话行右键 / 顶栏标题菜单）：新会话 = 从根到
+ *     `messageId`（或当前叶子）那一整段，等价于「把这条会话复制一份接着聊」；
+ *   - **给 `startMessageId`**（消息气泡下面的分叉，用户 2026-11-24）：新会话 = 从
+ *     这条消息起、到末尾为止，**之前的对话真的丢掉**。
  *
- * `messageId` 是界面上的 `UiMessage.id`（= 会话 entry id）：服务端负责把它换算成
- * 「这一轮的最后一个 entry」—— 助手气泡是多条 entry 合并出来的，直接按首条切会把工具块砍掉。
+ * `messageId` / `startMessageId` 都是界面上的 `UiMessage.id`（= 会话 entry id）：服务端负责
+ * 把它换算成「这一轮的最后一个 entry」—— 助手气泡是多条 entry 合并出来的，直接按首条切会把工具块砍掉。
  */
 type ForkSessionRequest = {
 	id: string;
 	type: "fork_session";
-	/** `messageId` 缺省 = 从源会话的**当前叶子**（最后一条消息）派生；侧栏行右键分叉用它，不必先打开会话 */
-	payload: { conversationId: string; messageId?: string };
+	payload: {
+		/** `messageId` 缺省 = 到源会话的**当前叶子**（最后一条消息）为止；侧栏行右键分叉用它，不必先打开会话 */
+		conversationId: string;
+		messageId?: string;
+		/** 给了就从这条消息开始（之前的历史丢掉）；不给就是从根开始 */
+		startMessageId?: string;
+	};
 };
 
 /** 切换会话（M2） */

@@ -19,7 +19,7 @@ import { createForkSession } from "../../server/session/fork-session.ts";
 import { createPiSessionOpener } from "../../server/session/pi-opener.ts";
 import { createServerState } from "../../server/snapshot/state.ts";
 
-const WORKSPACE = "/tmp/agent-web-ephemeral";
+const WORKSPACE = "/tmp/oh-my-agent-web-ephemeral";
 
 function makeHarness() {
 	const engine = createFakeEngine({ chunkDelayMs: 0 });

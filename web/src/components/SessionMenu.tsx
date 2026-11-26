@@ -22,6 +22,8 @@ export function SessionMenu({
 	fork,
 	onClose,
 	onRename,
+	onAiRename,
+	aiRenaming = false,
 	onPin,
 	onOpenInNewTab,
 	onArchive,
@@ -55,6 +57,17 @@ export function SessionMenu({
 	fork?: { enabled: boolean; reason?: string; onFork: () => void };
 	onClose: () => void;
 	onRename: () => void;
+	/**
+	 * 「AI 重命名」：跟顶栏标题前那枚气泡图标**同一件事** ——
+	 * 按这条会话的内容让 AI 起个名字，结果直接落盘成会话名（服务端 `suggest_title`）。
+	 *
+	 * 不传 = 没有这个能力（老调用点）；侧栏行和顶栏标题都传了，所以两边一致。
+	 * 为什么侧栏行也能用：服务端拿不到内存里的消息时会去读转录，
+	 * 所以「没打开这条会话」也能起名（见 `runtime.ts` 的 `suggestSessionTitle`）。
+	 */
+	onAiRename?: () => void;
+	/** 正在起名：菜单项禁用并显示进行中（顶栏那颗气泡图标转圈时同一个状态） */
+	aiRenaming?: boolean;
 	onPin: () => void;
 	onOpenInNewTab: () => void;
 	onArchive: () => void;
@@ -95,6 +108,21 @@ export function SessionMenu({
 			<button type="button" className="proj-menu-item" onClick={act(onRename)}>
 				✏️ {t("重命名", "Rename")}
 			</button>
+			{/* AI 重命名：和顶栏标题前那枚气泡图标是同一个动作（用户 2026-11-24 要求菜单里也放一条） */}
+			{onAiRename ? (
+				<button
+					type="button"
+					className="proj-menu-item"
+					disabled={aiRenaming}
+					title={t(
+						"按这条会话的内容让 AI 起一个简洁的名字（会直接改会话名）",
+						"Let AI name this session from its content (renames it directly)",
+					)}
+					onClick={act(onAiRename)}
+				>
+					💬 {aiRenaming ? t("AI 正在起名…", "AI is naming…") : t("AI 重命名", "AI rename")}
+				</button>
+			) : null}
 			<button
 				type="button"
 				className="proj-menu-item"

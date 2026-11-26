@@ -28,7 +28,7 @@ export const AUTH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60;
  * 为什么需要它：**WebSocket 握手不一定带 Basic 凭据**（浏览器只在部分场景复用），
  * 但 cookie 一定会带 —— 有了它，WS 才能稳定通过鉴权。
  */
-const AUTH_COOKIE = "agent-web-auth";
+const AUTH_COOKIE = "oh-my-agent-web-auth";
 function cookieToken(password: string): string {
 	return createHash("sha256").update(`agent-web:${password}`).digest("hex");
 }

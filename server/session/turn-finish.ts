@@ -35,6 +35,12 @@ function createTurnFinisher(deps: {
 	refreshProjects: () => void;
 	/** 带会话：中断提示只挂在被中断的那条会话上 */
 	notice: (text: string, level: "info" | "warn" | "error", conversationId?: string) => void;
+	/**
+	 * 这次 interrupted 是谁造成的（ADR-0054）：
+	 *   - `steer`：插队 —— 用户要让当前步骤停下、换成他那句话，**不是**出错；
+	 *   - 不传 / 其他：普通中断（点停止 / 看门狗超时），照旧说「回合已中断」。
+	 */
+	interruptReasonOf?: (conversationId: string) => "steer" | null;
 	pushSnapshot: () => void;
 }) {
 	return async (conversationId: string, reason: "done" | "interrupted" | "error"): Promise<void> => {
@@ -55,7 +61,14 @@ function createTurnFinisher(deps: {
 		if (turn) deps.settle({ conversationId, messageId: turn.messageId, rawText: turn.rawText, reason });
 		deps.touchConversation(conversationId);
 		deps.refreshProjects();
-		if (reason === "interrupted") deps.notice("回合已中断", "info", conversationId);
+		if (reason === "interrupted") {
+			/**
+			 * 插队打断不能说成「回合已中断」：那句在用户眼里等于「出错了 / 被砍了」，
+			 * 而他刚刚做的是「停下，先听我说」—— 下面紧接着就会开始跑他那句话。
+			 */
+			const steered = deps.interruptReasonOf?.(conversationId) === "steer";
+			deps.notice(steered ? "已插队：当前步骤停了，接着处理你刚发的那句" : "回合已中断", "info", conversationId);
+		}
 		deps.pushSnapshot();
 	};
 }
@@ -74,6 +87,8 @@ export function createRuntimeTurnFinisher(options: {
 	sendNext: (message: QueuedMessage, conversationId: string) => void;
 	/** 按会话收掉悬着的审批（不能全局收：会误伤并行会话正等着的审批） */
 	cancelPending: (conversationId: string, options?: { allTurnsDone?: boolean }) => void;
+	/** 这次 interrupted 是不是插队造成的（ADR-0054）：提示语靠它区分（见 createTurnFinisher） */
+	interruptReasonOf?: (conversationId: string) => "steer" | null;
 	onTurnFinished?: (info: {
 		conversationId: string;
 		title: string;
@@ -96,6 +111,7 @@ export function createRuntimeTurnFinisher(options: {
 		shiftQueued: options.shiftQueued,
 		sendNext: options.sendNext,
 		cancelPending: options.cancelPending,
+		interruptReasonOf: options.interruptReasonOf,
 		settle: (info) => {
 			settleWith(options.state, options.nextId, options.now)(info);
 			const conversation = options.state.conversations.find((item) => item.id === info.conversationId);

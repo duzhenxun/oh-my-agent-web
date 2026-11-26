@@ -28,6 +28,13 @@ export function createTtsRouter(service: TtsService = createTtsService()): expre
 			failure(res, error);
 		}
 	});
+	/**
+	 * 面板渲染用：引擎清单 + 哪家还没配密钥。
+	 * 只报「配没配」和文件路径，不回传任何 key —— 这个接口不需要鉴权也能开。
+	 */
+	router.get("/providers", (_req, res) => {
+		res.json({ providers: service.providers(), configPath: service.configPath() });
+	});
 	router.post("/speak", async (req, res) => {
 		const controller = new AbortController();
 		const abort = () => controller.abort(new TtsError(499, "TTS 请求已取消"));

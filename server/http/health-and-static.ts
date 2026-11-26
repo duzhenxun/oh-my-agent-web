@@ -53,6 +53,6 @@ export function registerHealthAndStatic(
 	app.get("/", (_request, response) => {
 		response
 			.type("text/plain")
-			.send(`agent-web 服务已启动\n\n前端开发态请用：npm run dev（vite 在 http://127.0.0.1:${options.devWebPort}）\n`);
+			.send(`oh-my-agent-web 服务已启动\n\n前端开发态请用：npm run dev（vite 在 http://127.0.0.1:${options.devWebPort}）\n`);
 	});
 }

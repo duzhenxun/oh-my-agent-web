@@ -24,6 +24,7 @@ import {
 	type PendingApproval,
 	type QueuedMode,
 	type RunningState,
+	type MessageBlock,
 	type Snapshot,
 	type SubagentProfileView,
 	type SubagentRunView,
@@ -326,6 +327,40 @@ type BuildSnapshotOptions = {
 	canvasRunningNodeOf?: (conversationId: string | null) => string | null;
 };
 
+/**
+ * 单块文本的上限：超过就裁。
+ *
+ * 由来（2026-11-24 实测）：一条会话里有 1.5MB 的**单条消息**（工具把整个大文件吐了出来），
+ * 整份快照因此达到 1.4MB / 11 条消息 —— 切会话时前端要解析上兆 JSON，表现就是
+ * 「正在打开会话…」一直转。这里按块裁剪，让快照大小与实际内容量脱钩。
+ *
+ * 裁掉的只是**快照里的副本**：会话自己的 jsonl 落盘文件一字不动，原文仍在磁盘上。
+ */
+const SNAPSHOT_BLOCK_TEXT_LIMIT = 32_000;
+const SNAPSHOT_ARGS_LIMIT = 8_000;
+
+function clipText(value: string, limit = SNAPSHOT_BLOCK_TEXT_LIMIT): string {
+	if (value.length <= limit) return value;
+	const omitted = value.length - limit;
+	return `${value.slice(0, limit)}\n\n…（快照已截断 ${omitted.toLocaleString()} 个字符：内容过大。原始内容保留在会话文件里）`;
+}
+
+function clipBlock(block: MessageBlock): MessageBlock {
+	switch (block.kind) {
+		case "text":
+		case "thinking":
+			return { ...block, text: clipText(block.text) };
+		case "tool":
+			return {
+				...block,
+				outputExcerpt: clipText(block.outputExcerpt),
+				...(block.argsFull ? { argsFull: clipText(block.argsFull, SNAPSHOT_ARGS_LIMIT) } : {}),
+			};
+		default:
+			return { ...block };
+	}
+}
+
 export function buildSnapshot(
 	state: ServerState,
 	limit = SNAPSHOT_MESSAGE_LIMIT,
@@ -358,7 +393,7 @@ export function buildSnapshot(
 		models: state.models.map((model) => ({ ...model })),
 		actions: actionsOf(state, activeId).map((action) => ({ ...action })),
 		settings: {
-			quickPhrases: [...state.settings.quickPhrases],
+			quickPhrases: state.settings.quickPhrases.map((phrase) => ({ ...phrase })),
 			quickPhrasesEnabled: state.settings.quickPhrasesEnabled,
 			templates: state.settings.templates.map((template) => ({ ...template })),
 			projectPrefs: {
@@ -388,7 +423,7 @@ export function buildSnapshot(
 		conversations: state.conversations.map((conversation) => ({ ...conversation })),
 		active: {
 			conversationId: activeId,
-			messages: messages.map((message) => ({ ...message, blocks: message.blocks.map((block) => ({ ...block })) })),
+			messages: messages.map((message) => ({ ...message, blocks: message.blocks.map(clipBlock) })),
 			hasMoreBefore: all.length > messages.length,
 		},
 		// running 也要按客户端的会话算：否则别人在跑时，你在看的会话既不出「插队/排队」，

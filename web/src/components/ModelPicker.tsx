@@ -5,7 +5,6 @@ import { filterEnabledModels, groupModels } from "../model-groups.ts";
 import type { ModelOption } from "../types.ts";
 import { setModel } from "../ws.ts";
 import { tNow, useT } from "../use-language.ts";
-import { ModelIcon } from "./ModelIcon.tsx";
 
 /**
  * 模型选择器（P6）：点开是「筛选框 + 按厂家分组」的列表，而不是原生 select。
@@ -130,9 +129,8 @@ export function ModelPicker({
 				disabled={disabled}
 				title={current ?? t("选择模型", "Choose a model")}
 			>
-				<span className="tool-icon" aria-hidden="true">
-					<ModelIcon />
-				</span>
+				{/* 2026-11-23（用户：「模型前面图标不要了」）：去掉那枚 ◎，只留名字 + 下箭头。
+				    —— 右边「强度」那颗的三点已经足够表达"这一组是模型设置"，再加图标只是噪声。 */}
 				<span className="model-trigger-label">{currentLabel}</span>
 				<span className="model-caret" aria-hidden="true">
 					▾

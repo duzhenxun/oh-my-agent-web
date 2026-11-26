@@ -169,7 +169,7 @@ export function registerPushRoutes(app: Express, options: { store: PushStore }):
 				title: `${sanitizeBrand(subscription.brandName ?? "") || BRAND_NAME} 测试推送`,
 				body: "如果你看到这条，说明订阅与推送链路都通了。",
 				url: "/",
-				tag: "agent-web-test",
+				tag: "oh-my-agent-web-test",
 			}),
 			endpoints && endpoints.length > 0 ? endpoints : undefined,
 		);

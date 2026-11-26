@@ -158,6 +158,23 @@ function createQueueController(options: {
 			sync();
 			return next;
 		},
+		/**
+		 * 回合收尾排空队列：**插队项优先**。
+		 *
+		 * 为什么不能直接用 `shift`：interrupt 档的插队项是「打断之后要立刻发的那一条」，它还留在队列里
+		 * （不像 native 档在注入时就取走了）。若队列里排着先前的「排队」消息，`shift` 会把那条先发出去
+		 * —— 用户点了插队，结果先跑的是他之前排的那条，插队彻底失去意义。
+		 */
+		shiftSteerFirst(conversationId: string) {
+			const steer = options.turnQueue.takeSteer(conversationId);
+			if (steer) {
+				sync();
+				return steer;
+			}
+			const next = options.turnQueue.shift(conversationId);
+			if (next) sync();
+			return next;
+		},
 		/** 看一眼挂着的插队（不取走）：判断最小撤回窗口用 */
 		peekSteer(conversationId: string): QueuedMessage | null {
 			return options.turnQueue.peekSteer(conversationId);
@@ -216,6 +233,27 @@ export function createTurnPlumbing(options: {
 	 * 用函数是因为引擎可以在会话中途被切换。
 	 */
 	supportsSteer?: () => boolean;
+	/**
+	 * 「插队」具体怎么做（ADR-0054）：
+	 *   - `native`：把消息插进正在跑的这一轮（pi 的 `streamingBehavior: "steer"`）—— 等 step 边界再注入；
+	 *   - `interrupt`：打断当前轮，把这条消息当**下一轮**立刻发（codex / ACP 三家）—— 不等边界，直接打断；
+	 *   - `none`：没有插队能力，降级成排队。
+	 * 不传 = 看 `supportsSteer`（true → native，false → none），老调用方行为不变。
+	 */
+	steerMode?: () => "native" | "interrupt" | "none";
+	/**
+	 * 打断并**等落定**（interrupt 档用）。返回 false = 超时没落定 → 降级成排队。
+	 * 不传 = 用 `interrupt` + 轮询 `isTurnRunning` 兜底。
+	 */
+	interruptAndSettle?: (conversationId: string) => Promise<boolean>;
+	/** 只打断、不等（`interruptAndSettle` 的兜底实现用它） */
+	interrupt?: (conversationId: string) => Promise<void>;
+	/**
+	 * 即将为插队而打断这一轮：**在**打断之前调。
+	 * 宿主用它记住「这次 interrupted 是插队造成的」，回合收尾时才能说对提示语
+	 * （不是「回合已中断」那种扣人一刀的说法）。
+	 */
+	onInterruptForSteer?: (conversationId: string) => void;
 }) {
 	const now = options.now ?? (() => Date.now());
 	const queue = createQueueController({
@@ -227,6 +265,55 @@ export function createTurnPlumbing(options: {
 	});
 	/** 每个会话一个兑底计时器：插队挂着太久就不等边界了 */
 	const steerTimers = new Map<string, ReturnType<typeof setTimeout>>();
+	/** 正在为插队而打断的会话（interrupt 档）：避免边界事件和兑底计时器各打断一次 */
+	const interrupting = new Map<string, Promise<void>>();
+
+	/** 插队到底怎么做：显式字段优先，否则由「能不能插」推出老行为（true → native） */
+	const steerModeOf = (): "native" | "interrupt" | "none" => {
+		if (options.steerMode) return options.steerMode();
+		return (options.supportsSteer?.() ?? true) ? "native" : "none";
+	};
+
+	/**
+	 * 打断当前轮并等它真的落定（interrupt 档专用）。
+	 *
+	 * 必须先落定才能发下一条：底层协议都是「一个会话同时只能跑一条 prompt」
+	 * （codex 甚至会静默撞掉 active 槽，见 port.ts 的 `interruptAndSettle`）。
+	 */
+	const settleInterrupt = async (conversationId: string): Promise<boolean> => {
+		if (options.interruptAndSettle) return await options.interruptAndSettle(conversationId);
+		// 引擎没实现：自己打断 + 轮询回合是否还挂着（慢一点，但不会永久 busy）
+		if (!options.interrupt) return false;
+		await options.interrupt(conversationId).catch(() => undefined);
+		const deadline = Date.now() + INTERRUPT_SETTLE_MS;
+		while (Date.now() < deadline) {
+			if (!(options.isTurnRunning?.(conversationId) ?? false)) return true;
+			await new Promise((resolve) => setTimeout(resolve, 100));
+		}
+		return !(options.isTurnRunning?.(conversationId) ?? false);
+	};
+
+	/**
+	 * interrupt 档的插队：打断当前轮，这条消息**留在队列里**，由回合收尾的排空当下一轮发出。
+	 *
+	 * 为什么不在这里自己 sendMessage：回合收尾本来就会 `shiftSteerFirst` 把队列头取走并发出去
+	 * （落盘、看门狗、流式显示全链都复用）。自己再发一次等于两条发送路径同时存在 ——
+	 * 那正是「重复 user 消息 / 两个 assistant id 互相覆盖」这类 bug 的来源。
+	 */
+	const interruptForSteer = (conversationId: string): void => {
+		if (interrupting.has(conversationId)) return;
+		// 先记「这次打断是插队造成的」，再动手：提示语不能是「回合已中断」
+		options.onInterruptForSteer?.(conversationId);
+		options.notice("已插队：正在打断当前步骤，接着按你这句话继续", "info", conversationId);
+		const task = (async () => {
+			const settled = await settleInterrupt(conversationId).catch(() => false);
+			if (!settled) {
+				options.notice("引擎没在 5 秒内停下：这条已改为排队，等这一轮结束自动发送", "warn", conversationId);
+			}
+		})();
+		interrupting.set(conversationId, task);
+		void task.finally(() => interrupting.delete(conversationId));
+	};
 
 	/**
 	 * 把挂着的「插队」真正插进当前回合。
@@ -243,23 +330,35 @@ export function createTurnPlumbing(options: {
 		// 最小撤回窗口：模型这边 step 边界来得很快（常常一秒内），那 `× 取消插队` 基本来不及点。
 		// 界面上一按就是"还没插进去、可以撤回"，那就得真的给得出这段时间 —— 到点再来一次。
 		const pending = queue.peekSteer(conversationId);
-		if (pending?.queuedAt !== undefined && now() - pending.queuedAt < STEER_MIN_HOLD_MS) {
-			scheduleSteerFlush(conversationId);
-			return;
+		if (!pending) return;
+		if (pending.queuedAt !== undefined) {
+			const elapsed = now() - pending.queuedAt;
+			if (elapsed < STEER_MIN_HOLD_MS) {
+				scheduleSteerFlush(conversationId, Math.max(50, STEER_MIN_HOLD_MS - elapsed));
+				return;
+			}
 		}
-		const held = queue.takeSteer(conversationId);
-		if (!held) return;
+		const mode = steerModeOf();
 		/**
 		 * 兜底：队列里真的还挂着 steer 条目时再看一次能力（ADR-0043）。
 		 * 两种情形会走到这里：能力字段是后加的（老数据里还留着 steer 项）、
 		 * 或者用户在这一轮中途把引擎切成了不支持插队的那个。
 		 * 一律改成排队等下一轮，**绝不**第二次调 sendMessage。
 		 */
-		if (!(options.supportsSteer?.() ?? true)) {
-			queue.push(held.conversationId, held.text, held.attachments, "queue");
-			options.notice("这个引擎不支持插队，已改为排队：这一轮结束后自动发送", "warn", held.conversationId);
+		if (mode === "none") {
+			const fallback = queue.takeSteer(conversationId);
+			if (!fallback) return;
+			queue.push(fallback.conversationId, fallback.text, fallback.attachments, "queue");
+			options.notice("这个引擎不支持插队，已改为排队：这一轮结束后自动发送", "warn", fallback.conversationId);
 			return;
 		}
+		// interrupt 档：没有「注入点」可等，只能打断 —— 这条留在队列里，由回合收尾当下一轮发出
+		if (mode === "interrupt") {
+			interruptForSteer(conversationId);
+			return;
+		}
+		const held = queue.takeSteer(conversationId);
+		if (!held) return;
 		// 先进消息流再注入：界面与对话记录的顺序与旧行为一致（插队就在当前这一轮里）
 		options.appendUser(held.conversationId, held.text, true);
 		options.pushSnapshot();
@@ -306,13 +405,16 @@ export function createTurnPlumbing(options: {
 		steerTimers.delete(conversationId);
 	};
 
-	/** 兑底：挂着超过 STEER_HOLD_MS 还没遇到 step 边界就直接插（不退化成排队） */
-	const scheduleSteerFlush = (conversationId: string): void => {
+	/** 兑底：挂着超过「窗口」还没等到注入点就直接动手（不退化成排队） */
+	const scheduleSteerFlush = (conversationId: string, delayMs?: number): void => {
 		if (steerTimers.has(conversationId)) return;
+		// native：等 step 边界，兑底 3 秒；
+		// interrupt：没有「注入点」可等，过了最小撤回窗口就打断（用户点的是插队，不是排队）
+		const ms = delayMs ?? (steerModeOf() === "interrupt" ? STEER_MIN_HOLD_MS : STEER_HOLD_MS);
 		const timer = setTimeout(() => {
 			steerTimers.delete(conversationId);
 			flushSteer(conversationId);
-		}, STEER_HOLD_MS);
+		}, ms);
 		timer.unref?.();
 		steerTimers.set(conversationId, timer);
 	};
@@ -333,6 +435,14 @@ export function createTurnPlumbing(options: {
 
 /** 插队挂在宿主上的最长时长：超过它就不再等 step 边界（否则插队会退化成排队） */
 export const STEER_HOLD_MS = 3000;
+
+/**
+ * interrupt 档等「这一轮真的停住」的上限（ADR-0054）。
+ *
+ * 实测 codex 从 `turn/interrupt` 到 `turn/completed` 约 84ms，5 秒纯粹是兜底：超了就让调用方
+ * 降级成排队，而不是揁着用户「已插队」却什么都没发生。
+ */
+export const INTERRUPT_SETTLE_MS = 5000;
 
 /**
  * 插队的**最小撤回窗口**：这段时间内即使 step 边界已经到了也不注入。

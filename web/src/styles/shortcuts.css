@@ -13,6 +13,29 @@
 	gap: 2px;
 }
 
+/* 功能分组（2026-11-24：快捷键按「会话 / 对话操作 / 面板 / 语音」分块）
+ * 组与组之间靠**间距 + 小标题**分开，不画框：面板本来就密，再加边框会碎。 */
+.shortcuts-group {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	margin-bottom: 14px;
+}
+
+.shortcuts-group:last-of-type {
+	margin-bottom: 0;
+}
+
+.shortcuts-group-head {
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--text-dim);
+	letter-spacing: 0.02em;
+	padding: 2px 2px 4px;
+	border-bottom: 1px solid var(--border);
+	margin-bottom: 4px;
+}
+
 .shortcut-row {
 	display: flex;
 	align-items: center;

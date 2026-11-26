@@ -15,6 +15,7 @@
 import { useEffect, useState } from "react";
 import {
 	SHORTCUT_DEFS,
+	SHORTCUT_GROUPS,
 	comboFromEvent,
 	defaultShortcuts,
 	findConflict,
@@ -157,8 +158,14 @@ export function ShortcutsPane() {
 				</span>
 			</div>
 
-			<div className="shortcuts-list">
-				{SHORTCUT_DEFS.map((def) => {
+			{SHORTCUT_GROUPS.map((group) => {
+				const defs = SHORTCUT_DEFS.filter((def) => def.group === group.id);
+				if (defs.length === 0) return null;
+				return (
+					<div className="shortcuts-group" key={group.id}>
+						<div className="shortcuts-group-head">{t(group.label, group.labelEn)}</div>
+						<div className="shortcuts-list">
+				{defs.map((def) => {
 					const combo = map[def.id];
 					const isRecording = recording === def.id;
 					return (
@@ -211,7 +218,10 @@ export function ShortcutsPane() {
 						</div>
 					);
 				})}
-			</div>
+						</div>
+					</div>
+				);
+			})}
 
 			{notice ? (
 				<div className="shortcut-notice" role="status">

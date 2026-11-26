@@ -52,6 +52,13 @@ type ActiveTurn = {
 	turnId: string | null;
 	onEvent: (event: EngineEvent) => void;
 	finish: () => void;
+	/**
+	 * 这一轮真的落定了（`turn/completed` 到了，或 sendMessage 因任何原因返回）。
+	 *
+	 * 插队要用它：codex 同一会话同时只能跑一条 turn，必须等上一轮落定才能发下一条
+	 * （否则 `turn/start` 会把 active 槽覆盖掉，见 ADR-0054 / `interruptAndSettle`）。
+	 */
+	settled: Promise<void>;
 	ended: boolean;
 };
 
@@ -86,7 +93,25 @@ const MIN_TOKENS_FOR_TPS = 5;
  */
 const MIN_GENERATION_MS_FOR_TPS = 500;
 /** 探针 thread 的 cwd：临时目录（`isScratchCwd` 判定 → 不会污染侧栏的项目列表），跑完连目录一起删 */
-const PROBE_CWD_PREFIX = "agent-web-probe-";
+const PROBE_CWD_PREFIX = "oh-my-agent-web-probe-";
+/**
+ * 插队打断后等 `turn/completed` 的上限（ADR-0054）。
+ *
+ * 实测打断到 `turn/completed` 约 84ms，给 5 秒纯粹是兜底：超了就交回调用方降级成排队，
+ * 而不是在这里久等 —— 用户点的是「插队」，不是「排队等 30 秒」。
+ */
+const INTERRUPT_SETTLE_MS = 5000;
+
+/**
+ * 这条错误是不是「thread 还没落地」——codex 对**第一条用户消息之前**的 thread 会拒读历史：
+ * `thread 01a20… is not materialized yet; thread/turns/list is unavailable before first user message`。
+ *
+ * 对历史来说它等价于「零轮」，不是失败。
+ */
+function isNotMaterialized(error: unknown): boolean {
+	const message = error instanceof Error ? error.message : String(error);
+	return /not materialized|unavailable before first user message/i.test(message);
+}
 
 /**
  * 一次测速的收尾算术（纯函数）。
@@ -352,11 +377,25 @@ export function createCodexEngine(options: CodexEngineOptions = {}): CodexEngine
 	const loadTurns = async (sessionId: string): Promise<CodexTurn[]> => {
 		const binding = threadOf(sessionId);
 		if (!binding) return [];
-		const result = await client.request<{ data?: CodexTurn[] }>("thread/turns/list", {
-			threadId: binding.threadId,
-			limit: 40,
-			sortDirection: "desc",
-		});
+		let result: { data?: CodexTurn[] };
+		try {
+			result = await client.request<{ data?: CodexTurn[] }>("thread/turns/list", {
+				threadId: binding.threadId,
+				limit: 40,
+				sortDirection: "desc",
+			});
+		} catch (error) {
+			/**
+			 * 新建的 thread 在**第一条用户消息之前还没落地**，codex 会直接拒：
+			 * `thread … is not materialized yet; thread/turns/list is unavailable before first user message`。
+			 *
+			 * 这不是错，只是「还没有任何一轮」。定时任务新建会话后立刻切模型 / 读历史就会撞上它
+			 * （用户 2026-11-24：切到 Codex 后定时任务直接失败，报「打开会话失败」）。
+			 * 当空历史处理，把 error 吞在这里；其它错误照旧往上抛。
+			 */
+			if (isNotMaterialized(error)) return [];
+			throw error;
+		}
 		return [...(result?.data ?? [])].reverse();
 	};
 
@@ -433,12 +472,21 @@ export function createCodexEngine(options: CodexEngineOptions = {}): CodexEngine
 				throw new Error(friendlyCodexError(error));
 			});
 			if (!binding) throw new Error("codex 会话还没准备好（先新建或打开一个会话）");
+			/**
+			 * 单飞守卫（ADR-0054）：同一会话已经有回合在跑就**拒发**，绝不覆盖 active 槽。
+			 *
+			 * 为什么必须有：实测在飞时再发 `turn/start` 不会报错，而是静默生效 ——
+			 * `active.set` 把上一轮的对象顶掉，于是上一轮的 `done` 永远等不到 `turn/completed`
+			 * （会话永久 busy），而那一轮的 `turn/completed` 还会被路由到新监听器上。
+			 * 有这层，插队实现写错最坏只是「插队失败」；没有它，最坏是「整个会话卡死」。
+			 */
+			if (active.has(sessionId)) throw new Error("这个会话已经有回合在跑：codex 同一会话同时只能跑一条 turn");
 
 			let finish = (): void => {};
 			const done = new Promise<void>((resolve) => {
 				finish = resolve;
 			});
-			const turn: ActiveTurn = { turnId: null, onEvent, finish, ended: false };
+			const turn: ActiveTurn = { turnId: null, onEvent, finish, settled: done, ended: false };
 			active.set(sessionId, turn);
 			try {
 				const response = await client.request<{ turn?: { id?: string } }>(
@@ -450,6 +498,9 @@ export function createCodexEngine(options: CodexEngineOptions = {}): CodexEngine
 				await done;
 			} finally {
 				turn.ended = true;
+				// 兜底兑现 `settled`：不管这一轮是正常结束、被打断，还是抛错退出，
+				// 等它的 `interruptAndSettle` 都不能永远挂着。
+				finish();
 				active.delete(sessionId);
 			}
 		},
@@ -466,6 +517,36 @@ export function createCodexEngine(options: CodexEngineOptions = {}): CodexEngine
 				// 只记日志：停止失败最坏是「这一轮继续跑」，不该把进程一起带走
 				options.log?.(`停止失败：${error instanceof Error ? error.message : String(error)}`);
 			}
+		},
+
+		/**
+		 * 打断 + 等落定（ADR-0054 的插队用它）。
+		 *
+		 * 实测（codex-cli 0.171.0）：`turn/interrupt` 发出后 `turn/completed` 约 **84ms** 就到，
+		 * status = interrupted，且**不会**再补 `tool_end` —— 被打断那一刻正在跑的工具直接消失。
+		 * 所以这里等 `turn.settled` 就够了；5 秒还不落定就把决定权交回调用方（降级成排队），
+		 * 绝不闷头发下一条（那会把 active 槽撞掉，见 sendMessage 的单飞守卫）。
+		 */
+		async interruptAndSettle(sessionId) {
+			const binding = threadOf(sessionId);
+			const turn = active.get(sessionId);
+			// 没有在跑的回合 = 已经落定，调用方可以立刻发
+			if (!binding || !turn) return true;
+			// turn/start 还没回来（还没拿到 turnId）就没法指定打断谁：交回调用方
+			if (!turn.turnId) return false;
+			try {
+				await client.request("turn/interrupt", { threadId: binding.threadId, turnId: turn.turnId });
+			} catch (error) {
+				options.log?.(`插队打断失败：${error instanceof Error ? error.message : String(error)}`);
+				return false;
+			}
+			return await Promise.race([
+				turn.settled.then(() => true),
+				new Promise<boolean>((resolve) => {
+					const timer = setTimeout(() => resolve(false), INTERRUPT_SETTLE_MS);
+					timer.unref?.();
+				}),
+			]);
 		},
 
 		async closeSession(sessionId) {

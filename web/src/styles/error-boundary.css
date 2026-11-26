@@ -1,0 +1,108 @@
+/*
+ * 界面崩溃时的那一屏（error boundary 兜底，见 components/ErrorBoundary.tsx）。
+ *
+ * 独立类名、只依赖 base.css 的变量：它出现的时候 App 已经炸了，
+ * 任何跟 App 状态绑定的样式类都可能不好使。
+ */
+.crash-screen {
+	position: fixed;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 24px;
+	background: var(--bg);
+	overflow: auto;
+	z-index: 9999;
+}
+
+.crash-card {
+	width: min(720px, 100%);
+	max-height: 100%;
+	overflow: auto;
+	box-sizing: border-box;
+	padding: 20px 22px 18px;
+	border: 1px solid var(--border);
+	border-left: 3px solid #dc2626;
+	border-radius: 12px;
+	background: var(--bg-elev);
+	box-shadow: 0 10px 30px rgb(0 0 0 / 10%);
+	font-size: 13.5px;
+	line-height: 1.6;
+	color: var(--text);
+}
+
+.crash-title {
+	font-size: 15px;
+	font-weight: 600;
+	margin-bottom: 8px;
+}
+
+.crash-body {
+	color: var(--text-dim);
+}
+
+.crash-message {
+	margin: 12px 0 0;
+	padding: 8px 10px;
+	border-radius: 8px;
+	background: color-mix(in srgb, #dc2626 8%, var(--bg-elev-2));
+	border: 1px solid color-mix(in srgb, #dc2626 22%, var(--border));
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 12.5px;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+.crash-detail {
+	margin-top: 10px;
+	color: var(--text-dim);
+}
+
+.crash-detail summary {
+	cursor: pointer;
+	font-size: 12.5px;
+	color: var(--text-faint);
+}
+
+.crash-detail pre {
+	margin: 8px 0 0;
+	padding: 10px;
+	max-height: 260px;
+	overflow: auto;
+	border-radius: 8px;
+	background: var(--bg-elev-2);
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 11.5px;
+	line-height: 1.5;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+.crash-actions {
+	margin-top: 14px;
+	display: flex;
+	gap: 8px;
+}
+
+.crash-btn {
+	font: inherit;
+	font-size: 12.5px;
+	padding: 5px 12px;
+	border-radius: 7px;
+	border: 1px solid var(--border);
+	background: transparent;
+	color: var(--text-dim);
+	cursor: pointer;
+}
+
+.crash-btn:hover {
+	border-color: var(--border-strong);
+	color: var(--text);
+}
+
+.crash-btn.is-primary {
+	border-color: var(--accent);
+	color: var(--accent);
+	background: color-mix(in srgb, var(--accent) 10%, transparent);
+}

@@ -28,6 +28,8 @@ describe("panel order preferences", () => {
 			"agents",
 			"cron",
 			"computer",
+			// 新面板（2026-11-25 的「提 Bug」）默认补在末尾
+			"bug",
 		]);
 	});
 
@@ -45,12 +47,15 @@ describe("panel order preferences", () => {
 			"settings",
 			"cron",
 			"computer",
+			"bug",
 		]);
 	});
 
-	it("电脑控制紧跟在定时任务后面（设置仍在最后），旧偏好也会补齐", () => {
+	it("电脑控制紧跟在定时任务后面（「提 Bug」在设置前面），旧偏好也会补齐", () => {
 		assert.equal(DEFAULT_PANEL_ORDER.indexOf("computer"), DEFAULT_PANEL_ORDER.indexOf("cron") + 1);
-		assert.equal(DEFAULT_PANEL_ORDER.indexOf("computer"), DEFAULT_PANEL_ORDER.indexOf("settings") - 1);
+		// 「提 Bug」（2026-11-25）插在电脑控制与设置之间：两个都是「有事才来找」的入口，并排好找
+		assert.equal(DEFAULT_PANEL_ORDER.indexOf("bug"), DEFAULT_PANEL_ORDER.indexOf("computer") + 1);
+		assert.equal(DEFAULT_PANEL_ORDER.indexOf("bug"), DEFAULT_PANEL_ORDER.indexOf("settings") - 1);
 		const legacy = DEFAULT_PANEL_ORDER.filter((key) => key !== "cron");
 		const normalized = readPanelOrder(JSON.stringify(legacy));
 		assert.deepEqual(normalized, [...legacy, "cron"]);

@@ -4,13 +4,17 @@ import { setApprovalMode } from "../ws.ts";
 import { useLanguage, useT } from "../use-language.ts";
 // 花费文案与子代理卡片 / 消息尾注共用一套（<$0.001 / $0.437 / $3.44）
 import { costText } from "../subagent-view.tsx";
-import { STATUSBAR_ITEM_KEY, STATUSBAR_TOGGLES, type StatusbarToggle } from "../ui-prefs.ts";
+import {
+	STATUSBAR_ITEM_KEY,
+	STATUSBAR_TOGGLES,
+	statusbarItemDefault,
+	type StatusbarToggle,
+} from "../ui-prefs.ts";
 import { useStatusbarOrder } from "../statusbar-order.ts";
 import { usePrefFlags } from "../use-pref-flags.ts";
 import { centeredPopoverAnchor } from "../popover-anchor.ts";
 import { EnginePicker } from "./EnginePicker.tsx";
 import { PanelIcon } from "./PanelIcon.tsx";
-import { ModelChips } from "./ModelChips.tsx";
 
 /** 去掉小数尾部多余的 0：1.00M → 1M，1.50M → 1.5M，1.0K → 1K */
 function trimZeros(text: string): string {
@@ -79,8 +83,8 @@ export function StatusBar({
 		? Object.values(snapshot.runningByConversation ?? {}).filter((item) => item.status !== "idle").length
 		: 0;
 	const queued = (snapshot?.queued ?? []).length;
-	// 这三块信息的显隐：设置 → 界面 → 底部（默认全显示）
-	const [showInfo] = usePrefFlags(STATUSBAR_TOGGLES, STATUSBAR_ITEM_KEY);
+	// 各块信息的显隐：设置 → 界面 → 底部（默认只显示 设置 / 引擎 / 审批模式）
+	const [showInfo] = usePrefFlags(STATUSBAR_TOGGLES, STATUSBAR_ITEM_KEY, statusbarItemDefault);
 	const [statusbarOrder] = useStatusbarOrder();
 	const itemOrder = (item: StatusbarToggle) => ({ order: statusbarOrder.indexOf(item) });
 	/**
@@ -123,12 +127,12 @@ export function StatusBar({
 		}
 		const measure = () => {
 			const chip = contextRef.current?.getBoundingClientRect();
-			const pop = usagePopRef.current?.getBoundingClientRect();
-			if (!chip || !pop) return;
+			const aw = usagePopRef.current?.getBoundingClientRect();
+			if (!chip || !aw) return;
 			setUsageAnchor(
 				centeredPopoverAnchor({
 					trigger: { left: chip.left, top: chip.top, width: chip.width, height: chip.height },
-					popover: { width: pop.width },
+					popover: { width: aw.width },
 					viewport: { width: window.innerWidth, height: window.innerHeight },
 				}),
 			);
@@ -239,24 +243,12 @@ export function StatusBar({
 					</span>
 				) : null}
 				{/*
-				 * 「模型 · 强度」：用户 2026-10-29 定 —— 从输入框上方那排**移下来**，放在引擎那颗的**右边**。
-				 * 跟隔壁的审批 / 引擎是同一类开关（「这一步用谁、跑多细」），挤在一条里比挂在
-				 * 输入框上方更好找；`statusbar.css` 里本来就留着 `.statusbar .model-trigger`
-				 * 那套缩小样式，高度对得上（状态栏只有 24px）。
-				 * **手机也一样**（同一天补的要求）：这条在手机上本来就是横向可滚的，
-				 * 装不下的 排队 / 工作中 / 上下文 继续往右排，滑一下就能看到；
-				 * 模型菜单在手机上本来就是底部抽屉（见 `ModelPicker`），点开不会跑出屏幕。
+				 * 「模型 · 强度」**2026-11-23 挪回输入框上方**（用户：「放在提示词前面」）：
+				 * 它们是每轮都可能改的东西，动作顺序是「选模型 → 敲需求 → 发送」，
+				 * 贴着输入框比沉到底部状态栏更顺手；也跟「临时聊天」那一排统一了。
+				 * 状态栏只留「会话级 / 全局」的：引擎、放行、排队、上下文、终端…
+				 * 渲染已经搬到 `Composer` 的 `.composer-tools`（见那边的 `chipsHere`）。
 				 */}
-				{showInfo.model ? (
-					<span className="statusbar-slot" style={itemOrder("model")}>
-						<ModelChips part="model" />
-					</span>
-				) : null}
-				{showInfo.thinking ? (
-					<span className="statusbar-slot" style={itemOrder("thinking")}>
-						<ModelChips part="thinking" />
-					</span>
-				) : null}
 			</span>
 			{showInfo.queued ? (
 				<span

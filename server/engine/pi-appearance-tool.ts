@@ -44,7 +44,7 @@ function failure(error: unknown): Failure {
 
 export function makeAppearanceToolExtension(options: AppearanceToolOptions): InlineExtension {
 	return {
-		name: "agent-web-appearance",
+		name: "oh-my-agent-web-appearance",
 		hidden: true,
 		factory: (pi) => {
 			pi.registerTool(

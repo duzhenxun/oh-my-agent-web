@@ -29,6 +29,47 @@ function isSafeUploadId(id: string): boolean {
 	return ID_RE.test(id);
 }
 
+/**
+ * 纯函数：把用户给的文件名收敛成「能拼进磁盘路径的一段后缀」。
+ *
+ * 为什么存盘时要带原名（用户 2026-11-26）：模型拿到的提示词里写的是**磁盘路径** ——
+ * 只给 `<id>` 的话，`/Users/x/.oh-my-agent-web/uploads/a1b2c3d4` 这种没有扩展名的串既看不出
+ * 是什么文件，也看不出该用哪种方式读。所以落盘名是 `<id>-<清洗过的原名>`。
+ *
+ * 保留：字母 / 数字 / `.` `_` `-`（含中文等各语种字母）；其余一律换成 `_`，
+ * 去掉开头的点（不能变成隐藏文件），长度封顶 80。
+ */
+function safeNameSuffix(name: string): string {
+	const base = name.split(/[\\/]/).pop() ?? "";
+	const cleaned = base
+		.replace(/[^\p{L}\p{N}._-]+/gu, "_")
+		.replace(/^\.+/, "")
+		.slice(0, 80);
+	return cleaned === "" ? "" : `-${cleaned}`;
+}
+
+/**
+ * 找到某个 id 对应的落盘文件：先试老的 `<id>`（存量上传），再找 `<id>-<原名>`。
+ * 返回绝对路径；找不到返回 null。
+ */
+async function storedPath(dir: string, id: string): Promise<string | null> {
+	if (!isSafeUploadId(id)) return null;
+	const exact = join(dir, id);
+	try {
+		await stat(exact);
+		return exact;
+	} catch {
+		// 不是存量那种无后缀命名，往下找带原名的
+	}
+	try {
+		const names = await readdir(dir);
+		const hit = names.find((name) => name.startsWith(`${id}-`));
+		return hit === undefined ? null : join(dir, hit);
+	} catch {
+		return null;
+	}
+}
+
 /** 纯函数：按魔术字节嗅探类型（不信任客户端给的 content-type） */
 function sniffMime(bytes: Uint8Array): string | null {
 	const head = bytes.subarray(0, 12);
@@ -70,9 +111,11 @@ export function createUploadStore(options: { dataDir: string; now?: () => number
 			}
 			const id = randomUUID().replace(/-/g, "").slice(0, 16);
 			const mime = sniffMime(input.bytes) ?? (input.declaredMime || "application/octet-stream");
+			const name = (input.name ?? "附件").slice(0, 200);
 			const dir = uploadsDir(options.dataDir);
 			await mkdir(dir, { recursive: true });
-			const path = join(dir, id);
+			/** 存盘名带原名：模型看到的提示词里就是**能读懂、带扩展名**的路径 */
+			const path = join(dir, `${id}${safeNameSuffix(name)}`);
 			await writeFile(path, input.bytes);
 			// 顺手清理旧文件（不做后台任务，省一个定时器）
 			await this.cleanup();
@@ -81,19 +124,31 @@ export function createUploadStore(options: { dataDir: string; now?: () => number
 				path,
 				bytes: input.bytes.byteLength,
 				mime,
-				name: (input.name ?? "附件").slice(0, 200),
+				name,
 			};
 		},
 
 		/** 读回一个上传（校验 id 安全 + 文件存在） */
 		async read(id: string): Promise<{ bytes: Buffer; mime: string } | null> {
-			if (!isSafeUploadId(id)) return null;
+			const path = await storedPath(uploadsDir(options.dataDir), id);
+			if (path === null) return null;
 			try {
-				const bytes = await readFile(join(uploadsDir(options.dataDir), id));
+				const bytes = await readFile(path);
 				return { bytes, mime: sniffMime(bytes) ?? "application/octet-stream" };
 			} catch {
 				return null;
 			}
+		},
+
+		/**
+		 * 上传副本的**绝对路径**（给提示词用，见 `session/attachment-resolve.ts`）。
+		 *
+		 * 以前没这个方法，于是 `resolveAttachments()` 回落成 `attachment.name` ——
+		 * 模型收到的是「（附上文件，未注入内容：截图.png）」，一个没有目录的文件名，
+		 * 根本读不到（用户 2026-11-26：「拖进来的文件，发送时没有发路径」）。
+		 */
+		async pathOf(id: string): Promise<string | null> {
+			return storedPath(uploadsDir(options.dataDir), id);
 		},
 
 		/** 清理超过保留期的上传（返回删掉的数量） */

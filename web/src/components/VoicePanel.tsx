@@ -33,13 +33,19 @@ import {
 	type TtsProvider,
 	type VoiceOption,
 } from "../tts.ts";
-import { fetchRemoteVoices, type RemoteVoice } from "../remote-tts.ts";
+import { fetchRemoteVoices, type RemoteTtsProvider, type RemoteVoice } from "../remote-tts.ts";
 import { requestStopSpeech } from "../speech-control.ts";
 import { playVoiceClip } from "../voice-clips.ts";
 import { voiceChannelOf } from "../voice-cue-logic.ts";
 import { forgetLocalUnavailable, saveVoiceInputSettings, useVoiceInputSettings } from "../voice-input.ts";
 import { useAppSelector } from "../store.ts";
 import { useT } from "../use-language.ts";
+import {
+	PET_ANIMALS,
+	PET_ENABLED_KEY,
+	usePetAnimal,
+} from "../speech-pet-prefs.ts";
+import { useStoredBool } from "../use-stored-bool.ts";
 
 const SOUND_KINDS: SoundKind[] = ["start", "steer", "done", "error", "approval"];
 
@@ -64,12 +70,34 @@ type AsrStatus = {
 	state: string;
 	message?: string;
 	locale?: string;
+	/** 云端识别时：用的是哪家（deepseek 等）与服务端给的中文名 */
+	provider?: string;
+	providerLabel?: string;
 	/** 没装时服务端给的安装信息（去哪儿下、装好会在哪） */
 	install?: { downloadUrl: string; appPath: string; canAutoInstall: boolean } | null;
 };
 
+/** 服务端 `/api/asr/engines` 的返回（见 `server/asr/service.ts` 的 CloudEngines） */
+type CloudEngines = {
+	provider: string | null;
+	model: string | null;
+	source: string;
+	error: string | null;
+	engines: {
+		id: string;
+		label: string;
+		configured: boolean;
+		hasModel: boolean;
+		defaultModel?: string;
+		models: string[];
+	}[];
+};
+
 export function VoicePanel() {
 	const t = useT();
+	/** 朗读小宠物：开不开 + 选哪只（本机偏好，见 speech-pet-prefs.ts） */
+	const [petOn, setPetOn] = useStoredBool(PET_ENABLED_KEY, true);
+	const [petAnimal, setPetAnimal] = usePetAnimal();
 	const [sound, setSound] = useState<SoundSettings>(() => loadSoundSettings());
 	const [tts, setTts] = useState<TtsSettings>(() => loadTtsSettings());
 	// 语音输入是**听**（麦克风 → 文字），和上面这套播报（文字 → 声音）是两块，所以单独一份设置
@@ -82,8 +110,7 @@ export function VoicePanel() {
 	 */
 	const [asr, setAsr] = useState<AsrStatus | null>(null);
 	/** 正在下载/安装本地识别程序（这期间按钮置灰，避免连点） */
-	const [installingAsr, setInstallingAsr] = useState(false);
-	const [asrInstallError, setAsrInstallError] = useState<string | null>(null);
+	const [asrInstallError] = useState<string | null>(null);
 	const refreshAsr = useCallback((start = false) => {
 		void fetch(`/api/asr/status${start ? "?start=1" : ""}`)
 			.then(async (response) => {
@@ -104,6 +131,58 @@ export function VoicePanel() {
 	 * 现在按住了就一直轮询（见下面的 effect），中途出什么都在那一行显示。
 	 */
 	const asrStarting = asr?.state === "starting" || asr?.state === "authorizing";
+
+	/**
+	 * 云端引擎列表：`/api/asr/engines`。
+	 *
+	 * 服务端只给「当前选中的那一家」，而这里要让人在「千问整段识别」和
+	 * 「千问实时识别（边说边出字）」之间选 —— 两者模型、延迟、价格都不一样，
+	 * 以前只能改 `~/.oh-my-agent-web/stt.json` 才能切，面板上根本看不到另一家。
+	 */
+	const [cloudEngines, setCloudEngines] = useState<CloudEngines | null>(null);
+	const [cloudError, setCloudError] = useState<string | null>(null);
+	const [cloudBusy, setCloudBusy] = useState(false);
+	// 无论当前选的是哪一档都要拉：云端引擎是直接列在「识别引擎」那一栏里的
+	useEffect(() => {
+		let cancelled = false;
+		void fetch("/api/asr/engines")
+			.then(async (response) => {
+				if (cancelled || !response.ok) return;
+				setCloudEngines((await response.json()) as CloudEngines);
+			})
+			.catch(() => undefined);
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
+	/** 切换云端引擎 / 模型：服务端写回 stt.json，下一句生效 */
+	const applyCloudEngine = async (patch: { provider?: string; model?: string }) => {
+		setCloudBusy(true);
+		setCloudError(null);
+		try {
+			const body: { provider: string; model?: string } = {
+				provider: patch.provider ?? cloudEngines?.provider ?? "",
+			};
+			if (patch.model !== undefined) body.model = patch.model;
+			const response = await fetch("/api/asr/engine", {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify(body),
+			});
+			const data = (await response.json()) as CloudEngines & { error?: string };
+			if (!response.ok) {
+				setCloudError(data.error ?? t("切换失败", "Could not switch"));
+				return;
+			}
+			setCloudEngines(data);
+			refreshAsr();
+		} catch (error) {
+			setCloudError(error instanceof Error ? error.message : String(error));
+		} finally {
+			setCloudBusy(false);
+		}
+	};
 	useEffect(() => {
 		if (!asrStarting) return;
 		const timer = window.setInterval(() => refreshAsr(), 1200);
@@ -122,24 +201,9 @@ export function VoicePanel() {
 	 * 装完直接拉起：用户点了这个按钮，意思就是「我要用本地识别」，不用再点一次「启动」。
 	 */
 	const installAsr = () => {
-		if (installingAsr) return;
-		setInstallingAsr(true);
-		setAsrInstallError(null);
-		void fetch("/api/asr/install", { method: "POST", credentials: "same-origin" })
-			.then(async (response) => {
-				const body = (await response.json().catch(() => ({}))) as { ok?: boolean; message?: string };
-				if (!response.ok || body.ok !== true) {
-					setAsrInstallError(body.message ?? t("安装失败", "Install failed"));
-					return;
-				}
-				// 之前探到过 missing（auto 就一直在走 Chrome）：装好了要把这条记忆清掉
-				forgetLocalUnavailable();
-				refreshAsr(true);
-			})
-			.catch((error: unknown) =>
-				setAsrInstallError(error instanceof Error ? error.message : t("安装请求失败了", "The install request failed")),
-			)
-			.finally(() => setInstallingAsr(false));
+		const url = asr?.install?.downloadUrl;
+		if (!url) return;
+		window.open(url, "_blank", "noopener,noreferrer");
 	};
 	useEffect(() => refreshAsr(), []);
 	const [voices, setVoices] = useState<VoiceOption[]>(() => listVoices());
@@ -166,9 +230,32 @@ export function VoicePanel() {
 	const [voiceStatus, setVoiceStatus] = useState<string | null>(null);
 	const available = isSpeechAvailable(tts);
 	const isRemote = (tts.provider ?? "browser") !== "browser";
-	const remoteProvider = tts.provider === "kokoro" || tts.provider === "qwen3" ? tts.provider : "edge";
+	/**
+	 * 当前选的云端引擎。
+	 *
+	 * 不能再用「不是 kokoro/qwen3 就当 edge」那种写法了：云端引擎会越来越多
+	 * （DeepSeek 之后还有千问、豆包），漏掉一个就会静默地去请求 Edge 的音色，
+	 * 音色 ID 对不上、听着还挺像成功。
+	 */
+	const remoteProvider: RemoteTtsProvider =
+		tts.provider === "kokoro" ||
+		tts.provider === "qwen3" ||
+		tts.provider === "deepseek" ||
+		tts.provider === "qwen"
+			? tts.provider
+			: "edge";
 	const remoteVoice =
-		tts.provider === "kokoro" ? tts.kokoroVoice : tts.provider === "qwen3" ? tts.qwen3Voice : tts.edgeVoice;
+		tts.provider === "kokoro"
+			? tts.kokoroVoice
+			: tts.provider === "qwen3"
+				? tts.qwen3Voice
+				: tts.provider === "deepseek"
+					? tts.deepseekVoice
+					: tts.provider === "qwen"
+						? tts.qwenVoice
+						: tts.edgeVoice;
+	/** 云端引擎的注册状态（服务端 /api/tts/providers）：用来提示「这家还没配密钥，去哪儿配」 */
+	const [ttsProviders, setTtsProviders] = useState<{ id: string; label: string; configured: boolean; note?: string }[]>([]);
 	// 旧版本可能存过 Google 在线音色；不在当前清单里时显示回退到「自动」
 	const selectedVoice = voices.some((voice) => voice.voiceURI === tts.voiceURI) ? tts.voiceURI : "";
 	/**
@@ -194,6 +281,14 @@ export function VoicePanel() {
 		const timer = window.setTimeout(() => controller.abort(), 15_000);
 		setLoadingVoices(true);
 		setVoicesIssue(null);
+		// 引擎清单（含「哪家还没配密钥」）只取一次，跟音色一起拉
+		void fetch("/api/tts/providers")
+			.then(async (response) => {
+				if (!response.ok) return;
+				const result = (await response.json()) as { providers?: typeof ttsProviders };
+				if (!disposed && Array.isArray(result.providers)) setTtsProviders(result.providers);
+			})
+			.catch(() => undefined);
 		void fetchRemoteVoices(controller.signal, remoteProvider)
 			.then((items) => {
 				if (!disposed) setRemoteVoices(items);
@@ -416,7 +511,9 @@ export function VoicePanel() {
 					<label className="voice-row" key={kind}>
 						<span className="voice-row-label">
 							{t(SOUND_LABEL[kind].title, SOUND_LABEL[kind].titleEn)}
-							<span className="voice-row-hint">{t(SOUND_LABEL[kind].hint, SOUND_LABEL[kind].hintEn)}</span>
+							{/* 解释并进括号（用户 2026-11-24：「有解释的放 () 中，文案要减少」）：
+							 * 原来每个提示音占两行（标题 + 说明），五行就是十行。 */}
+							（{t(SOUND_LABEL[kind].hint, SOUND_LABEL[kind].hintEn)}）
 						</span>
 						<button
 							type="button"
@@ -441,26 +538,15 @@ export function VoicePanel() {
 			<section className="voice-section">
 				<label className="voice-row">
 					<span className="voice-row-label">
-						<span aria-hidden="true">🔊</span> {t("启用语音播报", "Enable speech")}
-						<span className="voice-row-hint">
-							{t(
-								"完成 / 插队 / 出错 / 等待审批播本地音频（中文、英文各一套，不联网、不依赖系统音色）",
-								"Plays bundled audio clips on finish / steer / error / approval (Chinese and English, no network, no system voices)",
-							)}
-						</span>
+						<span aria-hidden="true">🔊</span>{" "}
+						{t("启用语音播报（完成 / 出错播提示音）", "Enable speech (cue on finish / error)")}
 					</span>
 					<input type="checkbox" checked={tts.enabled} onChange={() => patchTts({ enabled: !tts.enabled })} />
 				</label>
 
 				<label className="voice-row">
 					<span className="voice-row-label">
-						{t("朗读回复", "Read replies aloud")}
-						<span className="voice-row-hint">
-							{t(
-								"开启后，回答边输出边按句朗读（不用等整条写完）",
-								"Reads each sentence as the answer streams in, instead of waiting for the whole reply",
-							)}
-						</span>
+						{t("朗读回复（边输出边按句念）", "Read replies aloud (as it streams)")}
 					</span>
 					<input
 						type="checkbox"
@@ -470,7 +556,19 @@ export function VoicePanel() {
 				</label>
 
 				<label className="voice-row voice-row-select voice-row-stacked">
-					<span className="voice-row-label">{t("语音引擎", "Speech engine")}</span>
+					{/* 引擎说明原来单独占一行（「本机 MLX 模型，不联网；首次合成要加载模型…」），
+					 * 现在缩成标签后面的括号（用户 2026-11-24：「有解释的放 () 中，文案要减少」）。 */}
+					<span className="voice-row-label">
+						{isRemote
+							? remoteProvider === "edge"
+								? t("语音引擎（在线，文字发到微软）", "Speech engine (online, text goes to Microsoft)")
+								: remoteProvider === "deepseek"
+									? t("语音引擎（在线，文字发到 DeepSeek）", "Speech engine (online, text goes to DeepSeek)")
+									: remoteProvider === "qwen"
+										? t("语音引擎（在线，文字发到阿里千问）", "Speech engine (online, text goes to Alibaba Qwen)")
+										: t("语音引擎（本机 MLX，不联网）", "Speech engine (local MLX, offline)")
+							: t("语音引擎", "Speech engine")}
+					</span>
 					<select
 						className="voice-select"
 						value={tts.provider ?? "browser"}
@@ -478,62 +576,26 @@ export function VoicePanel() {
 					>
 						<option value="browser">{t("浏览器语音", "Browser speech")}</option>
 						<option value="edge">{t("微软 Edge TTS（在线）", "Microsoft Edge TTS (online)")}</option>
+						<option value="deepseek">{t("DeepSeek TTS（在线）", "DeepSeek TTS (online)")}</option>
+						<option value="qwen">{t("千问 Qwen-Audio-TTS（在线）", "Qwen Audio TTS (online)")}</option>
 						<option value="kokoro">{t("Kokoro（本地）", "Kokoro (local)")}</option>
 						<option value="qwen3">{t("Qwen3-TTS（本地）", "Qwen3-TTS (local)")}</option>
 					</select>
 				</label>
-				{isRemote ? (
+
+				{/* 云端引擎没配密钥：直接说清楚改哪个文件，不要让用户去猜为什么一选就没声。 */}
+				{isRemote && ttsProviders.some((item) => item.id === remoteProvider && !item.configured) ? (
 					<div className="voice-issue voice-status" role="status">
-						{remoteProvider === "edge"
-							? t(
-									"无需 API Key，需联网；朗读文字会发送到微软语音服务。",
-									"No API key needed; requires internet. Text is sent to Microsoft's speech service.",
-								)
-							: t(
-									"本机 MLX 模型，不联网；首次合成要加载模型，会慢几秒。",
-									"Runs on this Mac with MLX, no network; the first synthesis loads the model and takes a few seconds.",
-								)}
+						<span className="voice-issue-text">
+							{ttsProviders.find((item) => item.id === remoteProvider)?.note ??
+								t("这个引擎还没配置密钥", "This engine has no API key configured yet")}
+						</span>
 					</div>
 				) : null}
 
-				{/* 语速与提示音音量并排一行：两块都是滑杆，竖着排白占一屏（用户 2026-11-21：「语速跟提示音可以放成一行」） */}
-				<div className="voice-row-pair">
-					<div className="voice-row voice-row-stacked">
-						<span className="voice-row-label">{t("语速", "Rate")}</span>
-						<span className="voice-slider-line">
-							<input
-								type="range"
-								min={0.5}
-								max={2}
-								step={0.1}
-								value={tts.rate}
-								onChange={(event) => patchTts({ rate: Number(event.target.value) })}
-							/>
-							<span className="voice-value mono">{tts.rate.toFixed(1)}×</span>
-						</span>
-					</div>
-
-					{/* 音量跟着「语速」放：两块都是滑杆，挨在一起才好对比着调。
-				    它管的是**提示音**（提示音走 WebAudio，播报的是浏览器自己的响度），
-				    标签写成「提示音音量」，免得被当成语音播报的音量。 */}
-					<div className="voice-row voice-row-stacked">
-						<span className="voice-row-label">{t("提示音音量", "Cue volume")}</span>
-						<span className="voice-slider-line">
-							<input
-								type="range"
-								min={0}
-								max={100}
-								step={5}
-								value={sound.volume}
-								onChange={(event) => patchSound({ volume: Number(event.target.value) })}
-								onMouseUp={() => preview("done")}
-								title={t("调完松手会试听一声", "Plays a sample when you let go")}
-							/>
-							<span className="voice-value mono">{sound.volume}%</span>
-						</span>
-					</div>
-				</div>
-
+				{/* 「语音」（挑音色）紧跟在「语音引擎」下面（用户 2026-11-24：「这块放到语音引擎下面」）：
+				 * 顺序变成「选引擎 → 选音色 → 调语速/音量」，跟人实际的动作一致；
+				 * 以前它在语速下面，选完音色还要往上回去调语速。 */}
 				{isRemote ? (
 					<label className="voice-row voice-row-select voice-row-stacked">
 						<span className="voice-row-label">{t("语音", "Voice")}</span>
@@ -546,7 +608,11 @@ export function VoicePanel() {
 										? { kokoroVoice: event.target.value }
 										: remoteProvider === "qwen3"
 											? { qwen3Voice: event.target.value }
-											: { edgeVoice: event.target.value },
+											: remoteProvider === "deepseek"
+												? { deepseekVoice: event.target.value }
+												: remoteProvider === "qwen"
+													? { qwenVoice: event.target.value }
+													: { edgeVoice: event.target.value },
 								)
 							}
 							disabled={loadingVoices}
@@ -603,18 +669,82 @@ export function VoicePanel() {
 						 *  但能力不能被藏死：取消勾选还能看到全部，排查时用。 */}
 						<label className="voice-row voice-row-stacked">
 							<span className="voice-row-label">
-								{t("只列在线音色", "Online voices only")}
-								<span className="voice-row-hint">
-									{t(
-										"本机音色在这台机器上念不出来，所以默认只列在线的（如「Google 普通话」）；取消勾选可看全部",
-										"Local voices never start on this machine, so only online ones are listed; uncheck to see all",
-									)}
-								</span>
+								{t("只列在线音色（本机音色念不出来）", "Online voices only (local ones never start)")}
 							</span>
 							<input type="checkbox" checked={tts.allowOnline} onChange={() => patchAllowOnline(!tts.allowOnline)} />
 						</label>
 					</>
 				)}
+				{/* 朗读小宠物（用户 2026-11-24：「宠物可选，设置里给宠物加个开关和动物选择」）：
+				 * 它是右下角那只「在念的时候会说话」的小家伙，纯本机偏好、跟语音开关分开。 */}
+				<label className="voice-row">
+					<span className="voice-row-label">{t("朗读小宠物（一直待在右下角，可拖动）", "Reading pet (always in the bottom-right, draggable)")}</span>
+					<input type="checkbox" checked={petOn} onChange={(event) => setPetOn(event.target.checked)} />
+				</label>
+				{petOn ? (
+					<div className="voice-row">
+						<span className="voice-row-label">{t("宠物形象", "Pet")}</span>
+						<div className="speech-pet-picker">
+							{PET_ANIMALS.map((item) => (
+								<button
+									key={item.emoji}
+									type="button"
+									className={`speech-pet-pick${petAnimal === item.emoji ? " is-on" : ""}`}
+									onClick={() => setPetAnimal(item.emoji)}
+									aria-pressed={petAnimal === item.emoji}
+									title={t(item.zh, item.en)}
+								>
+									{item.emoji}
+								</button>
+							))}
+						</div>
+					</div>
+				) : null}
+
+				{/* 语速与提示音音量并排一行：两块都是滑杆，竖着排白占一屏（用户 2026-11-21：「语速跟提示音可以放成一行」） */}
+				<div className="voice-row-pair">
+					<div className="voice-row voice-row-stacked">
+						<span className="voice-row-label">{t("语速", "Rate")}
+							{/* DeepSeek 不支持调语速（官方文档写明），滑杆拖了也不会变 —— 先说在前面，别让人白试 */}
+							{remoteProvider === "deepseek" ? (
+								<span className="voice-row-hint">{t("DeepSeek 不支持调语速", "DeepSeek has no rate control")}</span>
+							) : null}
+						</span>
+						<span className="voice-slider-line">
+							<input
+								type="range"
+								min={0.5}
+								max={2}
+								step={0.1}
+								value={tts.rate}
+								disabled={remoteProvider === "deepseek"}
+								onChange={(event) => patchTts({ rate: Number(event.target.value) })}
+							/>
+							<span className="voice-value mono">{tts.rate.toFixed(1)}×</span>
+						</span>
+					</div>
+
+					{/* 音量跟着「语速」放：两块都是滑杆，挨在一起才好对比着调。
+				    它管的是**提示音**（提示音走 WebAudio，播报的是浏览器自己的响度），
+				    标签写成「提示音音量」，免得被当成语音播报的音量。 */}
+					<div className="voice-row voice-row-stacked">
+						<span className="voice-row-label">{t("提示音音量", "Cue volume")}</span>
+						<span className="voice-slider-line">
+							<input
+								type="range"
+								min={0}
+								max={100}
+								step={5}
+								value={sound.volume}
+								onChange={(event) => patchSound({ volume: Number(event.target.value) })}
+								onMouseUp={() => preview("done")}
+								title={t("调完松手会试听一声", "Plays a sample when you let go")}
+							/>
+							<span className="voice-value mono">{sound.volume}%</span>
+						</span>
+					</div>
+				</div>
+
 				{isRemote && voicesIssue ? (
 					<div className="voice-issue" role="status">
 						{voicesIssue}
@@ -722,24 +852,15 @@ export function VoicePanel() {
 			<section className="voice-section">
 				<div className="voice-row">
 					<span className="voice-row-label">
-						<span aria-hidden="true">🎤</span> {t("语音输入", "Voice input")}
-						<span className="voice-row-hint">
-							{t(
-								"点页面上的麦克风浮条说话，文字实时进输入框（浮条可以拖到任意位置）",
-								"Tap the microphone bubble to dictate; text lands in the composer as you speak (drag the bubble anywhere)",
-							)}
-						</span>
+						<span aria-hidden="true">🎤</span> {t("语音输入（点麦克风浮条说话）", "Voice input (tap the mic bubble)")}
 					</span>
 				</div>
 				<label className="voice-row">
 					<span className="voice-row-label">
-						{t("说完自动发送", "Send when I stop talking")}
-						<span className="voice-row-hint">
-							{t(
-								`停 ${(voiceInput.silenceMs / 1000).toFixed(1)} 秒没说话就发（句中停顿不会被打断）。关掉后只写进输入框，按回车才发`,
-								`Sends after ${(voiceInput.silenceMs / 1000).toFixed(1)}s of silence (mid-sentence pauses won't cut you off). Off = dictation only fills the composer`,
-							)}
-						</span>
+						{t(
+							`说完自动发送（停 ${(voiceInput.silenceMs / 1000).toFixed(1)} 秒就发）`,
+							`Send when I stop talking (after ${(voiceInput.silenceMs / 1000).toFixed(1)}s)`,
+						)}
 					</span>
 					<input
 						type="checkbox"
@@ -750,13 +871,7 @@ export function VoicePanel() {
 				{/* 静音时长：用户 2026-11-21「设成几秒你就几秒再发送」—— 按秒调，0.2 秒一档 */}
 				<label className="voice-row">
 					<span className="voice-row-label">
-						{t("等多久发送", "Silence before sending")}
-						<span className="voice-row-hint">
-							{t(
-								"停顿超过这个时长才算说完。说话慢、爱停顿就调大一点；越大越不容易被切断",
-								"Longer means a pause must last longer to count as done — safer if you speak slowly or pause often",
-							)}
-						</span>
+						{t("等多久发送（停顿多长算说完）", "Silence before sending (how long counts)")}
 					</span>
 					<span className="voice-slider-line voice-slider-compact">
 						<input
@@ -773,33 +888,10 @@ export function VoicePanel() {
 					</span>
 				</label>
 
-				<label className="voice-row">
-					<span className="voice-row-label">
-						{t("显示朗读控制条", "Show reading controls")}
-						<span className="voice-row-hint">
-							{t(
-								"关掉后消息下面那条「暂停 / 停止」就不显示（快捷键仍然可用）",
-								"Hides the pause/stop bar under messages (keyboard shortcuts still work)",
-							)}
-						</span>
-					</span>
-					<input
-						type="checkbox"
-						checked={voiceInput.showReadingDock}
-						onChange={() => saveVoiceInputSettings({ ...voiceInput, showReadingDock: !voiceInput.showReadingDock })}
-					/>
-				</label>
-
 				{/* 朗读恢复延迟：和上面那个发送阈值拆开（发送要快、朗读恢复要慢） */}
 				<label className="voice-row">
 					<span className="voice-row-label">
-						{t("朗读恢复延迟", "Resume reading after")}
-						<span className="voice-row-hint">
-							{t(
-								"你说话时朗读会暂停；安静满这个时长它才继续念（和上面的发送阈值互不影响）",
-								"Reading pauses while you speak and resumes after this much silence (independent from the send threshold above)",
-							)}
-						</span>
+						{t("朗读恢复延迟（安静多久后接着念）", "Resume reading after (silence needed)")}
 					</span>
 					<span className="voice-slider-line voice-slider-compact">
 						<input
@@ -818,13 +910,7 @@ export function VoicePanel() {
 
 				<label className="voice-row">
 					<span className="voice-row-label">
-						{t("连续听写", "Keep listening")}
-						<span className="voice-row-hint">
-							{t(
-								"发完一句自动继续听，不用每次点麦克风。麦克风会一直占用（系统灯常亮），手动点停后不再自动恢复",
-								"Keeps the mic open after each send so you never tap again. The mic stays busy (system light on) and a manual stop is respected",
-							)}
-						</span>
+						{t("连续听写（发完继续听，麦克风常亮）", "Keep listening (mic stays open)")}
 					</span>
 					<input
 						type="checkbox"
@@ -834,13 +920,7 @@ export function VoicePanel() {
 				</label>
 				<label className="voice-row voice-row-select">
 					<span className="voice-row-label">
-						{t("近讲灵敏度", "Near-field only")}
-						<span className="voice-row-hint">
-							{t(
-								"数字越大，越只认离麦克风近的声音（旁边同事说话会被挡掉）。离得远 / 说话轻就选小一档：0 = 关闭门限并打开自动增益",
-								"Higher = only near-field voice gets through (blocks colleagues next to you). Sitting farther away or speaking softly: pick a lower step — 0 = gate off and auto gain on",
-							)}
-						</span>
+						{t("近讲灵敏度（越大越只认近处；0 = 关闭）", "Near-field only (higher = nearer only; 0 = off)")}
 					</span>
 					{/*
 					 * 滑杆换成下拉（用户 2026-11-21：「感觉现在这个不太好，要不你有那种下拉框的形式，让我选数字也行」）：
@@ -868,28 +948,44 @@ export function VoicePanel() {
 
 				<label className="voice-row voice-row-select">
 					<span className="voice-row-label">
-						{t("识别引擎", "Recognition engine")}
-						<span className="voice-row-hint">
-							{t(
-								"自动 = 优先本地离线识别（不依赖 Google，带标点）；本地不可用时退回 Chrome",
-								"Auto prefers the local offline engine (no Google, keeps punctuation) and falls back to Chrome",
-							)}
-						</span>
+						{t("识别引擎（自动 = 先本地，带标点）", "Recognition engine (auto = local first)")}
+						{cloudError ? <span className="voice-row-hint">{cloudError}</span> : null}
 					</span>
+					{/* 云端引擎直接列在这一栏里：一项一家，模型跟着引擎走（千问整段 / 千问实时 / Omni 实时），
+					    不再单独摆「云端引擎」+「模型」两行 —— 用户只想选一个能用的。 */}
 					<select
 						className="voice-select"
-						value={voiceInput.engine}
-						onChange={(event) =>
+						value={voiceInput.engine === "cloud" ? `cloud:${cloudEngines?.provider ?? ""}` : voiceInput.engine}
+						disabled={cloudBusy}
+						onChange={(event) => {
+							const value = event.target.value;
+							if (value.startsWith("cloud:")) {
+								const provider = value.slice("cloud:".length);
+								saveVoiceInputSettings({ ...voiceInput, engine: "cloud" });
+								if (provider && provider !== cloudEngines?.provider) void applyCloudEngine({ provider });
+								return;
+							}
 							saveVoiceInputSettings({
 								...voiceInput,
-								engine:
-									event.target.value === "browser" || event.target.value === "local" ? event.target.value : "auto",
-							})
-						}
+								engine: value === "browser" || value === "local" ? value : "auto",
+							});
+						}}
 					>
 						<option value="auto">{t("自动（优先本地）", "Auto (local first)")}</option>
 						<option value="local">{t("本地（macOS 离线）", "Local (macOS, offline)")}</option>
-						<option value="browser">{t("Chrome 原生（需连 Google）", "Chrome (needs Google)")}</option>
+						{cloudEngines?.provider ? null : (
+							<option value="cloud:">{t("云端（未选引擎）", "Cloud (no engine)")}</option>
+						)}
+						{(cloudEngines?.engines ?? []).map((engine) => (
+							<option key={engine.id} value={`cloud:${engine.id}`} disabled={!engine.configured}>
+								{engine.configured
+									? t(`云端 · ${engine.label}`, `Cloud · ${engine.label}`)
+									: t(`云端 · ${engine.label}（未配密钥）`, `Cloud · ${engine.label} (no key)`)}
+							</option>
+						))}
+						<option value="browser">
+							{t("Chrome 原生（需能连 Google，国内常不可用）", "Chrome (needs Google; often blocked in China)")}
+						</option>
 					</select>
 				</label>
 
@@ -898,12 +994,17 @@ export function VoicePanel() {
 					<>
 						<div className="voice-row voice-row-status">
 							<span className="voice-row-label">
-								{t("本地识别", "Local recognition")}
+								{asr?.provider ? t("识别状态", "Recognition") : t("本地识别", "Local recognition")}
 								<span className="voice-row-hint">
 									{asr === null || asr.state === "idle"
 										? t("还没启动过", "Not started yet")
 										: asr.state === "ready"
-											? t(`就绪（${asr.locale ?? "zh-CN"}，离线）`, `Ready (${asr.locale ?? "zh-CN"}, offline)`)
+											? asr.provider
+												? t(
+														`就绪（${asr.providerLabel ?? asr.provider}，云端）`,
+														`Ready (${asr.providerLabel ?? asr.provider}, cloud)`,
+													)
+												: t(`就绪（${asr.locale ?? "zh-CN"}，离线）`, `Ready (${asr.locale ?? "zh-CN"}, offline)`)
 											: asr.state === "authorizing"
 												? t(
 														"等待系统授权：屏幕上的提示点「允许」即可",
@@ -912,10 +1013,11 @@ export function VoicePanel() {
 												: asr.state === "starting"
 													? t("正在启动…", "Starting…")
 													: asr.state === "missing"
-														? t(
-																"还没装：一个后台小工具，点一下就能装好",
-																"Not installed yet — a small background helper, one click installs it",
-															)
+														? (asr.message ??
+															t(
+																"还没装：本地识别在 Agent Computer 里（和电脑控制同一个程序）",
+																"Not installed — local recognition lives in Agent Computer (same helper as computer control)",
+															))
 														: (asr.message ?? asr.state)}
 								</span>
 							</span>
@@ -923,11 +1025,11 @@ export function VoicePanel() {
 								<button
 									type="button"
 									className="btn btn-tiny"
-									disabled={installingAsr || asr.install?.canAutoInstall === false}
+									disabled={asr.install?.canAutoInstall === false}
 									onClick={installAsr}
 									title={t("下载并装好本地识别（不用装 Xcode）", "Download and install it — no Xcode needed")}
 								>
-									{installingAsr ? t("正在安装…", "Installing…") : t("安装本地识别", "Install it")}
+									{t("下载 Agent Computer.app", "Download Agent Computer.app")}
 								</button>
 							) : asr?.state === "ready" ? null : (
 								/* 已就绪就不需要这颗按钮了（用户 2026-11-22：「已启动的话都不需要有这个」） */
@@ -955,14 +1057,14 @@ export function VoicePanel() {
 								<ol className="voice-install-steps">
 									<li>
 										{t(
-											"点「安装本地识别」：服务端会下载并解压到 Application Support（可离线、不联网识别）",
-											"Click “Install it” — the server downloads and unpacks it into Application Support (recognition itself stays offline)",
+											"在「电脑控制」面板点「一键安装」（或手动下载 zip 解压）。第一次打开若被系统拦下，去「系统设置 → 隐私与安全性」底部点「仍要打开」",
+											"Use “Install for me” in the Computer control panel (or download the zip yourself). If macOS blocks the first launch, allow it in System Settings → Privacy & Security",
 										)}
 									</li>
 									<li>
 										{t(
-											"装好后这里会变成「就绪」；第一次说话会弹一次系统授权，点「允许」即可",
-											"This row turns into “Ready”. The first time you speak, macOS asks once for permission — click Allow",
+											"打开后会要麦克风与语音识别授权，允许之后这里变成「就绪」",
+											"It asks for microphone and speech recognition permission — after Allow, this row turns into “Ready”",
 										)}
 									</li>
 								</ol>
@@ -978,7 +1080,7 @@ export function VoicePanel() {
 											{t("手动下载 zip", "Download the zip")}
 										</a>
 									) : null}
-									<button type="button" className="btn btn-tiny" onClick={() => refreshAsr()}>
+									<button type="button" className="btn btn-tiny" onClick={() => refreshAsr(true)}>
 										{t("装好了，重新检测", "Installed — check again")}
 									</button>
 								</div>
@@ -1007,10 +1109,7 @@ export function VoicePanel() {
 						{t("说完时正在跑", "While a turn is running")}
 						<span className="voice-row-hint">
 							{steerSupported
-								? t(
-										"排队 = 等这一轮结束再发；插队 = 打断它，按新指令继续",
-										"Queue = sends after this turn; Steer = interrupts it and continues with the new instruction",
-									)
+								? null
 								: t(
 										"当前引擎只能排队（插队需要 Pi 引擎）",
 										"This engine can only queue — steering requires the Pi engine",

@@ -8,6 +8,7 @@
  */
 import {
 	CONFIG_DIR_NAME,
+	CURRENT_SESSION_VERSION,
 	DefaultResourceLoader,
 	SessionManager,
 	createAgentSession,
@@ -19,6 +20,7 @@ import type { AgentSession, ExtensionAPI, InlineExtension, ToolCallEventResult }
 import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { patchExportHtml } from "./export-html-tree-patch.js";
@@ -230,6 +232,69 @@ function asRecord(value: unknown): AnyRecord {
 	return typeof value === "object" && value !== null ? (value as AnyRecord) : {};
 }
 
+/** 这条 entry 是不是一条用户消息（切片起点只认它，理由见 `writeSlicedSessionFile`） */
+function isUserMessageEntry(entry: unknown): boolean {
+	const record = asRecord(entry);
+	return record.type === "message" && asRecord(record.message).role === "user";
+}
+
+/**
+ * 「从某条消息开始」的分叉：只把 **[起点 → 终点]** 这一段写成一条新会话文件。
+ *
+ * 为什么不直接用 pi 的 `createBranchedSession`：那个固定从**根**切（它取 `getBranch(leafId)`
+ * 的整条路径，再把 parentId 重连成一条链）。用户 2026-11-24 要的是「把某一条消息/某一段
+ * 当开头开新会话」——之前的历史真的丢掉，不是复制一份。
+ *
+ * 写文件的格式照抄 pi 自己的 `createBranchedSession`（`session-manager.js`）：
+ * 头一行是 session header，后面每条 entry 的 `parentId` 重连成一条链，**首条设 null**；
+ * 只是切片两端由我们决定。
+ *
+ * 三条刻意的处理：
+ *   1. **起点退到用户消息**：起点落在助手消息上时，模型看到的第一句会是 assistant，
+ *      部分 provider 直接拒；工具轮次还容易变成「有结果没调用」。往前退到这一轮的用户消息，
+ *      语义上也正好是「从这次提问开始」；
+ *   2. **丢掉 label**：label 是挂在 entry 上的书签，重连链之后它的 `targetId` 可能已经不在文件里；
+ *      新会话本来也没必要继承上一份标注；
+ *   3. **丢掉 compaction**：那是「把前面某段压成摘要」的标记，而这一段前面已经什么都没有了，
+ *      留着它的 `firstKeptEntryId` 只会指向不存在的 entry。
+ */
+export function writeSlicedSessionFile(manager: SessionHandle["sessionManager"], sourcePath: string, startId: string, endId: string, cwd: string): string {
+	const branch = manager.getBranch(endId);
+	if (branch.length === 0) throw new Error("找不到要作为终点的消息（它可能不在当前分支上）");
+	const found = branch.findIndex((entry) => entry.id === startId);
+	if (found < 0) throw new Error("找不到要作为起点的消息（它可能不在当前分支上）");
+	let start = found;
+	while (start > 0 && !isUserMessageEntry(branch[start])) start -= 1;
+
+	const sliced: Array<Record<string, unknown>> = [];
+	let parentId: string | null = null;
+	for (const entry of branch.slice(start)) {
+		const record = entry as unknown as Record<string, unknown>;
+		if (record.type === "label" || record.type === "compaction") continue;
+		sliced.push({ ...record, parentId });
+		parentId = String(record.id);
+	}
+	if (sliced.length === 0) throw new Error("这一段里没有可以带走的消息");
+
+	// 文件名与 pi 自己写的一致（`<时间戳>_<会话 id>.jsonl`），会话 id 也自己生一个：
+	// 新文件就是一条**新会话**，不能跟源会话共用一个 id。
+	// 目录取源文件所在目录（= 引擎打开它的那个会话目录），不另算一份。
+	const sessionId = randomUUID();
+	const timestamp = new Date().toISOString();
+	const file = join(dirname(sourcePath), `${timestamp.replace(/[:.]/g, "-")}_${sessionId}.jsonl`);
+	const header = {
+		type: "session",
+		version: CURRENT_SESSION_VERSION,
+		id: sessionId,
+		timestamp,
+		cwd,
+		// 指回源文件：以后要查「这条分支是从哪来的」还能顺着找
+		parentSession: sourcePath,
+	};
+	writeFileSync(file, [header, ...sliced].map((entry) => JSON.stringify(entry)).join("\n") + "\n", "utf8");
+	return file;
+}
+
 /**
  * pi 的「已经在跑了」那句拒绝（`Agent is already processing. Specify streamingBehavior…`）。
  * 宿主拿它判断「这条其实该插队」—— 见 sendMessage 里的兜底。
@@ -431,7 +496,7 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 	 * TUI 启动时自己会初始化，而这个无界面的工作台不会 —— 但扩展里那些「给终端画东西」的代码
 	 * （`getMarkdownTheme().heading()`、`new Text(..., theme.fg(...))`）照样会被调用，尤其是
 	 * 塞在 `setTimeout` 里的渲染：那个异常没人接，**直接把这个服务进程带走**（同事机器上真踩过：
-	 * 扩展 `token-speed.ts` 的定时渲染崩了整个 agent-web）。
+	 * 扩展 `token-speed.ts` 的定时渲染崩了整个 oh-my-agent-web）。
 	 *
 	 * 所以宿主这边先初始化一次，让这类渲染退化成「画了个没人看的东西」，而不是崩服务。
 	 * 顺带也是所有 `@earendil-works/*` 导入的唯一出口（本文件）。
@@ -486,7 +551,7 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 	 */
 	function makeApprovalExtension(workspace: string, conversationId: string) {
 		return {
-			name: "agent-web-approval",
+			name: "oh-my-agent-web-approval",
 			hidden: true,
 			factory: (pi: ExtensionAPI) => {
 				pi.on("tool_call", async (event): Promise<ToolCallEventResult | undefined> => {
@@ -855,6 +920,28 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 				const source = sessions.get(fork.sourceSessionId);
 				// pi 原生的拒绝理由就是这句：没落盘的会话不能 fork（`/clone` 前先说话）
 				if (!source?.sessionPath) throw new Error("这条会话还没存过盘（临时对话），不能从它派生分支");
+				// ── 从某条消息起（用户 2026-11-24：「只把某一条消息作为开头开新会话」）──
+				// 与下面的「整段复制」方向相反：这里把**起点之前的历史丢掉**，不是把后面的截掉。
+				// 两个入口靠这一个字段分：消息气泡下面的分叉传 `startId`（从这次提问起），
+				// 会话行右键 / 标题菜单不传（= 从根到末尾，整段复制）。
+				if (fork.startId) {
+					const endId = fork.leafId
+						? resolveForkLeaf(source.sessionManager, fork.leafId)
+						: source.sessionManager.getLeafId();
+					if (!endId) throw new Error("找不到要作为终点的消息（它可能不在当前分支上）");
+					const slicedPath = writeSlicedSessionFile(
+						source.sessionManager,
+						source.sessionPath,
+						fork.startId,
+						endId,
+						workspace,
+					);
+					const slicedManager = SessionManager.open(slicedPath, sessionDirFor(workspace), workspace);
+					const slicedId = slicedManager.getSessionId();
+					await startSession(slicedId, workspace, slicedManager, slicedPath);
+					return { sessionPath: slicedPath, sessionId: slicedId };
+				}
+
 				const leafId = resolveForkLeaf(source.sessionManager, fork.leafId ?? source.sessionManager.getLeafId() ?? "");
 				if (!leafId) throw new Error("找不到要分叉的那条消息（它可能不在当前分支上）");
 
@@ -1000,7 +1087,7 @@ export function createPiSdkEngine(options: PiSdkEngineOptions = {}): EnginePort 
 
 			const exporter = await loadExportHtml();
 			// 导出器只支持「写到文件」：给它一个自己的临时目录，读完就整个删掉
-			const dir = await mkdtemp(join(tmpdir(), "agent-web-export-"));
+			const dir = await mkdtemp(join(tmpdir(), "oh-my-agent-web-export-"));
 			const output = join(dir, `${randomUUID()}.html`);
 			try {
 				if (handle) {

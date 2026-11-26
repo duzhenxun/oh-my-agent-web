@@ -60,6 +60,6 @@ export function registerCodexApprovals(options: {
 			return;
 		}
 		// 认不出的服务端请求必须回包，否则 codex 会一直等它
-		client.respondError(request.id, -32601, `agent-web 未实现的服务端请求：${method}`);
+		client.respondError(request.id, -32601, `oh-my-agent-web 未实现的服务端请求：${method}`);
 	});
 }

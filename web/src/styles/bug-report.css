@@ -1,0 +1,102 @@
+/* 「提 Bug」面板（`components/BugPanel.tsx`）。
+ *
+ * 三条约束，和别的面板保持一致：
+ *   1. 字号 13px（面板里所有正文都是这个档，见 skills.css / cron.css）；
+ *   2. 左右只留一点内边距，不自己再套一层卡片框（面板本身就是那张卡片）；
+ *   3. `container-type: inline-size`：窄到手机宽度时输入框要能自己缩，而不是撑出横向滚动。 */
+.bug-panel {
+	container-type: inline-size;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	min-width: 0;
+	padding: 2px 8px 12px 2px;
+	font-size: 13px;
+}
+
+.bug-panel h2 {
+	margin: 0;
+	font-size: 15px;
+}
+
+.bug-panel p {
+	margin: 0;
+}
+
+/* 一「行」= 小标题 + 控件，竖着叠：标题在上面才看得清填的是哪一格 */
+.bug-field {
+	display: flex;
+	flex-direction: column;
+	gap: 5px;
+	min-width: 0;
+}
+
+.bug-input,
+.bug-textarea {
+	width: 100%;
+	min-width: 0;
+	box-sizing: border-box;
+	background: var(--bg);
+	color: var(--text);
+	border: 1px solid var(--border-strong);
+	border-radius: 8px;
+	padding: 7px 9px;
+	font: inherit;
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+.bug-textarea {
+	resize: vertical;
+	/* 复现步骤常常要贴一段日志：等宽更好对齐，也不会被自动断词弄得七零八落 */
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 12.5px;
+}
+
+.bug-input:focus,
+.bug-textarea:focus {
+	outline: none;
+	border-color: var(--accent-dim);
+}
+
+.bug-actions {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.bug-actions .settings-hint {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+/* 现场预览：默认收起（一屏放不下），点开就是「到底会带出去什么」的原文 */
+.bug-preview {
+	min-width: 0;
+	color: var(--text-dim);
+}
+
+.bug-preview summary {
+	cursor: pointer;
+	font-size: 13px;
+	color: var(--text-faint);
+}
+
+.bug-preview summary:hover {
+	color: var(--text);
+}
+
+.bug-preview pre {
+	margin: 6px 0 0;
+	padding: 8px 10px;
+	max-height: 260px;
+	overflow: auto;
+	background: var(--bg-elev-2);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	font-size: 12px;
+	line-height: 1.55;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}

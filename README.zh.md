@@ -1,8 +1,5 @@
 # oh-my-agent-web
 
-> [!IMPORTANT]
-> **本项目已升级。** 请改用 **[https://github.com/duzhenxun/pop-agent](https://github.com/duzhenxun/pop-agent)** —— 后续开发都在新仓库进行，本仓库仅作留存参考。
-
 [![npm version](https://img.shields.io/npm/v/oh-my-agent-web?style=flat-square&label=npm&logo=npm&color=cb3837)](https://www.npmjs.com/package/oh-my-agent-web)
 [![npm downloads](https://img.shields.io/npm/dm/oh-my-agent-web?style=flat-square&label=downloads%2Fmonth&color=2f5fe0)](https://www.npmjs.com/package/oh-my-agent-web)
 [![GitHub stars](https://img.shields.io/github/stars/duzhenxun/oh-my-agent-web?style=flat-square&color=f5c542&label=stars)](https://github.com/duzhenxun/oh-my-agent-web/stargazers)

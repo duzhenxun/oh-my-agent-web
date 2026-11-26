@@ -1,51 +1,68 @@
 /**
- * 斜杠命令的「要不要发给引擎」判定（`web/src/slash-commands.ts`）。
+ * 斜杠面板的判定（`web/src/slash-commands.ts`）。
  *
- * 用户报的 bug：在输入框打 `/skill:smart-charts 对当前项目统计一下`，点「发送」毫无反应。
+ * 2026-11-24 用户把 7 条宿主命令删到只剩一条（`/new`）：
+ * 「这些都删了吧，没啥用」→「把 /new 留着」。
+ * 所以这里钉住两件事：
+ *   1. 只有 `/new` 算「宿主动作」，其余 `/xxx` 一律当普通正文发出去（**不能被静默吞掉**）；
+ *   2. `/skill ` 仍在挑技能、`/skill:具体名` 不弹面板（后者是正文，Enter 必须能直接发）。
  *
- * 根因：`Composer.submit` 用「首词是不是 `agent` 类命令」反推要不要继续发：
- *   `filterCommands("skill:smart-charts")` 在命令表里找不到（`skill` 那条的名字是 `skill`，
- *   不是 `skill:smart-charts`）→ `.some(kind === "agent")` 为 false → 直接 return。
- *   而 `runSlashCommand` 也不认识它（返回 handled:false），于是**两头都不做事**，消息凭空消失。
- *
- * 同时 `/skill:xxx` 还会被当成「正在敲命令」弹出面板，面板开着时 Enter 被面板吃掉，
- * 回车也发不出去。
+ * 历史 bug（这套用例的由来）：`Composer.submit` 曾用「首词是不是 agent 类命令」反推要不要继续发，
+ * `/skill:smart-charts …` 两头都不匹配，于是既没执行也没发送 —— 点发送毫无反应。
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { isAppCommand, parseSlashInput, runSlashCommand } from "../../web/src/slash-commands.ts";
+import { filterCommands, isAppCommand, parseSlashInput } from "../../web/src/slash-commands.ts";
 
 describe("isAppCommand：宿主自己执行的命令", () => {
-	it("app 类命令（含带参数的）都是 true", () => {
-		for (const text of [
-			"/new",
-			"/new 第一条消息",
-			"/name 新名字",
-			"/model gpt",
-			"/copy",
-			"/session",
-			"/resume",
-			"/thinking high",
-		]) {
-			assert.equal(isAppCommand(text), true, text);
-		}
+	it("只剩 /new（含带参数的）", () => {
+		assert.equal(isAppCommand("/new"), true);
+		assert.equal(isAppCommand("/new 第一条消息"), true);
+		assert.equal(isAppCommand("  /NEW  x"), true, "大小写与多余空白不影响");
 	});
 
-	it("交给引擎的命令是 false（要照常发出去）", () => {
-		for (const text of ["/compact", "/plan on", "/cwd /tmp", "/skill:smart-charts 对当前项目统计一下"]) {
+	it("删掉的命令一律 false（要照常发给引擎，不能吞掉）", () => {
+		for (const text of ["/name 新名字", "/model gpt", "/thinking high", "/copy", "/session", "/resume"]) {
 			assert.equal(isAppCommand(text), false, text);
 		}
 	});
 
-	it("不认识的命令 / 普通文本也是 false（照常发出去，别静默吞掉）", () => {
-		for (const text of ["/wat", "/skill:unknown-skill", "你好", "", "  "]) {
+	it("引擎命令 / 技能 / 普通文本都是 false", () => {
+		for (const text of ["/compact", "/plan on", "/skill:smart-charts 统计一下", "/wat", "你好", "", "  "]) {
 			assert.equal(isAppCommand(text), false, text);
 		}
 	});
+});
 
-	it("大小写与多余空白不影响判定", () => {
-		assert.equal(isAppCommand("  /NEW  x"), true);
-		assert.equal(isAppCommand("/skill:Smart-Charts x"), false);
+describe("filterCommands：一条宿主动作 + 三条发给引擎", () => {
+	it("`/` 列出全部四条（new / skill / compact / plan）", () => {
+		assert.deepEqual(
+			filterCommands("").map((item) => item.name),
+			["new", "skill", "compact", "plan"],
+		);
+	});
+
+	it("前缀优先：`/n` 第一条是 new，`/pl` 只出 plan", () => {
+		// 注意 `plan` 里也含 `n`（过滤是「前缀优先 + 包含兜底」），所以只断言第一条
+		assert.equal(filterCommands("n")[0]?.name, "new");
+		assert.deepEqual(
+			filterCommands("pl").map((item) => item.name),
+			["plan"],
+		);
+	});
+
+	it("删掉的六条宿主命令不再出现", () => {
+		for (const query of ["name", "model", "thinking", "copy", "session", "resume"]) {
+			assert.equal(filterCommands(query).length, 0, query);
+		}
+	});
+
+	it("三条 agent 命令标记为「发给 Agent」（不是本地执行）", () => {
+		for (const name of ["skill", "compact", "plan"]) {
+			const hit = filterCommands(name).find((item) => item.name === name);
+			assert.equal(hit?.kind, "agent", name);
+			assert.equal(isAppCommand(`/${name}`), false, `${name} 不能被宿主拦下`);
+		}
 	});
 });
 
@@ -60,25 +77,13 @@ describe("parseSlashInput：什么时候弹面板", () => {
 		assert.deepEqual(parseSlashInput("/skill smart"), { mode: "skills", term: "smart" });
 	});
 
-	it("半截命令仍然弹命令面板", () => {
-		assert.deepEqual(parseSlashInput("/na"), { mode: "commands", term: "na" });
+	it("半截命令仍然弹命令面板（现在只有 new 可补全）", () => {
+		assert.deepEqual(parseSlashInput("/n"), { mode: "commands", term: "n" });
 		assert.deepEqual(parseSlashInput("/skill"), { mode: "commands", term: "skill" });
 	});
 
 	it("普通文本 / 已带空格的命令参数 → 不弹", () => {
 		assert.equal(parseSlashInput("你好"), null);
-		assert.equal(parseSlashInput("/name 新名字"), null);
-	});
-});
-
-describe("runSlashCommand：认识的和不认识的", () => {
-	it("`/skill:xxx …` 不会被宿主当成命令执行（handled:false = 交给引擎）", async () => {
-		const outcome = await runSlashCommand("/skill:smart-charts 对当前项目统计一下", null);
-		assert.deepEqual(outcome, { handled: false });
-	});
-
-	it("`/resume` 这类 app 命令不交出去", async () => {
-		const outcome = await runSlashCommand("/resume", null);
-		assert.deepEqual(outcome, { handled: true });
+		assert.equal(parseSlashInput("/new 第一条消息"), null);
 	});
 });

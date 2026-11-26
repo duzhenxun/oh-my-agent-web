@@ -31,7 +31,7 @@ let base = "";
 let server: import("node:http").Server;
 
 before(async () => {
-	root = await mkdtemp(join(tmpdir(), "agent-web-dirs-"));
+	root = await mkdtemp(join(tmpdir(), "oh-my-agent-web-dirs-"));
 	await mkdir(join(root, "项目-a", "nested"), { recursive: true });
 	await mkdir(join(root, "b-dir"));
 	await mkdir(join(root, ".hidden"));

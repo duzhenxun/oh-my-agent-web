@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
 	currentBrandLogo,
 	currentBrandLogoShown,
+	currentBrandMode,
 	currentBrandName,
 	currentBrandShown,
 	onBrandNameChange,
@@ -9,9 +10,11 @@ import {
 	resetBrandName,
 	setBrandLogo,
 	setBrandLogoShown,
+	setBrandMode,
 	setBrandName,
 	setBrandShown,
 	storedBrandName,
+	type BrandMode,
 } from "./brand-name.ts";
 
 /**
@@ -21,8 +24,11 @@ import {
  * 所以设置面板里改一个字、换一张图，顶栏立刻跟着变，不用保存、不用刷新。
  */
 export function useBrandName(): {
-	/** 界面上该显示的名字（用户没改过 = 默认名） */
+	/** 界面上该显示的名字（按 mode 选：品牌名 / 引擎名） */
 	name: string;
+	/** 名字来源：`brand` = 产品名，`engine` = 当前引擎名 */
+	mode: BrandMode;
+	setMode: (mode: BrandMode) => void;
 	/** 用户自己起的名字（没改过 = 空串；设置面板的输入框用它） */
 	custom: string;
 	/** 顶栏要不要显示这串名字 */
@@ -51,6 +57,8 @@ export function useBrandName(): {
 	}, []);
 	return {
 		name: state.name,
+		mode: state.mode,
+		setMode: setBrandMode,
 		custom: state.custom,
 		shown: state.shown,
 		logo: state.logo,
@@ -66,6 +74,7 @@ export function useBrandName(): {
 function readAll() {
 	return {
 		name: currentBrandName(),
+		mode: currentBrandMode(),
 		custom: storedBrandName(),
 		shown: currentBrandShown(),
 		logo: currentBrandLogo(),

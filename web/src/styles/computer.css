@@ -213,3 +213,17 @@
 	display: inline-flex;
 	align-items: center;
 }
+
+/* ---- 「敬请期待」那条提示（Windows 上还没做的能力）----
+ * 2026-11-24：Windows 版电脑控制先不做。它不是错误，也不该用 `.computer-error` 的红色，
+ * 所以单独一条中性样式：浅底 + 主色左侧竖线，读作"待上线"而不是"你装错了"。 */
+.computer-notice {
+	border: 1px solid var(--border);
+	border-left: 3px solid var(--accent);
+	border-radius: var(--radius);
+	background: color-mix(in srgb, var(--accent) 6%, transparent);
+	color: var(--text-dim);
+	padding: 10px 12px;
+	font-size: var(--chat-ui-font-size, 13px);
+	line-height: 1.6;
+}

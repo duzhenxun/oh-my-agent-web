@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * 命令行入口（ADR-0031）：`oh-my-agent-web` / 简写 **`aw`** / **`agent-web`** [命令] [选项]。
- * 三个 bin 指向同一个文件，完全等价（`agent-web` 给不想记缩写的人用）。
+ * 命令行入口（ADR-0031）：`oh-my-agent-web` / 简写 **`aw`** / **`oh-my-agent-web`** [命令] [选项]。
+ * 两个 bin（`oh-my-agent-web` / 短别名 `aw`）指向同一个文件，完全等价。
  *
  * 命令：start（默认）/ stop / restart / status / version / upgrade / help
  *
@@ -38,15 +38,13 @@ import { writePasswordFile } from "./http/password-store.js";
 import { migrateLegacyDataDir } from "./util/data-dir.js";
 import { DEFAULT_DATA_DIR_NAME } from "./util/env.js";
 import { prunePtyPrebuilds } from "./util/prune-pty.js";
-import { fetchHealth, showStatus, showVersion, upgrade } from "./cli-info.js";
-import { MIGRATION_NOTICE, MIGRATION_URL } from "./brand.js";
+import { fetchHealth, showEngines, showStatus, showVersion, upgrade } from "./cli-info.js";
 import { checkForUpdate, describeUpdate } from "./update-check.js";
 import { offerUpgrade } from "./update-prompt.js";
 import { defaultIsAlive, describeHolder, readLock } from "./session/lock.js";
+import { piMissing, startPiGate } from "./pi-gate.js";
 
-const USAGE = `用法: agent-web [命令] [选项]        （agent-web / aw / oh-my-agent-web 三个命令完全等价）
-
-⚠ 这个项目已经升级，请改用：${MIGRATION_URL}
+const USAGE = `用法: oh-my-agent-web [命令] [选项]        （oh-my-agent-web / aw 两个命令完全等价）
 
 命令:
   start              启动（默认前台；已在跑就只把地址给你，不会再起一个）
@@ -55,6 +53,7 @@ const USAGE = `用法: agent-web [命令] [选项]        （agent-web / aw / oh
   restart            先停再起（默认仍前台；带 -d 则后台）
   status             看状态：pid / 端口 / 已运行多久 / 引擎 / 会话数 / 工作区
   version            看版本号（-v / --version 同义）
+  engine             看四个第三方引擎装没装（只给安装引导，不替你装）
   upgrade            升级全局安装（npm i -g <包名>@latest；private 包会拒绝并提示怎么做）
   help               显示本帮助（-h / --help 同义）
 
@@ -86,7 +85,9 @@ const USAGE = `用法: agent-web [命令] [选项]        （agent-web / aw / oh
   aw stop                                               # 停掉（前台/后台都行）`;
 
 type ParsedArgs = {
-	command: "start" | "stop" | "restart" | "status" | "version" | "upgrade";
+	command: "start" | "stop" | "restart" | "status" | "version" | "upgrade" | "engine";
+	/** `aw engine install codex` 这类命令后面的裸词（不解析成选项） */
+	args: string[];
 	env: Record<string, string>;
 	help: boolean;
 	/** 前台运行（默认）；`-d` 关掉它 */
@@ -100,6 +101,7 @@ type ParsedArgs = {
 function parseArgs(argv: string[]): ParsedArgs {
 	const env: Record<string, string> = {};
 	let command: ParsedArgs["command"] = "start";
+	const args: string[] = [];
 	let help = false;
 	let foreground = true;
 	let open = true;
@@ -118,6 +120,7 @@ function parseArgs(argv: string[]): ParsedArgs {
 		else if (arg === "status" || arg === "stat" || arg === "ps") command = "status";
 		else if (arg === "version" || arg === "-v" || arg === "--version") command = "version";
 		else if (arg === "upgrade" || arg === "up") command = "upgrade";
+		else if (arg === "engine" || arg === "engines") command = "engine";
 		else if (arg === "-h" || arg === "--help" || arg === "help") help = true;
 		else if (arg === "-d" || arg === "--detach" || arg === "--daemon") foreground = false;
 		else if (arg === "-f" || arg === "--foreground" || arg === "--fg") foreground = true;
@@ -133,9 +136,11 @@ function parseArgs(argv: string[]): ParsedArgs {
 			env.AGENT_WEB_ALLOWED_HOSTS = [env.AGENT_WEB_ALLOWED_HOSTS, value].filter(Boolean).join(",");
 		} else if (arg === "--data-dir") env.AGENT_WEB_DATA_DIR = resolve(takeValue());
 		else if (arg.startsWith("-")) throw new Error(`未知选项：${arg}`);
+		// `aw engine install codex` / `aw engine codex`：动词和引擎名都原样收下
+		else if (command === "engine") args.push(arg);
 		else throw new Error(`未知命令：${arg}`);
 	}
-	return { command, env, help, foreground, open, password };
+	return { command, args, env, help, foreground, open, password };
 }
 
 function dataDir(): string {
@@ -313,13 +318,39 @@ const PROCESS_FLAGS = new Set([
 ]);
 
 /**
+ * 纯函数：该不该自己开浏览器；不该开就把**原因**一同返回（要打给人看）。
+ *
+ * `isTTY` 是主力依据：被别的程序（脚本、CI、重定向）拉起时 stdio 是**管道**，
+ * 这一条自然就把不该开的情形拦下了。
+ */
+export function browserOpenDecision(input: {
+	open: boolean;
+	isTTY: boolean;
+	ci: boolean;
+}): { open: true } | { open: false; why: string } {
+	if (!input.open) return { open: false, why: "用了 --no-open" };
+	if (input.ci) return { open: false, why: "CI 环境" };
+	if (!input.isTTY) return { open: false, why: "当前输出不是终端（被别的程序拉起，或重定向到了文件）" };
+	return { open: true };
+}
+
+/**
  * 打开系统浏览器。
  *
  * 什么时候**不**开：`--no-open`、没有终端（CI / 被别的程序拉起）、Linux 上没有图形会话。
- * 打不开也不报错 —— URL 已经打在终端里了，复制一下就能用。
+ * 不开的时候要**把原因和 URL 都打出来** —— 静默跳过只会让人以为「点了没反应」。
+ * 打不开（没装 xdg-open / 权限不够）也不报错 —— URL 已经在上面那一行了。
  */
 function openBrowser(url: string): void {
-	if (!process.stdout.isTTY || process.env.CI) return;
+	const decision = browserOpenDecision({
+		open: true,
+		isTTY: process.stdout.isTTY === true,
+		ci: process.env.CI !== undefined && process.env.CI !== "",
+	});
+	if (!decision.open) {
+		console.log(`没自动打开浏览器（${decision.why}）—— 手动打开：${url}`);
+		return;
+	}
 	try {
 		if (process.platform === "darwin") {
 			spawn("open", [url], { stdio: "ignore", detached: true }).unref();
@@ -387,8 +418,6 @@ async function startDetached(rawArgv: string[], open: boolean): Promise<void> {
 			console.log(`  → 打开 http://${probeHost}:${lock.port}`);
 			console.log(`  → 日志 ${log}`);
 			console.log(`  → 停止：${stopHint(rawArgv)}`);
-			// 后台模式下这一行是**唯一的**启动回执（前台那屏 banner 根本不会画），所以复核一次
-			console.log(`  ⚠ ${MIGRATION_NOTICE}`);
 			if (open) openBrowser(`http://${probeHost}:${lock.port}`);
 			return;
 		}
@@ -407,7 +436,7 @@ async function startDetached(rawArgv: string[], open: boolean): Promise<void> {
  * 都装完才走到拿锁那一步 —— 用户敲完 `aw` 干等几秒，最后看到一条 error；`-d` 更糟，
  * 父进程发现子进程退出，只能甩一段 daemon.log 出来。
  *
- * 三个命令名（`aw` / `agent-web` / `oh-my-agent-web`）本来就走同一份 cli.js，
+ * 两个命令名（`oh-my-agent-web` / `aw`）本来就走同一份 cli.js，
  * 所以这一处检测对三者完全一致。
  *
  * @returns true = 已经有一个在跑，本次不再启动
@@ -434,7 +463,7 @@ async function detectRunning(open: boolean): Promise<boolean> {
 	return true;
 }
 
-/** 用户敲的是哪个名字（aw / agent-web / oh-my-agent-web）：启动提示里照拄，不硬写 aw */
+/** 用户敲的是哪个名字（aw / oh-my-agent-web / oh-my-agent-web）：启动提示里照拄，不硬写 aw */
 function invokedName(): string {
 	const base = (process.argv[1] ?? "").split(/[\\/]/).pop() ?? "";
 	// 直接用 node 跑文件（开发、脚本、npx）时 argv[1] 是 cli.js / cli.ts，没有任何命令名可用
@@ -461,7 +490,7 @@ async function main(): Promise<void> {
 		return;
 	}
 	Object.assign(process.env, parsed.env);
-	// 旧目录（~/.agent-web）→ 新目录（~/.oh-my-agent-web）：搬的是密码/订阅/设置/日志/锁
+	// 旧目录（~/.oh-my-agent-web）→ 新目录（~/.oh-my-agent-web）：搬的是密码/订阅/设置/日志/锁
 	migrateLegacyDataDir({ dataDir: dataDir(), log: (line) => console.log(line) });
 	// 只有 `-P/--password` 算「显式改密码」：它会写进 `<dataDir>/password`，
 	// 之后一律以那份文件为准（用户 2026-10-30：「都用 ~/.oh-my-agent-web/password，
@@ -479,6 +508,11 @@ async function main(): Promise<void> {
 	}
 	if (parsed.command === "version") {
 		showVersion();
+		return;
+	}
+	if (parsed.command === "engine") {
+		// 只给引导，不装任何东西（ADR-0052）：用户可以带上引擎名细看
+		showEngines(parsed.args);
 		return;
 	}
 	if (parsed.command === "upgrade") {
@@ -505,7 +539,7 @@ async function main(): Promise<void> {
 		console.log(`[oh-my-agent-web] node-pty 已裁掉 ${pruned.removed} 个无关平台的预编译产物（保留 ${pruned.keep}）`);
 	}
 
-	// start / restart：先确认不是「已经在跑了」（三个命令名共用这一处检测）
+	// start / restart：先确认不是「已经在跑了」（两个命令名共用这一处检测）
 	if (await detectRunning(parsed.open)) return;
 
 	// 真的要起了，才问「要不要升级」（已经在跑的那一路上面就返回了，不该再打扰）。
@@ -545,12 +579,27 @@ async function main(): Promise<void> {
 	// 升级提示由 index.ts 印在启动那屏里（`aw > log` 这种不是 TTY 的也照样印）。
 	// 后台子进程（`AGENT_WEB_FOREGROUND=0`，见 startDetached）跳过：那一路的提示由父进程在
 	// 终端上印，子进程再印一份就只会在 daemon.log 里重复一遍（还白查一次 registry）。
-	// 这里不光是「设」，而是「定了算」：这个变量是**继承**来的（从 agent-web 起的终端里再敲
-	// agent-web，父进程环境里就带着一个 =1），不删就会在已经问过之后又补印一行。
+	// 这里不光是「设」，而是「定了算」：这个变量是**继承**来的（从 oh-my-agent-web 起的终端里再敲
+	// oh-my-agent-web，父进程环境里就带着一个 =1），不删就会在已经问过之后又补印一行。
 	if (offer.asked || process.env.AGENT_WEB_FOREGROUND === "0") delete process.env.AGENT_WEB_UPDATE_NOTICE;
 	else process.env.AGENT_WEB_UPDATE_NOTICE = "1";
-	// 启动提示里的命令名（aw / agent-web / oh-my-agent-web）由实际敲的那个决定
+	// 启动提示里的命令名（aw / oh-my-agent-web / oh-my-agent-web）由实际敲的那个决定
 	process.env.AGENT_WEB_CLI_NAME = invokedName();
+	/**
+	 * 没有 pi 就不进 index.ts（ADR-0052 §4）：它是模块依赖，静态 import 失败的话
+	 * 服务根本起不来，也就没有界面能让人点「安装」。这里先起一个只做安装的小页面，
+	 * 装完用户重开一次即可 —— 比在终端里甩一条 ENOENT 有用得多。
+	 */
+	if (piMissing()) {
+		await startPiGate({
+			port: Number(process.env.AGENT_WEB_PORT ?? 25257) || 25257,
+			host: process.env.AGENT_WEB_HOST ?? "127.0.0.1",
+			dataDir: dataDir(),
+			openUrl: parsed.open ? openBrowser : undefined,
+			log: (line) => console.log(line),
+		});
+		return;
+	}
 	await import("./index.js");
 	// 前台的「有新版本」提示由 index.ts 印在启动那屏（banner）下面：
 	// 这里再印一次就会跑到 banner 上面去、还容易被启动日志淹没。

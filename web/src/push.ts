@@ -158,7 +158,7 @@ export async function subscribePush(
 	const json = sub.toJSON() as { endpoint?: string; keys?: { p256dh: string; auth: string } };
 	const response = await fetch("/api/push/subscribe", {
 		method: "POST",
-		headers: { "content-type": "application/json", "x-agent-client": sessionStorage.getItem("agent-web-client") ?? "" },
+		headers: { "content-type": "application/json", "x-agent-client": sessionStorage.getItem("oh-my-agent-web-client") ?? "" },
 		// 名字一起报上去：服务端拼推送标题时才知道这台设备叫什么（见 server/push/push.ts 的 brandName）
 		body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys, name: deviceName(), brandName: customBrandName }),
 	});

@@ -22,7 +22,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 /** 探针目录前缀（`isScratchCwd` 判定 → 侧栏不显示这类目录） */
-const PROBE_CWD_PREFIX = "agent-web-models-";
+const PROBE_CWD_PREFIX = "oh-my-agent-web-models-";
 
 /** 在临时工作区里跑一段逻辑，跑完把目录删掉（失败也删） */
 export async function withProbeCwd<T>(run: (cwd: string) => Promise<T>): Promise<T> {
