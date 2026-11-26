@@ -16,9 +16,9 @@ Single user, loopback only, and **the engine's own on-disk files are always the 
 ![A real session: projects and sessions on the left, thinking blocks and tool cards in the middle, a file preview of the same repo on the right](docs/site/assets/en/hero.webp)
 
 > Every screenshot below is a real UI capture of this repo — pi engine + DeepSeek, on a small `demo-app` project.
-> Most are the 1.1.0 build (shared with the landing page under `docs/site/assets/en/`); the terminal and side-chat shots are from the 0.8.0 run under `docs/screenshots/`; the voice, scheduled-task and computer-control shots are the 1.5.x build.
+> **The screenshots come from 1.x builds**: most are 1.1.0 (shared with the landing page under `docs/site/assets/en/`), the terminal and side-chat shots are from the 0.8.0 run under `docs/screenshots/`, and the voice, scheduled-task and computer-control shots are 1.5.x. The 2.0.0 UI changes (canvas, first-run wizard, Report a bug, the templates / Think row, installing a missing engine) were not re-shot — the chapters below describe them in text.
 > Directories, commands, diffs, tokens and cost all come from actual runs — no collages, no mockups.
-> How the 1.1.0 shots were taken: [`docs/site/README.md`](docs/site/README.md).
+> How the shots were taken: [`docs/site/README.md`](docs/site/README.md).
 
 ---
 
@@ -147,6 +147,16 @@ Each engine also has its own escape hatches (all have defaults; you normally don
 
 ---
 
+## First run: the wizard, and reporting a bug
+
+**The wizard appears exactly once**, in three steps: pick an engine (pi by default; picking one that isn't installed is fine — you get an install entry once you switch) → configure a model (DeepSeek / OpenAI / Anthropic presets, or your own base URL + API shape) → start the first session. Skip it with the button or `Esc`; whether you've been through it is remembered locally (`localStorage`, `agent-web.onboarded`) and the server stores nothing for it.
+
+**When something breaks, report it from the UI**: the `Report a bug` panel (off the top bar by default — tick it in Settings → Interface; `Settings → Conversation → Feedback` always has an entry) takes one line about what went wrong and opens a prefilled GitHub issue — title, body and the `bug` label included.
+
+The environment comes along automatically: version, engine (with its version), model, session id and the platform string, all read from the snapshot so you never copy them by hand. **Everything is redacted first**: home directories become `~`, and `sk-` / `ghp_` / `xoxb-` / `AKIA` style tokens are masked. If the UI just crashed, the error and the first 12 stack lines are pre-filled into the description (deletable). Title is capped at 80 characters, body at 4000 (it has to fit in a URL) and anything longer is truncated (the body says so); if you'd rather not post publicly — or not open an issue at all — “Copy report” gives you the same text for chat or email.
+
+---
+
 ## What it is, what it isn't
 
 **It is**: a front end that spreads the agent's *process* out in front of you. Thinking blocks, tool calls, changed files, tokens and cost all live in the conversation stream. You can cut in mid-turn, highlight a passage to file a comment on it, or open a scratch chat that never touches disk just to ask one question.
@@ -181,11 +191,35 @@ While a turn is running, the composer does not lock up:
 
 | Action | Meaning |
 |---|---|
-| **Steer** | Takes effect immediately, inserted into the current turn as the next instruction |
+| **Steer** | Stop and listen right now: pi inserts into the same turn, the other four interrupt the turn and start the next one |
 | **Queue** | Wait until this turn ends; you can see what's at the head of the queue and retract anything |
 | **Stop** | Interrupt the turn and keep whatever was already produced |
 
-Steering is pi-only (its SDK has `streamingBehavior: "steer"`). Other engines have no such notion, so the host **degrades it to queueing** rather than firing a second message that would flush the active turn.
+There are two implementations and the UI words them differently (ADR-0054):
+
+- **pi steers natively**: the SDK's `streamingBehavior: "steer"` keeps the turn alive, and the model sees your sentence on its next sample — the transcript shows no seam;
+- **codex / dsh / opencode / claude interrupt and continue**: `turn/interrupt` (codex) or `session/cancel` (the three ACP engines) ends the running turn first, then your message goes out as the next one (measured settle time 21–147ms). So the transcript **always** carries an interrupted tail: a tool that was running shows a neutral “interrupted” state, not a failure, and is never passed off as finished.
+- Interrupting a running tool means that operation is cut (a half-written file, a half-run command), so there's a short undo window; if the turn hasn't settled after 5 s the steer degrades to queueing and says so, rather than leaving you waiting on a “steered” badge.
+
+### The row above the composer
+
+Left to right: project · model · thinking · Think · prompts, plus an optional second row of quick commands (off by default; turn it on in Settings → Conversation). The three click behaviours are deliberately different:
+
+- **Prompts (templates)**: opens a card wall. **Clicking a card only puts its text into the composer — it does not send** (a newline is appended so you can keep typing). The ✏️ on a card opens the editor, whose “Generate with AI” runs a hidden turn to draft the prompt body from your title / description (“Undo” restores what it replaced). Built-in templates can be hidden, never deleted.
+- **Quick commands**: the main entry lives in that same dialog (the chips under the templates). **Click sends immediately, Shift+click only fills**; up to 30 entries of 200 characters, and edits apply instantly.
+- **Think**: asks the model for a few “say this next” suggestions from the current context (1–5 items; 3 on phones; count and timeout live in Settings → Conversation). It runs a **hidden turn**, so it never enters the conversation; nothing is sent until **you click one** (Shift+click fills the composer instead).
+
+---
+
+## Canvas: a multi-step job laid out as a graph
+
+Say “I want to build a check-in campaign” and the agent breaks the sentence into nodes plus dependencies and draws it in the right pane's **canvas** tab (from the Canvas card on the right-pane landing page, or by shortcut; only one canvas is open at a time — it's the “see the whole thing” window). One canvas per session, so switching sessions switches the graph.
+
+- **Node kinds**: task is the default, plus milestone / risk / decision / doc (`milestone` / `risk` / `decision` / `doc`), each with its own icon and colour.
+- **Status**: to do / doing / done / blocked, changed from the right-click menu; “Start this step” in that menu has the agent run it (when the turn finishes the node flips to done or, on failure, blocked, and the files it wrote and commands it ran are attached to the node; one node per session at a time — starting another while one runs is refused and says which step is in progress).
+- **Sub-plans**: when one step is itself several steps, `sub_plan` puts them on the node's own layer — **double-click to drill in** (one level only) while the main graph shows a “3/5 steps” summary; double-clicking a node without a sub-plan means “start this step”.
+- **Who draws it**: the agent on the pi engine has a `canvas` tool (`plan` / `sub_plan` / `add` / `update` / `status` / `remove` / `clear`). **Coordinates are none of the model's business** — the host lays nodes out by dependency depth (no prerequisites go leftmost, each dependency pushes one column right) and the model only supplies titles and edges. Panning, zooming, marquee select and snapping are for humans, and positions you drag are written back.
+- **The limits are honest**: 40 nodes / 80 edges; beyond that the host truncates and tells the model instead of drawing something nobody can read.
 
 ---
 
@@ -226,7 +260,7 @@ The `Temp session` button in the top bar (or the first card on the right pane's 
 - to keep it, hit `Save as a regular chat` — only then is a session file written (history the ephemeral chat never had is preserved too);
 - you can have several open at once, each on its own channel and its own tab.
 
-> This depends on the engine having an in-memory session: pi supports it; a Codex thread already lives in Codex's own store, so there is no "save" button. It is not "a new session in a different skin", and it is not a subagent — **an ephemeral chat is a window you opened, a subagent is a subtask the agent dispatched**.
+> This depends on the engine having an in-memory session (the `ephemeralChat` capability), which only pi declares today — switch to another engine and neither the button nor the landing-page card appears. It is not "a new session in a different skin", and it is not a subagent — **an ephemeral chat is a window you opened, a subagent is a subtask the agent dispatched**.
 
 ---
 
@@ -267,6 +301,8 @@ The terminal in the right pane is a **real PTY** (`node-pty` + xterm.js): vim / 
 
 Reloading the page does not restore a terminal session (the PTY exits with the page); switching tabs does not break it. On Linux `node-pty` has to be compiled in place, and when the tools are missing the UI says exactly what to install.
 
+There's also a **bottom terminal** under the conversation (`` Ctrl+` `` shows / hides it): tabs, draggable height, and **hiding it only hides it** — the shells keep running and keep their history; closing a tab (×) is what kills the process. It is not the right-pane terminal: that one is a tool tab next to files and web pages, this one lives under the chat so you can type while the agent works. Each terminal's cwd is fixed when it is created.
+
 ### Built-in web page
 
 The right pane also opens web pages: type a URL and view it in an iframe, with requests going through **a local proxy** (`/web/p/<url>`) — it fetches the document and strips the `X-Frame-Options` / CSP framing restrictions, so sites like Baidu open too. The proxy has boundaries: HTML/CSS documents only, **no cookies in and none out**, a 12 MB upstream cap, and an iframe sandbox without `allow-same-origin`. For sites that need a login or heavy JS, hit `⧉` to jump to the system browser.
@@ -293,14 +329,27 @@ The differences (the capability matrix in `server/engine/registry.ts`, which the
 | Approvals | ✅ | ✅ | ✅ | per config | ✅ |
 | Model / thinking level | ✅ | ✅ | ✅ | ✅ | model only / no levels |
 | Resume past sessions | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Steering | ✅ | — | — | — | — |
-| Subagent panel | ✅ | — | — | — | — |
+| Steering | ✅ native | ✅ interrupt | ✅ interrupt | ✅ interrupt | ✅ interrupt |
+| Subagent panel | ✅ | ✅ ¹ | — | — | — |
 | Workbench-managed providers | ✅ | — | — | — | — |
 | Side chat (in memory) | ✅ | — | — | — | — |
+
+¹ Codex uses its own multi-agent feature (the `spawn_agent` family): same panel, but templates act as delegation briefs. Its isolation is the sandbox plus approvals, so ticking tools in a template does not apply to it.
 
 **The models / plugins / MCP panels follow the active engine**: switch to Codex and the panels read Codex's own data (`model/list`, `plugin/list`, `config/read`); claude reads `~/.claude.json` and `~/.claude/settings.json`; opencode reads `opencode.json`. A panel that has nothing wired says so instead of borrowing pi's config.
 
 Engines are switched in the **bottom status bar** (not the top bar), and every session remembers its own engine, model and thinking level.
+
+### When an engine is missing: install it from the UI
+
+A brand-new machine with no third-party engines still runs the workbench; only the missing piece needs a click from you (ADR-0052):
+
+- **Where**: the engine chip in the bottom status bar → the entries marked “not installed” → click one and a dialog with a single button appears. Installation only starts when you press it (switching straight over would just error out immediately).
+- **Where it lands**: the npm prefix at `<data dir>` (default `~/.oh-my-agent-web`) — exactly where `scripts/install.sh` puts things (`bin/` + `lib/node_modules/`, a normal npm layout you can inspect with `npm ls -g --prefix ~/.oh-my-agent-web`). **Never the system-wide prefix, never sudo.**
+- **Your own copy is left alone**: lookup order is `AGENT_WEB_*_BIN` → `PATH` → our prefix, and the prefix's `bin/` is **appended** to `PATH` — if you already have the same command, yours always wins. The workbench neither reinstalls, upgrades nor reconfigures it.
+- **No switching, no nagging**: pi is the default and most people never change it, so they never see an install prompt.
+- **No pi at all → a fallback page**: pi is statically imported as a module, so without it the server cannot even start. `cli.ts` then serves a **fallback page** (one “Install Pi Agent” button plus `/api/engines`), and tells you to **restart** afterwards (module resolution happens at process start). Other engines just need to be on `PATH` once installed.
+- **dsh gets no install button**: it has no public npm package, so the dialog only points at its own docs instead of inventing a package name you'd install by mistake.
 
 ---
 
@@ -363,7 +412,7 @@ Once the main agent has the `Agent` tool it can run several subagents in paralle
 - **Concurrency**: 1–12 (default 4); anything beyond that queues. Turn the master switch off and the model no longer sees the `Agent` tool.
 - **Isolation**: subagents load no skills / plugins / themes / context files by default (fast and predictable); a subagent that doesn't pin a model keeps using the parent session's model.
 
-A subagent's session file is archived next to the parent session (`<parent session dir>/<parent name>/subagents/`) and never shows up in the sidebar's project list.
+A subagent's session file is archived next to the parent session (`<parent session dir>/<parent name>/subagents/`) and never shows up in the sidebar's project list. All of the above is pi's shape; Codex's own multi-agent runs land in the same panel, but there the templates are delegation briefs only — its isolation is sandbox plus approvals, so the tool allowlist in a template does not apply.
 
 ---
 
@@ -380,7 +429,7 @@ The VAPID key pair and the contact (subject) are managed in the same panel: the 
 
 ![The voice panel: four event sounds with preview and volume, cue volume and rate, speech in and out](docs/site/assets/en/voice.webp)
 
-Four event sounds (start / finish / error / waiting for approval) with preview and adjustable volume; TTS reads the final reply, with adjustable rate and voice. By default speech output is the **browser's built-in voices** — offline, nothing leaves the machine; switch the speech engine to `edge` (Microsoft, needs network) or point it at your own `kokoro` / `qwen3` in the same panel.
+Four event sounds (start / finish / error / waiting for approval) with preview and adjustable volume; TTS reads the final reply, with adjustable rate and voice. By default speech output is the **browser's built-in voices** — offline, nothing leaves the machine; switch the speech engine to `edge` (Microsoft, needs network), `deepseek` or Qwen (online, keys in `<data dir>/tts.json`, `chmod 600` recommended), or to the local MLX engines `kokoro` / `qwen3` (offline, running on the server Mac; the first synthesis loads the model). While it reads, a small pet in the bottom-right corner talks along: it can be dragged, docks to the edge, and has pause / resume / stop (its position is kept locally).
 
 Speech input lives here too: tap the mic bubble to dictate and the text lands in the composer as you speak (drag the bubble anywhere); "send when I stop talking", the silence threshold, how long to wait before sending and continuous dictation are all in this panel.
 
@@ -388,16 +437,24 @@ Speech input lives here too: tap the mic bubble to dictate and the text lands in
 
 | | Default | What the other machine needs |
 |---|---|---|
-| **Voice input** (speech → text) | `Auto`: local on-device first (macOS `SFSpeechRecognizer`); when the local engine isn't installed or fails it goes **straight to Chrome's built-in** recognizer (no toast, no wasted round) | Local: the machine **running the server** is macOS — click **Install it** in Settings → Voice once (it downloads a small helper app; no Xcode needed), one “Speech Recognition” prompt on first use. Chrome: the browser can reach Google |
-| **Voice output** (text → speech) | The **browser's built-in** voices (macOS system voices / Windows SAPI), offline | Pick `edge` (Microsoft, needs network) or host `kokoro` / `qwen3` yourself (Voice → Remote) |
+| **Voice input** (speech → text) | `Auto`: local on-device first (macOS `SFSpeechRecognizer`); when the local engine isn't installed or fails it goes **straight to Chrome's built-in** recognizer (no toast, no wasted round) | Local: the machine **running the server** is macOS, and local recognition now **ships inside the Agent Computer helper** (same app, same zip as computer control) — press “Download Agent Computer.app” once in the voice panel (or use the one-click install in Computer control); the mic / speech-recognition prompt appears on first use and Xcode is not needed. `AGENT_COMPUTER_DOWNLOAD_URL` points at your own mirror. Chrome: the browser can reach Google |
+| **Voice output** (text → speech) | The **browser's built-in** voices (macOS system voices / Windows SAPI), offline | Pick `edge` (Microsoft, no key, needs network), `deepseek` / Qwen (online, keys in `<data dir>/tts.json`), or the local MLX `kokoro` / `qwen3` |
 
 So “the defaults are Google + Microsoft” is only half true: input is **not** Google by default (local first, Google is the fallback), and output is **not** Microsoft by default (system voices; edge-tts is opt-in).
 
 Three things people trip on:
 
-- **Local recognition runs on the server machine** (the browser only streams audio), so on a Linux / Windows host the local engine simply isn't available and Chrome's engine is all that's left;
+- **Local recognition runs on the server machine** (the browser only streams audio), and the Agent Computer helper is macOS-only, so on a Linux / Windows host the local engine simply isn't available — all that's left is Chrome's engine, or the optional cloud STT described below;
 - Opening the app over plain LAN `http://` on a phone gives you **no microphone** (`getUserMedia` requires `localhost` or HTTPS);
 - Voice-input settings (near-field gate, silence threshold, keep-listening…) are stored **once per server**, shared by everyone using it — the last edit wins; voice and rate preferences stay in each browser's `localStorage`.
+
+### Cloud STT (optional; local offline is still the default)
+
+Use it when the server runs on Linux / Windows, or when you want better accuracy:
+
+- Configure `<data dir>/stt.json` (it holds keys, so `chmod 600` is recommended) and **restart the server** once; or pick an engine right in the voice panel's “Recognition engine” menu, which writes back to the same file. Fields and examples: [`docs/stt.md`](docs/stt.md).
+- Supported providers: `deepseek`, `openai-compatible` (Whisper / Groq / SiliconFlow / your own whisper.cpp server / gateway proxies), `qwen` (Qwen full-utterance ASR), `qwen-realtime`, `qwen-omni-realtime`. The first three are full-utterance (you get the sentence only after you stop); the last two stream while you talk, but **their protocols and models are not interchangeable** (switching models means switching provider too).
+- A cloud failure **never silently falls back to local**: that utterance yields nothing, the log gets a `云端识别失败` line, and the next one tries again. Delete the `provider` from `stt.json` (or the file) to go back to local.
 
 ---
 
@@ -428,6 +485,7 @@ A task is a prompt plus a five-field cron expression and a timezone. The panel's
 - **What it refuses**: password fields (`AXSubrole` is secure, or the placeholder looks like a password) are never typed for you; apps that system authentication and System Settings protect stay protected unless you list them under "unprotected apps", and password managers still ask you inside the helper.
 - **What shows on screen**: an optional live preview window, an activity watermark and a pointer ring following the cursor, plus "borrow the foreground briefly" and "activate the target app while you are idle". Pointer speed and the delay between typed keys are adjustable — too fast is exactly what makes an app drop input.
 - **Settings live with the helper**: the panel writes the helper's own `~/Library/Application Support/AgentComputer/settings.json`, with no second copy. The file is the truth and the panel is just a form.
+- **Local speech recognition lives here too**: the native half of dictation (`SFSpeechRecognizer`, forced offline) is now part of the same app and the same zip, with no separate ASR helper to install — install once and grant the permissions (microphone / speech recognition) once, and both computer control and dictation work.
 
 ---
 
@@ -435,22 +493,22 @@ A task is a prompt plus a five-field cron expression and a timezone. The panel's
 
 ![Settings → Appearance: three font sizes, content width in 4 steps, 6 palettes](docs/site/assets/en/settings.webp)
 
-The top bar is the entry point for every panel, and **each entry can be hidden in Settings → Interface** (settings and the split toggle are exempt — they're the only way back to the others). A fresh install ticks only **models / skills / voice / MCP**; push, plugins, subagents, scheduled tasks and the temp session are ticked back on when you want them. The sidebar and the right pane both drag wider and collapse, and their widths are remembered locally in `localStorage`.
+The top bar is the entry point for every panel (Report a bug included), and **each entry can be hidden in Settings → Interface** — even the top-bar Settings button: the leftmost button in the bottom status bar opens the same panel, so you can always get back. **A fresh install ticks only “scheduled tasks”** (models / skills / voice / MCP / push / plugins / subagents / Report a bug are ticked back on when you want them; the temp session has its own switch). The sidebar and the right pane both drag wider and collapse, and their widths are remembered locally in `localStorage`.
 
 The "settings" button opens six pages, and the tabs themselves drag to reorder — **whichever sits first is the page that opens next time**:
 
 | Page | Contents |
 |---|---|
 | **Interface** | The frame: which top-bar entries show (text and icon ticked separately), which status-bar chunks show (queue / working / context usage), how many sessions each project lists in the sidebar, and the max width of images in the chat |
-| **Conversation** | What the chat area itself looks like: which blocks sit above the composer (templates / think / quick commands), the text of your quick phrases and the default thinking level (these two are saved server-side, identical on every device), whether cost shows in the conversation, and whether thinking blocks and tool cards start expanded |
+| **Conversation** | What the chat area itself looks like: which blocks sit above the composer (prompts / Think / quick commands), how many suggestions Think generates and how long it waits (these two are saved server-side, identical on every device), the little toolbar that pops up on a text selection, the process cards, whether cost shows in the conversation, and the Report a bug entry under Feedback |
 | **Appearance** | Sizes only: three font sizes (chat body / sidebar project names / sidebar session names, slider 2–20px), content width in 4 steps (720 / 900 / 1100 / full), top-bar height, and the top-bar name and logo (hideable, or replaced with your own) |
 | **Theme** | 6 palettes (bright white, warm paper, mist teal, Tokyo night, mocha, nord) — one click and it applies |
 | **Language** | Chinese / English, applied immediately |
-| **Shortcuts** | 12 actions, rebindable, clearable and restorable to defaults, plus a cheat sheet |
+| **Shortcuts** | 19 actions, rebindable, clearable and restorable to defaults, plus a cheat sheet |
 
 A seventh tab, **Remote**, is where the access password, the login guard (3 tries / 30 minutes by default) and the sign-in activity list live — see the phone and security sections.
 
-Appearance, theme, interface and language preferences stay on the device only (`localStorage`, with the `agent-web.` prefix) — one copy per phone, tablet and desktop. Only the quick phrases in "Conversation" are shared across devices.
+Appearance, theme, interface and language preferences stay on the device only (`localStorage`, with the `agent-web.` prefix) — one copy per phone, tablet and desktop. Only the two server-side items in “Conversation” (the quick commands themselves, and Think's count / timeout) are shared across devices.
 
 ---
 
@@ -483,8 +541,9 @@ The sidebar groups sessions into "projects" by directory:
 | Delete | Renames to `.deleted-<timestamp>` (the engine's native delete is preferred when it has one) — **the file is still on disk** |
 | Fork | Derive a new session from one message (the title becomes `Branch · …`), the original untouched |
 | Move project | Drag a session row onto another project; the id and history stay, only the `cwd` in the file header changes and the directory is moved |
+| Reorder | Drag a session onto another one inside a project to insert it in front (projects reorder the same way); anything you never dragged stays by creation time |
 
-Sorting is a deliberate choice: **newest-created first inside a group** — a new session lands on top, and updating an old one doesn't move it (sort by last activity instead and a single message in an old session shoots it to the top, dragging the whole list along).
+Sorting is a deliberate choice: **anything you haven't reordered is newest-created first** — a new session lands on top, and updating an old one doesn't move it (sort by last activity instead and a single message in an old session shoots it to the top, dragging the whole list along). Sessions you did drag stay where you put them, so “I just want these two swapped” needs no future sorting option.
 
 ---
 
@@ -494,12 +553,17 @@ Sorting is a deliberate choice: **newest-created first inside a group** — a ne
 
 | Action | Default | Action | Default |
 |---|---|---|---|
-| New session | `Mod+K` | Open right panel | `Mod+Alt+O` |
-| New project | `Mod+M` | Close right panel | `Mod+Alt+W` |
-| Temp session | `Mod+Shift+K` | Toggle left sidebar | `Mod+Alt+L` |
-| Settings | `Mod+Alt+S` | Files | `Mod+Alt+F` |
-| New terminal | `Mod+Alt+T` | Search file contents | `Mod+Shift+F` |
-| Shortcut cheat sheet | `Mod+/` | | |
+| Send message | `Mod+Enter` | Toggle left sidebar | `Alt+L` |
+| Steer | `Alt+Enter` | Toggle right panel | `Alt+R` |
+| Stop the running turn | `Alt+S` | Projects | `Alt+X` |
+| New session | `Alt+N` | Files | `Alt+F` |
+| New project | `Alt+M` | Canvas | `Alt+B` |
+| Settings | `Mod+,` | Toggle terminal (under the chat) | `` Ctrl+` `` |
+| Search file contents | `Shift+Alt+F` | Shortcut cheat sheet | `Mod+/` |
+| Start / stop voice input | right ⌘ | Pause / resume reading | `Alt+P` |
+| Stop reading aloud | `Mod+Alt+S` | | |
+
+Temp session and “queue message” are **unbound by default** (both have buttons, and a key here would mostly be mis-hit); when a turn is running, “send” steers, exactly like the button.
 
 The mic key does both, with no extra setting: **press to keep listening, press again to stop**; or **hold it, say one short thing, release to stop**.
 
@@ -508,16 +572,11 @@ The mic key does both, with no extra setting: **press to keep listening, press a
 | Command | Kind | What it does |
 |---|---|---|
 | `/new [first message]` | local | New conversation, optionally with its first message |
-| `/name <name>` | local | Rename the current session |
-| `/model <name>` | local | Switch model (fuzzy match on id or display name) |
-| `/thinking <level>` | local | Set the thinking level (off / low / … / max) |
-| `/copy` | local | Copy the last assistant message |
-| `/session` | local | Message count / tokens / cost for the session |
-| `/resume` | local | Refresh the session list (sessions another terminal just opened) |
-| `/skill <skill name>` | to the agent | Use a skill (the panel lists the installed ones) |
+| `/skill <skill name>` | to the agent | Use a skill (typing `/skill ` lists the installed ones) |
 | `/compact [note]` | to the agent | Compact the context |
 | `/plan [on\|off]` | to the agent | Turn plan mode on or off |
-| `/cwd <path>` | to the agent | Change the working directory |
+
+That's all four. Rename, model, thinking level, copy-last-message, session stats and refresh-the-session-list were removed: the UI already has a button or menu for each (the top bar and the reconnect path do the rest), and keeping them only added a “which engine doesn't honour this” explanation. `/cwd` went the same way — change the working directory from the projects / files rail.
 
 ---
 
@@ -547,6 +606,10 @@ Process model: `cli.ts` parses the flags → `session/lock.ts` grabs `<dataDir>/
 | opencode / DSH / claude sessions | Their own data dirs (opencode lists per cwd with `session/list`; DSH reads `~/.dsh`; claude reads `~/.claude`) |
 | Session titles | For pi, the first user message (reads only the first 60 lines); renaming appends `session_info.name` |
 | Workbench state | `<dataDir>/settings.json`, `approval-rules.json`, `cron.json`, `server.lock`, `logs/`, `uploads/`, `push-subscriptions.json`, `vapid-keys.json`, `push-config.json` |
+| Canvas | `<dataDir>/canvas/<conversation id>.json` (one per session; writes go through a temp file + rename so a half-written JSON can't break the canvas) |
+| Cloud speech-to-text config | `<dataDir>/stt.json` (per-provider blocks with key / endpoint / model; `chmod 600` recommended, `AGENT_WEB_STT_CONFIG` points elsewhere) |
+| Cloud text-to-speech config | `<dataDir>/tts.json` (per-provider blocks as well; `chmod 600` recommended, `AGENT_WEB_TTS_CONFIG` points elsewhere) |
+| Engines installed from the UI | `<dataDir>/bin/` (on Windows directly under `<dataDir>`) plus `<dataDir>/lib/node_modules/` — a plain npm prefix; `npm ls -g --prefix ~/.oh-my-agent-web` lists it |
 | Skills / subagent templates / MCP | `~/.agents/skills/`, `~/.pi/agent/agents/`, `~/.pi/agent/mcp.json` |
 | Computer control | `~/.agents/skills/agent-computer/` (the skill), `~/Library/Application Support/AgentComputer/` (helper config, allowlist, socket, screenshots) |
 | Local UI preferences | Browser `localStorage` (`agent-web.` prefix: theme, font sizes, widths, shortcuts, notes, tabs) |
